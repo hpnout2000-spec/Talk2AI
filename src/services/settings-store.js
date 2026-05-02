@@ -12,6 +12,8 @@ const DEFAULTS = {
   thinking_enabled: false,
   memory_enabled: true,
   font_size: 15,
+  response_length: 'auto',
+  description_depth: 0,
 };
 
 let settings = { ...DEFAULTS };

@@ -86,6 +86,18 @@ export const chatStore = {
     currentSession.updated_at = new Date().toISOString();
   },
 
+  updateLastAssistantOptions(options) {
+    if (!currentSession) return;
+    const msgs = currentSession.messages;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === 'assistant') {
+        msgs[i].options = options;
+        break;
+      }
+    }
+    currentSession.updated_at = new Date().toISOString();
+  },
+
   deleteMessage(messageId) {
     if (!currentSession) return;
     currentSession.messages = currentSession.messages.filter(m => m.id !== messageId);

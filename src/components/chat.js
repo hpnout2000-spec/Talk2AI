@@ -28,6 +28,8 @@ let headerCharName;
 let headerCharStatus;
 let headerAvatar;
 let thinkingToggle;
+let btnInputSettings;
+let inputSettingsPopover;
 
 // ─── Init ───────────────────────────────────────────────────────────
 
@@ -41,6 +43,8 @@ export function initChat() {
   headerCharStatus = document.getElementById('header-char-status');
   headerAvatar = document.getElementById('header-avatar');
   thinkingToggle = document.getElementById('thinking-toggle');
+  btnInputSettings = document.getElementById('btn-input-settings');
+  inputSettingsPopover = document.getElementById('input-settings-popover');
 
   // Send message
   btnSend.addEventListener('click', sendMessage);
@@ -54,6 +58,29 @@ export function initChat() {
   // Auto-resize input
   messageInput.addEventListener('input', () => {
     autoResizeTextarea(messageInput);
+
+    // Fade out continuation options when typing
+    if (messageInput.value.trim().length > 0) {
+      const options = messagesContainer.querySelectorAll('.continuation-options:not(.fade-out)');
+      options.forEach(opt => {
+        opt.classList.add('fade-out');
+        setTimeout(() => opt.remove(), 400); // match animation duration
+
+        // Also clear options from the store for the corresponding message
+        const msgEl = opt.closest('.message');
+        if (msgEl) {
+          const msgId = msgEl.dataset.messageId;
+          const session = chatStore.getCurrentSession();
+          if (session) {
+            const msg = session.messages.find(m => m.id === msgId);
+            if (msg) {
+              delete msg.options;
+              chatStore.saveCurrentSession();
+            }
+          }
+        }
+      });
+    }
   });
 
   // Stop generation
@@ -76,6 +103,77 @@ export function initChat() {
       return;
     }
     startNewChat();
+  });
+
+  // Input Settings Popover
+  if (btnInputSettings) {
+    btnInputSettings.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleInputSettings();
+    });
+  }
+
+  document.addEventListener('click', (e) => {
+    if (inputSettingsPopover && !inputSettingsPopover.contains(e.target) && (!btnInputSettings || !btnInputSettings.contains(e.target))) {
+      inputSettingsPopover.classList.add('hidden');
+    }
+  });
+}
+
+function toggleInputSettings() {
+  const isHidden = inputSettingsPopover.classList.contains('hidden');
+  if (isHidden) {
+    renderInputSettings();
+    inputSettingsPopover.classList.remove('hidden');
+  } else {
+    inputSettingsPopover.classList.add('hidden');
+  }
+}
+
+function renderInputSettings() {
+  const settings = settingsStore.get();
+  const length = settings.response_length || 'auto';
+  const depth = settings.description_depth || 0;
+
+  inputSettingsPopover.innerHTML = `
+    <div class="settings-group">
+      <h4>Response Length</h4>
+      <div class="response-length-selector">
+        ${['auto', 'short', 'medium', 'long'].map(l => `
+          <button class="length-option ${length === l ? 'active' : ''}" data-length="${l}">
+            ${l}
+          </button>
+        `).join('')}
+      </div>
+    </div>
+    <div class="settings-group">
+      <h4>Description Depth</h4>
+      <div class="description-depth-slider">
+        <input type="range" id="input-depth-slider" min="0" max="4" step="1" value="${depth}">
+        <div class="depth-labels">
+          <span>Auto</span>
+          <span>1</span>
+          <span>2</span>
+          <span>3</span>
+          <span>Max</span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Handlers
+  inputSettingsPopover.querySelectorAll('.length-option').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const newLength = btn.dataset.length;
+      settingsStore.save({ ...settingsStore.get(), response_length: newLength });
+      renderInputSettings();
+    });
+  });
+
+  const slider = inputSettingsPopover.querySelector('#input-depth-slider');
+  slider.addEventListener('input', () => {
+    const newDepth = parseInt(slider.value);
+    settingsStore.save({ ...settingsStore.get(), description_depth: newDepth });
   });
 }
 
@@ -213,25 +311,29 @@ async function sendMessage() {
           html += createThinkingBlockHTML(thinkingContent, isInThinking);
         }
         html += renderMarkdown(displayContent);
-        
+
         // Wrap words to enable CSS animation on new text nodes
         html = wrapWordsInSpans(html);
-        
+
+        // Add inline cursor
+        if (!isInThinking) {
+          const cursorHtml = '<span class="streaming-cursor"></span>';
+          // Insert cursor before the last closing tag to keep it inline
+          if (html.includes('</')) {
+            html = html.replace(/(<\/([a-z0-9]+)>)$/i, cursorHtml + '$1');
+          } else {
+            html += cursorHtml;
+          }
+        }
+
         // Use morphdom to update the DOM without destroying existing animated spans
         const temp = document.createElement('div');
         temp.className = contentEl.className;
         temp.innerHTML = html;
         morphdom(contentEl, temp, { childrenOnly: true });
-
-        if (!isInThinking) {
-          contentEl.classList.add('streaming-cursor');
-        } else {
-          contentEl.classList.remove('streaming-cursor');
-        }
       },
       // onDone
       async () => {
-        contentEl.classList.remove('streaming-cursor');
         const parsed = parseThinking(fullResponse);
         chatStore.updateLastAssistantMessage(parsed.content, parsed.thinking);
         await chatStore.saveCurrentSession();
@@ -255,7 +357,6 @@ async function sendMessage() {
       // onError
       (err) => {
         console.error('Stream error:', err);
-        contentEl.classList.remove('streaming-cursor');
         contentEl.innerHTML = `<p style="color: var(--error)">Error: ${escapeHtml(err.message)}</p>`;
 
         appState.isGenerating = false;
@@ -335,6 +436,38 @@ function buildApiMessages() {
 
   messages.push({ role: 'system', content: systemContent });
 
+  // Add formatting instructions based on settings
+  const settings = settingsStore.get();
+  const formattingInstructions = [];
+
+  // Response Length
+  if (settings.response_length === 'short') {
+    formattingInstructions.push("Write short and concise responses.");
+  } else if (settings.response_length === 'medium') {
+    formattingInstructions.push("Write moderately detailed responses.");
+  } else if (settings.response_length === 'long') {
+    formattingInstructions.push("Write very long and detailed responses.");
+  }
+
+  // Description Depth
+  if (settings.description_depth > 0) {
+    const depthPrompts = [
+      "", // 0 is auto
+      "Add some descriptions of the scene.",
+      "Include vivid descriptions of the environment.",
+      "Provide highly detailed and immersive scene descriptions.",
+      "Describe every scene with extreme detail and atmosphere, focusing on sensory information and deep character introspection."
+    ];
+    formattingInstructions.push(depthPrompts[settings.description_depth]);
+  }
+
+  if (formattingInstructions.length > 0) {
+    messages.push({ 
+      role: 'system', 
+      content: `[Formatting Instructions: ${formattingInstructions.join(" ")}]` 
+    });
+  }
+
   // Chat messages (skip empty assistant messages — they're streaming placeholders)
   for (const msg of session.messages) {
     if (msg.role === 'system') continue;
@@ -360,7 +493,7 @@ function parseStreamThinking(text) {
 
   // Try to find the end tag
   const endMatch = text.substring(afterStart).match(/<\|?\/think\|?>|<\/reasoning>/);
-  
+
   if (!endMatch) {
     // Still in thinking
     const thinking = text.substring(afterStart);
@@ -440,7 +573,7 @@ function appendMessage(msg, isStreaming = false) {
     <div class="message-avatar">${avatarHtml}</div>
     <div class="message-body">
       <div class="message-content">
-        <div class="message-text ${isStreaming ? 'streaming-cursor' : ''}">${contentHtml || (isStreaming ? '' : '')}</div>
+        <div class="message-text">${contentHtml || (isStreaming ? '<span class="streaming-cursor"></span>' : '')}</div>
       </div>
       <div class="message-meta">
         <span class="message-time">${formatTime(msg.timestamp)}</span>
@@ -479,6 +612,11 @@ function appendMessage(msg, isStreaming = false) {
 
   messagesContainer.appendChild(el);
   scrollToBottom();
+
+  // Render continuation options if they exist
+  if (msg.options && msg.options.length > 0) {
+    renderContinuationOptions(el, msg.options);
+  }
 
   return el;
 }
@@ -584,43 +722,63 @@ Do not include any Markdown formatting like \`\`\`json or any other text. Return
     });
 
     const response = await api.chatCompletion(messages, { max_tokens: 300, temperature: 0.7 });
-    
+
     // Strip thinking blocks just in case
     const cleanResponse = response.replace(/(?:<\|?think\|?>|<reasoning>)([\s\S]*?)(?:<\|?\/think\|?>|<\/reasoning>)/g, '');
-    
+
     const jsonMatch = cleanResponse.match(/\[[\s\S]*\]/);
     if (!jsonMatch) return;
-    
+
     const options = JSON.parse(jsonMatch[0]);
     if (!Array.isArray(options) || options.length === 0) return;
 
-    const optionsContainer = document.createElement('div');
-    optionsContainer.className = 'continuation-options';
-    
-    options.slice(0, 3).forEach((opt, index) => {
-      if (!opt.label || !opt.message) return;
-      const btn = document.createElement('button');
-      btn.className = 'continuation-option-btn';
-      btn.textContent = opt.label;
-      // Add a slight animation delay for a cascading pop-in effect
-      btn.style.animationDelay = `${index * 0.15}s`;
-      
-      btn.addEventListener('click', () => {
-        // Remove options when one is clicked
-        optionsContainer.remove();
-        // Send the message
-        messageInput.value = opt.message;
-        sendMessage();
-      });
-      
-      optionsContainer.appendChild(btn);
-    });
+    // Save options to store
+    chatStore.updateLastAssistantOptions(options);
+    chatStore.saveCurrentSession();
 
-    if (optionsContainer.children.length > 0) {
-      msgElement.querySelector('.message-body').appendChild(optionsContainer);
-      scrollToBottom();
-    }
+    renderContinuationOptions(msgElement, options);
   } catch (err) {
     console.warn('Failed to generate continuation options:', err);
+  }
+}
+
+function renderContinuationOptions(msgElement, options) {
+  const optionsContainer = document.createElement('div');
+  optionsContainer.className = 'continuation-options';
+
+  options.slice(0, 3).forEach((opt, index) => {
+    if (!opt.label || !opt.message) return;
+    const btn = document.createElement('button');
+    btn.className = 'continuation-option-btn';
+    btn.textContent = opt.label;
+    // Add a slight animation delay for a cascading pop-in effect
+    btn.style.animationDelay = `${index * 0.15}s`;
+
+    btn.addEventListener('click', () => {
+      // Remove options when one is clicked
+      optionsContainer.remove();
+
+      // Update store: clear options for this message since one was used
+      const msgId = msgElement.dataset.messageId;
+      const session = chatStore.getCurrentSession();
+      if (session) {
+        const msg = session.messages.find(m => m.id === msgId);
+        if (msg) {
+          delete msg.options;
+          chatStore.saveCurrentSession();
+        }
+      }
+
+      // Send the message
+      messageInput.value = opt.message;
+      sendMessage();
+    });
+
+    optionsContainer.appendChild(btn);
+  });
+
+  if (optionsContainer.children.length > 0) {
+    msgElement.querySelector('.message-body').appendChild(optionsContainer);
+    scrollToBottom();
   }
 }

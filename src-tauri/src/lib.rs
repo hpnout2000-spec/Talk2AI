@@ -32,11 +32,18 @@ pub struct CharacterMemory {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ContinuationOption {
+    pub label: String,
+    pub message: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ChatMessage {
     pub id: String,
     pub role: String,
     pub content: String,
     pub thinking: Option<String>,
+    pub options: Option<Vec<ContinuationOption>>,
     pub timestamp: String,
 }
 

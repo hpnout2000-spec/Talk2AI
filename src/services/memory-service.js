@@ -15,19 +15,20 @@ async function invokeTauri(cmd, args = {}) {
   return null;
 }
 
-const MEMORY_EXTRACTION_PROMPT = `You are a memory manager. Analyze the last exchange between User and Assistant and extract important information that should be remembered for future conversations.
+const MEMORY_EXTRACTION_PROMPT = `You are a memory manager. Analyze the last exchange and update the character's long-term memory.
 
-Focus on:
-- Facts about the user (name, preferences, background)
-- Important events or decisions
-- User preferences and opinions
-- Key context about the conversation topic
+Be VERY selective. Only extract information that is:
+1. Highly important for future interactions.
+2. A permanent fact or a significant long-term preference.
+3. A major life event.
+Most casual conversation should NOT be remembered.
+
+You can also DELETE memories if they are now outdated, incorrect, or superseded by new information.
 
 Return ONLY a valid JSON object with this structure:
-{"facts": ["fact 1", "fact 2"], "preferences": ["pref 1"], "events": ["event 1"]}
+{"facts": ["new fact"], "preferences": ["new pref"], "events": ["new event"], "delete_ids": ["id1", "id2"]}
 
-If nothing important to remember, return: {"facts": [], "preferences": [], "events": []}
-
+If nothing to add or delete, return empty arrays for all fields.
 IMPORTANT: Return ONLY the JSON, no other text.`;
 
 export const memoryService = {
@@ -65,11 +66,16 @@ export const memoryService = {
     if (!settings.memory_enabled) return [];
 
     try {
+      const currentEntries = memories[characterId]?.entries || [];
+      const memoryList = currentEntries
+        .map(e => `ID: ${e.id} | [${e.category}] ${e.content}`)
+        .join('\n');
+
       const messages = [
         { role: 'system', content: MEMORY_EXTRACTION_PROMPT },
         {
           role: 'user',
-          content: `User said: "${userMessage}"\n\nAssistant replied: "${assistantResponse.substring(0, 1000)}"`,
+          content: `Current Memories:\n${memoryList || 'None'}\n\nLast Exchange:\nUser said: "${userMessage}"\nAssistant replied: "${assistantResponse.substring(0, 1000)}"`,
         },
       ];
 
@@ -93,6 +99,12 @@ export const memoryService = {
         return [];
       }
 
+      if (Array.isArray(extracted.delete_ids)) {
+        for (const id of extracted.delete_ids) {
+          await this.deleteEntry(characterId, id);
+        }
+      }
+
       const newEntries = [];
       const now = new Date().toISOString();
 
@@ -102,14 +114,21 @@ export const memoryService = {
             if (content && content.trim()) {
               // Deduplicate: skip if similar memory already exists
               const isDuplicate = (memories[characterId]?.entries || []).some(
-                e => e.content.toLowerCase() === content.toLowerCase()
+                e => e.content.toLowerCase() === content.content?.toLowerCase?.() || e.content.toLowerCase() === content.toLowerCase?.()
               );
-              if (!isDuplicate) {
+              // Small fix for potential object content
+              const finalContent = typeof content === 'string' ? content : (content.content || JSON.stringify(content));
+              
+              const alreadyExists = (memories[characterId]?.entries || []).some(
+                e => e.content.toLowerCase() === finalContent.toLowerCase()
+              );
+
+              if (!alreadyExists) {
                 newEntries.push({
                   id: generateId(),
                   timestamp: now,
                   category,
-                  content: content.trim(),
+                  content: finalContent.trim(),
                 });
               }
             }
