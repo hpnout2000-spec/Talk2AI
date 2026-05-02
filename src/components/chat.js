@@ -179,28 +179,36 @@ function renderInputSettings() {
 
 // ─── Start New Chat ─────────────────────────────────────────────────
 
-export function startNewChat() {
-  if (!appState.currentCharacter) return;
+export function startNewChat(character = null) {
+  const char = character || appState.currentCharacter;
+  if (!char) return;
 
-  const session = chatStore.createSession(appState.currentCharacter.id);
-  appState.currentChat = session;
-
-  // Clear messages
-  clearMessages();
-
-  // Show first message if character has one
-  if (appState.currentCharacter.first_message) {
-    const msg = chatStore.addMessage('assistant', appState.currentCharacter.first_message);
-    appendMessage(msg);
+  const session = chatStore.createSession(char.id);
+  
+  // Only update global appState if this character is active
+  if (appState.currentCharacter?.id === char.id) {
+    appState.currentChat = session;
+    clearMessages();
   }
 
-  chatStore.saveCurrentSession();
-  updateChatHistory();
+  // Show first message if character has one
+  if (char.first_message) {
+    const msg = chatStore.addMessage('assistant', char.first_message, null, session);
+    if (appState.currentCharacter?.id === char.id) {
+      appendMessage(msg, false, char);
+    }
+  }
+
+  chatStore.saveSession(session);
+  if (appState.currentCharacter?.id === char.id) {
+    updateChatHistory();
+  }
 }
 
 // ─── Load Existing Chat ─────────────────────────────────────────────
 
 export function loadChat(session) {
+  if (appState.currentCharacter?.id !== session.character_id) return;
   appState.currentChat = session;
   chatStore.setCurrentSession(session);
   clearMessages();
@@ -215,6 +223,7 @@ export function loadChat(session) {
 // ─── Select Character ───────────────────────────────────────────────
 
 export async function selectCharacter(character) {
+  const charId = character.id;
   appState.currentCharacter = character;
 
   // Update header
@@ -230,18 +239,24 @@ export async function selectCharacter(character) {
   }
 
   // Load chats for this character
-  await chatStore.loadForCharacter(character.id);
-  const sessions = chatStore.getSessions(character.id);
+  await chatStore.loadForCharacter(charId);
+  
+  // Check if this character is still the active one before proceeding
+  if (appState.currentCharacter?.id !== charId) return;
+
+  const sessions = chatStore.getSessions(charId);
 
   // Load memory
-  await memoryService.loadForCharacter(character.id);
+  await memoryService.loadForCharacter(charId);
+  
+  if (appState.currentCharacter?.id !== charId) return;
 
   if (sessions.length > 0) {
     // Load most recent chat
     loadChat(sessions[0]);
   } else {
     // Start a new chat
-    startNewChat();
+    startNewChat(character);
   }
 
   updateChatHistory();
@@ -253,18 +268,21 @@ async function sendMessage() {
   const content = messageInput.value.trim();
   if (!content || appState.isGenerating) return;
 
-  if (!appState.currentCharacter) {
+  // Capture current character and session to prevent leakage if user switches during generation
+  const character = appState.currentCharacter;
+  if (!character) {
     showToast('Select a character first', 'error');
     return;
   }
 
   if (!appState.currentChat) {
-    startNewChat();
+    startNewChat(character);
   }
+  const session = appState.currentChat;
 
   // Add user message
-  const userMsg = chatStore.addMessage('user', content);
-  appendMessage(userMsg);
+  const userMsg = chatStore.addMessage('user', content, null, session);
+  appendMessage(userMsg, false, character);
 
   // Clear input
   messageInput.value = '';
@@ -279,21 +297,20 @@ async function sendMessage() {
   headerCharStatus.classList.add('generating');
 
   // Build messages array for API
-  const messages = buildApiMessages();
+  const apiMessages = buildApiMessages(character, session);
 
   // Add placeholder assistant message
-  const assistantMsg = chatStore.addMessage('assistant', '');
-  const msgElement = appendMessage(assistantMsg, true);
+  const assistantMsg = chatStore.addMessage('assistant', '', null, session);
+  const msgElement = appendMessage(assistantMsg, true, character);
   const contentEl = msgElement.querySelector('.message-text');
 
   let fullResponse = '';
   let thinkingContent = '';
   let isInThinking = false;
-  let thinkingBuffer = '';
 
   try {
     await api.streamChat(
-      messages,
+      apiMessages,
       appState.abortController.signal,
       // onChunk
       (chunk) => {
@@ -302,8 +319,13 @@ async function sendMessage() {
         // Parse thinking tokens in real-time
         const parsed = parseStreamThinking(fullResponse);
         thinkingContent = parsed.thinking;
-        const displayContent = parsed.content;
+        let displayContent = parsed.content;
         isInThinking = parsed.isInThinking;
+
+        // Add temporary asterisk if starts with * to apply formatting during generation
+        if (!isInThinking && displayContent.startsWith('*') && !displayContent.endsWith('*')) {
+          displayContent += '*';
+        }
 
         // Update message display
         let html = '';
@@ -318,7 +340,6 @@ async function sendMessage() {
         // Add inline cursor
         if (!isInThinking) {
           const cursorHtml = '<span class="streaming-cursor"></span>';
-          // Insert cursor before the last closing tag to keep it inline
           if (html.includes('</')) {
             html = html.replace(/(<\/([a-z0-9]+)>)$/i, cursorHtml + '$1');
           } else {
@@ -326,7 +347,7 @@ async function sendMessage() {
           }
         }
 
-        // Use morphdom to update the DOM without destroying existing animated spans
+        // Use morphdom to update the DOM
         const temp = document.createElement('div');
         temp.className = contentEl.className;
         temp.innerHTML = html;
@@ -335,23 +356,39 @@ async function sendMessage() {
       // onDone
       async () => {
         const parsed = parseThinking(fullResponse);
-        chatStore.updateLastAssistantMessage(parsed.content, parsed.thinking);
-        await chatStore.saveCurrentSession();
+        chatStore.updateLastAssistantMessage(parsed.content, parsed.thinking, session);
+        await chatStore.saveSession(session);
 
-        appState.isGenerating = false;
-        appState.abortController = null;
-        btnSend.classList.remove('hidden');
-        btnStop.classList.add('hidden');
-        headerCharStatus.textContent = 'Ready';
-        headerCharStatus.classList.remove('generating');
+        // Final render to remove cursor
+        let finalHtml = '';
+        if (parsed.thinking) {
+          finalHtml += createThinkingBlockHTML(parsed.thinking, false);
+        }
+        finalHtml += renderMarkdown(parsed.content);
+        
+        const temp = document.createElement('div');
+        temp.className = contentEl.className;
+        temp.innerHTML = finalHtml;
+        morphdom(contentEl, temp, { childrenOnly: true });
 
-        // Memory extraction (await to ensure it finishes before options)
-        if (parsed.content) {
-          await extractAndShowMemory(content, parsed.content, msgElement);
-          generateContinuationOptions(msgElement);
+        // Update UI state only if this is still the active character/session
+        if (appState.currentCharacter?.id === character.id) {
+          appState.isGenerating = false;
+          appState.abortController = null;
+          btnSend.classList.remove('hidden');
+          btnStop.classList.add('hidden');
+          headerCharStatus.textContent = 'Ready';
+          headerCharStatus.classList.remove('generating');
+          updateChatHistory();
+          scrollToBottom();
         }
 
-        updateChatHistory();
+        // Background tasks use captured state
+        if (parsed.content) {
+          await extractAndShowMemory(character, session, content, parsed.content, msgElement);
+          generateContinuationOptions(character, session, msgElement);
+        }
+        
         checkConnection();
       },
       // onError
@@ -359,46 +396,55 @@ async function sendMessage() {
         console.error('Stream error:', err);
         contentEl.innerHTML = `<p style="color: var(--error)">Error: ${escapeHtml(err.message)}</p>`;
 
-        appState.isGenerating = false;
-        appState.abortController = null;
-        btnSend.classList.remove('hidden');
-        btnStop.classList.add('hidden');
-        headerCharStatus.textContent = 'Error';
-        headerCharStatus.classList.remove('generating');
+        if (appState.currentCharacter?.id === character.id) {
+          appState.isGenerating = false;
+          appState.abortController = null;
+          btnSend.classList.remove('hidden');
+          btnStop.classList.add('hidden');
+          headerCharStatus.textContent = 'Error';
+          headerCharStatus.classList.remove('generating');
+        }
       }
     );
   } catch (err) {
     console.error('Send error:', err);
     showToast('Failed to send message', 'error');
-    appState.isGenerating = false;
+    if (appState.currentCharacter?.id === character.id) {
+      appState.isGenerating = false;
+    }
   }
 }
 
 // ─── Memory Extraction ──────────────────────────────────────────────
 
-async function extractAndShowMemory(userMessage, assistantResponse, msgElement) {
+async function extractAndShowMemory(character, session, userMessage, assistantResponse, msgElement) {
   try {
     const newEntries = await memoryService.extractMemories(
-      appState.currentCharacter.id,
+      character.id,
       userMessage,
       assistantResponse
     );
 
     if (newEntries.length > 0) {
-      // Show subtle notification
-      const notification = document.createElement('div');
-      notification.className = 'memory-notification';
-      notification.innerHTML = `
-        <span class="memory-icon">📝</span>
-        <span>${newEntries.length} memor${newEntries.length === 1 ? 'y' : 'ies'} saved</span>
-      `;
-      msgElement.querySelector('.message-body').appendChild(notification);
+      // Show notification only if this message is still in the DOM
+      if (msgElement.isConnected) {
+        const notification = document.createElement('div');
+        notification.className = 'memory-notification';
+        notification.innerHTML = `
+          <span class="memory-icon">📝</span>
+          <span>${newEntries.length} memor${newEntries.length === 1 ? 'y' : 'ies'} saved</span>
+        `;
+        msgElement.querySelector('.message-body').appendChild(notification);
+        scrollToBottom();
+      }
 
-      // Refresh memory panel if open
-      const event = new CustomEvent('memory-updated', {
-        detail: { characterId: appState.currentCharacter.id },
-      });
-      window.dispatchEvent(event);
+      // Refresh memory panel if it belongs to the current character
+      if (appState.currentCharacter?.id === character.id) {
+        const event = new CustomEvent('memory-updated', {
+          detail: { characterId: character.id },
+        });
+        window.dispatchEvent(event);
+      }
     }
   } catch (e) {
     console.warn('Memory extraction background error:', e);
@@ -407,9 +453,7 @@ async function extractAndShowMemory(userMessage, assistantResponse, msgElement) 
 
 // ─── Build API Messages ─────────────────────────────────────────────
 
-function buildApiMessages() {
-  const character = appState.currentCharacter;
-  const session = chatStore.getCurrentSession();
+function buildApiMessages(character, session) {
   if (!character || !session) return [];
 
   const messages = [];
@@ -452,7 +496,7 @@ function buildApiMessages() {
   // Description Depth
   if (settings.description_depth > 0) {
     const depthPrompts = [
-      "", // 0 is auto
+      "", 
       "Add some descriptions of the scene.",
       "Include vivid descriptions of the environment.",
       "Provide highly detailed and immersive scene descriptions.",
@@ -468,7 +512,7 @@ function buildApiMessages() {
     });
   }
 
-  // Chat messages (skip empty assistant messages — they're streaming placeholders)
+  // Chat messages (skip empty assistant messages)
   for (const msg of session.messages) {
     if (msg.role === 'system') continue;
     if (msg.role === 'assistant' && !msg.content) continue;
@@ -538,7 +582,7 @@ function clearMessages() {
   emptyState = null;
 }
 
-function appendMessage(msg, isStreaming = false) {
+function appendMessage(msg, isStreaming = false, character = null) {
   // Remove empty state if present
   const empty = messagesContainer.querySelector('.empty-state');
   if (empty) empty.remove();
@@ -548,15 +592,16 @@ function appendMessage(msg, isStreaming = false) {
   el.dataset.messageId = msg.id;
 
   const isUser = msg.role === 'user';
-  const character = appState.currentCharacter;
+  // Use passed character or fallback to global (not ideal but safe for non-leaking cases)
+  const char = character || appState.currentCharacter;
 
   let avatarHtml;
   if (isUser) {
     avatarHtml = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
       <circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/>
     </svg>`;
-  } else if (character?.avatar) {
-    avatarHtml = `<img src="${character.avatar}" alt="${escapeHtml(character.name)}">`;
+  } else if (char?.avatar) {
+    avatarHtml = `<img src="${char.avatar}" alt="${escapeHtml(char.name)}">`;
   } else {
     avatarHtml = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
       <circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/>
@@ -702,9 +747,9 @@ export function updateChatHistory() {
 
 // ─── Continuation Options ───────────────────────────────────────────
 
-async function generateContinuationOptions(msgElement) {
+async function generateContinuationOptions(character, session, msgElement) {
   try {
-    const messages = buildApiMessages();
+    const messages = buildApiMessages(character, session);
     if (messages.length === 0) return;
 
     // Add a system instruction to generate options
@@ -732,17 +777,20 @@ Do not include any Markdown formatting like \`\`\`json or any other text. Return
     const options = JSON.parse(jsonMatch[0]);
     if (!Array.isArray(options) || options.length === 0) return;
 
-    // Save options to store
-    chatStore.updateLastAssistantOptions(options);
-    chatStore.saveCurrentSession();
+    // Save options to store using captured session
+    chatStore.updateLastAssistantOptions(options, session);
+    chatStore.saveSession(session);
 
-    renderContinuationOptions(msgElement, options);
+    // Only render if the element is still in the DOM and belongs to this character
+    if (msgElement.isConnected && appState.currentCharacter?.id === character.id) {
+      renderContinuationOptions(msgElement, options, character, session);
+    }
   } catch (err) {
     console.warn('Failed to generate continuation options:', err);
   }
 }
 
-function renderContinuationOptions(msgElement, options) {
+function renderContinuationOptions(msgElement, options, character, session) {
   const optionsContainer = document.createElement('div');
   optionsContainer.className = 'continuation-options';
 
@@ -751,25 +799,23 @@ function renderContinuationOptions(msgElement, options) {
     const btn = document.createElement('button');
     btn.className = 'continuation-option-btn';
     btn.textContent = opt.label;
-    // Add a slight animation delay for a cascading pop-in effect
     btn.style.animationDelay = `${index * 0.15}s`;
 
     btn.addEventListener('click', () => {
       // Remove options when one is clicked
       optionsContainer.remove();
 
-      // Update store: clear options for this message since one was used
+      // Update store using captured session
       const msgId = msgElement.dataset.messageId;
-      const session = chatStore.getCurrentSession();
       if (session) {
         const msg = session.messages.find(m => m.id === msgId);
         if (msg) {
           delete msg.options;
-          chatStore.saveCurrentSession();
+          chatStore.saveSession(session);
         }
       }
 
-      // Send the message
+      // Send the message (this will naturally use appState but we ensure input is set)
       messageInput.value = opt.message;
       sendMessage();
     });

@@ -59,8 +59,9 @@ export const chatStore = {
     currentSession = session;
   },
 
-  addMessage(role, content, thinking = null) {
-    if (!currentSession) return null;
+  addMessage(role, content, thinking = null, session = null) {
+    const targetSession = session || currentSession;
+    if (!targetSession) return null;
     const message = {
       id: generateId(),
       role,
@@ -68,14 +69,15 @@ export const chatStore = {
       thinking,
       timestamp: new Date().toISOString(),
     };
-    currentSession.messages.push(message);
-    currentSession.updated_at = new Date().toISOString();
+    targetSession.messages.push(message);
+    targetSession.updated_at = new Date().toISOString();
     return message;
   },
 
-  updateLastAssistantMessage(content, thinking = null) {
-    if (!currentSession) return;
-    const msgs = currentSession.messages;
+  updateLastAssistantMessage(content, thinking = null, session = null) {
+    const targetSession = session || currentSession;
+    if (!targetSession) return;
+    const msgs = targetSession.messages;
     for (let i = msgs.length - 1; i >= 0; i--) {
       if (msgs[i].role === 'assistant') {
         msgs[i].content = content;
@@ -83,38 +85,45 @@ export const chatStore = {
         break;
       }
     }
-    currentSession.updated_at = new Date().toISOString();
+    targetSession.updated_at = new Date().toISOString();
   },
 
-  updateLastAssistantOptions(options) {
-    if (!currentSession) return;
-    const msgs = currentSession.messages;
+  updateLastAssistantOptions(options, session = null) {
+    const targetSession = session || currentSession;
+    if (!targetSession) return;
+    const msgs = targetSession.messages;
     for (let i = msgs.length - 1; i >= 0; i--) {
       if (msgs[i].role === 'assistant') {
         msgs[i].options = options;
         break;
       }
     }
-    currentSession.updated_at = new Date().toISOString();
+    targetSession.updated_at = new Date().toISOString();
   },
 
-  deleteMessage(messageId) {
-    if (!currentSession) return;
-    currentSession.messages = currentSession.messages.filter(m => m.id !== messageId);
-    currentSession.updated_at = new Date().toISOString();
+  deleteMessage(messageId, session = null) {
+    const targetSession = session || currentSession;
+    if (!targetSession) return;
+    targetSession.messages = targetSession.messages.filter(m => m.id !== messageId);
+    targetSession.updated_at = new Date().toISOString();
+  },
+
+  async saveSession(session = null) {
+    const targetSession = session || currentSession;
+    if (!targetSession) return;
+    try {
+      await invokeTauri('save_chat', {
+        characterId: targetSession.character_id,
+        data: JSON.stringify(targetSession),
+      });
+    } catch {
+      const key = `llmchat_chats_${targetSession.character_id}`;
+      localStorage.setItem(key, JSON.stringify(sessions[targetSession.character_id] || []));
+    }
   },
 
   async saveCurrentSession() {
-    if (!currentSession) return;
-    try {
-      await invokeTauri('save_chat', {
-        characterId: currentSession.character_id,
-        data: JSON.stringify(currentSession),
-      });
-    } catch {
-      const key = `llmchat_chats_${currentSession.character_id}`;
-      localStorage.setItem(key, JSON.stringify(sessions[currentSession.character_id] || []));
-    }
+    return this.saveSession(currentSession);
   },
 
   async deleteSession(characterId, chatId) {
