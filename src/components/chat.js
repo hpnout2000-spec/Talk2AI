@@ -1,0 +1,626 @@
+/* ════════════════════════════════════════════════════════════════════
+   Chat Component — Main chat interface
+   ════════════════════════════════════════════════════════════════════ */
+
+import { appState, showToast, checkConnection } from '../main.js';
+import { chatStore } from '../services/chat-store.js';
+import { api } from '../services/api.js';
+import { settingsStore } from '../services/settings-store.js';
+import { memoryService } from '../services/memory-service.js';
+import {
+  renderMarkdown,
+  parseThinking,
+  autoResizeTextarea,
+  formatTime,
+  escapeHtml,
+  wrapWordsInSpans,
+} from '../utils/helpers.js';
+import morphdom from '../vendor/morphdom.js';
+
+// ─── DOM Elements ───────────────────────────────────────────────────
+
+let messagesContainer;
+let messageInput;
+let btnSend;
+let btnStop;
+let emptyState;
+let headerCharName;
+let headerCharStatus;
+let headerAvatar;
+let thinkingToggle;
+
+// ─── Init ───────────────────────────────────────────────────────────
+
+export function initChat() {
+  messagesContainer = document.getElementById('chat-messages');
+  messageInput = document.getElementById('message-input');
+  btnSend = document.getElementById('btn-send');
+  btnStop = document.getElementById('btn-stop');
+  emptyState = document.getElementById('empty-state');
+  headerCharName = document.getElementById('header-char-name');
+  headerCharStatus = document.getElementById('header-char-status');
+  headerAvatar = document.getElementById('header-avatar');
+  thinkingToggle = document.getElementById('thinking-toggle');
+
+  // Send message
+  btnSend.addEventListener('click', sendMessage);
+  messageInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  // Auto-resize input
+  messageInput.addEventListener('input', () => {
+    autoResizeTextarea(messageInput);
+  });
+
+  // Stop generation
+  btnStop.addEventListener('click', stopGeneration);
+
+  // Thinking toggle
+  thinkingToggle.addEventListener('change', () => {
+    const settings = settingsStore.get();
+    settingsStore.save({ ...settings, thinking_enabled: thinkingToggle.checked });
+
+    // Sync settings panel toggle
+    const settingsThinking = document.getElementById('setting-thinking');
+    if (settingsThinking) settingsThinking.checked = thinkingToggle.checked;
+  });
+
+  // New chat button
+  document.getElementById('btn-new-chat').addEventListener('click', () => {
+    if (!appState.currentCharacter) {
+      showToast('Select a character first', 'error');
+      return;
+    }
+    startNewChat();
+  });
+}
+
+// ─── Start New Chat ─────────────────────────────────────────────────
+
+export function startNewChat() {
+  if (!appState.currentCharacter) return;
+
+  const session = chatStore.createSession(appState.currentCharacter.id);
+  appState.currentChat = session;
+
+  // Clear messages
+  clearMessages();
+
+  // Show first message if character has one
+  if (appState.currentCharacter.first_message) {
+    const msg = chatStore.addMessage('assistant', appState.currentCharacter.first_message);
+    appendMessage(msg);
+  }
+
+  chatStore.saveCurrentSession();
+  updateChatHistory();
+}
+
+// ─── Load Existing Chat ─────────────────────────────────────────────
+
+export function loadChat(session) {
+  appState.currentChat = session;
+  chatStore.setCurrentSession(session);
+  clearMessages();
+
+  for (const msg of session.messages) {
+    appendMessage(msg);
+  }
+
+  scrollToBottom();
+}
+
+// ─── Select Character ───────────────────────────────────────────────
+
+export async function selectCharacter(character) {
+  appState.currentCharacter = character;
+
+  // Update header
+  headerCharName.textContent = character.name;
+  headerCharStatus.textContent = 'Ready';
+
+  if (character.avatar) {
+    headerAvatar.innerHTML = `<img src="${character.avatar}" alt="${escapeHtml(character.name)}">`;
+  } else {
+    headerAvatar.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/>
+    </svg>`;
+  }
+
+  // Load chats for this character
+  await chatStore.loadForCharacter(character.id);
+  const sessions = chatStore.getSessions(character.id);
+
+  // Load memory
+  await memoryService.loadForCharacter(character.id);
+
+  if (sessions.length > 0) {
+    // Load most recent chat
+    loadChat(sessions[0]);
+  } else {
+    // Start a new chat
+    startNewChat();
+  }
+
+  updateChatHistory();
+}
+
+// ─── Send Message ───────────────────────────────────────────────────
+
+async function sendMessage() {
+  const content = messageInput.value.trim();
+  if (!content || appState.isGenerating) return;
+
+  if (!appState.currentCharacter) {
+    showToast('Select a character first', 'error');
+    return;
+  }
+
+  if (!appState.currentChat) {
+    startNewChat();
+  }
+
+  // Add user message
+  const userMsg = chatStore.addMessage('user', content);
+  appendMessage(userMsg);
+
+  // Clear input
+  messageInput.value = '';
+  autoResizeTextarea(messageInput);
+
+  // Start generation
+  appState.isGenerating = true;
+  appState.abortController = new AbortController();
+  btnSend.classList.add('hidden');
+  btnStop.classList.remove('hidden');
+  headerCharStatus.textContent = 'Generating...';
+  headerCharStatus.classList.add('generating');
+
+  // Build messages array for API
+  const messages = buildApiMessages();
+
+  // Add placeholder assistant message
+  const assistantMsg = chatStore.addMessage('assistant', '');
+  const msgElement = appendMessage(assistantMsg, true);
+  const contentEl = msgElement.querySelector('.message-text');
+
+  let fullResponse = '';
+  let thinkingContent = '';
+  let isInThinking = false;
+  let thinkingBuffer = '';
+
+  try {
+    await api.streamChat(
+      messages,
+      appState.abortController.signal,
+      // onChunk
+      (chunk) => {
+        fullResponse += chunk;
+
+        // Parse thinking tokens in real-time
+        const parsed = parseStreamThinking(fullResponse);
+        thinkingContent = parsed.thinking;
+        const displayContent = parsed.content;
+        isInThinking = parsed.isInThinking;
+
+        // Update message display
+        let html = '';
+        if (thinkingContent) {
+          html += createThinkingBlockHTML(thinkingContent, isInThinking);
+        }
+        html += renderMarkdown(displayContent);
+        
+        // Wrap words to enable CSS animation on new text nodes
+        html = wrapWordsInSpans(html);
+        
+        // Use morphdom to update the DOM without destroying existing animated spans
+        const temp = document.createElement('div');
+        temp.className = contentEl.className;
+        temp.innerHTML = html;
+        morphdom(contentEl, temp, { childrenOnly: true });
+
+        if (!isInThinking) {
+          contentEl.classList.add('streaming-cursor');
+        } else {
+          contentEl.classList.remove('streaming-cursor');
+        }
+      },
+      // onDone
+      async () => {
+        contentEl.classList.remove('streaming-cursor');
+        const parsed = parseThinking(fullResponse);
+        chatStore.updateLastAssistantMessage(parsed.content, parsed.thinking);
+        await chatStore.saveCurrentSession();
+
+        appState.isGenerating = false;
+        appState.abortController = null;
+        btnSend.classList.remove('hidden');
+        btnStop.classList.add('hidden');
+        headerCharStatus.textContent = 'Ready';
+        headerCharStatus.classList.remove('generating');
+
+        // Memory extraction (await to ensure it finishes before options)
+        if (parsed.content) {
+          await extractAndShowMemory(content, parsed.content, msgElement);
+          generateContinuationOptions(msgElement);
+        }
+
+        updateChatHistory();
+        checkConnection();
+      },
+      // onError
+      (err) => {
+        console.error('Stream error:', err);
+        contentEl.classList.remove('streaming-cursor');
+        contentEl.innerHTML = `<p style="color: var(--error)">Error: ${escapeHtml(err.message)}</p>`;
+
+        appState.isGenerating = false;
+        appState.abortController = null;
+        btnSend.classList.remove('hidden');
+        btnStop.classList.add('hidden');
+        headerCharStatus.textContent = 'Error';
+        headerCharStatus.classList.remove('generating');
+      }
+    );
+  } catch (err) {
+    console.error('Send error:', err);
+    showToast('Failed to send message', 'error');
+    appState.isGenerating = false;
+  }
+}
+
+// ─── Memory Extraction ──────────────────────────────────────────────
+
+async function extractAndShowMemory(userMessage, assistantResponse, msgElement) {
+  try {
+    const newEntries = await memoryService.extractMemories(
+      appState.currentCharacter.id,
+      userMessage,
+      assistantResponse
+    );
+
+    if (newEntries.length > 0) {
+      // Show subtle notification
+      const notification = document.createElement('div');
+      notification.className = 'memory-notification';
+      notification.innerHTML = `
+        <span class="memory-icon">📝</span>
+        <span>${newEntries.length} memor${newEntries.length === 1 ? 'y' : 'ies'} saved</span>
+      `;
+      msgElement.querySelector('.message-body').appendChild(notification);
+
+      // Refresh memory panel if open
+      const event = new CustomEvent('memory-updated', {
+        detail: { characterId: appState.currentCharacter.id },
+      });
+      window.dispatchEvent(event);
+    }
+  } catch (e) {
+    console.warn('Memory extraction background error:', e);
+  }
+}
+
+// ─── Build API Messages ─────────────────────────────────────────────
+
+function buildApiMessages() {
+  const character = appState.currentCharacter;
+  const session = chatStore.getCurrentSession();
+  if (!character || !session) return [];
+
+  const messages = [];
+
+  // System prompt with character info and memory
+  let systemContent = '';
+
+  if (character.system_prompt) {
+    systemContent = character.system_prompt;
+  } else {
+    // Build from fields
+    const parts = [];
+    if (character.description) parts.push(character.description);
+    if (character.personality) parts.push(`Personality: ${character.personality}`);
+    if (character.scenario) parts.push(`Scenario: ${character.scenario}`);
+    systemContent = parts.join('\n\n') || `You are ${character.name}.`;
+  }
+
+  // Inject memory context
+  const memoryContext = memoryService.getMemoryContext(character.id);
+  if (memoryContext) {
+    systemContent += memoryContext;
+  }
+
+  messages.push({ role: 'system', content: systemContent });
+
+  // Chat messages (skip empty assistant messages — they're streaming placeholders)
+  for (const msg of session.messages) {
+    if (msg.role === 'system') continue;
+    if (msg.role === 'assistant' && !msg.content) continue;
+    messages.push({ role: msg.role, content: msg.content });
+  }
+
+  return messages;
+}
+
+// ─── Parse Streaming Thinking ───────────────────────────────────────
+
+function parseStreamThinking(text) {
+  // Try to find the start tag
+  const startMatch = text.match(/<\|?think\|?>|<reasoning>/);
+  if (!startMatch) {
+    return { thinking: '', content: text, isInThinking: false };
+  }
+
+  const thinkStart = startMatch[0];
+  const startIdx = startMatch.index;
+  const afterStart = startIdx + thinkStart.length;
+
+  // Try to find the end tag
+  const endMatch = text.substring(afterStart).match(/<\|?\/think\|?>|<\/reasoning>/);
+  
+  if (!endMatch) {
+    // Still in thinking
+    const thinking = text.substring(afterStart);
+    const content = text.substring(0, startIdx);
+    return { thinking, content, isInThinking: true };
+  } else {
+    // Thinking complete
+    const endIdx = afterStart + endMatch.index;
+    const thinkEnd = endMatch[0];
+    const thinking = text.substring(afterStart, endIdx);
+    const content = text.substring(0, startIdx) + text.substring(endIdx + thinkEnd.length);
+    return { thinking, content: content.trim(), isInThinking: false };
+  }
+}
+
+// ─── Create Thinking Block HTML ─────────────────────────────────────
+
+function createThinkingBlockHTML(thinkingText, isActive) {
+  return `
+    <div class="thinking-inline">
+      <div class="thinking-inline-header">
+        <span class="${isActive ? 'brain-icon' : ''}">🧠</span>
+        <span class="${isActive ? 'thinking-text-animated' : ''}">Thinking...</span>
+      </div>
+      <div class="thinking-inline-content">${escapeHtml(thinkingText)}</div>
+    </div>
+  `;
+}
+
+// ─── Stop Generation ────────────────────────────────────────────────
+
+function stopGeneration() {
+  if (appState.abortController) {
+    appState.abortController.abort();
+  }
+}
+
+// ─── DOM Helpers ────────────────────────────────────────────────────
+
+function clearMessages() {
+  messagesContainer.innerHTML = '';
+  emptyState = null;
+}
+
+function appendMessage(msg, isStreaming = false) {
+  // Remove empty state if present
+  const empty = messagesContainer.querySelector('.empty-state');
+  if (empty) empty.remove();
+
+  const el = document.createElement('div');
+  el.className = `message ${msg.role} message-enter`;
+  el.dataset.messageId = msg.id;
+
+  const isUser = msg.role === 'user';
+  const character = appState.currentCharacter;
+
+  let avatarHtml;
+  if (isUser) {
+    avatarHtml = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/>
+    </svg>`;
+  } else if (character?.avatar) {
+    avatarHtml = `<img src="${character.avatar}" alt="${escapeHtml(character.name)}">`;
+  } else {
+    avatarHtml = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/>
+    </svg>`;
+  }
+
+  let contentHtml = '';
+  if (msg.thinking) {
+    contentHtml += createThinkingBlockHTML(msg.thinking, false);
+  }
+  contentHtml += renderMarkdown(msg.content);
+
+  el.innerHTML = `
+    <div class="message-avatar">${avatarHtml}</div>
+    <div class="message-body">
+      <div class="message-content">
+        <div class="message-text ${isStreaming ? 'streaming-cursor' : ''}">${contentHtml || (isStreaming ? '' : '')}</div>
+      </div>
+      <div class="message-meta">
+        <span class="message-time">${formatTime(msg.timestamp)}</span>
+        <div class="message-actions">
+          <button class="btn-copy" title="Copy">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+          </button>
+          <button class="btn-delete-msg delete" title="Delete">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Copy button
+  el.querySelector('.btn-copy')?.addEventListener('click', () => {
+    navigator.clipboard.writeText(msg.content);
+    showToast('Copied to clipboard');
+  });
+
+  // Delete button
+  el.querySelector('.btn-delete-msg')?.addEventListener('click', () => {
+    chatStore.deleteMessage(msg.id);
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(-10px)';
+    el.style.transition = 'all 0.3s ease';
+    setTimeout(() => el.remove(), 300);
+    chatStore.saveCurrentSession();
+  });
+
+  messagesContainer.appendChild(el);
+  scrollToBottom();
+
+  return el;
+}
+
+function scrollToBottom() {
+  requestAnimationFrame(() => {
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+  });
+}
+
+// ─── Update Chat History Sidebar ────────────────────────────────────
+
+export function updateChatHistory() {
+  if (!appState.currentCharacter) return;
+
+  const list = document.getElementById('chat-history-list');
+  const sessions = chatStore.getSessions(appState.currentCharacter.id);
+  const currentId = appState.currentChat?.id;
+
+  list.innerHTML = sessions.map(session => {
+    // Get first user message as title, or use date
+    const firstUserMsg = session.messages.find(m => m.role === 'user');
+    const title = firstUserMsg
+      ? firstUserMsg.content.substring(0, 40) + (firstUserMsg.content.length > 40 ? '...' : '')
+      : 'New Chat';
+    const isActive = session.id === currentId;
+
+    return `
+      <div class="chat-history-item ${isActive ? 'active' : ''}" data-chat-id="${session.id}">
+        <div class="chat-history-item-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+        </div>
+        <div class="chat-history-item-info">
+          <div class="chat-history-item-title">${escapeHtml(title)}</div>
+          <div class="chat-history-item-date">${formatTime(session.updated_at)}</div>
+        </div>
+        <button class="chat-history-item-delete" data-delete-chat="${session.id}" title="Delete chat">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+    `;
+  }).join('');
+
+  // Click handlers
+  list.querySelectorAll('.chat-history-item').forEach(item => {
+    item.addEventListener('click', (e) => {
+      if (e.target.closest('.chat-history-item-delete')) return;
+      const chatId = item.dataset.chatId;
+      const session = sessions.find(s => s.id === chatId);
+      if (session) loadChat(session);
+      updateChatHistory();
+    });
+  });
+
+  list.querySelectorAll('[data-delete-chat]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const chatId = btn.dataset.deleteChat;
+      await chatStore.deleteSession(appState.currentCharacter.id, chatId);
+      updateChatHistory();
+      if (appState.currentChat?.id === chatId) {
+        clearMessages();
+        messagesContainer.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-state-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+            </div>
+            <h2>Start a new chat</h2>
+            <p>Click the + button to begin a new conversation.</p>
+          </div>
+        `;
+        appState.currentChat = null;
+      }
+    });
+  });
+}
+
+// ─── Continuation Options ───────────────────────────────────────────
+
+async function generateContinuationOptions(msgElement) {
+  try {
+    const messages = buildApiMessages();
+    if (messages.length === 0) return;
+
+    // Add a system instruction to generate options
+    messages.push({
+      role: 'system',
+      content: `Based on the conversation so far, generate exactly 3 logical and engaging continuation options for the user to reply with.
+Return ONLY a valid JSON array of objects with 'label' (short summary, max 4 words) and 'message' (the actual full message to send).
+Example:
+[
+  { "label": "Ask about the sword", "message": "Where did you find that glowing sword?" },
+  { "label": "Run away", "message": "I don't trust you, I'm leaving!" },
+  { "label": "Offer help", "message": "How can I assist you with your quest?" }
+]
+Do not include any Markdown formatting like \`\`\`json or any other text. Return strictly the raw JSON array.`
+    });
+
+    const response = await api.chatCompletion(messages, { max_tokens: 300, temperature: 0.7 });
+    
+    // Strip thinking blocks just in case
+    const cleanResponse = response.replace(/(?:<\|?think\|?>|<reasoning>)([\s\S]*?)(?:<\|?\/think\|?>|<\/reasoning>)/g, '');
+    
+    const jsonMatch = cleanResponse.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) return;
+    
+    const options = JSON.parse(jsonMatch[0]);
+    if (!Array.isArray(options) || options.length === 0) return;
+
+    const optionsContainer = document.createElement('div');
+    optionsContainer.className = 'continuation-options';
+    
+    options.slice(0, 3).forEach((opt, index) => {
+      if (!opt.label || !opt.message) return;
+      const btn = document.createElement('button');
+      btn.className = 'continuation-option-btn';
+      btn.textContent = opt.label;
+      // Add a slight animation delay for a cascading pop-in effect
+      btn.style.animationDelay = `${index * 0.15}s`;
+      
+      btn.addEventListener('click', () => {
+        // Remove options when one is clicked
+        optionsContainer.remove();
+        // Send the message
+        messageInput.value = opt.message;
+        sendMessage();
+      });
+      
+      optionsContainer.appendChild(btn);
+    });
+
+    if (optionsContainer.children.length > 0) {
+      msgElement.querySelector('.message-body').appendChild(optionsContainer);
+      scrollToBottom();
+    }
+  } catch (err) {
+    console.warn('Failed to generate continuation options:', err);
+  }
+}

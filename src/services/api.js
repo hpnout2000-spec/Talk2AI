@@ -1,0 +1,157 @@
+/* ════════════════════════════════════════════════════════════════════
+   API Service — KoboldCpp / OpenAI-compatible API client
+   ════════════════════════════════════════════════════════════════════ */
+
+import { settingsStore } from './settings-store.js';
+
+export const api = {
+  /**
+   * Check if the API server is reachable
+   */
+  async checkConnection() {
+    const settings = settingsStore.get();
+    try {
+      const resp = await fetch(`${settings.api_url}/v1/models`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000),
+      });
+      return resp.ok;
+    } catch {
+      return false;
+    }
+  },
+
+  /**
+   * Get model info
+   */
+  async getModel() {
+    const settings = settingsStore.get();
+    try {
+      const resp = await fetch(`${settings.api_url}/v1/models`);
+      if (resp.ok) {
+        const data = await resp.json();
+        return data.data?.[0]?.id || 'unknown';
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  },
+
+  /**
+   * Send a chat completion request with streaming
+   * @param {Array} messages - Array of {role, content} objects
+   * @param {AbortSignal} signal - AbortController signal
+   * @param {Function} onChunk - Callback for each text chunk
+   * @param {Function} onDone - Callback when generation is complete
+   * @param {Function} onError - Callback on error
+   */
+  async streamChat(messages, signal, onChunk, onDone, onError) {
+    const settings = settingsStore.get();
+
+    const body = {
+      messages,
+      stream: true,
+      max_tokens: settings.max_tokens,
+      temperature: settings.temperature,
+      top_p: settings.top_p,
+      top_k: settings.top_k,
+      repeat_penalty: settings.rep_penalty,
+    };
+
+    // Inject thinking mode via jinja_kwargs (matching SillyTavern's Ji.Kwargs)
+    if (settings.thinking_enabled) {
+      body.jinja_kwargs = { enable_thinking: true };
+    } else {
+      body.jinja_kwargs = { enable_thinking: false };
+    }
+
+    try {
+      const resp = await fetch(`${settings.api_url}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal,
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text();
+        onError(new Error(`API error ${resp.status}: ${errText}`));
+        return;
+      }
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop(); // Keep incomplete line in buffer
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith('data: ')) continue;
+
+          const data = trimmed.slice(6);
+          if (data === '[DONE]') {
+            onDone();
+            return;
+          }
+
+          try {
+            const parsed = JSON.parse(data);
+            const delta = parsed.choices?.[0]?.delta;
+            if (delta?.content) {
+              onChunk(delta.content);
+            }
+          } catch {
+            // Skip malformed JSON
+          }
+        }
+      }
+
+      onDone();
+    } catch (err) {
+      if (err.name === 'AbortError') {
+        onDone();
+      } else {
+        onError(err);
+      }
+    }
+  },
+
+  /**
+   * Non-streaming chat completion (used for memory extraction)
+   * @param {Array} messages
+   * @returns {string} The assistant's response
+   */
+  async chatCompletion(messages, options = {}) {
+    const settings = settingsStore.get();
+
+    const body = {
+      messages,
+      stream: false,
+      max_tokens: options.max_tokens || 512,
+      temperature: options.temperature || 0.3,
+      jinja_kwargs: { enable_thinking: false },
+    };
+
+    const resp = await fetch(`${settings.api_url}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!resp.ok) {
+      throw new Error(`API error ${resp.status}`);
+    }
+
+    const data = await resp.json();
+    return data.choices?.[0]?.message?.content || '';
+  },
+};
