@@ -2,7 +2,8 @@
    Chat Component — Main chat interface
    ════════════════════════════════════════════════════════════════════ */
 
-import { appState, showToast, checkConnection } from '../main.js';
+import { showToast, checkConnection, showConfirm } from '../main.js';
+import { appState } from '../state.js';
 import { chatStore } from '../services/chat-store.js';
 import { api } from '../services/api.js';
 import { settingsStore } from '../services/settings-store.js';
@@ -184,7 +185,7 @@ export function startNewChat(character = null) {
   if (!char) return;
 
   const session = chatStore.createSession(char.id);
-  
+
   // Only update global appState if this character is active
   if (appState.currentCharacter?.id === char.id) {
     appState.currentChat = session;
@@ -193,7 +194,12 @@ export function startNewChat(character = null) {
 
   // Show first message if character has one
   if (char.first_message) {
-    const msg = chatStore.addMessage('assistant', char.first_message, null, session);
+    const settings = settingsStore.get();
+    const userName = settings.user_name || 'User';
+    let content = char.first_message.replace(/\{\{user\}\}/gi, userName);
+    content = content.replace(/\{\{char\}\}/gi, char.name);
+
+    const msg = chatStore.addMessage('assistant', content, null, session);
     if (appState.currentCharacter?.id === char.id) {
       appendMessage(msg, false, char);
     }
@@ -240,7 +246,7 @@ export async function selectCharacter(character) {
 
   // Load chats for this character
   await chatStore.loadForCharacter(charId);
-  
+
   // Check if this character is still the active one before proceeding
   if (appState.currentCharacter?.id !== charId) return;
 
@@ -248,7 +254,7 @@ export async function selectCharacter(character) {
 
   // Load memory
   await memoryService.loadForCharacter(charId);
-  
+
   if (appState.currentCharacter?.id !== charId) return;
 
   if (sessions.length > 0) {
@@ -264,11 +270,69 @@ export async function selectCharacter(character) {
 
 // ─── Send Message ───────────────────────────────────────────────────
 
+/**
+ * Smoothly replaces text in an element with a translation from a stream
+ * @param {HTMLElement} contentEl
+ * @param {string} textToTranslate
+ * @param {string} targetLang
+ * @returns {Promise<string>}
+ */
+async function performStreamingTranslation(contentEl, textToTranslate, targetLang) {
+  let fullTranslatedBuffer = '';
+
+  await new Promise((resolve) => {
+    api.streamTranslate(
+      textToTranslate,
+      targetLang,
+      (chunk) => {
+        fullTranslatedBuffer += chunk;
+
+        const targetHtml = wrapWordsInSpans(renderMarkdown(fullTranslatedBuffer));
+        const temp = document.createElement('div');
+        temp.innerHTML = targetHtml;
+
+        morphdom(contentEl, temp, {
+          childrenOnly: true,
+          getNodeKey: (node) => node.dataset?.wordIndex,
+          onBeforeElUpdated: (from, to) => {
+            if (from.classList.contains('word-blur') && from.textContent !== to.textContent) {
+              from.classList.add('word-replacing-out');
+              setTimeout(() => {
+                from.textContent = to.textContent;
+                from.classList.remove('word-replacing-out');
+                from.classList.add('word-replacing-in');
+                setTimeout(() => from.classList.remove('word-replacing-in'), 500);
+              }, 150);
+              return false;
+            }
+            return true;
+          },
+          onNodeAdded: (node) => {
+            if (node.classList?.contains('word-blur')) {
+              node.classList.add('word-replacing-in');
+              setTimeout(() => node.classList.remove('word-replacing-in'), 500);
+            }
+          },
+        });
+      },
+      () => resolve(),
+      (err) => {
+        console.error('Translation stream error:', err);
+        resolve();
+      }
+    );
+  });
+
+  return fullTranslatedBuffer;
+}
+
+// ─── Send Message ───────────────────────────────────────────────────
+
 async function sendMessage() {
   const content = messageInput.value.trim();
   if (!content || appState.isGenerating) return;
 
-  // Capture current character and session to prevent leakage if user switches during generation
+  const settings = settingsStore.get();
   const character = appState.currentCharacter;
   if (!character) {
     showToast('Select a character first', 'error');
@@ -282,11 +346,26 @@ async function sendMessage() {
 
   // Add user message
   const userMsg = chatStore.addMessage('user', content, null, session);
-  appendMessage(userMsg, false, character);
+  const userMsgElement = appendMessage(userMsg, false, character);
+  const userContentEl = userMsgElement.querySelector('.message-text');
 
   // Clear input
   messageInput.value = '';
   autoResizeTextarea(messageInput);
+
+  // If outgoing translation is enabled, translate first
+  if (settings.translate_user_messages) {
+    headerCharStatus.textContent = 'Translating your message...';
+    headerCharStatus.classList.add('generating');
+    const target = settings.outgoing_target_language || 'English';
+    const translated = await performStreamingTranslation(userContentEl, content, target);
+    if (translated) {
+      chatStore.updateMessage(userMsg.id, { translated_content: translated });
+      await chatStore.saveSession(session);
+    }
+    headerCharStatus.textContent = 'Ready';
+    headerCharStatus.classList.remove('generating');
+  }
 
   // Start generation
   appState.isGenerating = true;
@@ -296,7 +375,7 @@ async function sendMessage() {
   headerCharStatus.textContent = 'Generating...';
   headerCharStatus.classList.add('generating');
 
-  // Build messages array for API
+  // Build messages array for API (will use translated_content for user messages if available)
   const apiMessages = buildApiMessages(character, session);
 
   // Add placeholder assistant message
@@ -308,6 +387,14 @@ async function sendMessage() {
   let thinkingContent = '';
   let isInThinking = false;
 
+  // Dynamic options override
+  const apiOptions = {};
+  if (settings.response_length === 'short') {
+    // Cap max_tokens to prevent long responses, but allow buffer for thinking
+    const thinkingBuffer = settings.thinking_enabled ? 1024 : 0;
+    apiOptions.max_tokens = Math.min(settings.max_tokens, 256 + thinkingBuffer);
+  }
+
   try {
     await api.streamChat(
       apiMessages,
@@ -315,29 +402,21 @@ async function sendMessage() {
       // onChunk
       (chunk) => {
         fullResponse += chunk;
-
-        // Parse thinking tokens in real-time
         const parsed = parseStreamThinking(fullResponse);
         thinkingContent = parsed.thinking;
         let displayContent = parsed.content;
         isInThinking = parsed.isInThinking;
 
-        // Add temporary asterisk if starts with * to apply formatting during generation
         if (!isInThinking && displayContent.startsWith('*') && !displayContent.endsWith('*')) {
           displayContent += '*';
         }
 
-        // Update message display
         let html = '';
         if (thinkingContent) {
           html += createThinkingBlockHTML(thinkingContent, isInThinking);
         }
-        html += renderMarkdown(displayContent);
+        html += wrapWordsInSpans(renderMarkdown(displayContent));
 
-        // Wrap words to enable CSS animation on new text nodes
-        html = wrapWordsInSpans(html);
-
-        // Add inline cursor
         if (!isInThinking) {
           const cursorHtml = '<span class="streaming-cursor"></span>';
           if (html.includes('</')) {
@@ -347,7 +426,6 @@ async function sendMessage() {
           }
         }
 
-        // Use morphdom to update the DOM
         const temp = document.createElement('div');
         temp.className = contentEl.className;
         temp.innerHTML = html;
@@ -355,23 +433,33 @@ async function sendMessage() {
       },
       // onDone
       async () => {
-        const parsed = parseThinking(fullResponse);
-        chatStore.updateLastAssistantMessage(parsed.content, parsed.thinking, session);
-        await chatStore.saveSession(session);
+        let parsed = parseThinking(fullResponse);
 
         // Final render to remove cursor
         let finalHtml = '';
         if (parsed.thinking) {
           finalHtml += createThinkingBlockHTML(parsed.thinking, false);
         }
-        finalHtml += renderMarkdown(parsed.content);
-        
-        const temp = document.createElement('div');
-        temp.className = contentEl.className;
-        temp.innerHTML = finalHtml;
-        morphdom(contentEl, temp, { childrenOnly: true });
+        finalHtml += wrapWordsInSpans(renderMarkdown(parsed.content));
 
-        // Update UI state only if this is still the active character/session
+        const tempFinal = document.createElement('div');
+        tempFinal.className = contentEl.className;
+        tempFinal.innerHTML = finalHtml;
+        morphdom(contentEl, tempFinal, { childrenOnly: true });
+
+        const originalContent = parsed.content;
+        let translatedContent = null;
+
+        // Auto-translation (AI response)
+        if (settings.auto_translate && originalContent) {
+          headerCharStatus.textContent = 'Translating...';
+          headerCharStatus.classList.add('generating');
+          translatedContent = await performStreamingTranslation(contentEl, originalContent, settings.target_language);
+        }
+
+        chatStore.updateLastAssistantMessage(originalContent, parsed.thinking, session, translatedContent);
+        await chatStore.saveSession(session);
+
         if (appState.currentCharacter?.id === character.id) {
           appState.isGenerating = false;
           appState.abortController = null;
@@ -383,12 +471,11 @@ async function sendMessage() {
           scrollToBottom();
         }
 
-        // Background tasks use captured state
-        if (parsed.content) {
-          await extractAndShowMemory(character, session, content, parsed.content, msgElement);
+        if (originalContent) {
+          await extractAndShowMemory(character, session, content, originalContent, msgElement);
           generateContinuationOptions(character, session, msgElement);
         }
-        
+
         checkConnection();
       },
       // onError
@@ -404,7 +491,8 @@ async function sendMessage() {
           headerCharStatus.textContent = 'Error';
           headerCharStatus.classList.remove('generating');
         }
-      }
+      },
+      apiOptions
     );
   } catch (err) {
     console.error('Send error:', err);
@@ -472,6 +560,12 @@ function buildApiMessages(character, session) {
     systemContent = parts.join('\n\n') || `You are ${character.name}.`;
   }
 
+  // Replace placeholders
+  const settings = settingsStore.get();
+  const userName = settings.user_name || 'User';
+  systemContent = systemContent.replace(/\{\{user\}\}/gi, userName);
+  systemContent = systemContent.replace(/\{\{char\}\}/gi, character.name);
+
   // Inject memory context
   const memoryContext = memoryService.getMemoryContext(character.id);
   if (memoryContext) {
@@ -481,34 +575,33 @@ function buildApiMessages(character, session) {
   messages.push({ role: 'system', content: systemContent });
 
   // Add formatting instructions based on settings
-  const settings = settingsStore.get();
   const formattingInstructions = [];
 
   // Response Length
   if (settings.response_length === 'short') {
-    formattingInstructions.push("Write short and concise responses.");
+    formattingInstructions.push("Write extremely short, brief, and concise responses. Limit yourself to 1-2 sentences maximum. No fluff.");
   } else if (settings.response_length === 'medium') {
-    formattingInstructions.push("Write moderately detailed responses.");
+    formattingInstructions.push("Write moderately detailed and balanced responses, typically 2-3 paragraphs.");
   } else if (settings.response_length === 'long') {
-    formattingInstructions.push("Write very long and detailed responses.");
+    formattingInstructions.push("Write very long, detailed, and expansive responses. Elaborate on everything and be as verbose as possible.");
   }
 
   // Description Depth
   if (settings.description_depth > 0) {
     const depthPrompts = [
-      "", 
-      "Add some descriptions of the scene.",
-      "Include vivid descriptions of the environment.",
-      "Provide highly detailed and immersive scene descriptions.",
-      "Describe every scene with extreme detail and atmosphere, focusing on sensory information and deep character introspection."
+      "",
+      "Add brief descriptions of the scene.",
+      "Include vivid and clear descriptions of the environment and atmosphere.",
+      "Provide highly detailed and immersive scene descriptions with sensory details.",
+      "Describe every scene with extreme detail and atmosphere, focusing on deep sensory information, textures, sounds, and intense character introspection. Be extremely descriptive."
     ];
     formattingInstructions.push(depthPrompts[settings.description_depth]);
   }
 
   if (formattingInstructions.length > 0) {
-    messages.push({ 
-      role: 'system', 
-      content: `[Formatting Instructions: ${formattingInstructions.join(" ")}]` 
+    messages.push({
+      role: 'system',
+      content: `[MANDATORY FORMATTING RULES]\n${formattingInstructions.join("\n")}`
     });
   }
 
@@ -516,7 +609,11 @@ function buildApiMessages(character, session) {
   for (const msg of session.messages) {
     if (msg.role === 'system') continue;
     if (msg.role === 'assistant' && !msg.content) continue;
-    messages.push({ role: msg.role, content: msg.content });
+
+    // For user messages, use translation (English) if available
+    // For assistant messages, we stored original English in content
+    let content = msg.role === 'user' ? (msg.translated_content || msg.content) : msg.content;
+    messages.push({ role: msg.role, content: content });
   }
 
   return messages;
@@ -612,7 +709,8 @@ function appendMessage(msg, isStreaming = false, character = null) {
   if (msg.thinking) {
     contentHtml += createThinkingBlockHTML(msg.thinking, false);
   }
-  contentHtml += renderMarkdown(msg.content);
+  const displayContent = msg.translated_content || msg.content;
+  contentHtml += renderMarkdown(displayContent);
 
   el.innerHTML = `
     <div class="message-avatar">${avatarHtml}</div>
@@ -623,6 +721,12 @@ function appendMessage(msg, isStreaming = false, character = null) {
       <div class="message-meta">
         <span class="message-time">${formatTime(msg.timestamp)}</span>
         <div class="message-actions">
+          <button class="btn-translate-msg" title="Translate">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M5 8l6 6M19 8l-6 6M5 16l6-6M19 16l-6-6"/>
+              <path d="M2 12h20M12 2v20"/>
+            </svg>
+          </button>
           <button class="btn-copy" title="Copy">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
@@ -639,9 +743,34 @@ function appendMessage(msg, isStreaming = false, character = null) {
     </div>
   `;
 
+  // Translate button
+  el.querySelector('.btn-translate-msg')?.addEventListener('click', async () => {
+    const settings = settingsStore.get();
+    const contentEl = el.querySelector('.message-text');
+    const target = msg.role === 'user' ? (settings.outgoing_target_language || 'English') : (settings.target_language || 'Russian');
+
+    headerCharStatus.textContent = 'Translating message...';
+    headerCharStatus.classList.add('generating');
+
+    // Ensure spans exist for the replacement effect
+    if (!contentEl.querySelector('.word-blur')) {
+      const displayContent = msg.translated_content || msg.content;
+      contentEl.innerHTML = wrapWordsInSpans(renderMarkdown(displayContent));
+    }
+
+    const translated = await performStreamingTranslation(contentEl, msg.content, target);
+    if (translated) {
+      chatStore.updateMessage(msg.id, { translated_content: translated });
+      await chatStore.saveSession(appState.currentChat);
+    }
+
+    headerCharStatus.textContent = 'Ready';
+    headerCharStatus.classList.remove('generating');
+  });
+
   // Copy button
   el.querySelector('.btn-copy')?.addEventListener('click', () => {
-    navigator.clipboard.writeText(msg.content);
+    navigator.clipboard.writeText(msg.translated_content || msg.content);
     showToast('Copied to clipboard');
   });
 
@@ -724,11 +853,13 @@ export function updateChatHistory() {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const chatId = btn.dataset.deleteChat;
-      await chatStore.deleteSession(appState.currentCharacter.id, chatId);
-      updateChatHistory();
-      if (appState.currentChat?.id === chatId) {
-        clearMessages();
-        messagesContainer.innerHTML = `
+      const confirmed = await showConfirm('Delete Chat', 'Are you sure you want to delete this chat history?');
+      if (confirmed) {
+        await chatStore.deleteSession(appState.currentCharacter.id, chatId);
+        updateChatHistory();
+        if (appState.currentChat?.id === chatId) {
+          clearMessages();
+          messagesContainer.innerHTML = `
           <div class="empty-state">
             <div class="empty-state-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
@@ -739,7 +870,8 @@ export function updateChatHistory() {
             <p>Click the + button to begin a new conversation.</p>
           </div>
         `;
-        appState.currentChat = null;
+          appState.currentChat = null;
+        }
       }
     });
   });
@@ -752,16 +884,24 @@ async function generateContinuationOptions(character, session, msgElement) {
     const messages = buildApiMessages(character, session);
     if (messages.length === 0) return;
 
+    const settings = settingsStore.get();
+    const suggestionsLang = settings.suggestions_language || 'Russian';
+
     // Add a system instruction to generate options
     messages.push({
       role: 'system',
       content: `Based on the conversation so far, generate exactly 3 logical and engaging continuation options for the user to reply with.
 Return ONLY a valid JSON array of objects with 'label' (short summary, max 4 words) and 'message' (the actual full message to send).
+
+CRITICAL INSTRUCTIONS:
+1. The 'label' field must be in ${suggestionsLang}.
+2. The 'message' field must be in English.
+
 Example:
 [
-  { "label": "Ask about the sword", "message": "Where did you find that glowing sword?" },
-  { "label": "Run away", "message": "I don't trust you, I'm leaving!" },
-  { "label": "Offer help", "message": "How can I assist you with your quest?" }
+  { "label": "Спросить про меч", "message": "Where did you find that glowing sword?" },
+  { "label": "Убежать", "message": "I don't trust you, I'm leaving!" },
+  { "label": "Предложить помощь", "message": "How can I assist you with your quest?" }
 ]
 Do not include any Markdown formatting like \`\`\`json or any other text. Return strictly the raw JSON array.`
     });

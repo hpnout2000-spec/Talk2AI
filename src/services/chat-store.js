@@ -74,7 +74,7 @@ export const chatStore = {
     return message;
   },
 
-  updateLastAssistantMessage(content, thinking = null, session = null) {
+  updateLastAssistantMessage(content, thinking = null, session = null, translatedContent = null) {
     const targetSession = session || currentSession;
     if (!targetSession) return;
     const msgs = targetSession.messages;
@@ -82,10 +82,21 @@ export const chatStore = {
       if (msgs[i].role === 'assistant') {
         msgs[i].content = content;
         if (thinking !== null) msgs[i].thinking = thinking;
+        if (translatedContent !== null) msgs[i].translated_content = translatedContent;
         break;
       }
     }
     targetSession.updated_at = new Date().toISOString();
+  },
+
+  updateMessage(messageId, updates, session = null) {
+    const targetSession = session || currentSession;
+    if (!targetSession) return;
+    const msg = targetSession.messages.find(m => m.id === messageId);
+    if (msg) {
+      Object.assign(msg, updates);
+      targetSession.updated_at = new Date().toISOString();
+    }
   },
 
   updateLastAssistantOptions(options, session = null) {

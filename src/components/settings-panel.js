@@ -77,6 +77,11 @@ function loadSettingsToUI() {
 
   document.getElementById('setting-thinking').checked = settings.thinking_enabled;
   document.getElementById('setting-memory').checked = settings.memory_enabled;
+  document.getElementById('setting-auto-translate').checked = settings.auto_translate;
+  document.getElementById('setting-translate-user').checked = settings.translate_user_messages;
+  document.getElementById('setting-target-lang').value = settings.target_language || 'Russian';
+  document.getElementById('setting-outgoing-lang').value = settings.outgoing_target_language || 'English';
+  document.getElementById('setting-suggestions-lang').value = settings.suggestions_language || 'Russian';
 }
 
 function setRangeValue(inputId, valueId, value) {
@@ -103,6 +108,11 @@ async function saveSettings() {
     rep_penalty: parseFloat(document.getElementById('setting-rep-penalty').value),
     thinking_enabled: document.getElementById('setting-thinking').checked,
     memory_enabled: document.getElementById('setting-memory').checked,
+    auto_translate: document.getElementById('setting-auto-translate').checked,
+    translate_user_messages: document.getElementById('setting-translate-user').checked,
+    target_language: document.getElementById('setting-target-lang').value.trim() || 'Russian',
+    outgoing_target_language: document.getElementById('setting-outgoing-lang').value.trim() || 'English',
+    suggestions_language: document.getElementById('setting-suggestions-lang').value.trim() || 'Russian',
     font_size: parseInt(document.getElementById('setting-font-size').value),
   };
 

@@ -304,6 +304,29 @@
   white-space: pre-wrap; /* preserve spaces if any */
 }
 
+.translation-blur-out {
+  animation: fadeOutBlur 0.8s ease-in-out forwards;
+}
+
+.translation-blur-in {
+  animation: textBlurIn 1s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.word-replacing-out {
+  animation: wordBlurOut 0.3s ease-out forwards;
+  display: inline-block;
+}
+
+.word-replacing-in {
+  animation: textBlurIn 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  display: inline-block;
+}
+
+@keyframes wordBlurOut {
+  0% { opacity: 1; filter: blur(0); transform: scale(1); }
+  100% { opacity: 0; filter: blur(4px); transform: scale(0.95); }
+}
+
 @keyframes textBlurIn {
   0% {
     opacity: 0;

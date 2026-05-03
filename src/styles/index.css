@@ -370,7 +370,8 @@ body {
   inset: 0;
   background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(4px);
-  animation: fadeIn 0.2s ease;
+  opacity: 0;
+  animation: fadeIn 0.2s ease forwards;
 }
 .modal-content {
   position: relative;
@@ -383,7 +384,9 @@ body {
   box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
-  animation: slideUp 0.3s var(--transition-spring);
+  opacity: 0;
+  transform: translateY(20px) scale(0.98);
+  animation: slideUp 0.3s var(--transition-spring) forwards;
 }
 .modal-header {
   display: flex;
@@ -422,7 +425,9 @@ body {
   z-index: 50;
   display: flex;
   flex-direction: column;
-  animation: slideInRight 0.3s ease;
+  transform: translateX(100%);
+  opacity: 0;
+  animation: slideInRight 0.3s ease forwards;
 }
 .side-panel.hidden {
   display: none;

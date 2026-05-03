@@ -3,7 +3,8 @@
    ════════════════════════════════════════════════════════════════════ */
 
 import { memoryService } from '../services/memory-service.js';
-import { appState, showToast } from '../main.js';
+import { showToast } from '../main.js';
+import { appState } from '../state.js';
 import { escapeHtml, formatTime } from '../utils/helpers.js';
 
 export function initMemoryViewer() {

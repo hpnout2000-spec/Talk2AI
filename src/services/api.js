@@ -46,17 +46,17 @@ export const api = {
    * @param {Function} onDone - Callback when generation is complete
    * @param {Function} onError - Callback on error
    */
-  async streamChat(messages, signal, onChunk, onDone, onError) {
+  async streamChat(messages, signal, onChunk, onDone, onError, options = {}) {
     const settings = settingsStore.get();
 
     const body = {
       messages,
       stream: true,
-      max_tokens: settings.max_tokens,
-      temperature: settings.temperature,
-      top_p: settings.top_p,
-      top_k: settings.top_k,
-      repeat_penalty: settings.rep_penalty,
+      max_tokens: options.max_tokens || settings.max_tokens,
+      temperature: options.temperature || settings.temperature,
+      top_p: options.top_p || settings.top_p,
+      top_k: options.top_k || settings.top_k,
+      repeat_penalty: options.rep_penalty || settings.rep_penalty,
     };
 
     // Inject thinking mode via jinja_kwargs (matching SillyTavern's Ji.Kwargs)
@@ -153,5 +153,46 @@ export const api = {
 
     const data = await resp.json();
     return data.choices?.[0]?.message?.content || '';
+  },
+
+  /**
+   * Translate text to a target language
+   * @param {string} text
+   * @param {string} targetLang
+   * @returns {Promise<string>}
+   */
+  async translate(text, targetLang = 'Russian') {
+    const messages = [
+      {
+        role: 'system',
+        content: `Translate the following text to ${targetLang}. Return ONLY the translation, no explanations, no original text, and no quotes. Keep any Markdown formatting (italics, bold, etc.) as is.`,
+      },
+      { role: 'user', content: text },
+    ];
+    try {
+      return await this.chatCompletion(messages, { temperature: 0.1, max_tokens: 2048 });
+    } catch (err) {
+      console.warn('Translation failed:', err);
+      return text; // Return original text on failure
+    }
+  },
+
+  /**
+   * Stream translation of text to a target language
+   * @param {string} text
+   * @param {string} targetLang
+   * @param {Function} onChunk
+   * @param {Function} onDone
+   * @param {Function} onError
+   */
+  async streamTranslate(text, targetLang, onChunk, onDone, onError) {
+    const messages = [
+      {
+        role: 'system',
+        content: `Translate the following text to ${targetLang}. Return ONLY the translation, no explanations, no original text, and no quotes. Keep any Markdown formatting (italics, bold, etc.) as is.`,
+      },
+      { role: 'user', content: text },
+    ];
+    await this.streamChat(messages, new AbortController().signal, onChunk, onDone, onError);
   },
 };

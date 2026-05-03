@@ -147,6 +147,7 @@ export function wrapWordsInSpans(htmlString) {
     nodesToReplace.push(node);
   }
   
+  let wordIndex = 0;
   for (const n of nodesToReplace) {
     // Split by whitespace but keep the whitespace
     const words = n.textContent.split(/(\s+)/);
@@ -157,6 +158,7 @@ export function wrapWordsInSpans(htmlString) {
       } else {
         const span = document.createElement('span');
         span.className = 'word-blur';
+        span.dataset.wordIndex = wordIndex++;
         span.textContent = w;
         fragment.appendChild(span);
       }

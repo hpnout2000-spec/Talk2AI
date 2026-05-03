@@ -3,7 +3,8 @@
    ════════════════════════════════════════════════════════════════════ */
 
 import { characterStore } from '../services/character-store.js';
-import { appState, showToast } from '../main.js';
+import { showToast, showConfirm } from '../main.js';
+import { appState } from '../state.js';
 import { selectCharacter, updateChatHistory } from './chat.js';
 import { escapeHtml, readFileAsDataURL } from '../utils/helpers.js';
 import ExifReader from '../vendor/exifreader.js';
@@ -125,16 +126,17 @@ export function initCharacterPanel() {
       const messages = [
         {
           role: 'system',
-          content: `You are an expert character creator for roleplaying.
-Based on the user's description, create a detailed character persona.
+          content: `You are a master character designer and world-builder. Your task is to create an exceptionally deep, multi-dimensional character persona based on the user's input.
+The description should be vivid and detailed, covering physical appearance, clothing, and presence. The personality must be comprehensive, including nuances, core motivations, secret fears, and behavioral quirks. The scenario should set a rich, atmospheric stage. The system prompt should be an extensive set of instructions that perfectly captures the character's unique voice, vocabulary, and mannerisms.
+Each field must be as expansive, descriptive, and rich as possible to provide a high-quality roleplaying experience.
 Return ONLY a valid JSON object with the following structure:
 {
-  "name": "Character Name",
-  "description": "Short physical/role description",
-  "personality": "Detailed personality traits",
-  "scenario": "Current scenario or setting",
-  "system_prompt": "You are [name]... Act according to your personality.",
-  "first_message": "Character's engaging greeting to start the chat"
+  "name": "Full name and titles",
+  "description": "Extensive physical description, attire, and general role",
+  "personality": "Comprehensive breakdown of traits, inner motivations, fears, and quirks",
+  "scenario": "Richly detailed current situation and environment",
+  "system_prompt": "A lengthy, precise set of roleplay instructions including speaking style, core beliefs, and how they interact with others.",
+  "first_message": "An atmospheric, immersive, and engaging opening line that reflects the character's personality"
 }
 Do not include any Markdown formatting like \`\`\`json or any other text. Return strictly the raw JSON object.`
         },
@@ -241,7 +243,8 @@ export function renderCharacterList() {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       const id = btn.dataset.deleteChar;
-      if (confirm('Delete this character and all their chats?')) {
+      const confirmed = await showConfirm('Delete Character', 'Are you sure you want to delete this character and all their chats?');
+      if (confirmed) {
         await characterStore.delete(id);
         if (appState.currentCharacter?.id === id) {
           appState.currentCharacter = null;

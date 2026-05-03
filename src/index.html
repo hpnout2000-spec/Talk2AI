@@ -101,6 +101,14 @@
             </div>
           </div>
           <div class="chat-header-right">
+            <div class="user-name-wrapper" title="Set your name">
+              <button id="btn-set-user-name" class="btn-icon-text">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                </svg>
+                <span id="user-name-display">User</span>
+              </button>
+            </div>
             <div class="thinking-toggle" title="Toggle Thinking Mode">
               <label class="toggle-switch" id="thinking-toggle-label">
                 <input type="checkbox" id="thinking-toggle" />
@@ -286,6 +294,32 @@
                 <span class="toggle-slider"><span class="toggle-icon">📝</span></span>
               </label>
             </div>
+            <div class="form-group-row">
+              <label>Auto Translation (AI)</label>
+              <label class="toggle-switch small">
+                <input type="checkbox" id="setting-auto-translate" />
+                <span class="toggle-slider"><span class="toggle-icon">🌐</span></span>
+              </label>
+            </div>
+            <div class="form-group-row">
+              <label>Translate Outgoing (User)</label>
+              <label class="toggle-switch small">
+                <input type="checkbox" id="setting-translate-user" />
+                <span class="toggle-slider"><span class="toggle-icon">📤</span></span>
+              </label>
+            </div>
+            <div class="form-group">
+              <label for="setting-target-lang">AI Output Language</label>
+              <input type="text" id="setting-target-lang" placeholder="Russian" />
+            </div>
+            <div class="form-group">
+              <label for="setting-outgoing-lang">User Input Target Lang</label>
+              <input type="text" id="setting-outgoing-lang" placeholder="English" />
+            </div>
+            <div class="form-group">
+              <label for="setting-suggestions-lang">Suggestions Language</label>
+              <input type="text" id="setting-suggestions-lang" placeholder="Russian" />
+            </div>
           </div>
 
           <div class="settings-section">
@@ -314,6 +348,26 @@
         <div id="memory-content" class="panel-body">
           <div class="empty-state small">
             <p>Select a character to view their memory</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── Generic Dialog Modal ────────────────────────── -->
+      <div id="generic-dialog" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content dialog-content" style="max-width: 400px;">
+          <div class="modal-header">
+            <h2 id="dialog-title">Dialog</h2>
+          </div>
+          <div class="modal-body">
+            <p id="dialog-message" style="margin-bottom: 1.5rem; color: var(--text-secondary); line-height: 1.5;"></p>
+            <div id="dialog-input-container" class="hidden">
+              <input type="text" id="dialog-input" class="form-control" style="width: 100%;" />
+            </div>
+          </div>
+          <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 1rem;">
+            <button id="btn-dialog-cancel" class="btn-secondary">Cancel</button>
+            <button id="btn-dialog-confirm" class="btn-primary">Confirm</button>
           </div>
         </div>
       </div>

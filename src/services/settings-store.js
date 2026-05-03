@@ -9,11 +9,17 @@ const DEFAULTS = {
   top_p: 0.9,
   top_k: 40,
   rep_penalty: 1.1,
+  user_name: 'User',
   thinking_enabled: false,
   memory_enabled: true,
   font_size: 15,
   response_length: 'auto',
   description_depth: 0,
+  auto_translate: false,
+  target_language: 'Russian',
+  translate_user_messages: false,
+  outgoing_target_language: 'English',
+  suggestions_language: 'Russian',
 };
 
 let settings = { ...DEFAULTS };
