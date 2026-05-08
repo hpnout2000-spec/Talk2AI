@@ -20,9 +20,16 @@ const DEFAULTS = {
   translate_user_messages: false,
   outgoing_target_language: 'English',
   suggestions_language: 'Russian',
+  suggestions_enabled: true,
   italic_asterisks: true,
   ai_comments_enabled: true,
+  ai_comments_language: 'Auto',
   ai_comments_prompt: "Comment on the last action, dialogue, or behavior of the character or user. Be concise, witty, and insightful. Return only the comment itself.",
+  indicator_presets: [
+    { id: 'std', name: 'Standard', indicators: ['Trust', 'Fear', 'Anger', 'Happiness', 'Sadness'] },
+    { id: 'romance', name: 'Romantic RP', indicators: ['Affection', 'Lust'] }
+  ],
+  custom_indicator_presets: [],
   active_system_prompt_preset_id: 'default-1',
   system_prompt_presets: [
     {

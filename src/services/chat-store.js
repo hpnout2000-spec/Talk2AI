@@ -51,6 +51,7 @@ export const chatStore = {
       id: generateId(),
       character_id: characterId,
       messages: [],
+      indicators: { enabled: false, list: [] },
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -127,14 +128,17 @@ export const chatStore = {
   async saveSession(session = null) {
     const targetSession = session || currentSession;
     if (!targetSession) return;
+    const characterId = targetSession.character_id;
+    const allSessions = sessions[characterId] || [];
+
     try {
       await invokeTauri('save_chat', {
-        characterId: targetSession.character_id,
-        data: JSON.stringify(targetSession),
+        characterId,
+        data: JSON.stringify(allSessions),
       });
     } catch {
-      const key = `llmchat_chats_${targetSession.character_id}`;
-      localStorage.setItem(key, JSON.stringify(sessions[targetSession.character_id] || []));
+      const key = `llmchat_chats_${characterId}`;
+      localStorage.setItem(key, JSON.stringify(allSessions));
     }
   },
 

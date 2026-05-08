@@ -175,6 +175,11 @@ Do not include any Markdown formatting like \`\`\`json or any other text. Return
   document.querySelector('.btn-close-gallery').addEventListener('click', closeCharacterGallery);
   document.getElementById('gallery-search').addEventListener('input', renderGalleryGrid);
   document.getElementById('gallery-sort').addEventListener('change', renderGalleryGrid);
+  
+  // Listen for global character updates (e.g. from chat to re-sort)
+  window.addEventListener('character-list-updated', () => {
+    renderCharacterList();
+  });
 }
 
 // ─── Render Character List ──────────────────────────────────────────
@@ -185,9 +190,11 @@ export function renderCharacterList() {
   const allCharacters = characterStore.getAll();
   
   // Sort by last_chat_at descending
-  const sorted = [...allCharacters].sort((a, b) => 
-    new Date(b.last_chat_at || 0) - new Date(a.last_chat_at || 0)
-  );
+  const sorted = [...allCharacters].sort((a, b) => {
+    const timeA = new Date(a.last_chat_at || a.created_at || 0).getTime();
+    const timeB = new Date(b.last_chat_at || b.created_at || 0).getTime();
+    return timeB - timeA;
+  });
 
   const characters = sorted.slice(0, 10);
   const activeId = appState.currentCharacter?.id;

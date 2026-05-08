@@ -2,7 +2,7 @@
    Chat Component — Main chat interface
    ════════════════════════════════════════════════════════════════════ */
 
-import { showToast, checkConnection, showConfirm, openWindow, closeWindow } from '../main.js';
+import { showToast, checkConnection, showConfirm, showPrompt, openWindow, closeWindow } from '../main.js';
 import { appState } from '../state.js';
 import { chatStore } from '../services/chat-store.js';
 import { characterStore } from '../services/character-store.js';
@@ -162,6 +162,44 @@ function renderInputSettings() {
         </div>
       </div>
     </div>
+
+    <div class="indicator-management-section">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <h4 style="margin: 0;">Mood Indicators</h4>
+        ${(() => {
+          if (appState.currentChat && !appState.currentChat.indicators) {
+            appState.currentChat.indicators = { enabled: false, list: [] };
+          }
+          return '';
+        })()}
+        <label class="toggle-switch small">
+          <input type="checkbox" id="toggle-indicators" ${appState.currentChat?.indicators?.enabled ? 'checked' : ''}>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <div class="indicator-preset-list">
+        ${settings.indicator_presets.map(p => `
+          <div class="indicator-preset-item" data-preset-id="${p.id}">
+            <span class="indicator-preset-name">${p.name}</span>
+          </div>
+        `).join('')}
+        ${settings.custom_indicator_presets.map((p, idx) => `
+          <div class="indicator-preset-item" data-custom-idx="${idx}">
+            <span class="indicator-preset-name">${p.name}</span>
+            <button class="btn-delete-preset" style="background:none; border:none; color:var(--text-tertiary); padding:4px; cursor:pointer;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px; height:12px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        `).join('')}
+      </div>
+
+      <button id="btn-add-indicator" class="btn-add-indicator-preset">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px; height:14px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <span>Add Custom Indicators</span>
+      </button>
+    </div>
+
     <div class="settings-group" style="margin-top: 12px; border-top: 1px solid var(--border-subtle); padding-top: 12px;">
       <button id="btn-open-advanced" class="btn-secondary btn-full" style="gap: 8px;">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;">
@@ -172,7 +210,7 @@ function renderInputSettings() {
     </div>
   `;
 
-  // Handlers
+  // Handlers for length
   inputSettingsPopover.querySelectorAll('.length-option').forEach(btn => {
     btn.addEventListener('click', () => {
       const newLength = btn.dataset.length;
@@ -181,17 +219,110 @@ function renderInputSettings() {
     });
   });
 
+  // Handlers for depth
   const slider = inputSettingsPopover.querySelector('#input-depth-slider');
   slider.addEventListener('input', () => {
     const newDepth = parseInt(slider.value);
     settingsStore.save({ ...settingsStore.get(), description_depth: newDepth });
   });
 
+  // Toggle indicators
+  const toggleIndicators = inputSettingsPopover.querySelector('#toggle-indicators');
+  toggleIndicators?.addEventListener('change', () => {
+    if (!appState.currentChat) return;
+    if (!appState.currentChat.indicators) {
+      appState.currentChat.indicators = { enabled: false, list: [] };
+    }
+    appState.currentChat.indicators.enabled = toggleIndicators.checked;
+    chatStore.saveCurrentSession();
+    renderIndicators();
+  });
+
+  // Preset selection
+  inputSettingsPopover.querySelectorAll('.indicator-preset-item').forEach(item => {
+    item.addEventListener('click', (e) => {
+      if (e.target.closest('.btn-delete-preset')) {
+        const idx = item.dataset.customIdx;
+        const currentSettings = settingsStore.get();
+        currentSettings.custom_indicator_presets.splice(idx, 1);
+        settingsStore.save(currentSettings);
+        renderInputSettings();
+        return;
+      }
+
+      if (!appState.currentChat) return;
+      const presetId = item.dataset.presetId;
+      const customIdx = item.dataset.customIdx;
+      
+      let indicatorsList = [];
+      if (presetId) {
+        const preset = settings.indicator_presets.find(p => p.id === presetId);
+        indicatorsList = preset.indicators.map(name => ({ name, value: 50 }));
+      } else if (customIdx !== undefined) {
+        const preset = settings.custom_indicator_presets[customIdx];
+        indicatorsList = preset.indicators.map(name => ({ name, value: 50 }));
+      }
+
+      appState.currentChat.indicators = {
+        enabled: true,
+        list: indicatorsList
+      };
+      chatStore.saveCurrentSession();
+      renderIndicators();
+      renderInputSettings(); // refresh to show toggle as checked
+    });
+  });
+
+  // Add custom indicators
+  const btnAdd = inputSettingsPopover.querySelector('#btn-add-indicator');
+  btnAdd?.addEventListener('click', async () => {
+    const names = await showPrompt('Add Indicators', 'Enter indicator names separated by commas (e.g. Trust, Fear, Anger)');
+    if (names) {
+      const list = names.split(',').map(s => s.trim()).filter(s => s !== '');
+      if (list.length > 0) {
+        const presetName = await showPrompt('Save Preset', 'Enter a name for this preset', 'My Preset');
+        if (presetName) {
+          const currentSettings = settingsStore.get();
+          currentSettings.custom_indicator_presets.push({
+            name: presetName,
+            indicators: list
+          });
+          settingsStore.save(currentSettings);
+          renderInputSettings();
+        }
+      }
+    }
+  });
+
   const btnAdv = inputSettingsPopover.querySelector('#btn-open-advanced');
-  btnAdv.addEventListener('click', () => {
+  btnAdv?.addEventListener('click', () => {
     inputSettingsPopover.classList.add('hidden');
     window.dispatchEvent(new CustomEvent('open-advanced-settings'));
   });
+}
+
+export function renderIndicators() {
+  const container = document.getElementById('chat-indicators');
+  if (!container) return;
+
+  const session = appState.currentChat;
+  if (!session || !session.indicators?.enabled || !session.indicators.list?.length) {
+    container.classList.add('hidden');
+    return;
+  }
+
+  container.classList.remove('hidden');
+  container.innerHTML = session.indicators.list.map(ind => `
+    <div class="indicator-item" title="${escapeHtml(ind.name)}: ${ind.value}%">
+      <div class="indicator-label">
+        <span>${escapeHtml(ind.name)}</span>
+        <span class="indicator-value">${ind.value}%</span>
+      </div>
+      <div class="indicator-bar-container">
+        <div class="indicator-bar-fill" style="width: ${ind.value}%"></div>
+      </div>
+    </div>
+  `).join('');
 }
 
 // ─── Start New Chat ─────────────────────────────────────────────────
@@ -206,6 +337,7 @@ export function startNewChat(character = null) {
   if (appState.currentCharacter?.id === char.id) {
     appState.currentChat = session;
     clearMessages();
+    renderIndicators();
   }
 
   // Show first message if character has one
@@ -217,6 +349,7 @@ export function startNewChat(character = null) {
 
     const msg = chatStore.addMessage('assistant', content, null, session);
     characterStore.updateLastChat(char.id);
+    window.dispatchEvent(new CustomEvent('character-list-updated'));
     if (appState.currentCharacter?.id === char.id) {
       appendMessage(msg, false, char);
     }
@@ -240,6 +373,7 @@ export function loadChat(session) {
     appendMessage(msg);
   }
 
+  renderIndicators();
   scrollToBottom();
 }
 
@@ -248,6 +382,9 @@ export function loadChat(session) {
 export async function selectCharacter(character) {
   const charId = character.id;
   appState.currentCharacter = character;
+  
+  // Update last chat timestamp
+  await characterStore.updateLastChat(charId);
 
   // Update header
   headerCharName.textContent = character.name;
@@ -283,6 +420,8 @@ export async function selectCharacter(character) {
   }
 
   updateChatHistory();
+  renderIndicators();
+  window.dispatchEvent(new CustomEvent('character-list-updated'));
 }
 
 // ─── Send Message ───────────────────────────────────────────────────
@@ -379,6 +518,7 @@ async function sendMessage() {
   // Add user message
   const userMsg = chatStore.addMessage('user', content, null, session);
   characterStore.updateLastChat(character.id);
+  window.dispatchEvent(new CustomEvent('character-list-updated'));
   const userMsgElement = appendMessage(userMsg, false, character);
   const userContentEl = userMsgElement.querySelector('.message-text');
 
@@ -496,7 +636,9 @@ async function sendMessage() {
         });
         perf.end('morphdom-final-patch');
 
-        const originalContent = parsed.content;
+        let originalContent = parsed.content;
+        // No more applyIndicatorUpdates here, it's now a separate call
+        
         let translatedContent = null;
 
         // Auto-translation (AI response)
@@ -521,7 +663,13 @@ async function sendMessage() {
         }
 
         if (originalContent) {
+          // 1. Update indicators (separate call)
+          await triggerIndicatorUpdate(character, session, content, originalContent);
+          
+          // 2. Extract memory
           await extractAndShowMemory(character, session, content, originalContent, msgElement);
+          
+          // 3. Generate suggestions
           generateContinuationOptions(character, session, msgElement);
         }
 
@@ -669,6 +817,15 @@ function buildApiMessages(character, session) {
     messages.push({
       role: 'system',
       content: `[MANDATORY FORMATTING RULES]\n${formattingInstructions.join("\n")}`
+    });
+  }
+
+  // Inject mood indicators if enabled
+  if (session.indicators?.enabled && session.indicators.list?.length > 0) {
+    const statusStr = session.indicators.list.map(ind => `${ind.name}: ${ind.value}%`).join('\n');
+    messages.push({
+      role: 'system',
+      content: `[CURRENT MOOD STATUS]\n${statusStr}`
     });
   }
 
@@ -866,6 +1023,16 @@ function appendMessage(msg, isStreaming = false, character = null) {
     setTimeout(() => el.remove(), 300);
     chatStore.saveCurrentSession();
     updateRegenerateVisibility();
+
+    // Abort suggestions generation if any
+    if (appState.suggestionsAbortController) {
+      appState.suggestionsAbortController.abort();
+      appState.suggestionsAbortController = null;
+    }
+
+    // Clear visible suggestions if they were for this message or because list changed
+    const options = messagesContainer.querySelectorAll('.continuation-options');
+    options.forEach(opt => opt.remove());
   });
 
   // Edit button
@@ -986,6 +1153,11 @@ async function triggerAssistantGeneration() {
   // Start generation
   appState.isGenerating = true;
   appState.abortController = new AbortController();
+
+  // Update last chat timestamp
+  characterStore.updateLastChat(character.id);
+  window.dispatchEvent(new CustomEvent('character-list-updated'));
+
   btnSend.classList.add('hidden');
   btnStop.classList.remove('hidden');
   headerCharStatus.textContent = 'Generating...';
@@ -1047,7 +1219,8 @@ async function triggerAssistantGeneration() {
         tempFinal.innerHTML = finalHtml;
         morphdom(contentEl, tempFinal, { childrenOnly: true });
 
-        const originalContent = parsed.content;
+        let originalContent = parsed.content;
+        
         let translatedContent = null;
         if (settings.auto_translate && originalContent) {
           headerCharStatus.textContent = 'Translating...';
@@ -1068,12 +1241,15 @@ async function triggerAssistantGeneration() {
         scrollToBottom();
 
         if (originalContent) {
-          // Note: we don't have the userMessage here easily in regenerate mode, 
-          // but we can skip memory extraction for regeneration or fetch last user message
           const lastUserMsg = session.messages.slice().reverse().find(m => m.role === 'user');
           if (lastUserMsg) {
+            // 1. Update indicators
+            await triggerIndicatorUpdate(character, session, lastUserMsg.content, originalContent);
+            
+            // 2. Extract memory
             await extractAndShowMemory(character, session, lastUserMsg.content, originalContent, msgElement);
           }
+          // 3. Generate suggestions
           generateContinuationOptions(character, session, msgElement);
         }
       },
@@ -1197,7 +1373,15 @@ async function generateContinuationOptions(character, session, msgElement) {
     if (messages.length === 0) return;
 
     const settings = settingsStore.get();
+    if (!settings.suggestions_enabled) return;
+
     const suggestionsLang = settings.suggestions_language || 'Russian';
+
+    // Abort previous suggestions generation if any
+    if (appState.suggestionsAbortController) {
+      appState.suggestionsAbortController.abort();
+    }
+    appState.suggestionsAbortController = new AbortController();
 
     // Add a system instruction to generate options
     messages.push({
@@ -1218,7 +1402,11 @@ Example:
 Do not include any Markdown formatting like \`\`\`json or any other text. Return strictly the raw JSON array.`
     });
 
-    const response = await api.chatCompletion(messages, { max_tokens: 300, temperature: 0.7 });
+    const response = await api.chatCompletion(messages, { 
+      max_tokens: 300, 
+      temperature: 0.7,
+      signal: appState.suggestionsAbortController.signal
+    });
 
     // Strip thinking blocks just in case
     const cleanResponse = response.replace(/(?:<\|?think\|?>|<reasoning>)([\s\S]*?)(?:<\|?\/think\|?>|<\/reasoning>)/g, '');
@@ -1229,6 +1417,12 @@ Do not include any Markdown formatting like \`\`\`json or any other text. Return
     const options = JSON.parse(jsonMatch[0]);
     if (!Array.isArray(options) || options.length === 0) return;
 
+    // Check if the message still exists in the session before saving
+    const msgId = msgElement.dataset.messageId;
+    if (session && !session.messages.some(m => m.id === msgId)) {
+      return;
+    }
+
     // Save options to store using captured session
     chatStore.updateLastAssistantOptions(options, session);
     chatStore.saveSession(session);
@@ -1237,8 +1431,12 @@ Do not include any Markdown formatting like \`\`\`json or any other text. Return
     if (msgElement.isConnected && appState.currentCharacter?.id === character.id) {
       renderContinuationOptions(msgElement, options, character, session);
     }
+    
+    appState.suggestionsAbortController = null;
   } catch (err) {
+    if (err.name === 'AbortError') return;
     console.warn('Failed to generate continuation options:', err);
+    appState.suggestionsAbortController = null;
   }
 }
 
@@ -1314,9 +1512,18 @@ async function requestAiComment(msg, character) {
   }
 
   // Append the comment prompt
+  let commentPrompt = settings.ai_comments_prompt || 'Comment on the last action.';
+  
+  const commentLang = settings.ai_comments_language || 'Auto';
+  if (commentLang === 'Auto') {
+    commentPrompt += ` Respond in the current conversation language (${settings.target_language || 'Russian'}).`;
+  } else {
+    commentPrompt += ` Respond strictly in ${commentLang}.`;
+  }
+
   contextMessages.push({
     role: 'user',
-    content: `[SYSTEM COMMAND] ${settings.ai_comments_prompt || 'Comment on the last action.'}`
+    content: `[SYSTEM COMMAND] ${commentPrompt}`
   });
 
   const abortController = new AbortController();
@@ -1356,11 +1563,27 @@ async function requestAiComment(msg, character) {
 
         btnAdvice.onclick = async () => {
           btnAdvice.classList.add('hidden');
-          // We can keep Hide enabled during advice generation too
-          const advicePrompt = "посоветуй, что мне стоит делать дальше?";
+          
+          let adviceTextPrefix = "посоветуй, что мне стоит делать дальше?"; // Default
+          let adviceInstruction = "";
+
+          const commentLang = settings.ai_comments_language || 'Auto';
+          if (commentLang === 'Auto') {
+            adviceTextPrefix = "What should I do next?";
+            adviceInstruction = ` Respond in the current conversation language (${settings.target_language || 'Russian'}).`;
+          } else if (commentLang === 'English') {
+            adviceTextPrefix = "What should I do next?";
+            adviceInstruction = " Respond in English.";
+          } else if (commentLang === 'Russian') {
+            adviceTextPrefix = "посоветуй, что мне стоит делать дальше?";
+            adviceInstruction = " Respond in Russian.";
+          } else if (commentLang === 'Spanish') {
+            adviceTextPrefix = "¿Qué debo hacer a continuación?";
+            adviceInstruction = " Respond in Spanish.";
+          }
 
           contextMessages.push({ role: 'assistant', content: fullComment });
-          contextMessages.push({ role: 'user', content: `[SYSTEM COMMAND] ${advicePrompt}` });
+          contextMessages.push({ role: 'user', content: `[SYSTEM COMMAND] ${adviceTextPrefix}${adviceInstruction}` });
 
           const separator = '<hr style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border-subtle); opacity: 0.5;">';
           let adviceText = '';
@@ -1411,4 +1634,81 @@ function injectCursor(html) {
     return html.replace(/(<\/([a-z0-9]+)>)$/i, cursorHtml + '$1');
   }
   return html + cursorHtml;
+}
+
+async function triggerIndicatorUpdate(character, session, lastUserMsg, lastAssistantMsg) {
+  if (!session?.indicators?.enabled || !session.indicators.list?.length) return;
+
+  // Build a focused context for the update call
+  // We use the character's core info but minimal history to keep it fast and focused
+  const settings = settingsStore.get();
+  const userName = settings.user_name || 'User';
+  
+  const context = [
+    { 
+      role: 'system', 
+      content: `You are a character state analyzer. Your task is to update mood indicators based on the last interaction.\nCharacter: ${character.name}\nUser: ${userName}` 
+    }
+  ];
+  
+  // Add last few messages for context
+  const recentMsgs = session.messages.slice(-4);
+  for (const m of recentMsgs) {
+    context.push({ role: m.role, content: m.translated_content || m.content });
+  }
+  
+  // Add the special command
+  const statusStr = session.indicators.list.map(ind => `${ind.name}: ${ind.value}%`).join('\n');
+  context.push({
+    role: 'user',
+    content: `[SYSTEM COMMAND] Analyze the character's response and update the indicators.
+Current status:
+${statusStr}
+
+Instructions:
+1. Return ONLY a JSON block.
+2. Use relative changes (e.g. +10, -5, 0).
+3. Be realistic based on the character's personality and the conversation.
+
+Example: {"indicators": {"Trust": +5, "Fear": -10}}`
+  });
+
+  try {
+    const response = await api.chatCompletion(context, { max_tokens: 150, temperature: 0.1 });
+    // More flexible JSON extraction (greedy to capture nested braces)
+    const jsonMatch = response.match(/\{[\s\S]*"indicators"[\s\S]*\}/);
+    if (jsonMatch) {
+      const cleanedJson = jsonMatch[0].replace(/:\s*\+([0-9]+)/g, ': $1'); // Remove '+' signs before parsing
+      try {
+        const data = JSON.parse(cleanedJson);
+        if (data.indicators) {
+          let changed = false;
+          for (const [name, change] of Object.entries(data.indicators)) {
+            const ind = session.indicators.list.find(i => i.name.toLowerCase() === name.toLowerCase());
+            if (ind) {
+              const numericChange = parseInt(change);
+              if (!isNaN(numericChange)) {
+                ind.value = Math.max(0, Math.min(100, ind.value + numericChange));
+                changed = true;
+              }
+            }
+          }
+          if (changed) {
+            renderIndicators();
+            chatStore.saveCurrentSession();
+          }
+        }
+      } catch (parseErr) {
+        console.warn('JSON parse error in indicators:', parseErr, cleanedJson);
+      }
+    }
+  } catch (e) {
+    console.warn('Indicator update failed:', e);
+  }
+}
+
+function applyIndicatorUpdates(text, session) {
+  // This is now redundant but keeping for backward compatibility if needed, 
+  // though we'll remove calls to it.
+  return text;
 }

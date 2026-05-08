@@ -883,3 +883,126 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
     background-position: 200% center;
   }
 }
+
+/* ─── Indicators ─────────────────────────────────────────────────── */
+
+.chat-indicators {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-5);
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid var(--border-subtle);
+  animation: fadeIn 0.3s ease;
+  width: 100%;
+}
+
+.chat-indicators.hidden {
+  display: none !important;
+}
+
+.indicator-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 80px;
+  flex: 1;
+}
+
+.indicator-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.indicator-value {
+  color: var(--text-primary);
+}
+
+.indicator-bar-container {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.indicator-bar-fill {
+  height: 100%;
+  background: var(--accent-primary);
+  width: 0%;
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Styles for the popover management UI */
+.indicator-management-section {
+  border-top: 1px solid var(--border-subtle);
+  margin-top: 12px;
+  padding-top: 12px;
+}
+
+.indicator-preset-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.indicator-preset-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid transparent;
+}
+
+.indicator-preset-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.indicator-preset-item.active {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+}
+
+.indicator-preset-name {
+  flex: 1;
+  color: var(--text-secondary);
+}
+
+.indicator-preset-item.active .indicator-preset-name {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.btn-add-indicator-preset {
+  width: 100%;
+  padding: 8px;
+  background: transparent;
+  border: 1px dashed var(--border-light);
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s;
+}
+
+.btn-add-indicator-preset:hover {
+  color: var(--text-primary);
+  border-color: var(--text-tertiary);
+}

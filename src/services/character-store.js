@@ -18,10 +18,18 @@ export const characterStore = {
     try {
       const result = await invokeTauri('load_characters');
       if (result) {
-        characters = JSON.parse(result);
+        characters = JSON.parse(result).map(c => ({
+          ...c,
+          last_chat_at: c.last_chat_at || c.created_at || new Date().toISOString()
+        }));
       } else {
         const saved = localStorage.getItem('llmchat_characters');
-        if (saved) characters = JSON.parse(saved);
+        if (saved) {
+          characters = JSON.parse(saved).map(c => ({
+            ...c,
+            last_chat_at: c.last_chat_at || c.created_at || new Date().toISOString()
+          }));
+        }
       }
     } catch (e) {
       console.warn('Failed to load characters:', e);

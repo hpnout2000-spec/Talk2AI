@@ -131,10 +131,12 @@ function loadSettingsToUI() {
   checkField('setting-translate-user', settings.translate_user_messages);
   checkField('setting-italic-asterisks', settings.italic_asterisks);
   checkField('setting-ai-comments', settings.ai_comments_enabled);
+  checkField('setting-suggestions-enabled', settings.suggestions_enabled);
   
   setField('setting-target-lang', settings.target_language || 'Russian');
   setField('setting-outgoing-lang', settings.outgoing_target_language || 'English');
   setField('setting-suggestions-lang', settings.suggestions_language || 'Russian');
+  setField('setting-ai-comments-lang', settings.ai_comments_language || 'Auto');
 }
 
 function setRangeValue(inputId, valueId, value) {
@@ -171,9 +173,11 @@ async function saveSettings() {
     translate_user_messages: getChecked('setting-translate-user'),
     italic_asterisks: getChecked('setting-italic-asterisks'),
     ai_comments_enabled: getChecked('setting-ai-comments'),
+    suggestions_enabled: getChecked('setting-suggestions-enabled'),
     target_language: getVal('setting-target-lang'),
     outgoing_target_language: getVal('setting-outgoing-lang'),
     suggestions_language: getVal('setting-suggestions-lang'),
+    ai_comments_language: getVal('setting-ai-comments-lang'),
     font_size: parseInt(document.getElementById('setting-font-size')?.value || current.font_size),
   };
 
