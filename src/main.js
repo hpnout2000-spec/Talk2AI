@@ -12,6 +12,10 @@ import { initChat } from './components/chat.js';
 import { initCharacterPanel } from './components/character-panel.js';
 import { initSettingsPanel } from './components/settings-panel.js';
 import { initMemoryViewer } from './components/memory-viewer.js';
+import { initAdvancedSettings } from './components/advanced-settings.js';
+import { bookStore } from './services/book-store.js';
+import { initBookPanel } from './components/book-panel.js';
+import { initBookView } from './components/book-view.js';
 
 // ─── Initialize App ─────────────────────────────────────────────────
 
@@ -39,32 +43,90 @@ async function init() {
 
   // User name click handler
   const btnSetName = document.getElementById('btn-set-user-name');
+  const userNamePopover = document.getElementById('user-name-popover');
+  const userNameInput = document.getElementById('user-name-edit-input');
+  const btnConfirmName = document.getElementById('btn-confirm-name');
+
   if (btnSetName) {
-    btnSetName.addEventListener('click', async () => {
-      const currentName = settingsStore.get().user_name || 'User';
-      const newName = await showPrompt('Change Name', 'Enter your name:', currentName);
-      if (newName !== null && newName.trim() !== '') {
-        const cleanedName = newName.trim();
-        await settingsStore.save({ user_name: cleanedName });
-        if (userNameDisplay) userNameDisplay.textContent = cleanedName;
-        showToast(`Name updated to ${cleanedName}`);
+    btnSetName.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const settings = settingsStore.get();
+      userNameInput.value = settings.user_name || 'User';
+      userNamePopover.classList.toggle('hidden');
+      if (!userNamePopover.classList.contains('hidden')) {
+        setTimeout(() => userNameInput.focus(), 50);
       }
     });
   }
 
-  // Load characters
+  if (btnConfirmName) {
+    btnConfirmName.addEventListener('click', async () => {
+      const newName = userNameInput.value.trim();
+      if (newName !== '') {
+        await settingsStore.save({ user_name: newName });
+        if (userNameDisplay) userNameDisplay.textContent = newName;
+        userNamePopover.classList.add('hidden');
+        showToast(`Name updated to ${newName}`);
+      }
+    });
+  }
+
+  // Handle Enter key in name input
+  userNameInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      btnConfirmName.click();
+    }
+  });
+
+  // Global click-outside handler for name popover
+  document.addEventListener('click', (e) => {
+    if (userNamePopover && !userNamePopover.contains(e.target) && !btnSetName.contains(e.target)) {
+      userNamePopover.classList.add('hidden');
+    }
+  });
+
+  // Load characters and books
   await characterStore.load();
+  await bookStore.load();
 
   // Initialize all components
   initCharacterPanel();
   initChat();
   initSettingsPanel();
   initMemoryViewer();
+  initAdvancedSettings();
+  initBookPanel();
+  initBookView();
+  applyGlobalSettingsStyles();
+
+  // Initialize Window Controls (for Tauri frameless)
+  initWindowControls();
 
   // Check API connection
   checkConnection();
 
   console.log('LLM Chat ready!');
+}
+
+// ─── Tauri Window Controls ──────────────────────────────────────────
+
+async function initWindowControls() {
+  const btnMin = document.getElementById('btn-minimize');
+  const btnMax = document.getElementById('btn-maximize');
+  const btnClose = document.getElementById('btn-close');
+
+  if (window.__TAURI__) {
+    const { getCurrentWindow } = window.__TAURI__.window;
+    const appWindow = getCurrentWindow();
+
+    btnMin?.addEventListener('click', () => appWindow.minimize());
+    btnMax?.addEventListener('click', () => appWindow.toggleMaximize());
+    btnClose?.addEventListener('click', () => appWindow.close());
+  } else {
+    // Hide controls if not in Tauri (e.g. regular browser)
+    const controls = document.querySelector('.window-controls');
+    if (controls) controls.style.display = 'none';
+  }
 }
 
 // ─── Check Connection ───────────────────────────────────────────────
@@ -86,6 +148,13 @@ export async function checkConnection() {
     statusEl.classList.remove('connected');
     textEl.textContent = 'Disconnected';
   }
+}
+
+// ─── Global Styles Application ─────────────────────────────────────
+
+export function applyGlobalSettingsStyles() {
+  const settings = settingsStore.get();
+  document.body.classList.toggle('settings-italic-asterisks', !!settings.italic_asterisks);
 }
 
 // ─── Toast Notification ─────────────────────────────────────────────
@@ -135,7 +204,7 @@ export function showConfirm(title, message) {
       resolve(false);
     };
     const cleanup = () => {
-      modal.classList.add('hidden');
+      closeModal(modal);
       btnConfirm.removeEventListener('click', handleConfirm);
       btnCancel.removeEventListener('click', handleCancel);
     };
@@ -144,6 +213,25 @@ export function showConfirm(title, message) {
     btnCancel.addEventListener('click', handleCancel);
     modal.classList.remove('hidden');
   });
+}
+
+/**
+ * Smoothly closes a modal with animation
+ */
+export function closeModal(modalIdOrElement) {
+  const modal = typeof modalIdOrElement === 'string'
+    ? document.getElementById(modalIdOrElement)
+    : modalIdOrElement;
+
+  if (!modal || modal.classList.contains('hidden')) return;
+
+  modal.classList.add('closing');
+
+  // Match the duration in animations.css (0.4s)
+  setTimeout(() => {
+    modal.classList.add('hidden');
+    modal.classList.remove('closing');
+  }, 400);
 }
 
 /**
@@ -175,7 +263,7 @@ export function showPrompt(title, message, defaultValue = '') {
       resolve(null);
     };
     const cleanup = () => {
-      modal.classList.add('hidden');
+      closeModal(modal);
       btnConfirm.removeEventListener('click', handleConfirm);
       btnCancel.removeEventListener('click', handleCancel);
     };

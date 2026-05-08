@@ -5,6 +5,7 @@
 import { showToast, checkConnection, showConfirm } from '../main.js';
 import { appState } from '../state.js';
 import { chatStore } from '../services/chat-store.js';
+import { characterStore } from '../services/character-store.js';
 import { api } from '../services/api.js';
 import { settingsStore } from '../services/settings-store.js';
 import { memoryService } from '../services/memory-service.js';
@@ -160,6 +161,14 @@ function renderInputSettings() {
         </div>
       </div>
     </div>
+    <div class="settings-group" style="margin-top: 12px; border-top: 1px solid var(--border-subtle); padding-top: 12px;">
+      <button id="btn-open-advanced" class="btn-secondary btn-full" style="gap: 8px;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;">
+          <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        <span>Advanced settings</span>
+      </button>
+    </div>
   `;
 
   // Handlers
@@ -175,6 +184,12 @@ function renderInputSettings() {
   slider.addEventListener('input', () => {
     const newDepth = parseInt(slider.value);
     settingsStore.save({ ...settingsStore.get(), description_depth: newDepth });
+  });
+
+  const btnAdv = inputSettingsPopover.querySelector('#btn-open-advanced');
+  btnAdv.addEventListener('click', () => {
+    inputSettingsPopover.classList.add('hidden');
+    window.dispatchEvent(new CustomEvent('open-advanced-settings'));
   });
 }
 
@@ -200,6 +215,7 @@ export function startNewChat(character = null) {
     content = content.replace(/\{\{char\}\}/gi, char.name);
 
     const msg = chatStore.addMessage('assistant', content, null, session);
+    characterStore.updateLastChat(char.id);
     if (appState.currentCharacter?.id === char.id) {
       appendMessage(msg, false, char);
     }
@@ -293,7 +309,7 @@ async function performStreamingTranslation(contentEl, textToTranslate, targetLan
 
         morphdom(contentEl, temp, {
           childrenOnly: true,
-          getNodeKey: (node) => node.dataset?.wordIndex,
+          getNodeKey: (node) => node.dataset?.wordIndex || node.id || node.className,
           onBeforeElUpdated: (from, to) => {
             if (from.classList.contains('word-blur') && from.textContent !== to.textContent) {
               from.classList.add('word-replacing-out');
@@ -301,8 +317,8 @@ async function performStreamingTranslation(contentEl, textToTranslate, targetLan
                 from.textContent = to.textContent;
                 from.classList.remove('word-replacing-out');
                 from.classList.add('word-replacing-in');
-                setTimeout(() => from.classList.remove('word-replacing-in'), 500);
-              }, 150);
+                setTimeout(() => from.classList.remove('word-replacing-in'), 400);
+              }, 120);
               return false;
             }
             return true;
@@ -310,7 +326,7 @@ async function performStreamingTranslation(contentEl, textToTranslate, targetLan
           onNodeAdded: (node) => {
             if (node.classList?.contains('word-blur')) {
               node.classList.add('word-replacing-in');
-              setTimeout(() => node.classList.remove('word-replacing-in'), 500);
+              setTimeout(() => node.classList.remove('word-replacing-in'), 400);
             }
           },
         });
@@ -346,6 +362,7 @@ async function sendMessage() {
 
   // Add user message
   const userMsg = chatStore.addMessage('user', content, null, session);
+  characterStore.updateLastChat(character.id);
   const userMsgElement = appendMessage(userMsg, false, character);
   const userContentEl = userMsgElement.querySelector('.message-text');
 
@@ -402,34 +419,46 @@ async function sendMessage() {
       // onChunk
       (chunk) => {
         fullResponse += chunk;
-        const parsed = parseStreamThinking(fullResponse);
-        thinkingContent = parsed.thinking;
-        let displayContent = parsed.content;
-        isInThinking = parsed.isInThinking;
 
-        if (!isInThinking && displayContent.startsWith('*') && !displayContent.endsWith('*')) {
-          displayContent += '*';
-        }
+        // Throttle UI updates to requestAnimationFrame for maximum smoothness
+        if (appState.updateScheduled) return;
+        appState.updateScheduled = true;
 
-        let html = '';
-        if (thinkingContent) {
-          html += createThinkingBlockHTML(thinkingContent, isInThinking);
-        }
-        html += wrapWordsInSpans(renderMarkdown(displayContent));
+        requestAnimationFrame(() => {
+          appState.updateScheduled = false;
+          
+          const parsed = parseStreamThinking(fullResponse);
+          thinkingContent = parsed.thinking;
+          let displayContent = parsed.content;
+          isInThinking = parsed.isInThinking;
 
-        if (!isInThinking) {
-          const cursorHtml = '<span class="streaming-cursor"></span>';
-          if (html.includes('</')) {
-            html = html.replace(/(<\/([a-z0-9]+)>)$/i, cursorHtml + '$1');
-          } else {
-            html += cursorHtml;
+          if (!isInThinking && displayContent.startsWith('*') && !displayContent.endsWith('*')) {
+            displayContent += '*';
           }
-        }
 
-        const temp = document.createElement('div');
-        temp.className = contentEl.className;
-        temp.innerHTML = html;
-        morphdom(contentEl, temp, { childrenOnly: true });
+          let html = '';
+          if (thinkingContent) {
+            html += createThinkingBlockHTML(thinkingContent, isInThinking);
+          }
+          html += wrapWordsInSpans(renderMarkdown(displayContent));
+
+          if (!isInThinking) {
+            const cursorHtml = '<span class="streaming-cursor"></span>';
+            if (html.includes('</')) {
+              html = html.replace(/(<\/([a-z0-9]+)>)$/i, cursorHtml + '$1');
+            } else {
+              html += cursorHtml;
+            }
+          }
+
+          const temp = document.createElement('div');
+          temp.className = contentEl.className;
+          temp.innerHTML = html;
+          morphdom(contentEl, temp, { 
+            childrenOnly: true,
+            getNodeKey: (node) => node.dataset?.wordIndex || node.id || node.className
+          });
+        });
       },
       // onDone
       async () => {
@@ -445,7 +474,10 @@ async function sendMessage() {
         const tempFinal = document.createElement('div');
         tempFinal.className = contentEl.className;
         tempFinal.innerHTML = finalHtml;
-        morphdom(contentEl, tempFinal, { childrenOnly: true });
+        morphdom(contentEl, tempFinal, { 
+          childrenOnly: true,
+          getNodeKey: (node) => node.dataset?.wordIndex || node.id || node.className
+        });
 
         const originalContent = parsed.content;
         let translatedContent = null;
@@ -544,6 +576,8 @@ async function extractAndShowMemory(character, session, userMessage, assistantRe
 function buildApiMessages(character, session) {
   if (!character || !session) return [];
 
+  const settings = settingsStore.get();
+  const userName = settings.user_name || 'User';
   const messages = [];
 
   // System prompt with character info and memory
@@ -552,17 +586,33 @@ function buildApiMessages(character, session) {
   if (character.system_prompt) {
     systemContent = character.system_prompt;
   } else {
-    // Build from fields
-    const parts = [];
-    if (character.description) parts.push(character.description);
-    if (character.personality) parts.push(`Personality: ${character.personality}`);
-    if (character.scenario) parts.push(`Scenario: ${character.scenario}`);
-    systemContent = parts.join('\n\n') || `You are ${character.name}.`;
+    // Use active preset if available, otherwise build from fields
+    const activePresetId = settings.active_system_prompt_preset_id;
+    const presets = settings.system_prompt_presets || [];
+    const activePreset = presets.find(p => p.id === activePresetId);
+
+    if (activePreset) {
+      systemContent = activePreset.content;
+      // Inject character fields into the preset if they exist
+      const description = character.description || '';
+      const personality = character.personality ? `Personality: ${character.personality}` : '';
+      const scenario = character.scenario ? `Scenario: ${character.scenario}` : '';
+      
+      // Replace placeholders
+      systemContent = systemContent.replace(/\{\{description\}\}/gi, description);
+      systemContent = systemContent.replace(/\{\{personality\}\}/gi, personality);
+      systemContent = systemContent.replace(/\{\{scenario\}\}/gi, scenario);
+    } else {
+      // Fallback to building from fields
+      const parts = [];
+      if (character.description) parts.push(character.description);
+      if (character.personality) parts.push(`Personality: ${character.personality}`);
+      if (character.scenario) parts.push(`Scenario: ${character.scenario}`);
+      systemContent = parts.join('\n\n') || `You are ${character.name}.`;
+    }
   }
 
   // Replace placeholders
-  const settings = settingsStore.get();
-  const userName = settings.user_name || 'User';
   systemContent = systemContent.replace(/\{\{user\}\}/gi, userName);
   systemContent = systemContent.replace(/\{\{char\}\}/gi, character.name);
 
@@ -721,6 +771,16 @@ function appendMessage(msg, isStreaming = false, character = null) {
       <div class="message-meta">
         <span class="message-time">${formatTime(msg.timestamp)}</span>
         <div class="message-actions">
+          <button class="btn-regenerate hidden" title="Regenerate">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
+            </svg>
+          </button>
+          <button class="btn-edit-msg" title="Edit">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+          </button>
           <button class="btn-translate-msg" title="Translate">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M5 8l6 6M19 8l-6 6M5 16l6-6M19 16l-6-6"/>
@@ -782,9 +842,22 @@ function appendMessage(msg, isStreaming = false, character = null) {
     el.style.transition = 'all 0.3s ease';
     setTimeout(() => el.remove(), 300);
     chatStore.saveCurrentSession();
+    updateRegenerateVisibility();
+  });
+
+  // Edit button
+  el.querySelector('.btn-edit-msg')?.addEventListener('click', () => {
+    enterEditMode(msg, el);
+  });
+
+  // Regenerate button
+  const btnRegen = el.querySelector('.btn-regenerate');
+  btnRegen?.addEventListener('click', () => {
+    regenerateResponse(msg, el);
   });
 
   messagesContainer.appendChild(el);
+  updateRegenerateVisibility();
   scrollToBottom();
 
   // Render continuation options if they exist
@@ -799,6 +872,197 @@ function scrollToBottom() {
   requestAnimationFrame(() => {
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
   });
+}
+
+// ─── Edit & Regenerate Logic ────────────────────────────────────────
+
+function updateRegenerateVisibility() {
+  // Only the last assistant message should have the regenerate button
+  const allMessages = messagesContainer.querySelectorAll('.message');
+  allMessages.forEach(m => m.querySelector('.btn-regenerate')?.classList.add('hidden'));
+
+  const lastMsg = allMessages[allMessages.length - 1];
+  if (lastMsg && lastMsg.classList.contains('assistant') && !appState.isGenerating) {
+    lastMsg.querySelector('.btn-regenerate')?.classList.remove('hidden');
+  }
+}
+
+function enterEditMode(msg, msgEl) {
+  const contentEl = msgEl.querySelector('.message-text');
+  const originalHtml = contentEl.innerHTML;
+  const originalContent = msg.content;
+
+  // Create editor
+  const editor = document.createElement('div');
+  editor.className = 'message-edit-container';
+  editor.innerHTML = `
+    <textarea class="message-edit-textarea">${originalContent}</textarea>
+    <div class="edit-actions">
+      <button class="btn-cancel-edit btn-secondary small">Cancel</button>
+      <button class="btn-save-edit btn-primary small">Save</button>
+    </div>
+  `;
+
+  contentEl.style.display = 'none';
+  msgEl.querySelector('.message-body').insertBefore(editor, msgEl.querySelector('.message-meta'));
+
+  const textarea = editor.querySelector('.message-edit-textarea');
+  autoResizeTextarea(textarea);
+  textarea.focus();
+  textarea.selectionStart = textarea.value.length;
+
+  textarea.addEventListener('input', () => autoResizeTextarea(textarea));
+
+  editor.querySelector('.btn-cancel-edit').addEventListener('click', () => {
+    editor.remove();
+    contentEl.style.display = 'block';
+  });
+
+  editor.querySelector('.btn-save-edit').addEventListener('click', async () => {
+    const newContent = textarea.value.trim();
+    if (newContent && newContent !== originalContent) {
+      chatStore.updateMessage(msg.id, { content: newContent, translated_content: null });
+      await chatStore.saveCurrentSession();
+      
+      // Update UI
+      msg.content = newContent;
+      msg.translated_content = null;
+      contentEl.innerHTML = renderMarkdown(newContent);
+    }
+    editor.remove();
+    contentEl.style.display = 'block';
+  });
+}
+
+async function regenerateResponse(msg, msgEl) {
+  if (appState.isGenerating) return;
+
+  // Remove the message from UI and store
+  chatStore.deleteMessage(msg.id);
+  msgEl.remove();
+  await chatStore.saveCurrentSession();
+
+  // Trigger new generation
+  // We need to call sendMessage but without adding a new user message
+  // Let's create a specialized trigger for this
+  triggerAssistantGeneration();
+}
+
+async function triggerAssistantGeneration() {
+  if (appState.isGenerating || !appState.currentCharacter || !appState.currentChat) return;
+
+  const character = appState.currentCharacter;
+  const session = appState.currentChat;
+  const settings = settingsStore.get();
+
+  // Start generation
+  appState.isGenerating = true;
+  appState.abortController = new AbortController();
+  btnSend.classList.add('hidden');
+  btnStop.classList.remove('hidden');
+  headerCharStatus.textContent = 'Generating...';
+  headerCharStatus.classList.add('generating');
+
+  // Build messages
+  const apiMessages = buildApiMessages(character, session);
+
+  // Add placeholder
+  const assistantMsg = chatStore.addMessage('assistant', '', null, session);
+  const msgElement = appendMessage(assistantMsg, true, character);
+  const contentEl = msgElement.querySelector('.message-text');
+
+  let fullResponse = '';
+  const apiOptions = {};
+  if (settings.response_length === 'short') {
+    const thinkingBuffer = settings.thinking_enabled ? 1024 : 0;
+    apiOptions.max_tokens = Math.min(settings.max_tokens, 256 + thinkingBuffer);
+  }
+
+  try {
+    await api.streamChat(
+      apiMessages,
+      appState.abortController.signal,
+      (chunk) => {
+        fullResponse += chunk;
+        const parsed = parseStreamThinking(fullResponse);
+        let displayContent = parsed.content;
+        const thinkingContent = parsed.thinking;
+        const isInThinking = parsed.isInThinking;
+
+        if (!isInThinking && displayContent.startsWith('*') && !displayContent.endsWith('*')) {
+          displayContent += '*';
+        }
+
+        let html = '';
+        if (thinkingContent) html += createThinkingBlockHTML(thinkingContent, isInThinking);
+        html += wrapWordsInSpans(renderMarkdown(displayContent));
+
+        if (!isInThinking) {
+          const cursorHtml = '<span class="streaming-cursor"></span>';
+          if (html.includes('</')) html = html.replace(/(<\/([a-z0-9]+)>)$/i, cursorHtml + '$1');
+          else html += cursorHtml;
+        }
+
+        const temp = document.createElement('div');
+        temp.className = contentEl.className;
+        temp.innerHTML = html;
+        morphdom(contentEl, temp, { childrenOnly: true });
+      },
+      async () => {
+        const parsed = parseThinking(fullResponse);
+        let finalHtml = '';
+        if (parsed.thinking) finalHtml += createThinkingBlockHTML(parsed.thinking, false);
+        finalHtml += wrapWordsInSpans(renderMarkdown(parsed.content));
+
+        const tempFinal = document.createElement('div');
+        tempFinal.className = contentEl.className;
+        tempFinal.innerHTML = finalHtml;
+        morphdom(contentEl, tempFinal, { childrenOnly: true });
+
+        const originalContent = parsed.content;
+        let translatedContent = null;
+        if (settings.auto_translate && originalContent) {
+          headerCharStatus.textContent = 'Translating...';
+          translatedContent = await performStreamingTranslation(contentEl, originalContent, settings.target_language);
+        }
+
+        chatStore.updateLastAssistantMessage(originalContent, parsed.thinking, session, translatedContent);
+        await chatStore.saveSession(session);
+
+        appState.isGenerating = false;
+        appState.abortController = null;
+        btnSend.classList.remove('hidden');
+        btnStop.classList.add('hidden');
+        headerCharStatus.textContent = 'Ready';
+        headerCharStatus.classList.remove('generating');
+        updateChatHistory();
+        updateRegenerateVisibility();
+        scrollToBottom();
+
+        if (originalContent) {
+          // Note: we don't have the userMessage here easily in regenerate mode, 
+          // but we can skip memory extraction for regeneration or fetch last user message
+          const lastUserMsg = session.messages.slice().reverse().find(m => m.role === 'user');
+          if (lastUserMsg) {
+            await extractAndShowMemory(character, session, lastUserMsg.content, originalContent, msgElement);
+          }
+          generateContinuationOptions(character, session, msgElement);
+        }
+      },
+      (err) => {
+        console.error('Regeneration error:', err);
+        appState.isGenerating = false;
+        btnSend.classList.remove('hidden');
+        btnStop.classList.add('hidden');
+        headerCharStatus.textContent = 'Error';
+        headerCharStatus.classList.remove('generating');
+      },
+      apiOptions
+    );
+  } catch (err) {
+    console.error('Regeneration try/catch error:', err);
+    appState.isGenerating = false;
+  }
 }
 
 // ─── Update Chat History Sidebar ────────────────────────────────────

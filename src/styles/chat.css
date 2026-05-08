@@ -11,6 +11,10 @@
   min-width: 0;
   position: relative;
   background: var(--bg-primary);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-lg);
 }
 
 /* ─── Chat Header ────────────────────────────────────────────────── */
@@ -21,10 +25,14 @@
   justify-content: space-between;
   padding: var(--space-3) var(--space-5);
   height: var(--header-height);
-  background: var(--surface-glass);
+  background: rgba(33, 33, 33, 0.5);
   backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-subtle);
   z-index: 10;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-app-region: drag;
 }
 
 .chat-header-left {
@@ -270,6 +278,51 @@
   height: 13px;
 }
 
+/* ─── Message Editing ────────────────────────────────────────────── */
+
+.message-edit-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: 100%;
+  margin: var(--space-2) 0;
+  background: rgba(0, 0, 0, 0.15);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+}
+
+.user .message-edit-container {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.message-edit-textarea {
+  width: 100%;
+  min-height: 100px;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.6;
+  resize: vertical;
+  outline: none;
+  padding: 0;
+}
+
+.edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.btn-secondary.small,
+.btn-primary.small {
+  padding: 6px 12px;
+  font-size: var(--text-xs);
+  border-radius: var(--radius-md);
+}
+
 /* ─── Thinking Block ─────────────────────────────────────────────── */
 
 .thinking-inline {
@@ -358,6 +411,20 @@
   padding-left: var(--space-3);
   margin: 0.5em 0;
   color: var(--text-secondary);
+  font-style: italic;
+}
+
+.text-asterisks {
+  color: var(--text-secondary);
+  transition: color var(--transition-fast);
+}
+
+.settings-italic-asterisks .text-asterisks {
+  font-style: italic;
+}
+
+.text-quotes {
+  color: #add8e6;
   font-style: italic;
 }
 
@@ -629,6 +696,7 @@
   opacity: 1;
   color: var(--text-primary);
   background: var(--bg-hover);
+  -webkit-app-region: no-drag;
 }
 
 .btn-input-settings svg {
@@ -735,5 +803,67 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+/* ─── Window Controls ────────────────────────────────────────────── */
+
+.window-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: var(--space-2);
+}
+
+.window-btn {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  -webkit-app-region: no-drag;
+}
+
+.window-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.window-btn.close:hover {
+  background: var(--error);
+  color: white;
+}
+
+.window-btn svg {
+  width: 14px;
+  height: 14px;
+}
+/* Books Mode Styles */
+.sidebar-tab { transition: all 0.2s ease; }
+.sidebar-tab:hover { background: var(--bg-tertiary) !important; color: var(--text-primary) !important; }
+.chapter-summary-icon:hover { opacity: 0.8; }
+
+
+.writing-placeholder {
+  font-style: italic;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: linear-gradient(90deg, var(--text-tertiary) 0%, var(--text-primary) 50%, var(--text-tertiary) 100%);
+  background-size: 200% auto;
+  color: transparent;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: shine 2s linear infinite;
+}
+
+@keyframes shine {
+  to {
+    background-position: 200% center;
   }
 }

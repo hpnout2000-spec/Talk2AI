@@ -60,3 +60,43 @@
 .toast.error {
   border-color: rgba(239, 68, 68, 0.3);
 }
+
+/* Grouping settings into unified blocks */
+.side-panel .panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.side-panel .settings-section {
+  background: rgba(255, 255, 255, 0.02);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-subtle);
+  margin-bottom: var(--space-2);
+}
+
+.side-panel .settings-section h3 {
+  margin-top: calc(-1 * var(--space-2));
+  margin-bottom: var(--space-4);
+}
+
+.side-panel .settings-section h3::after {
+  display: none; /* Hide the line inside the card */
+}
+
+/* Ensure form groups don't have double margin inside sections */
+.side-panel .settings-section .form-group,
+.side-panel .settings-section .form-group-row {
+  margin-bottom: var(--space-2);
+}
+
+.side-panel .settings-section .form-group:last-child,
+.side-panel .settings-section .form-group-row:last-child {
+  margin-bottom: 0;
+}
+
+/* Specific button styling in connection section */
+#btn-test-connection {
+  margin-top: var(--space-2);
+}

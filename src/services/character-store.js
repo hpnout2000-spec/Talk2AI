@@ -51,6 +51,7 @@ export const characterStore = {
       system_prompt: characterData.system_prompt || '',
       first_message: characterData.first_message || '',
       created_at: characterData.created_at || new Date().toISOString(),
+      last_chat_at: characterData.last_chat_at || characterData.created_at || new Date().toISOString(),
     };
 
     if (isNew) {
@@ -68,6 +69,18 @@ export const characterStore = {
     }
 
     return character;
+  },
+
+  async updateLastChat(id) {
+    const char = characters.find(c => c.id === id);
+    if (char) {
+      char.last_chat_at = new Date().toISOString();
+      try {
+        await invokeTauri('save_character', { data: JSON.stringify(char) });
+      } catch {
+        localStorage.setItem('llmchat_characters', JSON.stringify(characters));
+      }
+    }
   },
 
   async delete(id) {

@@ -10,12 +10,13 @@
     "withGlobalTauri": true,
     "windows": [
       {
+        "label": "main",
         "title": "LLM Chat",
         "width": 1200,
         "height": 800,
         "minWidth": 800,
         "minHeight": 600,
-        "decorations": true,
+        "decorations": false,
         "resizable": true
       }
     ],

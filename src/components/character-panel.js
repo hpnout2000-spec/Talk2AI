@@ -3,7 +3,7 @@
    ════════════════════════════════════════════════════════════════════ */
 
 import { characterStore } from '../services/character-store.js';
-import { showToast, showConfirm } from '../main.js';
+import { showToast, showConfirm, closeModal } from '../main.js';
 import { appState } from '../state.js';
 import { selectCharacter, updateChatHistory } from './chat.js';
 import { escapeHtml, readFileAsDataURL } from '../utils/helpers.js';
@@ -169,14 +169,34 @@ Do not include any Markdown formatting like \`\`\`json or any other text. Return
       btn.disabled = false;
     }
   });
+
+  // Gallery controls
+  document.getElementById('btn-show-all-characters').addEventListener('click', openCharacterGallery);
+  document.querySelector('.btn-close-gallery').addEventListener('click', closeCharacterGallery);
+  document.getElementById('gallery-search').addEventListener('input', renderGalleryGrid);
+  document.getElementById('gallery-sort').addEventListener('change', renderGalleryGrid);
 }
 
 // ─── Render Character List ──────────────────────────────────────────
 
 export function renderCharacterList() {
   const list = document.getElementById('character-list');
-  const characters = characterStore.getAll();
+  const btnShowAll = document.getElementById('btn-show-all-characters');
+  const allCharacters = characterStore.getAll();
+  
+  // Sort by last_chat_at descending
+  const sorted = [...allCharacters].sort((a, b) => 
+    new Date(b.last_chat_at || 0) - new Date(a.last_chat_at || 0)
+  );
+
+  const characters = sorted.slice(0, 10);
   const activeId = appState.currentCharacter?.id;
+
+  if (allCharacters.length > 10) {
+    btnShowAll.style.display = 'block';
+  } else {
+    btnShowAll.style.display = 'none';
+  }
 
   if (characters.length === 0) {
     list.innerHTML = `<div class="empty-state small"><p>No characters yet</p></div>`;
@@ -290,7 +310,7 @@ function openCharacterEditor(character = null) {
 }
 
 function closeCharacterEditor() {
-  document.getElementById('character-modal').classList.add('hidden');
+  closeModal('character-modal');
   editingCharacterId = null;
 }
 
@@ -327,4 +347,116 @@ async function saveCharacter() {
   renderCharacterList();
 
   showToast(editingCharacterId ? 'Character updated' : 'Character created');
+}
+
+// ─── Character Gallery ──────────────────────────────────────────────
+
+function openCharacterGallery() {
+  document.getElementById('character-gallery-modal').classList.remove('hidden');
+  renderGalleryGrid();
+}
+
+function closeCharacterGallery() {
+  closeModal('character-gallery-modal');
+}
+
+function renderGalleryGrid() {
+  const grid = document.getElementById('gallery-grid');
+  const search = document.getElementById('gallery-search').value.toLowerCase();
+  const sortBy = document.getElementById('gallery-sort').value;
+  
+  let characters = characterStore.getAll();
+
+  // Search
+  if (search) {
+    characters = characters.filter(c => 
+      c.name.toLowerCase().includes(search) || 
+      (c.description || '').toLowerCase().includes(search) ||
+      (c.personality || '').toLowerCase().includes(search)
+    );
+  }
+
+  // Sort
+  characters.sort((a, b) => {
+    if (sortBy === 'last_chat') {
+      return new Date(b.last_chat_at || 0) - new Date(a.last_chat_at || 0);
+    } else if (sortBy === 'name') {
+      return a.name.localeCompare(b.name);
+    } else if (sortBy === 'created') {
+      return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+    }
+    return 0;
+  });
+
+  grid.innerHTML = characters.map(char => {
+    const avatarHtml = char.avatar
+      ? `<img src="${char.avatar}" alt="${escapeHtml(char.name)}">`
+      : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+           <circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/>
+         </svg>`;
+
+    return `
+      <div class="character-card" data-char-id="${char.id}">
+        <div class="character-card-avatar">${avatarHtml}</div>
+        <div class="character-card-actions">
+           <button class="btn-icon small edit" data-edit-char="${char.id}" title="Edit">
+             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+             </svg>
+           </button>
+           <button class="btn-icon small delete" data-delete-char="${char.id}" title="Delete">
+             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+               <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+             </svg>
+           </button>
+        </div>
+        <div class="character-card-info">
+          <div class="character-card-name">${escapeHtml(char.name)}</div>
+          <div class="character-card-desc">${escapeHtml(char.personality || char.description || '').substring(0, 80)}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Handlers
+  grid.querySelectorAll('.character-card').forEach(card => {
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.character-card-actions')) return;
+      const id = card.dataset.charId;
+      const character = characterStore.getById(id);
+      if (character) {
+        selectCharacter(character);
+        closeCharacterGallery();
+        renderCharacterList();
+      }
+    });
+  });
+
+  grid.querySelectorAll('[data-edit-char]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.editChar;
+      const character = characterStore.getById(id);
+      if (character) openCharacterEditor(character);
+    });
+  });
+
+  grid.querySelectorAll('[data-delete-char]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.deleteChar;
+      const confirmed = await showConfirm('Delete Character', 'Are you sure you want to delete this character and all their chats?');
+      if (confirmed) {
+        await characterStore.delete(id);
+        if (appState.currentCharacter?.id === id) {
+          appState.currentCharacter = null;
+          appState.currentChat = null;
+          document.getElementById('header-char-name').textContent = 'Select a character';
+        }
+        renderCharacterList();
+        renderGalleryGrid();
+        showToast('Character deleted');
+      }
+    });
+  });
 }

@@ -3,7 +3,7 @@
    ════════════════════════════════════════════════════════════════════ */
 
 import { settingsStore } from '../services/settings-store.js';
-import { showToast, checkConnection } from '../main.js';
+import { showToast, checkConnection, applyGlobalSettingsStyles } from '../main.js';
 import { api } from '../services/api.js';
 
 export function initSettingsPanel() {
@@ -29,11 +29,6 @@ export function initSettingsPanel() {
   btnTestConnection.addEventListener('click', testConnection);
 
   // Range inputs: show values in real-time
-  setupRangeInput('setting-max-tokens', 'max-tokens-value', v => v);
-  setupRangeInput('setting-temperature', 'temperature-value', v => v);
-  setupRangeInput('setting-top-p', 'top-p-value', v => v);
-  setupRangeInput('setting-top-k', 'top-k-value', v => v);
-  setupRangeInput('setting-rep-penalty', 'rep-penalty-value', v => v);
   setupRangeInput('setting-font-size', 'font-size-value', v => v);
 
   // Thinking toggle in settings syncs with header toggle
@@ -43,6 +38,12 @@ export function initSettingsPanel() {
 
   // Load initial values
   loadSettingsToUI();
+
+  // Listen for global settings updates
+  window.addEventListener('settings-updated', () => {
+    loadSettingsToUI();
+    applyGlobalSettingsStyles();
+  });
 }
 
 function setupRangeInput(inputId, valueId, formatter) {
@@ -68,17 +69,13 @@ function loadSettingsToUI() {
   const settings = settingsStore.get();
 
   document.getElementById('setting-api-url').value = settings.api_url;
-  setRangeValue('setting-max-tokens', 'max-tokens-value', settings.max_tokens);
-  setRangeValue('setting-temperature', 'temperature-value', settings.temperature);
-  setRangeValue('setting-top-p', 'top-p-value', settings.top_p);
-  setRangeValue('setting-top-k', 'top-k-value', settings.top_k);
-  setRangeValue('setting-rep-penalty', 'rep-penalty-value', settings.rep_penalty);
   setRangeValue('setting-font-size', 'font-size-value', settings.font_size);
 
   document.getElementById('setting-thinking').checked = settings.thinking_enabled;
   document.getElementById('setting-memory').checked = settings.memory_enabled;
   document.getElementById('setting-auto-translate').checked = settings.auto_translate;
   document.getElementById('setting-translate-user').checked = settings.translate_user_messages;
+  document.getElementById('setting-italic-asterisks').checked = settings.italic_asterisks;
   document.getElementById('setting-target-lang').value = settings.target_language || 'Russian';
   document.getElementById('setting-outgoing-lang').value = settings.outgoing_target_language || 'English';
   document.getElementById('setting-suggestions-lang').value = settings.suggestions_language || 'Russian';
@@ -99,17 +96,15 @@ function setRangeValue(inputId, valueId, value) {
 }
 
 async function saveSettings() {
+  const current = settingsStore.get();
   const newSettings = {
+    ...current,
     api_url: document.getElementById('setting-api-url').value.trim() || 'http://localhost:5001',
-    max_tokens: parseInt(document.getElementById('setting-max-tokens').value),
-    temperature: parseFloat(document.getElementById('setting-temperature').value),
-    top_p: parseFloat(document.getElementById('setting-top-p').value),
-    top_k: parseInt(document.getElementById('setting-top-k').value),
-    rep_penalty: parseFloat(document.getElementById('setting-rep-penalty').value),
     thinking_enabled: document.getElementById('setting-thinking').checked,
     memory_enabled: document.getElementById('setting-memory').checked,
     auto_translate: document.getElementById('setting-auto-translate').checked,
     translate_user_messages: document.getElementById('setting-translate-user').checked,
+    italic_asterisks: document.getElementById('setting-italic-asterisks').checked,
     target_language: document.getElementById('setting-target-lang').value.trim() || 'Russian',
     outgoing_target_language: document.getElementById('setting-outgoing-lang').value.trim() || 'English',
     suggestions_language: document.getElementById('setting-suggestions-lang').value.trim() || 'Russian',
@@ -120,6 +115,8 @@ async function saveSettings() {
 
   // Apply font size
   document.documentElement.style.setProperty('--text-base', `${newSettings.font_size / 16}rem`);
+
+  applyGlobalSettingsStyles();
 
   // Sync header thinking toggle
   document.getElementById('thinking-toggle').checked = newSettings.thinking_enabled;

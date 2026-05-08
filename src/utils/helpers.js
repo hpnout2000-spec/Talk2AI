@@ -36,6 +36,9 @@ export function renderMarkdown(text) {
 
   let html = escapeHtml(text);
 
+  // Quotes ("...") - Must be first to avoid matching quotes in HTML tags
+  html = html.replace(/"([^"]+)"/g, '<span class="text-quotes">"$1"</span>');
+
   // Code blocks (```...```)
   html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
     return `<pre><code class="language-${lang}">${code.trim()}</code></pre>`;
@@ -45,10 +48,10 @@ export function renderMarkdown(text) {
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
 
   // Bold (**...**)
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*\*(.+?)\*\*/g, '<span class="text-asterisks">$1</span>');
 
   // Italic (*...*)
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  html = html.replace(/\*(.+?)\*/g, '<span class="text-asterisks">$1</span>');
 
   // Blockquotes (> ...)
   html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');

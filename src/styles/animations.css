@@ -25,11 +25,13 @@
 @keyframes fadeInUp {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateY(16px) scale(0.98);
+    filter: blur(4px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
+    filter: blur(0);
   }
 }
 
@@ -137,6 +139,79 @@
   0% { background-position: 0% 50%; }
   50% { background-position: 100% 50%; }
   100% { background-position: 0% 50%; }
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes backdropBlurIn {
+  from { backdrop-filter: blur(0); background: rgba(0,0,0,0); }
+  to { backdrop-filter: blur(12px); background: rgba(0,0,0,0.6); }
+}
+
+@keyframes backdropBlurOut {
+  from { backdrop-filter: blur(12px); background: rgba(0,0,0,0.6); }
+  to { backdrop-filter: blur(0); background: rgba(0,0,0,0); }
+}
+
+@keyframes modalContentOpen {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(20px);
+    filter: blur(15px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes modalContentClose {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    filter: blur(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+    filter: blur(15px);
+  }
+}
+
+/* ─── Modal Animations ───────────────────────────────────────────── */
+
+.modal {
+  animation: modalFadeIn 0.4s ease forwards;
+}
+
+.modal.closing {
+  animation: modalFadeOut 0.4s ease forwards;
+  pointer-events: none;
+}
+
+.modal-backdrop {
+  animation: backdropBlurIn 0.4s ease forwards;
+}
+
+.modal.closing .modal-backdrop {
+  animation: backdropBlurOut 0.4s ease forwards;
+}
+
+.modal-content {
+  animation: modalContentOpen 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.modal.closing .modal-content {
+  animation: modalContentClose 0.4s ease forwards;
 }
 
 /* ─── Utility Classes ────────────────────────────────────────────── */
@@ -300,43 +375,43 @@
 
 .word-blur {
   display: inline-block;
-  animation: textBlurIn 0.35s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  animation: textBlurIn 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
   white-space: pre-wrap; /* preserve spaces if any */
 }
 
 .translation-blur-out {
-  animation: fadeOutBlur 0.8s ease-in-out forwards;
+  animation: fadeOutBlur 0.6s ease-in-out forwards;
 }
 
 .translation-blur-in {
-  animation: textBlurIn 1s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: textBlurIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .word-replacing-out {
-  animation: wordBlurOut 0.3s ease-out forwards;
+  animation: wordBlurOut 0.25s ease-out forwards;
   display: inline-block;
 }
 
 .word-replacing-in {
-  animation: textBlurIn 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  animation: textBlurIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
   display: inline-block;
 }
 
 @keyframes wordBlurOut {
   0% { opacity: 1; filter: blur(0); transform: scale(1); }
-  100% { opacity: 0; filter: blur(4px); transform: scale(0.95); }
+  100% { opacity: 0; filter: blur(6px); transform: scale(0.96); }
 }
 
 @keyframes textBlurIn {
   0% {
     opacity: 0;
-    filter: blur(8px);
-    transform: translateY(4px);
+    filter: blur(6px);
+    transform: translateY(2px) scale(0.98);
   }
   100% {
     opacity: 1;
     filter: blur(0);
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 
