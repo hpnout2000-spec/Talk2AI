@@ -207,9 +207,6 @@
 
 /* ─── Scroll Optimization ────────────────────────────────────────── */
 
-body.is-scrolling {
-  pointer-events: none !important;
-}
 
 .modal-body, .panel-body, .character-list, .gallery-grid, #chat-messages {
   /* Optimize scroll performance */
@@ -232,23 +229,40 @@ body.is-scrolling {
 /* ─── Stacked Depth Effect ───────────────────────────────────────── */
 
 .ui-stacked {
-  transform: scale(0.96) translateY(-1.5rem) translateZ(0) !important;
-  filter: blur(6px) brightness(0.6) !important;
+  --depth: var(--ui-depth, 1);
   pointer-events: none !important;
   user-select: none !important;
-  /* Disable expensive backdrop effects on background windows */
-  backdrop-filter: none !important;
-  will-change: auto !important;
 }
 
-/* Ensure smooth transitions for elements that can be stacked */
+/* Background elements that are not modals (sidebar, main content) */
+.sidebar.ui-stacked,
+.main-content.ui-stacked,
+.side-panel.ui-stacked,
+.modal.ui-stacked .modal-content {
+  --scale-factor: calc(1 - (var(--depth) * 0.04));
+  --y-offset: calc(var(--depth) * -1.5rem);
+  --brightness-factor: calc(1 - (var(--depth) * 0.15));
+  --blur-amount: calc(var(--depth) * 4px);
+
+  transform: scale(var(--scale-factor)) translateY(var(--y-offset)) translateZ(0) !important;
+  filter: blur(var(--blur-amount)) brightness(var(--brightness-factor)) !important;
+  will-change: transform, filter !important;
+  backdrop-filter: none !important;
+}
+
+/* Ensure smooth transitions for all components that participate in stacking */
 .sidebar, 
 .main-content, 
 .modal-content, 
 .side-panel {
-  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), 
-              filter 0.5s cubic-bezier(0.16, 1, 0.3, 1),
-              opacity 0.4s ease;
+  /* Explicitly define base state for transitions to avoid jumping from 'none' */
+  transform: scale(1) translateY(0) translateZ(0);
+  filter: blur(0) brightness(1);
+  
+  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), 
+              filter 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.5s ease,
+              backdrop-filter 0.6s ease;
 }
 
 /* Special case for modal backdrop when stacked: hide it more or dim it */

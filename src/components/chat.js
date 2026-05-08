@@ -18,6 +18,7 @@ import {
   wrapWordsInSpans,
 } from '../utils/helpers.js';
 import morphdom from '../vendor/morphdom.js';
+import { perf } from '../utils/perf.js';
 
 // ─── DOM Elements ───────────────────────────────────────────────────
 
@@ -346,7 +347,7 @@ async function performStreamingTranslation(contentEl, textToTranslate, targetLan
 
 async function sendMessage() {
   const content = messageInput.value.trim();
-  
+
   if (appState.isGenerating) return;
 
   const settings = settingsStore.get();
@@ -441,7 +442,7 @@ async function sendMessage() {
 
         requestAnimationFrame(() => {
           appState.updateScheduled = false;
-          
+
           const parsed = parseStreamThinking(fullResponse);
           thinkingContent = parsed.thinking;
           let displayContent = parsed.content;
@@ -464,10 +465,13 @@ async function sendMessage() {
           const temp = document.createElement('div');
           temp.className = contentEl.className;
           temp.innerHTML = html;
-          morphdom(contentEl, temp, { 
+          
+          perf.start('morphdom-patch');
+          morphdom(contentEl, temp, {
             childrenOnly: true,
             getNodeKey: (node) => node.dataset?.wordIndex || node.id || node.className
           });
+          perf.end('morphdom-patch');
         });
       },
       // onDone
@@ -484,10 +488,13 @@ async function sendMessage() {
         const tempFinal = document.createElement('div');
         tempFinal.className = contentEl.className;
         tempFinal.innerHTML = finalHtml;
-        morphdom(contentEl, tempFinal, { 
+        
+        perf.start('morphdom-final-patch');
+        morphdom(contentEl, tempFinal, {
           childrenOnly: true,
           getNodeKey: (node) => node.dataset?.wordIndex || node.id || node.className
         });
+        perf.end('morphdom-final-patch');
 
         const originalContent = parsed.content;
         let translatedContent = null;
@@ -607,7 +614,7 @@ function buildApiMessages(character, session) {
       const description = character.description || '';
       const personality = character.personality ? `Personality: ${character.personality}` : '';
       const scenario = character.scenario ? `Scenario: ${character.scenario}` : '';
-      
+
       // Replace placeholders
       systemContent = systemContent.replace(/\{\{description\}\}/gi, description);
       systemContent = systemContent.replace(/\{\{personality\}\}/gi, personality);
@@ -944,7 +951,7 @@ function enterEditMode(msg, msgEl) {
     if (newContent && newContent !== originalContent) {
       chatStore.updateMessage(msg.id, { content: newContent, translated_content: null });
       await chatStore.saveCurrentSession();
-      
+
       // Update UI
       msg.content = newContent;
       msg.translated_content = null;
@@ -1091,12 +1098,12 @@ async function triggerAssistantGeneration() {
 export function updateChatHistory() {
   if (!appState.currentCharacter) return;
 
+  perf.start('updateChatHistory');
   const list = document.getElementById('chat-history-list');
   const sessions = chatStore.getSessions(appState.currentCharacter.id);
   const currentId = appState.currentChat?.id;
 
-  list.innerHTML = sessions.map(session => {
-    // Get first user message as title, or use date
+  const html = sessions.map(session => {
     const firstUserMsg = session.messages.find(m => m.role === 'user');
     const title = firstUserMsg
       ? firstUserMsg.content.substring(0, 40) + (firstUserMsg.content.length > 40 ? '...' : '')
@@ -1104,7 +1111,7 @@ export function updateChatHistory() {
     const isActive = session.id === currentId;
 
     return `
-      <div class="chat-history-item ${isActive ? 'active' : ''}" data-chat-id="${session.id}">
+      <div class="chat-history-item ${isActive ? 'active' : ''}" data-chat-id="${session.id}" id="chat-history-item-${session.id}">
         <div class="chat-history-item-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
@@ -1123,43 +1130,63 @@ export function updateChatHistory() {
     `;
   }).join('');
 
-  // Click handlers
-  list.querySelectorAll('.chat-history-item').forEach(item => {
-    item.addEventListener('click', (e) => {
-      if (e.target.closest('.chat-history-item-delete')) return;
-      const chatId = item.dataset.chatId;
-      const session = sessions.find(s => s.id === chatId);
-      if (session) loadChat(session);
-      updateChatHistory();
-    });
-  });
+  const temp = document.createElement('div');
+  temp.id = list.id;
+  temp.innerHTML = html;
 
-  list.querySelectorAll('[data-delete-chat]').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const chatId = btn.dataset.deleteChat;
-      const confirmed = await showConfirm('Delete Chat', 'Are you sure you want to delete this chat history?');
-      if (confirmed) {
-        await chatStore.deleteSession(appState.currentCharacter.id, chatId);
-        updateChatHistory();
-        if (appState.currentChat?.id === chatId) {
-          clearMessages();
-          messagesContainer.innerHTML = `
-          <div class="empty-state">
-            <div class="empty-state-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-              </svg>
+  perf.start('morphdom-history');
+  morphdom(list, temp, {
+    childrenOnly: true,
+    getNodeKey: (node) => node.id || node.dataset?.chatId
+  });
+  perf.end('morphdom-history');
+
+  // Event delegation initialized once
+  if (!list._listenersAttached) {
+    list._listenersAttached = true;
+    list.addEventListener('click', async (e) => {
+      const deleteBtn = e.target.closest('[data-delete-chat]');
+      if (deleteBtn) {
+        e.stopPropagation();
+        const chatId = deleteBtn.dataset.deleteChat;
+        const confirmed = await showConfirm('Delete Chat', 'Are you sure you want to delete this chat history?');
+        if (confirmed) {
+          await chatStore.deleteSession(appState.currentCharacter.id, chatId);
+          updateChatHistory();
+          if (appState.currentChat?.id === chatId) {
+            clearMessages();
+            const container = document.getElementById('chat-messages');
+            container.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-state-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+              </div>
+              <h2>Start a new chat</h2>
+              <p>Click the + button to begin a new conversation.</p>
             </div>
-            <h2>Start a new chat</h2>
-            <p>Click the + button to begin a new conversation.</p>
-          </div>
-        `;
-          appState.currentChat = null;
+          `;
+            appState.currentChat = null;
+          }
+        }
+        return;
+      }
+
+      const item = e.target.closest('.chat-history-item');
+      if (item) {
+        const chatId = item.dataset.chatId;
+        const currentSessions = chatStore.getSessions(appState.currentCharacter.id);
+        const session = currentSessions.find(s => s.id === chatId);
+        if (session) {
+          loadChat(session);
+          updateChatHistory();
         }
       }
     });
-  });
+  }
+  
+  perf.end('updateChatHistory');
 }
 
 // ─── Continuation Options ───────────────────────────────────────────
@@ -1267,14 +1294,14 @@ async function requestAiComment(msg, character) {
   const btnCopy = document.getElementById('btn-copy-ai-comment');
   const btnClose = document.getElementById('btn-close-ai-comment');
   const btnAdvice = document.getElementById('btn-advice-ai-comment');
-  
+
   btnAdvice.classList.add('hidden');
   btnOk.disabled = false; // Always enabled as "Hide"
-  
+
   openWindow(modal);
   contentEl.innerHTML = injectCursor('');
   btnCopy.classList.add('hidden');
-  
+
   // Build API messages up to this point
   const msgIndex = session.messages.findIndex(m => m.id === msg.id);
   let contextMessages = [];
@@ -1285,7 +1312,7 @@ async function requestAiComment(msg, character) {
   } else {
     contextMessages = buildApiMessages(character, session);
   }
-  
+
   // Append the comment prompt
   contextMessages.push({
     role: 'user',
@@ -1320,7 +1347,7 @@ async function requestAiComment(msg, character) {
         contentEl.innerHTML = renderMarkdown(fullComment);
         btnCopy.classList.remove('hidden');
         btnAdvice.classList.remove('hidden');
-        
+
         btnCopy.onclick = () => {
           navigator.clipboard.writeText(fullComment);
           btnCopy.textContent = 'Copied!';
@@ -1331,13 +1358,13 @@ async function requestAiComment(msg, character) {
           btnAdvice.classList.add('hidden');
           // We can keep Hide enabled during advice generation too
           const advicePrompt = "посоветуй, что мне стоит делать дальше?";
-          
+
           contextMessages.push({ role: 'assistant', content: fullComment });
           contextMessages.push({ role: 'user', content: `[SYSTEM COMMAND] ${advicePrompt}` });
-          
+
           const separator = '<hr style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border-subtle); opacity: 0.5;">';
           let adviceText = '';
-          
+
           try {
             await api.streamChat(
               contextMessages,

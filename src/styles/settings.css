@@ -61,42 +61,96 @@
   border-color: rgba(239, 68, 68, 0.3);
 }
 
-/* Grouping settings into unified blocks */
-.side-panel .panel-body {
+/* ─── Settings Menu Grid ─────────────────────────────────────────── */
+
+.settings-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-4);
+  padding: var(--space-2);
+}
+
+.settings-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all var(--transition-base);
+  position: relative;
+  overflow: hidden;
+}
+
+.settings-card:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-accent);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.settings-card:active {
+  transform: translateY(0);
+  background: var(--bg-active);
+}
+
+.settings-card .card-icon {
+  width: 44px;
+  height: 44px;
+  background: var(--bg-primary);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-accent);
+  transition: all var(--transition-base);
+}
+
+.settings-card:hover .card-icon {
+  background: var(--text-accent);
+  color: var(--bg-primary);
+  transform: scale(1.1);
+}
+
+.settings-card .card-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.settings-card .card-info {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: 2px;
 }
 
-.side-panel .settings-section {
-  background: rgba(255, 255, 255, 0.02);
-  padding: var(--space-4);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-subtle);
-  margin-bottom: var(--space-2);
+.settings-card .card-title {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: var(--text-base);
 }
 
-.side-panel .settings-section h3 {
-  margin-top: calc(-1 * var(--space-2));
-  margin-bottom: var(--space-4);
+.settings-card .card-desc {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  line-height: 1.4;
 }
 
-.side-panel .settings-section h3::after {
-  display: none; /* Hide the line inside the card */
+/* ─── Modal Specific Adjustments ────────────────────────────────── */
+
+.settings-menu-modal .modal-body {
+  padding: var(--space-6);
+  background: var(--bg-secondary);
 }
 
-/* Ensure form groups don't have double margin inside sections */
-.side-panel .settings-section .form-group,
-.side-panel .settings-section .form-group-row {
-  margin-bottom: var(--space-2);
+.btn-close-submodal {
+  margin-left: auto;
 }
 
-.side-panel .settings-section .form-group:last-child,
-.side-panel .settings-section .form-group-row:last-child {
-  margin-bottom: 0;
-}
-
-/* Specific button styling in connection section */
-#btn-test-connection {
-  margin-top: var(--space-2);
+/* Responsive adjustment */
+@media (max-width: 600px) {
+  .settings-cards-grid {
+    grid-template-columns: 1fr;
+  }
 }

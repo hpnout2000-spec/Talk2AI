@@ -20,31 +20,9 @@ import { uiManager } from './utils/ui-manager.js';
 
 // ─── Initialize App ─────────────────────────────────────────────────
 
-/**
- * Global scroll optimizer to disable pointer events while scrolling
- * This prevents expensive :hover effects from triggering and causing lags.
- */
-function initScrollOptimizer() {
-  let scrollTimer;
-  const body = document.body;
-  
-  // Use capture phase to catch all scroll events in any container
-  window.addEventListener('scroll', () => {
-    if (!body.classList.contains('is-scrolling')) {
-      body.classList.add('is-scrolling');
-    }
-    
-    clearTimeout(scrollTimer);
-    scrollTimer = setTimeout(() => {
-      body.classList.remove('is-scrolling');
-    }, 100); 
-  }, true);
-}
-
 async function init() {
   console.log('LLM Chat initializing...');
   
-  initScrollOptimizer();
 
   // Load settings first
   await settingsStore.load();

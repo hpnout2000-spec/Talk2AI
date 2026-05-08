@@ -15,24 +15,14 @@ class WindowManager {
     const el = typeof idOrElement === 'string' ? document.getElementById(idOrElement) : idOrElement;
     if (!el) return;
     
-    // Don't add if already in stack (unless we want to reorder, but let's keep it simple)
+    // Don't add if already in stack
     if (this.stack.includes(el)) return;
 
-    // Apply stacked class to current top elements
-    if (this.stack.length > 0) {
-      // The current top window becomes stacked
-      this.stack[this.stack.length - 1].classList.add('ui-stacked');
-    } else {
-      // If stack is empty, the base app elements become stacked
-      this.baseElements.forEach(id => {
-        const baseEl = document.getElementById(id);
-        if (baseEl) baseEl.classList.add('ui-stacked');
-      });
-    }
-
-    // Show the new window
+    // Show the new window first so it can be added to stack for depth calculation
     el.classList.remove('hidden');
     this.stack.push(el);
+    
+    this._updateDepths();
     
     console.log('UI Stack:', this.stack.map(e => e.id));
   }
@@ -44,11 +34,19 @@ class WindowManager {
     const el = typeof idOrElement === 'string' ? document.getElementById(idOrElement) : idOrElement;
     if (!el || !this.stack.includes(el)) return;
 
+    const index = this.stack.indexOf(el);
+    const isTop = index === this.stack.length - 1;
+
     // Determine if it's a modal (needs closing animation)
     const isModal = el.classList.contains('modal');
     
     if (isModal) {
       el.classList.add('closing');
+      // If we are closing the top window, immediately start moving others forward
+      if (isTop) {
+        this._updateDepths(true); // true means "ignore top element in calculation"
+      }
+      
       setTimeout(() => {
         el.classList.add('hidden');
         el.classList.remove('closing');
@@ -60,22 +58,46 @@ class WindowManager {
     }
   }
 
+  _updateDepths(closingTop = false) {
+    const stackSize = this.stack.length;
+    const effectiveStackSize = closingTop ? stackSize - 1 : stackSize;
+
+    // Update windows in stack
+    this.stack.forEach((el, i) => {
+      // If we are closing the top window, it shouldn't be counted in the depth calculation for others
+      if (closingTop && i === stackSize - 1) return;
+
+      const depth = effectiveStackSize - 1 - i;
+      if (depth > 0) {
+        el.style.setProperty('--ui-depth', depth);
+        el.classList.add('ui-stacked');
+      } else {
+        el.style.removeProperty('--ui-depth');
+        el.classList.remove('ui-stacked');
+      }
+    });
+
+    // Update base elements (sidebar, main content)
+    const baseDepth = effectiveStackSize;
+    this.baseElements.forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (baseDepth > 0) {
+        el.style.setProperty('--ui-depth', baseDepth);
+        el.classList.add('ui-stacked');
+      } else {
+        el.style.removeProperty('--ui-depth');
+        el.classList.remove('ui-stacked');
+      }
+    });
+  }
+
   _finalizeClose(el) {
     const index = this.stack.indexOf(el);
     if (index > -1) {
       this.stack.splice(index, 1);
     }
-
-    // Remove stacked class from the window that's now on top
-    if (this.stack.length > 0) {
-      this.stack[this.stack.length - 1].classList.remove('ui-stacked');
-    } else {
-      // If stack is empty, restore base app elements
-      this.baseElements.forEach(id => {
-        const baseEl = document.getElementById(id);
-        if (baseEl) baseEl.classList.remove('ui-stacked');
-      });
-    }
+    this._updateDepths();
     
     console.log('UI Stack:', this.stack.map(e => e.id));
   }

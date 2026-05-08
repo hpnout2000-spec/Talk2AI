@@ -850,10 +850,20 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
   width: 14px;
   height: 14px;
 }
+
 /* Books Mode Styles */
-.sidebar-tab { transition: all 0.2s ease; }
-.sidebar-tab:hover { background: var(--bg-tertiary) !important; color: var(--text-primary) !important; }
-.chapter-summary-icon:hover { opacity: 0.8; }
+.sidebar-tab {
+  transition: all 0.2s ease;
+}
+
+.sidebar-tab:hover {
+  background: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+}
+
+.chapter-summary-icon:hover {
+  opacity: 0.8;
+}
 
 
 .writing-placeholder {

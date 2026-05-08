@@ -424,28 +424,98 @@
         </div>
       </div>
 
-      <!-- ─── Settings Panel ─────────────────────────────── -->
-      <div id="settings-panel" class="side-panel hidden">
-        <div class="panel-header">
-          <h2>Settings</h2>
-          <button id="btn-close-settings" class="btn-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
+      <!-- ─── Settings Menu Modal ────────────────────────── -->
+      <div id="settings-panel" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content settings-menu-modal" style="max-width: 680px;">
+          <div class="modal-header">
+            <h2 style="display: flex; align-items: center; gap: 12px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 24px; height: 24px; color: var(--text-accent);">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+              </svg>
+              Settings
+            </h2>
+            <button id="btn-close-settings" class="btn-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <div class="settings-cards-grid">
+              <div class="settings-card" id="card-connection">
+                <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg></div>
+                <div class="card-info">
+                  <div class="card-title">Connection</div>
+                  <div class="card-desc">API URL and connectivity</div>
+                </div>
+              </div>
+              <div class="settings-card" id="card-features">
+                <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div>
+                <div class="card-info">
+                  <div class="card-title">Features</div>
+                  <div class="card-desc">AI Comments, Thinking, Memory</div>
+                </div>
+              </div>
+              <div class="settings-card" id="card-language">
+                <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
+                <div class="card-info">
+                  <div class="card-title">Language</div>
+                  <div class="card-desc">Translation and output</div>
+                </div>
+              </div>
+              <div class="settings-card" id="card-interface">
+                <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+                <div class="card-info">
+                  <div class="card-title">Interface</div>
+                  <div class="card-desc">Fonts and styling</div>
+                </div>
+              </div>
+              <div class="settings-card" id="card-advanced">
+                <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div>
+                <div class="card-info">
+                  <div class="card-title">Advanced</div>
+                  <div class="card-desc">Model parameters</div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="panel-body">
-          <div class="settings-section">
-            <h3>Connection</h3>
+      </div>
+
+      <!-- ─── Sub-Settings Modals ────────────────────────── -->
+      
+      <!-- Connection Settings -->
+      <div id="modal-settings-connection" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content" style="max-width: 440px;">
+          <div class="modal-header">
+            <h2>Connection</h2>
+            <button class="btn-icon btn-close-submodal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          </div>
+          <div class="modal-body">
             <div class="form-group">
               <label for="setting-api-url">KoboldCpp URL</label>
               <input type="text" id="setting-api-url" placeholder="http://localhost:5001" />
             </div>
             <button id="btn-test-connection" class="btn-secondary btn-full">Test Connection</button>
           </div>
+          <div class="modal-footer">
+            <button class="btn-primary btn-full btn-save-settings">Save Changes</button>
+          </div>
+        </div>
+      </div>
 
-          <div class="settings-section">
-            <h3>Features</h3>
+      <!-- Features Settings -->
+      <div id="modal-settings-features" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content" style="max-width: 440px;">
+          <div class="modal-header">
+            <h2>Features</h2>
+            <button class="btn-icon btn-close-submodal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          </div>
+          <div class="modal-body">
             <div class="form-group-row">
               <label>AI Comments</label>
               <label class="toggle-switch small">
@@ -454,16 +524,12 @@
               </label>
             </div>
             <div class="form-group-row">
-              <label>Thinking Mode <span style="font-size: 0.8em; opacity: 0.7;">(Temporarily unavailable)</span></label>
+              <label>Thinking Mode <span style="font-size: 0.8em; opacity: 0.7;">(Unavailable)</span></label>
               <label class="toggle-switch small">
                 <input type="checkbox" id="setting-thinking" disabled />
                 <span class="toggle-slider"></span>
               </label>
             </div>
-          </div>
-
-          <div class="settings-section">
-            <h3>Memory management</h3>
             <div class="form-group-row">
               <label>Auto Memory</label>
               <label class="toggle-switch small">
@@ -472,9 +538,21 @@
               </label>
             </div>
           </div>
+          <div class="modal-footer">
+            <button class="btn-primary btn-full btn-save-settings">Save Changes</button>
+          </div>
+        </div>
+      </div>
 
-          <div class="settings-section">
-            <h3>Language</h3>
+      <!-- Language Settings -->
+      <div id="modal-settings-language" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content" style="max-width: 480px;">
+          <div class="modal-header">
+            <h2>Language</h2>
+            <button class="btn-icon btn-close-submodal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          </div>
+          <div class="modal-body">
             <div class="form-group-row">
               <label>Auto Translation (AI)</label>
               <label class="toggle-switch small">
@@ -483,7 +561,7 @@
               </label>
             </div>
             <div class="form-group-row">
-              <label>Translate Outgoing (User)</label>
+              <label>Translate User Input</label>
               <label class="toggle-switch small">
                 <input type="checkbox" id="setting-translate-user" />
                 <span class="toggle-slider"></span>
@@ -502,9 +580,21 @@
               <input type="text" id="setting-suggestions-lang" placeholder="Russian" />
             </div>
           </div>
+          <div class="modal-footer">
+            <button class="btn-primary btn-full btn-save-settings">Save Changes</button>
+          </div>
+        </div>
+      </div>
 
-          <div class="settings-section">
-            <h3>Interface</h3>
+      <!-- Interface Settings -->
+      <div id="modal-settings-interface" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content" style="max-width: 440px;">
+          <div class="modal-header">
+            <h2>Interface</h2>
+            <button class="btn-icon btn-close-submodal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          </div>
+          <div class="modal-body">
             <div class="form-group-row">
               <label>Italicize Actions (*)</label>
               <label class="toggle-switch small">
@@ -517,9 +607,9 @@
               <input type="range" id="setting-font-size" min="12" max="22" step="1" value="15" />
             </div>
           </div>
-        </div>
-        <div class="panel-footer">
-          <button id="btn-save-settings" class="btn-primary btn-full">Save Settings</button>
+          <div class="modal-footer">
+            <button class="btn-primary btn-full btn-save-settings">Save Changes</button>
+          </div>
         </div>
       </div>
 

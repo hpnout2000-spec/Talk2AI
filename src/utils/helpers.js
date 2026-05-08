@@ -62,7 +62,7 @@ export function renderMarkdown(text) {
 
   // Paragraphs (double newline)
   html = html.replace(/\n\n/g, '</p><p>');
-  
+
   // Single newlines to <br>
   html = html.replace(/\n/g, '<br>');
 
@@ -136,7 +136,7 @@ export function readFileAsDataURL(file) {
  */
 export function wrapWordsInSpans(htmlString) {
   if (!htmlString) return '';
-  
+
   // Split by tags: <...> vs everything else
   const parts = htmlString.split(/(<[^>]+>)/g);
   let wordIndex = 0;
@@ -150,7 +150,7 @@ export function wrapWordsInSpans(htmlString) {
       if (lower.startsWith('</pre') || lower.startsWith('</code')) inSkipTag = false;
       return part;
     }
-    
+
     // If inside a tag that shouldn't have words wrapped, or it's just whitespace
     if (inSkipTag || !part.trim()) return part;
 
