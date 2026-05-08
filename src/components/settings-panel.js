@@ -3,7 +3,7 @@
    ════════════════════════════════════════════════════════════════════ */
 
 import { settingsStore } from '../services/settings-store.js';
-import { showToast, checkConnection, applyGlobalSettingsStyles } from '../main.js';
+import { showToast, checkConnection, applyGlobalSettingsStyles, openWindow, closeWindow } from '../main.js';
 import { api } from '../services/api.js';
 
 export function initSettingsPanel() {
@@ -16,11 +16,11 @@ export function initSettingsPanel() {
   // Open/close
   btnOpen.addEventListener('click', () => {
     loadSettingsToUI();
-    panel.classList.remove('hidden');
+    openWindow(panel);
     // Close memory panel if open
-    document.getElementById('memory-panel').classList.add('hidden');
+    closeWindow('memory-panel');
   });
-  btnClose.addEventListener('click', () => panel.classList.add('hidden'));
+  btnClose.addEventListener('click', () => closeWindow(panel));
 
   // Save
   btnSave.addEventListener('click', saveSettings);
@@ -76,6 +76,7 @@ function loadSettingsToUI() {
   document.getElementById('setting-auto-translate').checked = settings.auto_translate;
   document.getElementById('setting-translate-user').checked = settings.translate_user_messages;
   document.getElementById('setting-italic-asterisks').checked = settings.italic_asterisks;
+  document.getElementById('setting-ai-comments').checked = settings.ai_comments_enabled;
   document.getElementById('setting-target-lang').value = settings.target_language || 'Russian';
   document.getElementById('setting-outgoing-lang').value = settings.outgoing_target_language || 'English';
   document.getElementById('setting-suggestions-lang').value = settings.suggestions_language || 'Russian';
@@ -105,6 +106,7 @@ async function saveSettings() {
     auto_translate: document.getElementById('setting-auto-translate').checked,
     translate_user_messages: document.getElementById('setting-translate-user').checked,
     italic_asterisks: document.getElementById('setting-italic-asterisks').checked,
+    ai_comments_enabled: document.getElementById('setting-ai-comments').checked,
     target_language: document.getElementById('setting-target-lang').value.trim() || 'Russian',
     outgoing_target_language: document.getElementById('setting-outgoing-lang').value.trim() || 'English',
     suggestions_language: document.getElementById('setting-suggestions-lang').value.trim() || 'Russian',

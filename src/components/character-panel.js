@@ -3,7 +3,7 @@
    ════════════════════════════════════════════════════════════════════ */
 
 import { characterStore } from '../services/character-store.js';
-import { showToast, showConfirm, closeModal } from '../main.js';
+import { showToast, showConfirm, closeModal, openWindow, closeWindow } from '../main.js';
 import { appState } from '../state.js';
 import { selectCharacter, updateChatHistory } from './chat.js';
 import { escapeHtml, readFileAsDataURL } from '../utils/helpers.js';
@@ -306,7 +306,7 @@ function openCharacterEditor(character = null) {
     preview.dataset.avatarData = '';
   }
 
-  modal.classList.remove('hidden');
+  openWindow(modal);
 }
 
 function closeCharacterEditor() {
@@ -352,7 +352,7 @@ async function saveCharacter() {
 // ─── Character Gallery ──────────────────────────────────────────────
 
 function openCharacterGallery() {
-  document.getElementById('character-gallery-modal').classList.remove('hidden');
+  openWindow('character-gallery-modal');
   renderGalleryGrid();
 }
 
@@ -412,7 +412,7 @@ function renderGalleryGrid() {
         </div>
         <div class="character-card-info">
           <div class="character-card-name">${escapeHtml(char.name)}</div>
-          <div class="character-card-desc">${escapeHtml(char.personality || char.description || '').substring(0, 80)}</div>
+          <div class="character-card-desc">${escapeHtml(char.personality || char.description || '')}</div>
         </div>
       </div>
     `;

@@ -21,6 +21,8 @@ const DEFAULTS = {
   outgoing_target_language: 'English',
   suggestions_language: 'Russian',
   italic_asterisks: true,
+  ai_comments_enabled: true,
+  ai_comments_prompt: "Comment on the last action, dialogue, or behavior of the character or user. Be concise, witty, and insightful. Return only the comment itself.",
   active_system_prompt_preset_id: 'default-1',
   system_prompt_presets: [
     {

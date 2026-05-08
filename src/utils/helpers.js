@@ -136,38 +136,30 @@ export function readFileAsDataURL(file) {
  */
 export function wrapWordsInSpans(htmlString) {
   if (!htmlString) return '';
-  const div = document.createElement('div');
-  div.innerHTML = htmlString;
   
-  const walk = document.createTreeWalker(div, NodeFilter.SHOW_TEXT, null, false);
-  const nodesToReplace = [];
-  let node;
-  while((node = walk.nextNode())) {
-    // Skip if parent is code or pre to avoid breaking code blocks
-    const parentName = node.parentNode?.nodeName;
-    if (parentName === 'CODE' || parentName === 'PRE') continue;
-    if (node.textContent.trim() === '') continue;
-    nodesToReplace.push(node);
-  }
-  
+  // Split by tags: <...> vs everything else
+  const parts = htmlString.split(/(<[^>]+>)/g);
   let wordIndex = 0;
-  for (const n of nodesToReplace) {
-    // Split by whitespace but keep the whitespace
-    const words = n.textContent.split(/(\s+)/);
-    const fragment = document.createDocumentFragment();
-    for (const w of words) {
-      if (w.trim() === '') {
-        fragment.appendChild(document.createTextNode(w));
-      } else {
-        const span = document.createElement('span');
-        span.className = 'word-blur';
-        span.dataset.wordIndex = wordIndex++;
-        span.textContent = w;
-        fragment.appendChild(span);
-      }
+  let inSkipTag = false;
+
+  const processedParts = parts.map(part => {
+    if (part.startsWith('<')) {
+      const lower = part.toLowerCase();
+      // Handle skip tags (pre, code)
+      if (lower.startsWith('<pre') || lower.startsWith('<code')) inSkipTag = true;
+      if (lower.startsWith('</pre') || lower.startsWith('</code')) inSkipTag = false;
+      return part;
     }
-    n.parentNode.replaceChild(fragment, n);
-  }
-  
-  return div.innerHTML;
+    
+    // If inside a tag that shouldn't have words wrapped, or it's just whitespace
+    if (inSkipTag || !part.trim()) return part;
+
+    // Split into words and whitespace, then wrap words in spans
+    return part.split(/(\s+)/).map(w => {
+      if (!w || w.trim() === '') return w;
+      return `<span class="word-blur" data-word-index="${wordIndex++}">${w}</span>`;
+    }).join('');
+  });
+
+  return processedParts.join('');
 }

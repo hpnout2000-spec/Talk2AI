@@ -157,6 +157,7 @@
   gap: var(--space-4);
   width: 100%;
   max-width: 48rem;
+  transform: translateZ(0);
   animation: fadeInUp 0.35s ease forwards;
 }
 
@@ -276,6 +277,10 @@
 .message-actions button svg {
   width: 13px;
   height: 13px;
+}
+
+body:not(.ai-comments-enabled) .btn-ai-comment {
+  display: none !important;
 }
 
 /* ─── Message Editing ────────────────────────────────────────────── */
@@ -440,6 +445,7 @@
   margin-left: 4px;
   animation: typingBlink 1s step-end infinite;
   box-shadow: 0 0 8px var(--accent-primary-glow);
+  transition: all 0.1s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* ─── Input Area ─────────────────────────────────────────────────── */

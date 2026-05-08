@@ -16,6 +16,11 @@ async function invokeTauri(cmd, args = {}) {
 
 export const chatStore = {
   async loadForCharacter(characterId) {
+    // If already in memory (even if empty list), don't reload from disk
+    if (sessions.hasOwnProperty(characterId)) {
+      return sessions[characterId];
+    }
+
     try {
       const result = await invokeTauri('load_chats', { characterId });
       if (result) {

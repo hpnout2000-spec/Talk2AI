@@ -3,7 +3,7 @@
    ════════════════════════════════════════════════════════════════════ */
 
 import { settingsStore } from '../services/settings-store.js';
-import { showToast, showConfirm, closeModal } from '../main.js';
+import { showToast, showConfirm, closeModal, openWindow, closeWindow } from '../main.js';
 
 let modal;
 let btnClose;
@@ -14,6 +14,7 @@ let presetsList;
 let presetNameInput;
 let presetContentInput;
 let btnAddPreset;
+let aiCommentsPromptInput;
 
 let currentSettings;
 let editingPresetId = null;
@@ -28,23 +29,52 @@ export function initAdvancedSettings() {
   presetNameInput = document.getElementById('preset-name');
   presetContentInput = document.getElementById('preset-content');
   btnAddPreset = document.getElementById('btn-add-preset');
+  aiCommentsPromptInput = document.getElementById('adv-ai-comments-prompt');
 
   // Listen for open event
   window.addEventListener('open-advanced-settings', openModal);
 
-  btnClose.addEventListener('click', () => closeModal(modal));
+  btnClose.addEventListener('click', () => closeWindow(modal));
   btnSave.addEventListener('click', saveAll);
 
   // Tab switching
   navItems.forEach(item => {
     item.addEventListener('click', () => {
       const tabId = item.dataset.tab;
-      navItems.forEach(nav => nav.classList.remove('active'));
-      tabContents.forEach(tab => tab.classList.remove('active'));
-      item.classList.add('active');
-      document.getElementById(`tab-${tabId}`).classList.add('active');
+      
+      if (tabId === 'ai-comments' && !settingsStore.get().ai_comments_enabled) {
+        import('../main.js').then(({ showCustomConfirm }) => {
+          showCustomConfirm('AI Comments Disabled', 'AI Comments are currently disabled. Would you like to enable them?', ['Cancel', 'Go to Settings', 'Enable']).then(async res => {
+            if (res === 'Enable') {
+              await settingsStore.save({ ...settingsStore.get(), ai_comments_enabled: true });
+              item.style.opacity = '1';
+              // Update toggle in general settings if open
+              const toggle = document.getElementById('setting-ai-comments');
+              if (toggle) toggle.checked = true;
+              switchToTab(tabId);
+            } else if (res === 'Go to Settings') {
+              import('../main.js').then(({ closeModal }) => {
+                closeModal(modal);
+                document.getElementById('btn-settings').click();
+              });
+            }
+          });
+        });
+        return;
+      }
+      
+      switchToTab(tabId);
     });
   });
+
+  function switchToTab(tabId) {
+    navItems.forEach(nav => nav.classList.remove('active'));
+    tabContents.forEach(tab => tab.classList.remove('active'));
+    const activeNav = document.querySelector(`.nav-item[data-tab="${tabId}"]`);
+    if (activeNav) activeNav.classList.add('active');
+    const activeTab = document.getElementById(`tab-${tabId}`);
+    if (activeTab) activeTab.classList.add('active');
+  }
 
   // Preset management
   btnAddPreset.addEventListener('click', createNewPreset);
@@ -64,7 +94,13 @@ export function initAdvancedSettings() {
 function openModal() {
   currentSettings = settingsStore.get();
   loadSettingsToUI();
-  modal.classList.remove('hidden');
+  
+  const aiCommentsTabBtn = document.getElementById('nav-tab-ai-comments');
+  if (aiCommentsTabBtn) {
+    aiCommentsTabBtn.style.opacity = currentSettings.ai_comments_enabled ? '1' : '0.5';
+  }
+  
+  openWindow(modal);
 }
 
 function loadSettingsToUI() {
@@ -74,6 +110,10 @@ function loadSettingsToUI() {
   setRangeValue('adv-setting-top-p', 'adv-top-p-value', currentSettings.top_p);
   setRangeValue('adv-setting-top-k', 'adv-top-k-value', currentSettings.top_k);
   setRangeValue('adv-setting-rep-penalty', 'adv-rep-penalty-value', currentSettings.rep_penalty);
+
+  if (aiCommentsPromptInput) {
+    aiCommentsPromptInput.value = currentSettings.ai_comments_prompt || "";
+  }
 
   // Load presets
   renderPresets();
@@ -209,6 +249,7 @@ async function saveAll() {
     top_p: parseFloat(document.getElementById('adv-setting-top-p').value),
     top_k: parseInt(document.getElementById('adv-setting-top-k').value),
     rep_penalty: parseFloat(document.getElementById('adv-setting-rep-penalty').value),
+    ai_comments_prompt: aiCommentsPromptInput ? aiCommentsPromptInput.value.trim() : currentSettings.ai_comments_prompt,
   };
 
   await settingsStore.save(updatedSettings);
@@ -216,6 +257,6 @@ async function saveAll() {
   // Sync sidebar settings if it's open (though generation is removed, other sync might be needed)
   window.dispatchEvent(new CustomEvent('settings-updated'));
   
-  closeModal(modal);
+  closeWindow(modal);
   showToast('Advanced settings saved');
 }

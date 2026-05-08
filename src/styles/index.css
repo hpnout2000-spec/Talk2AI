@@ -161,7 +161,7 @@ button, input, select, textarea {
   color: var(--text-secondary);
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
   flex-shrink: 0;
 }
 .btn-icon:hover {
@@ -187,7 +187,7 @@ button, input, select, textarea {
   font-weight: 600;
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all var(--transition-base);
+  transition: background-color var(--transition-base), border-color var(--transition-base), transform var(--transition-base), box-shadow var(--transition-base);
   position: relative;
   overflow: hidden;
 }
@@ -362,6 +362,13 @@ button, input, select, textarea {
   align-items: center;
   justify-content: center;
 }
+
+/* Modal Stacking Order */
+#advanced-settings-modal { z-index: 100; }
+#ai-comment-modal { z-index: 120; }
+#character-modal { z-index: 150; } /* Above gallery */
+#generic-dialog { z-index: 200; } /* Always on top */
+
 .modal.hidden {
   display: none;
 }
@@ -369,7 +376,7 @@ button, input, select, textarea {
   position: absolute;
   inset: 0;
   background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(12px);
+  /* Optimization: redundant blur removed, background is blurred via .ui-stacked */
 }
 .modal-content {
   position: relative;
@@ -398,6 +405,9 @@ button, input, select, textarea {
   padding: var(--space-6);
   overflow-y: auto;
   flex: 1;
+  /* Optimization: prepare for scroll */
+  will-change: scroll-position;
+  scrollbar-gutter: stable;
 }
 .modal-footer {
   display: flex;
@@ -420,8 +430,9 @@ button, input, select, textarea {
   z-index: 50;
   display: flex;
   flex-direction: column;
-  transform: translateX(100%);
+  transform: translateX(100%) translateZ(0);
   opacity: 0;
+  will-change: transform, opacity;
   animation: slideInRight 0.3s ease forwards;
 }
 .side-panel.hidden {
@@ -482,6 +493,8 @@ button, input, select, textarea {
   border-radius: var(--radius-lg);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
   z-index: 100;
+  transform: translateZ(0);
+  will-change: opacity, transform, backdrop-filter;
   animation: fadeIn var(--transition-fast);
 }
 

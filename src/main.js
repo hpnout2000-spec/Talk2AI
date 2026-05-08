@@ -16,11 +16,35 @@ import { initAdvancedSettings } from './components/advanced-settings.js';
 import { bookStore } from './services/book-store.js';
 import { initBookPanel } from './components/book-panel.js';
 import { initBookView } from './components/book-view.js';
+import { uiManager } from './utils/ui-manager.js';
 
 // ─── Initialize App ─────────────────────────────────────────────────
 
+/**
+ * Global scroll optimizer to disable pointer events while scrolling
+ * This prevents expensive :hover effects from triggering and causing lags.
+ */
+function initScrollOptimizer() {
+  let scrollTimer;
+  const body = document.body;
+  
+  // Use capture phase to catch all scroll events in any container
+  window.addEventListener('scroll', () => {
+    if (!body.classList.contains('is-scrolling')) {
+      body.classList.add('is-scrolling');
+    }
+    
+    clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(() => {
+      body.classList.remove('is-scrolling');
+    }, 100); 
+  }, true);
+}
+
 async function init() {
   console.log('LLM Chat initializing...');
+  
+  initScrollOptimizer();
 
   // Load settings first
   await settingsStore.load();
@@ -86,8 +110,15 @@ async function init() {
   });
 
   // Load characters and books
-  await characterStore.load();
+  const characters = await characterStore.load();
   await bookStore.load();
+
+  // Preload EVERYTHING into RAM for maximum performance
+  console.log(`Preloading data for ${characters.length} characters...`);
+  await Promise.all([
+    ...characters.map(char => chatStore.loadForCharacter(char.id)),
+    ...characters.map(char => memoryService.loadForCharacter(char.id))
+  ]);
 
   // Initialize all components
   initCharacterPanel();
@@ -155,6 +186,7 @@ export async function checkConnection() {
 export function applyGlobalSettingsStyles() {
   const settings = settingsStore.get();
   document.body.classList.toggle('settings-italic-asterisks', !!settings.italic_asterisks);
+  document.body.classList.toggle('ai-comments-enabled', !!settings.ai_comments_enabled);
 }
 
 // ─── Toast Notification ─────────────────────────────────────────────
@@ -211,27 +243,76 @@ export function showConfirm(title, message) {
 
     btnConfirm.addEventListener('click', handleConfirm);
     btnCancel.addEventListener('click', handleCancel);
+    openWindow(modal);
+  });
+}
+
+/**
+ * Global function to open any window/modal/panel
+ */
+export function openWindow(idOrElement) {
+  uiManager.open(idOrElement);
+}
+
+/**
+ * Global function to close any window/modal/panel
+ */
+export function closeWindow(idOrElement) {
+  uiManager.close(idOrElement);
+}
+
+/**
+ * Custom alternative to window.confirm with arbitrary buttons
+ */
+export function showCustomConfirm(title, message, buttons = ['Cancel', 'Confirm']) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('generic-dialog');
+    const titleEl = document.getElementById('dialog-title');
+    const messageEl = document.getElementById('dialog-message');
+    const inputContainer = document.getElementById('dialog-input-container');
+    const footer = modal.querySelector('.modal-footer');
+
+    titleEl.textContent = title;
+    messageEl.textContent = message;
+    inputContainer.classList.add('hidden');
+    
+    // Save original footer content to restore later if needed, but it's okay to just clear it
+    // Wait, other dialogs rely on the original buttons. Let's just hide the original ones and add temporary ones.
+    const origButtons = Array.from(footer.children);
+    origButtons.forEach(b => b.classList.add('hidden'));
+
+    const tempContainer = document.createElement('div');
+    tempContainer.style.display = 'flex';
+    tempContainer.style.gap = '1rem';
+    tempContainer.style.marginLeft = 'auto';
+
+    const cleanup = () => {
+      closeModal(modal);
+      tempContainer.remove();
+      origButtons.forEach(b => b.classList.remove('hidden'));
+    };
+
+    buttons.forEach((btnText, i) => {
+      const btn = document.createElement('button');
+      btn.className = i === buttons.length - 1 ? 'btn-primary' : 'btn-secondary';
+      btn.textContent = btnText;
+      btn.addEventListener('click', () => {
+        cleanup();
+        resolve(btnText);
+      });
+      tempContainer.appendChild(btn);
+    });
+
+    footer.appendChild(tempContainer);
     modal.classList.remove('hidden');
   });
 }
 
 /**
- * Smoothly closes a modal with animation
+ * Smoothly closes a modal with animation (legacy wrapper for closeWindow)
  */
 export function closeModal(modalIdOrElement) {
-  const modal = typeof modalIdOrElement === 'string'
-    ? document.getElementById(modalIdOrElement)
-    : modalIdOrElement;
-
-  if (!modal || modal.classList.contains('hidden')) return;
-
-  modal.classList.add('closing');
-
-  // Match the duration in animations.css (0.4s)
-  setTimeout(() => {
-    modal.classList.add('hidden');
-    modal.classList.remove('closing');
-  }, 400);
+  closeWindow(modalIdOrElement);
 }
 
 /**
@@ -270,7 +351,7 @@ export function showPrompt(title, message, defaultValue = '') {
 
     btnConfirm.addEventListener('click', handleConfirm);
     btnCancel.addEventListener('click', handleCancel);
-    modal.classList.remove('hidden');
+    openWindow(modal);
     setTimeout(() => inputEl.focus(), 100);
   });
 }

@@ -2,7 +2,7 @@
    Chat Component — Main chat interface
    ════════════════════════════════════════════════════════════════════ */
 
-import { showToast, checkConnection, showConfirm } from '../main.js';
+import { showToast, checkConnection, showConfirm, openWindow, closeWindow } from '../main.js';
 import { appState } from '../state.js';
 import { chatStore } from '../services/chat-store.js';
 import { characterStore } from '../services/character-store.js';
@@ -346,7 +346,8 @@ async function performStreamingTranslation(contentEl, textToTranslate, targetLan
 
 async function sendMessage() {
   const content = messageInput.value.trim();
-  if (!content || appState.isGenerating) return;
+  
+  if (appState.isGenerating) return;
 
   const settings = settingsStore.get();
   const character = appState.currentCharacter;
@@ -355,10 +356,24 @@ async function sendMessage() {
     return;
   }
 
-  if (!appState.currentChat) {
-    startNewChat(character);
+  let session = appState.currentChat;
+
+  if (!content) {
+    // If input is empty, check if we should regenerate (last message is user)
+    if (session && session.messages.length > 0) {
+      const lastMsg = session.messages[session.messages.length - 1];
+      if (lastMsg.role === 'user') {
+        triggerAssistantGeneration();
+        return;
+      }
+    }
+    return;
   }
-  const session = appState.currentChat;
+
+  if (!session) {
+    startNewChat(character);
+    session = appState.currentChat;
+  }
 
   // Add user message
   const userMsg = chatStore.addMessage('user', content, null, session);
@@ -443,12 +458,7 @@ async function sendMessage() {
           html += wrapWordsInSpans(renderMarkdown(displayContent));
 
           if (!isInThinking) {
-            const cursorHtml = '<span class="streaming-cursor"></span>';
-            if (html.includes('</')) {
-              html = html.replace(/(<\/([a-z0-9]+)>)$/i, cursorHtml + '$1');
-            } else {
-              html += cursorHtml;
-            }
+            html = injectCursor(html);
           }
 
           const temp = document.createElement('div');
@@ -793,6 +803,12 @@ function appendMessage(msg, isStreaming = false, character = null) {
               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
             </svg>
           </button>
+          <button class="btn-ai-comment" title="AI Comment">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+              <path d="M12 7l1.5 3 3.5.5-2.5 2.5.5 3.5-3-1.5-3 1.5.5-3.5-2.5-2.5 3.5-.5z"/>
+            </svg>
+          </button>
           <button class="btn-delete-msg delete" title="Delete">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -848,6 +864,11 @@ function appendMessage(msg, isStreaming = false, character = null) {
   // Edit button
   el.querySelector('.btn-edit-msg')?.addEventListener('click', () => {
     enterEditMode(msg, el);
+  });
+
+  // AI Comment button
+  el.querySelector('.btn-ai-comment')?.addEventListener('click', () => {
+    requestAiComment(msg, character || appState.currentCharacter);
   });
 
   // Regenerate button
@@ -1231,4 +1252,136 @@ function renderContinuationOptions(msgElement, options, character, session) {
     msgElement.querySelector('.message-body').appendChild(optionsContainer);
     scrollToBottom();
   }
+}
+
+// ─── AI Comment Feature ─────────────────────────────────────────────
+
+async function requestAiComment(msg, character) {
+  const settings = settingsStore.get();
+  const session = chatStore.getCurrentSession();
+  if (!session || !character || !settings.ai_comments_enabled) return;
+
+  const modal = document.getElementById('ai-comment-modal');
+  const contentEl = document.getElementById('ai-comment-content');
+  const btnOk = document.getElementById('btn-ok-ai-comment');
+  const btnCopy = document.getElementById('btn-copy-ai-comment');
+  const btnClose = document.getElementById('btn-close-ai-comment');
+  const btnAdvice = document.getElementById('btn-advice-ai-comment');
+  
+  btnAdvice.classList.add('hidden');
+  btnOk.disabled = false; // Always enabled as "Hide"
+  
+  openWindow(modal);
+  contentEl.innerHTML = injectCursor('');
+  btnCopy.classList.add('hidden');
+  
+  // Build API messages up to this point
+  const msgIndex = session.messages.findIndex(m => m.id === msg.id);
+  let contextMessages = [];
+  if (msgIndex !== -1) {
+    const relevantMsgs = session.messages.slice(0, msgIndex + 1);
+    const tempSession = { ...session, messages: relevantMsgs };
+    contextMessages = buildApiMessages(character, tempSession);
+  } else {
+    contextMessages = buildApiMessages(character, session);
+  }
+  
+  // Append the comment prompt
+  contextMessages.push({
+    role: 'user',
+    content: `[SYSTEM COMMAND] ${settings.ai_comments_prompt || 'Comment on the last action.'}`
+  });
+
+  const abortController = new AbortController();
+
+  const cleanup = () => {
+    abortController.abort();
+    closeWindow(modal);
+    btnOk.onclick = null;
+    btnClose.onclick = null;
+    btnCopy.onclick = null;
+    btnAdvice.onclick = null;
+  };
+
+  btnOk.onclick = cleanup;
+  btnClose.onclick = cleanup;
+
+  let fullComment = '';
+
+  try {
+    await api.streamChat(
+      contextMessages,
+      abortController.signal,
+      (chunk) => {
+        fullComment += chunk;
+        contentEl.innerHTML = injectCursor(renderMarkdown(fullComment));
+      },
+      async () => {
+        contentEl.innerHTML = renderMarkdown(fullComment);
+        btnCopy.classList.remove('hidden');
+        btnAdvice.classList.remove('hidden');
+        
+        btnCopy.onclick = () => {
+          navigator.clipboard.writeText(fullComment);
+          btnCopy.textContent = 'Copied!';
+          setTimeout(() => btnCopy.textContent = 'Copy', 2000);
+        };
+
+        btnAdvice.onclick = async () => {
+          btnAdvice.classList.add('hidden');
+          // We can keep Hide enabled during advice generation too
+          const advicePrompt = "посоветуй, что мне стоит делать дальше?";
+          
+          contextMessages.push({ role: 'assistant', content: fullComment });
+          contextMessages.push({ role: 'user', content: `[SYSTEM COMMAND] ${advicePrompt}` });
+          
+          const separator = '<hr style="margin: 1.5rem 0; border: none; border-top: 1px solid var(--border-subtle); opacity: 0.5;">';
+          let adviceText = '';
+          
+          try {
+            await api.streamChat(
+              contextMessages,
+              abortController.signal,
+              (chunk) => {
+                adviceText += chunk;
+                contentEl.innerHTML = renderMarkdown(fullComment) + separator + injectCursor(renderMarkdown(adviceText));
+              },
+              () => {
+                contentEl.innerHTML = renderMarkdown(fullComment) + separator + renderMarkdown(adviceText);
+                const combinedText = fullComment + "\n\n---\n\n" + adviceText;
+                btnCopy.onclick = () => {
+                  navigator.clipboard.writeText(combinedText);
+                  btnCopy.textContent = 'Copied!';
+                  setTimeout(() => btnCopy.textContent = 'Copy', 2000);
+                };
+              }
+            );
+          } catch (err) {
+            if (err.name !== 'AbortError') {
+              contentEl.innerHTML += `<p style="color: var(--error)">Error: ${escapeHtml(err.message)}</p>`;
+            }
+            btnOk.disabled = false;
+          }
+        };
+      },
+      (err) => {
+        if (err.name !== 'AbortError') {
+          contentEl.innerHTML = `<p style="color: var(--error)">Error: ${escapeHtml(err.message)}</p>`;
+        }
+      }
+    );
+  } catch (err) {
+    if (err.name !== 'AbortError') {
+      contentEl.innerHTML = `<p style="color: var(--error)">Error: ${escapeHtml(err.message)}</p>`;
+    }
+  }
+}
+
+function injectCursor(html) {
+  const cursorHtml = '<span class="streaming-cursor"></span>';
+  if (html.includes('</')) {
+    // Inject before the last closing tag
+    return html.replace(/(<\/([a-z0-9]+)>)$/i, cursorHtml + '$1');
+  }
+  return html + cursorHtml;
 }

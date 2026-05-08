@@ -3,7 +3,7 @@
    ════════════════════════════════════════════════════════════════════ */
 
 import { memoryService } from '../services/memory-service.js';
-import { showToast } from '../main.js';
+import { showToast, openWindow, closeWindow } from '../main.js';
 import { appState } from '../state.js';
 import { escapeHtml, formatTime } from '../utils/helpers.js';
 
@@ -14,12 +14,12 @@ export function initMemoryViewer() {
 
   btnOpen.addEventListener('click', () => {
     renderMemory();
-    panel.classList.remove('hidden');
+    openWindow(panel);
     // Close settings panel if open
-    document.getElementById('settings-panel').classList.add('hidden');
+    closeWindow('settings-panel');
   });
 
-  btnClose.addEventListener('click', () => panel.classList.add('hidden'));
+  btnClose.addEventListener('click', () => closeWindow(panel));
 
   // Listen for memory updates from chat
   window.addEventListener('memory-updated', () => {

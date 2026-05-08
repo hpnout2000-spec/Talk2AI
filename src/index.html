@@ -35,7 +35,7 @@
           <button id="tab-books" class="sidebar-tab" style="flex: 1; padding: 8px; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); border: 1px solid transparent; cursor: pointer; font-weight: 500;">Books</button>
         </div>
 
-        <div id="characters-section">
+        <div id="characters-section" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
           <div class="sidebar-section">
             <div class="section-label">Characters</div>
           <div id="character-list" class="character-list"></div>
@@ -77,7 +77,7 @@
         </div>
         </div>
 
-        <div id="books-section" class="hidden">
+        <div id="books-section" class="hidden" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
           <div class="sidebar-section">
             <div class="section-label">My Books</div>
             <div id="book-list" class="character-list"></div>
@@ -445,7 +445,14 @@
           </div>
 
           <div class="settings-section">
-            <h3>Thinking</h3>
+            <h3>Features</h3>
+            <div class="form-group-row">
+              <label>AI Comments</label>
+              <label class="toggle-switch small">
+                <input type="checkbox" id="setting-ai-comments" checked />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
             <div class="form-group-row">
               <label>Thinking Mode <span style="font-size: 0.8em; opacity: 0.7;">(Temporarily unavailable)</span></label>
               <label class="toggle-switch small">
@@ -582,6 +589,12 @@
                   </svg>
                   <span>Generation</span>
                 </button>
+                <button class="nav-item" id="nav-tab-ai-comments" data-tab="ai-comments">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+                  </svg>
+                  <span>AI Comments</span>
+                </button>
               </nav>
 
               <!-- Main Content Area -->
@@ -643,11 +656,61 @@
                     </div>
                   </div>
                 </div>
+
+                <!-- AI Comments Tab -->
+                <div id="tab-ai-comments" class="tab-content">
+                  <div class="settings-grid" style="grid-template-columns: 1fr;">
+                    <div class="settings-section">
+                      <h3>AI Comments Configuration</h3>
+                      <div class="form-group" style="flex: 1; display: flex; flex-direction: column;">
+                        <label for="adv-ai-comments-prompt">Comment System Prompt</label>
+                        <textarea id="adv-ai-comments-prompt" style="flex: 1; min-height: 200px;" placeholder="Instructions for the AI on how to comment..."></textarea>
+                        <p class="form-hint">This prompt will be sent to the AI when generating a comment. Use {{char}} and {{user}} placeholders if needed.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
           <div class="modal-footer">
             <button id="btn-save-advanced" class="btn-primary">Save Changes</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── AI Comment Modal ────────────────────────────── -->
+      <div id="ai-comment-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content" style="max-width: 500px;">
+          <div class="modal-header">
+            <h2 style="display: flex; align-items: center; gap: 8px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+                <path d="M12 8v4l3 3"/>
+              </svg>
+              AI Comment
+            </h2>
+            <button class="btn-close-modal btn-icon" id="btn-close-ai-comment">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <div id="ai-comment-content" style="font-size: var(--text-sm); line-height: 1.6; color: var(--text-primary); min-height: 60px;">
+              Generating comment...
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button id="btn-advice-ai-comment" class="btn-secondary hidden" title="What should I do next?">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+                <path d="M7 13l5 5 5-5M7 6l5 5 5-5"/>
+              </svg>
+            </button>
+            <div style="flex: 1;"></div>
+            <button id="btn-copy-ai-comment" class="btn-secondary hidden">Copy</button>
+            <button id="btn-ok-ai-comment" class="btn-primary">Hide</button>
           </div>
         </div>
       </div>

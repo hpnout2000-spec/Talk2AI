@@ -4,7 +4,7 @@
 
 import { bookStore } from '../services/book-store.js';
 import { appState } from '../state.js';
-import { closeModal, showToast } from '../main.js';
+import { closeModal, showToast, openWindow, closeWindow } from '../main.js';
 
 let tabCharacters;
 let tabBooks;
@@ -94,11 +94,11 @@ export function initBookPanel() {
     charCountInput.value = '2';
     allowNewCharsInput.checked = true;
     initialPromptInput.value = '';
-    bookModal.classList.remove('hidden');
+    openWindow(bookModal);
   });
 
-  btnCloseBookModal.addEventListener('click', () => closeModal(bookModal));
-  btnCancelBook.addEventListener('click', () => closeModal(bookModal));
+  btnCloseBookModal.addEventListener('click', () => closeWindow(bookModal));
+  btnCancelBook.addEventListener('click', () => closeWindow(bookModal));
 
   btnSaveBook.addEventListener('click', async () => {
     const title = titleInput.value.trim();
@@ -112,7 +112,7 @@ export function initBookPanel() {
     }
 
     const book = await bookStore.createBook(title, charCount, allowNewChars, initialPrompt);
-    closeModal(bookModal);
+    closeWindow(bookModal);
     renderBookList();
     selectBook(book.id);
   });

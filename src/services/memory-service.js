@@ -33,6 +33,10 @@ IMPORTANT: Return ONLY the JSON, no other text.`;
 
 export const memoryService = {
   async loadForCharacter(characterId) {
+    if (memories.hasOwnProperty(characterId)) {
+      return memories[characterId];
+    }
+
     try {
       const result = await invokeTauri('load_memory', { characterId });
       if (result) {

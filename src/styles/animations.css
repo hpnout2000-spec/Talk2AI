@@ -12,12 +12,12 @@
 @keyframes fadeOutBlur {
   from {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) translateZ(0);
     filter: blur(0);
   }
   to {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(10px) translateZ(0);
     filter: blur(8px);
   }
 }
@@ -25,12 +25,12 @@
 @keyframes fadeInUp {
   from {
     opacity: 0;
-    transform: translateY(16px) scale(0.98);
+    transform: translateY(16px) scale(0.98) translateZ(0);
     filter: blur(4px);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateY(0) scale(1) translateZ(0);
     filter: blur(0);
   }
 }
@@ -152,24 +152,24 @@
 }
 
 @keyframes backdropBlurIn {
-  from { backdrop-filter: blur(0); background: rgba(0,0,0,0); }
-  to { backdrop-filter: blur(12px); background: rgba(0,0,0,0.6); }
+  from { backdrop-filter: blur(0); background: rgba(0,0,0,0); transform: translateZ(0); }
+  to { backdrop-filter: blur(12px); background: rgba(0,0,0,0.6); transform: translateZ(0); }
 }
 
 @keyframes backdropBlurOut {
-  from { backdrop-filter: blur(12px); background: rgba(0,0,0,0.6); }
-  to { backdrop-filter: blur(0); background: rgba(0,0,0,0); }
+  from { backdrop-filter: blur(12px); background: rgba(0,0,0,0.6); transform: translateZ(0); }
+  to { backdrop-filter: blur(0); background: rgba(0,0,0,0); transform: translateZ(0); }
 }
 
 @keyframes modalContentOpen {
   from {
     opacity: 0;
-    transform: scale(0.9) translateY(20px);
+    transform: scale(0.9) translateY(20px) translateZ(0);
     filter: blur(15px);
   }
   to {
     opacity: 1;
-    transform: scale(1) translateY(0);
+    transform: scale(1) translateY(0) translateZ(0);
     filter: blur(0);
   }
 }
@@ -177,12 +177,12 @@
 @keyframes modalContentClose {
   from {
     opacity: 1;
-    transform: scale(1) translateY(0);
+    transform: scale(1) translateY(0) translateZ(0);
     filter: blur(0);
   }
   to {
     opacity: 0;
-    transform: scale(0.95) translateY(10px);
+    transform: scale(0.95) translateY(10px) translateZ(0);
     filter: blur(15px);
   }
 }
@@ -191,6 +191,7 @@
 
 .modal {
   animation: modalFadeIn 0.4s ease forwards;
+  will-change: transform, opacity;
 }
 
 .modal.closing {
@@ -200,6 +201,19 @@
 
 .modal-backdrop {
   animation: backdropBlurIn 0.4s ease forwards;
+  will-change: backdrop-filter, background-color;
+  transform: translateZ(0);
+}
+
+/* ─── Scroll Optimization ────────────────────────────────────────── */
+
+body.is-scrolling {
+  pointer-events: none !important;
+}
+
+.modal-body, .panel-body, .character-list, .gallery-grid, #chat-messages {
+  /* Optimize scroll performance */
+  -webkit-overflow-scrolling: touch;
 }
 
 .modal.closing .modal-backdrop {
@@ -208,10 +222,39 @@
 
 .modal-content {
   animation: modalContentOpen 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity, filter;
 }
 
 .modal.closing .modal-content {
   animation: modalContentClose 0.4s ease forwards;
+}
+
+/* ─── Stacked Depth Effect ───────────────────────────────────────── */
+
+.ui-stacked {
+  transform: scale(0.96) translateY(-1.5rem) translateZ(0) !important;
+  filter: blur(6px) brightness(0.6) !important;
+  pointer-events: none !important;
+  user-select: none !important;
+  /* Disable expensive backdrop effects on background windows */
+  backdrop-filter: none !important;
+  will-change: auto !important;
+}
+
+/* Ensure smooth transitions for elements that can be stacked */
+.sidebar, 
+.main-content, 
+.modal-content, 
+.side-panel {
+  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), 
+              filter 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.4s ease;
+}
+
+/* Special case for modal backdrop when stacked: hide it more or dim it */
+.modal.ui-stacked .modal-backdrop {
+  opacity: 0.4 !important;
+  backdrop-filter: blur(4px) !important;
 }
 
 /* ─── Utility Classes ────────────────────────────────────────────── */
@@ -405,13 +448,13 @@
 @keyframes textBlurIn {
   0% {
     opacity: 0;
-    filter: blur(6px);
-    transform: translateY(2px) scale(0.98);
+    filter: blur(4px);
+    transform: translateY(2px) scale(0.98) translateZ(0);
   }
   100% {
     opacity: 1;
     filter: blur(0);
-    transform: translateY(0) scale(1);
+    transform: translateY(0) scale(1) translateZ(0);
   }
 }
 
