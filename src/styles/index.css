@@ -471,22 +471,13 @@ body {
 }
 
 /* Side Panel */
-.side-panel {
-  position: fixed;
-  top: 0;
-  right: 0;
-  width: var(--panel-width);
-  height: 100vh;
-  background: var(--bg-secondary);
-  border-left: 1px solid var(--border-subtle);
-  box-shadow: var(--shadow-lg);
-  z-index: 50;
-  display: flex;
-  flex-direction: column;
-  transform: translateX(100%) translateZ(0);
+.side-panel.hidden {
+  display: flex !important;
+  pointer-events: none;
   opacity: 0;
-  will-change: transform, opacity;
-  animation: slideInRight 0.3s ease forwards;
+  transform: translateX(20px);
+  width: 0 !important;
+  overflow: hidden;
 }
 
 .side-panel.hidden:not(.right-sidebar) {
