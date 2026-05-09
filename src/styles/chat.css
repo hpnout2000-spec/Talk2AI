@@ -15,6 +15,11 @@
   overflow: hidden;
   border: 1px solid var(--border-light);
   box-shadow: var(--shadow-lg);
+
+  transition:
+    width 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+    filter 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: width, filter;
 }
 
 .main-content.is-animating {
@@ -1013,28 +1018,31 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
 /* ─── Right Sidebar (AI Comments) ────────────────────────────────── */
 
 .right-sidebar {
-  /* Override the left-sidebar's left border to be a right-border */
-  border-left: 1px solid var(--border-light);
-  border-right: none;
-  border-radius: var(--radius-xl);
   width: var(--sidebar-width);
   flex-shrink: 0;
+  transition:
+    width 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+    filter 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: width, opacity, transform, filter;
+  
+  /* Additional styles for aesthetics */
+  border-left: 1px solid var(--border-light);
+  border-radius: var(--radius-xl);
   overflow: hidden;
   background: rgba(var(--bg-secondary-rgb, 24, 24, 27), 0.85);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  will-change: width, opacity, filter, transform;
 }
 
 .right-sidebar.hidden {
   display: flex !important;
   width: 0 !important;
-  margin-left: -12px !important;
-  opacity: 0 !important;
-  filter: blur(15px) !important;
-  transform: scale(0.96) translateX(40px) !important;
-  pointer-events: none !important;
-  border: none !important;
+  opacity: 0;
+  transform: translateX(20px) translateZ(0);
+  overflow: hidden;
+  pointer-events: none;
 }
 
 /* The arrow toggle button: sits between main and the right panel */

@@ -489,8 +489,8 @@ body {
   animation: slideInRight 0.3s ease forwards;
 }
 
-.side-panel.hidden {
-  display: none;
+.side-panel.hidden:not(.right-sidebar) {
+  display: none !important;
 }
 
 .panel-header {
