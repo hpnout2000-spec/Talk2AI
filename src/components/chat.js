@@ -118,7 +118,7 @@ export function initChat() {
   const btnToggleHistory = document.getElementById('btn-toggle-history');
   const historyList = document.getElementById('chat-history-list');
   const historyChevron = document.getElementById('history-chevron');
-  
+
   if (btnToggleHistory && historyChevron) {
     btnToggleHistory.addEventListener('click', () => {
       const section = btnToggleHistory.closest('.sidebar-section');
@@ -1456,7 +1456,7 @@ Do not include any Markdown formatting like \`\`\`json or any other text. Return
 
     // CRITICAL: Check if we were aborted while waiting for the network
     if (signal.aborted || !msgElement.isConnected) return;
-    
+
     // Check if user started typing in the meantime
     if (messageInput.value.trim().length > 0) return;
 
@@ -1699,25 +1699,25 @@ function injectCursor(html) {
 export function renderAiCommentsHistory() {
   const listEl = document.getElementById('ai-comments-list');
   if (!listEl) return;
-  
+
   const session = chatStore.getCurrentSession();
   listEl.innerHTML = '';
-  
+
   if (!session || !session.ai_comments || session.ai_comments.length === 0) {
     listEl.innerHTML = '<div style="text-align: center; color: var(--text-tertiary); padding: 20px; font-size: var(--text-sm);">No comments yet.</div>';
     return;
   }
-  
+
   const comments = [...session.ai_comments].reverse();
-  
+
   comments.forEach(comment => {
     const item = document.createElement('div');
     item.className = 'ai-comment-history-item';
-    
+
     // Format timestamp
     const date = new Date(comment.timestamp);
     const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    
+
     item.innerHTML = `
       <div class="ai-comment-history-target">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1742,34 +1742,31 @@ function setupAiCommentsSidebar() {
   
   if (!toggleBtn || !sidebar || !closeBtn || !mainContent) return;
   
+  // Принудительно очищаем старый класс при запуске
+  sidebar.classList.remove('hidden');
+  toggleBtn.classList.remove('hidden');
   const setSidebarState = (open) => {
     mainContent.classList.add('is-animating');
     
     if (open) {
-      mainContent.classList.add('right-open');
-      sidebar.classList.remove('hidden');
-      toggleBtn.classList.add('open');
+      document.body.classList.add('ai-sidebar-open');
       
-      // ВАЖНО: Откладываем тяжелый рендер на 50мс.
-      // Это отдаст первый кадр CSS-движку и предотвратит «рывок» при открытии.
       setTimeout(() => {
         renderAiCommentsHistory();
-      }, 50);
+      }, 300);
     } else {
-      mainContent.classList.remove('right-open');
-      sidebar.classList.add('hidden');
-      toggleBtn.classList.remove('open');
+      document.body.classList.remove('ai-sidebar-open');
     }
     
-    // Cleanup blur after transition
     setTimeout(() => {
       mainContent.classList.remove('is-animating');
     }, 600);
   };
   
   toggleBtn.addEventListener('click', () => {
-    const isHidden = sidebar.classList.contains('hidden');
-    setSidebarState(isHidden);
+    // Теперь проверяем наличие глобального класса
+    const isCurrentlyOpen = document.body.classList.contains('ai-sidebar-open');
+    setSidebarState(!isCurrentlyOpen);
   });
   
   closeBtn.addEventListener('click', () => {

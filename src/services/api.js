@@ -130,7 +130,7 @@ export const api = {
    * @returns {string} The assistant's response
    */
   async chatCompletion(messages, options = {}) {
-    const signal = options.signal || AbortSignal.timeout(30000);
+    const signal = options.signal;
     
     // Fail immediately if already aborted
     if (signal?.aborted) {

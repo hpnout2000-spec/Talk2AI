@@ -131,7 +131,6 @@ body {
   padding: 12px;
   gap: 12px;
   /* Dynamic widths for animation */
-  --right-sidebar-w: 0px;
 }
 
 /* ─── Scrollbar ──────────────────────────────────────────────────── */
