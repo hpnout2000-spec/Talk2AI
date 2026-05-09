@@ -1739,11 +1739,26 @@ function setupAiCommentsSidebar() {
   const sidebar = document.getElementById('ai-comments-sidebar');
   const closeBtn = document.getElementById('btn-close-ai-comments-sidebar');
   const mainContent = document.getElementById('main-content');
+  const app = document.getElementById('app');
   
-  if (!toggleBtn || !sidebar || !closeBtn || !mainContent) return;
+  if (!toggleBtn || !sidebar || !closeBtn || !mainContent || !app) return;
   
-  const triggerMotionBlur = () => {
+  const setSidebarState = (open) => {
+    // Add blurring class to chat only
     mainContent.classList.add('is-animating');
+    
+    if (open) {
+      app.style.setProperty('--right-sidebar-w', 'var(--sidebar-width)');
+      sidebar.classList.remove('hidden');
+      toggleBtn.classList.add('open');
+      renderAiCommentsHistory();
+    } else {
+      app.style.setProperty('--right-sidebar-w', '0px');
+      sidebar.classList.add('hidden');
+      toggleBtn.classList.remove('open');
+    }
+    
+    // Cleanup blur after transition
     setTimeout(() => {
       mainContent.classList.remove('is-animating');
     }, 600);
@@ -1751,22 +1766,11 @@ function setupAiCommentsSidebar() {
   
   toggleBtn.addEventListener('click', () => {
     const isHidden = sidebar.classList.contains('hidden');
-    triggerMotionBlur();
-    
-    if (isHidden) {
-      sidebar.classList.remove('hidden');
-      toggleBtn.classList.add('open');
-      renderAiCommentsHistory();
-    } else {
-      sidebar.classList.add('hidden');
-      toggleBtn.classList.remove('open');
-    }
+    setSidebarState(isHidden);
   });
   
   closeBtn.addEventListener('click', () => {
-    triggerMotionBlur();
-    sidebar.classList.add('hidden');
-    toggleBtn.classList.remove('open');
+    setSidebarState(false);
   });
 }
 
