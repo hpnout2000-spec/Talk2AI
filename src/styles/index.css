@@ -470,7 +470,25 @@ body {
   border-top: 1px solid var(--border-subtle);
 }
 
-/* Side Panel */
+/* Side Panel (Shared for Character, Settings, etc.) */
+.side-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: var(--panel-width);
+  height: 100vh;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-lg);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%) translateZ(0);
+  opacity: 0;
+  will-change: transform, opacity;
+  animation: slideInRight 0.3s ease forwards;
+}
+
 .side-panel.hidden {
   display: flex !important;
   pointer-events: none;
