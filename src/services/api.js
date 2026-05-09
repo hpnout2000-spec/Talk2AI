@@ -130,30 +130,28 @@ export const api = {
    * @returns {string} The assistant's response
    */
   async chatCompletion(messages, options = {}) {
-    const settings = settingsStore.get();
-
-    const body = {
-      messages,
-      stream: false,
-      max_tokens: options.max_tokens || 512,
-      temperature: options.temperature || 0.3,
-      jinja_kwargs: { enable_thinking: false },
-    };
-
-    const resp = await fetch(`${settings.api_url}/v1/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(30000),
-    });
-
-    if (!resp.ok) {
-      throw new Error(`API error ${resp.status}`);
+    const signal = options.signal || AbortSignal.timeout(30000);
+    
+    // Fail immediately if already aborted
+    if (signal?.aborted) {
+      const err = new Error('Aborted');
+      err.name = 'AbortError';
+      throw err;
     }
 
-    const data = await resp.json();
-    return data.choices?.[0]?.message?.content || '';
+    return new Promise((resolve, reject) => {
+      let fullResponse = '';
+      this.streamChat(
+        messages,
+        signal,
+        (chunk) => { fullResponse += chunk; },
+        () => resolve(fullResponse),
+        (err) => reject(err),
+        options
+      );
+    });
   },
+
 
   /**
    * Translate text to a target language
@@ -185,7 +183,7 @@ export const api = {
    * @param {Function} onDone
    * @param {Function} onError
    */
-  async streamTranslate(text, targetLang, onChunk, onDone, onError) {
+  async streamTranslate(text, targetLang, onChunk, onDone, onError, signal = null) {
     const messages = [
       {
         role: 'system',
@@ -193,6 +191,6 @@ export const api = {
       },
       { role: 'user', content: text },
     ];
-    await this.streamChat(messages, new AbortController().signal, onChunk, onDone, onError);
+    await this.streamChat(messages, signal || new AbortController().signal, onChunk, onDone, onError);
   },
 };

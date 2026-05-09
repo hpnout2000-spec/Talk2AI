@@ -11,13 +11,42 @@ export function initMemoryViewer() {
   const panel = document.getElementById('memory-panel');
   const btnOpen = document.getElementById('btn-memory');
   const btnClose = document.getElementById('btn-close-memory');
+  const popover = document.getElementById('memory-popover');
+  const btnShowAll = document.getElementById('btn-show-all-memory');
 
-  btnOpen.addEventListener('click', () => {
-    renderMemory();
-    openWindow(panel);
-    // Close settings panel if open
-    closeWindow('settings-panel');
+  btnOpen.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isHidden = popover.classList.contains('hidden');
+    
+    // Close other popovers
+    document.querySelectorAll('.popover:not(.hidden)').forEach(p => {
+      if (p !== popover) p.classList.add('hidden');
+    });
+
+    if (isHidden) {
+      renderMemoryPopover();
+      popover.classList.remove('hidden');
+    } else {
+      popover.classList.add('hidden');
+    }
   });
+
+  // Close popover when clicking outside
+  document.addEventListener('click', (e) => {
+    if (popover && !popover.contains(e.target) && !btnOpen.contains(e.target)) {
+      popover.classList.add('hidden');
+    }
+  });
+
+  if (btnShowAll) {
+    btnShowAll.addEventListener('click', () => {
+      popover.classList.add('hidden');
+      renderMemory();
+      openWindow(panel);
+      // Close settings panel if open
+      closeWindow('settings-panel');
+    });
+  }
 
   btnClose.addEventListener('click', () => closeWindow(panel));
 
@@ -26,7 +55,46 @@ export function initMemoryViewer() {
     if (!panel.classList.contains('hidden')) {
       renderMemory();
     }
+    if (popover && !popover.classList.contains('hidden')) {
+      renderMemoryPopover();
+    }
   });
+}
+
+function renderMemoryPopover() {
+  const content = document.getElementById('memory-popover-content');
+  if (!content) return;
+
+  if (!appState.currentCharacter) {
+    content.innerHTML = `<div class="empty-state small" style="padding: 16px 0;"><p>Select a character</p></div>`;
+    return;
+  }
+
+  const memory = memoryService.getMemory(appState.currentCharacter.id);
+  const entries = memory.entries || [];
+
+  if (entries.length === 0) {
+    content.innerHTML = `<div class="empty-state small" style="padding: 16px 0;"><p>No memories yet</p></div>`;
+    return;
+  }
+
+  const categoryIcons = {
+    fact: '💡',
+    preference: '❤️',
+    event: '📌',
+  };
+
+  // Get last 5 memories, sorted by timestamp descending
+  const recentEntries = [...entries].sort((a, b) => b.timestamp - a.timestamp).slice(0, 5);
+
+  content.innerHTML = recentEntries.map(entry => `
+    <div class="memory-entry" style="padding: 8px; background: var(--bg-primary); border-radius: var(--radius-sm); border: 1px solid var(--border-light); margin-bottom: 0;">
+      <div class="memory-entry-icon" style="font-size: 14px; margin-right: 8px;">${categoryIcons[entry.category] || '📝'}</div>
+      <div class="memory-entry-body">
+        <div class="memory-entry-content" style="font-size: var(--text-xs); line-height: 1.4;">${escapeHtml(entry.content)}</div>
+      </div>
+    </div>
+  `).join('');
 }
 
 function renderMemory() {

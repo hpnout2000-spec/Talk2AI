@@ -27,7 +27,7 @@
   height: var(--header-height);
   user-select: none;
   -webkit-user-select: none;
-  -webkit-app-region: drag;
+  cursor: default;
 }
 
 .app-logo {
@@ -79,11 +79,19 @@
   flex: 1;
   overflow-y: auto;
   min-height: 0;
+  transition: flex 0.2s ease-in-out;
+}
+
+.sidebar-section.collapsed {
+  flex: 0 0 auto;
+  overflow: hidden;
+}
+
+.sidebar-section.collapsed .chat-history-list {
+  display: none;
 }
 
 .sidebar-section:first-of-type {
-  flex: 0 0 auto;
-  max-height: 45%;
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -112,12 +120,21 @@
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: background-color var(--transition-fast), transform var(--transition-fast);
+  transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
   position: relative;
+  transform: translateY(0) scale(1);
 }
 
 .character-item:hover {
   background: var(--bg-hover);
+  transform: translateY(-3px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+}
+
+.character-item:active {
+  transform: translateY(2px) scale(0.97);
+  transition: all 0.1s ease-out;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .character-item.active {
@@ -226,6 +243,37 @@
 .character-item-actions button svg {
   width: 14px;
   height: 14px;
+}
+
+/* ─── Scroll Blur Overlays ───────────────────────────────────────── */
+
+.scroll-blur-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 40px;
+  z-index: 10;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.scroll-blur-overlay.top {
+  top: 0;
+  background: linear-gradient(to bottom, var(--bg-secondary) 10%, transparent 100%);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  mask-image: linear-gradient(to bottom, black 40%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, black 40%, transparent);
+}
+
+.scroll-blur-overlay.bottom {
+  bottom: 0;
+  background: linear-gradient(to top, var(--bg-secondary) 10%, transparent 100%);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  mask-image: linear-gradient(to top, black 40%, transparent);
+  -webkit-mask-image: linear-gradient(to top, black 40%, transparent);
 }
 
 /* ─── Add Character Button ───────────────────────────────────────── */
@@ -561,7 +609,8 @@
   /* Core Optimization: prevent layout thrashing and optimize paint */
   contain: content;
   content-visibility: auto;
-  contain-intrinsic-size: 200px 266px; /* Rough estimate of card size */
+  contain-intrinsic-size: 200px 266px;
+  /* Rough estimate of card size */
 }
 
 .character-card:hover {
@@ -593,7 +642,7 @@
 
 .character-card-info {
   padding: var(--space-4);
-  background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 100%);
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.8) 0%, transparent 100%);
   position: absolute;
   bottom: 0;
   left: 0;
@@ -671,4 +720,3 @@
   height: 18px;
   color: var(--accent-primary);
 }
-

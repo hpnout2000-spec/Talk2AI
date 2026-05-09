@@ -15,6 +15,30 @@ let editingCharacterId = null;
 export function initCharacterPanel() {
   renderCharacterList();
 
+  // Scroll blur logic
+  const charSidebarSection = document.getElementById('char-sidebar-section');
+  const blurTop = document.getElementById('char-blur-top');
+  const blurBottom = document.getElementById('char-blur-bottom');
+  
+  const updateScrollBlur = () => {
+    if (!charSidebarSection || !blurTop || !blurBottom) return;
+    const { scrollTop, scrollHeight, clientHeight } = charSidebarSection;
+    
+    // Top blur: fades in when scrolling down
+    blurTop.style.opacity = Math.min(scrollTop / 20, 1);
+    
+    // Bottom blur: fades out when reaching bottom
+    const maxScroll = scrollHeight - clientHeight;
+    blurBottom.style.opacity = maxScroll <= 0 ? 0 : Math.min((maxScroll - scrollTop) / 20, 1);
+  };
+
+  if (charSidebarSection) {
+    charSidebarSection.addEventListener('scroll', updateScrollBlur);
+    window.addEventListener('resize', updateScrollBlur);
+    // Expose globally to trigger after list updates
+    window.updateCharacterScrollBlur = () => setTimeout(updateScrollBlur, 50);
+  }
+
   // Add character button
   document.getElementById('btn-add-character').addEventListener('click', () => {
     openCharacterEditor();
@@ -179,6 +203,21 @@ Do not include any Markdown formatting like \`\`\`json or any other text. Return
   // Listen for global character updates (e.g. from chat to re-sort)
   window.addEventListener('character-list-updated', () => {
     renderCharacterList();
+    renderGalleryGrid();
+  });
+
+  // Listen for character selection to update active class without re-rendering
+  window.addEventListener('character-selected', (e) => {
+    const list = document.getElementById('character-list');
+    if (!list) return;
+    const items = list.querySelectorAll('.character-item');
+    items.forEach(item => {
+      if (item.dataset.charId === e.detail.id) {
+        item.classList.add('active');
+      } else {
+        item.classList.remove('active');
+      }
+    });
   });
 }
 
@@ -250,7 +289,6 @@ export function renderCharacterList() {
       const character = characterStore.getById(id);
       if (character) {
         selectCharacter(character);
-        renderCharacterList();
       }
     });
   });
@@ -283,6 +321,10 @@ export function renderCharacterList() {
       }
     });
   });
+
+  if (window.updateCharacterScrollBlur) {
+    setTimeout(window.updateCharacterScrollBlur, 50);
+  }
 }
 
 // ─── Character Editor Modal ─────────────────────────────────────────

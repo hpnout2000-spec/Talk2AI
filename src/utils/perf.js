@@ -4,12 +4,12 @@ class PerfLogger {
     this.activeMarkers = new Map();
     this.isMonitoringFPS = false;
     this.lastFrameTime = performance.now();
-    
+
     // Automatic Long Task Detection
     if (window.PerformanceObserver) {
       this.observer = new PerformanceObserver((list) => {
         for (const entry of list.getEntries()) {
-          this.logAction('LONG_TASK_DETECTION', { 
+          this.logAction('LONG_TASK_DETECTION', {
             duration: entry.duration.toFixed(2) + 'ms',
             startTime: entry.startTime.toFixed(2) + 'ms'
           });
@@ -61,19 +61,19 @@ class PerfLogger {
   startFPSMonitor() {
     if (this.isMonitoringFPS) return;
     this.isMonitoringFPS = true;
-    
+
     const checkFPS = () => {
       const now = performance.now();
       const delta = now - this.lastFrameTime;
       this.lastFrameTime = now;
 
       if (delta > 32) {
-        this.logAction('FRAME_DROP', { 
+        this.logAction('FRAME_DROP', {
           delta: delta.toFixed(2) + 'ms',
-          durationNum: delta 
+          durationNum: delta
         });
       }
-      
+
       if (this.isMonitoringFPS) requestAnimationFrame(checkFPS);
     };
     requestAnimationFrame(checkFPS);
@@ -103,7 +103,7 @@ let lastScrollTime = 0;
 window.addEventListener('scroll', (e) => {
   const now = performance.now();
   const target = e.target === document ? 'window' : (e.target.id || e.target.className);
-  
+
   if (lastScrollTime > 0) {
     const gap = now - lastScrollTime;
     perf.logAction('SCROLL_TICK', { target, gap: gap.toFixed(2) + 'ms' });
@@ -111,7 +111,7 @@ window.addEventListener('scroll', (e) => {
     perf.logAction('SCROLL_START', { target });
     document.body.classList.add('disable-hover');
   }
-  
+
   lastScrollTime = now;
   // Reset scroll timer after 150ms of inactivity
   clearTimeout(window._scrollResetTimer);
@@ -131,10 +131,10 @@ window.addEventListener('mousemove', () => {
 }, true);
 
 window.addEventListener('click', (e) => {
-  perf.logAction('CLICK', { 
-    tag: e.target.tagName, 
-    id: e.target.id, 
-    class: e.target.className 
+  perf.logAction('CLICK', {
+    tag: e.target.tagName,
+    id: e.target.id,
+    class: e.target.className
   });
 }, true);
 

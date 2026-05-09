@@ -5,7 +5,7 @@
 /* ─── Main Content Layout ────────────────────────────────────────── */
 
 .main-content {
-  flex: 1;
+  flex: 1 1 0%;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -15,6 +15,8 @@
   overflow: hidden;
   border: 1px solid var(--border-light);
   box-shadow: var(--shadow-lg);
+  /* Force all layout changes to be animated */
+  transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* ─── Chat Header ────────────────────────────────────────────────── */
@@ -32,7 +34,7 @@
   z-index: 10;
   user-select: none;
   -webkit-user-select: none;
-  -webkit-app-region: drag;
+  cursor: default;
 }
 
 .chat-header-left {
@@ -259,8 +261,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   border: none;
   background: transparent;
   color: var(--text-tertiary);
@@ -275,8 +277,8 @@
 }
 
 .message-actions button svg {
-  width: 13px;
-  height: 13px;
+  width: 16px;
+  height: 16px;
 }
 
 body:not(.ai-comments-enabled) .btn-ai-comment {
@@ -702,7 +704,6 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
   opacity: 1;
   color: var(--text-primary);
   background: var(--bg-hover);
-  -webkit-app-region: no-drag;
 }
 
 .btn-input-settings svg {
@@ -833,7 +834,6 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
   cursor: pointer;
   border-radius: var(--radius-sm);
   transition: all var(--transition-fast);
-  -webkit-app-region: no-drag;
 }
 
 .window-btn:hover {
@@ -1005,4 +1005,127 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
 .btn-add-indicator-preset:hover {
   color: var(--text-primary);
   border-color: var(--text-tertiary);
+}
+
+/* ─── Right Sidebar (AI Comments) ────────────────────────────────── */
+
+.right-sidebar {
+  /* Override the left-sidebar's left border to be a right-border */
+  border-left: 1px solid var(--border-light);
+  border-right: none;
+  border-radius: var(--radius-xl);
+  flex-basis: var(--sidebar-width);
+  width: var(--sidebar-width);
+  flex-grow: 0;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: rgba(var(--bg-secondary-rgb, 24, 24, 27), 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  will-change: width, opacity, filter, transform;
+  /* Sync all transitions */
+  transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.right-sidebar.hidden {
+  display: flex !important;
+  flex-basis: 0 !important;
+  width: 0 !important;
+  margin-left: -12px !important;
+  opacity: 0 !important;
+  filter: blur(15px) !important;
+  transform: scale(0.96) translateX(40px) !important;
+  pointer-events: none !important;
+  border: none !important;
+}
+
+/* The arrow toggle button: sits between main and the right panel */
+.btn-toggle-right-sidebar {
+  align-self: center;
+  width: 20px;
+  height: 48px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+  box-shadow: var(--shadow-sm);
+}
+
+.btn-toggle-right-sidebar.hidden {
+  display: none !important;
+}
+
+.btn-toggle-right-sidebar:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  width: 24px;
+}
+
+.btn-toggle-right-sidebar svg {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.3s;
+}
+
+.btn-toggle-right-sidebar.open svg {
+  transform: rotate(180deg);
+}
+
+.ai-comment-history-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-3);
+  animation: fadeInUp 0.3s ease;
+}
+
+.ai-comment-history-target {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  border-left: 2px solid var(--border-light);
+}
+
+.ai-comment-history-target svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.ai-comment-history-target span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.ai-comment-history-content {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  line-height: 1.5;
+}
+
+.ai-comment-history-meta {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  text-align: right;
+  margin-top: var(--space-1);
 }

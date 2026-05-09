@@ -11,7 +11,7 @@ async function invokeTauri(cmd, args = {}) {
   if (window.__TAURI_INTERNALS__) {
     return await window.__TAURI_INTERNALS__.invoke(cmd, args);
   }
-  return null;
+  throw new Error('Not running in Tauri environment');
 }
 
 export const chatStore = {
@@ -21,21 +21,33 @@ export const chatStore = {
       return sessions[characterId];
     }
 
+    let parsedTauri = [];
+    let parsedLocal = [];
+
+    // Try Tauri
     try {
       const result = await invokeTauri('load_chats', { characterId });
-      if (result) {
-        sessions[characterId] = JSON.parse(result);
-      } else {
-        const saved = localStorage.getItem(`llmchat_chats_${characterId}`);
-        if (saved) sessions[characterId] = JSON.parse(saved);
-        else sessions[characterId] = [];
-      }
-    } catch {
-      const saved = localStorage.getItem(`llmchat_chats_${characterId}`);
-      if (saved) sessions[characterId] = JSON.parse(saved);
-      else sessions[characterId] = [];
+      if (result) parsedTauri = JSON.parse(result);
+    } catch (e) {
+      console.warn('Tauri load failed', e);
     }
-    return sessions[characterId] || [];
+
+    // Try LocalStorage
+    try {
+      const saved = localStorage.getItem(`llmchat_chats_${characterId}`);
+      if (saved) parsedLocal = JSON.parse(saved);
+    } catch (e) {
+      console.warn('LocalStorage load failed', e);
+    }
+
+    // Merge: Use whichever has more sessions (safer fallback)
+    if (parsedLocal.length > parsedTauri.length) {
+      sessions[characterId] = parsedLocal;
+    } else {
+      sessions[characterId] = parsedTauri.length > 0 ? parsedTauri : parsedLocal;
+    }
+
+    return sessions[characterId];
   },
 
   getSessions(characterId) {
@@ -51,6 +63,7 @@ export const chatStore = {
       id: generateId(),
       character_id: characterId,
       messages: [],
+      ai_comments: [],
       indicators: { enabled: false, list: [] },
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -109,6 +122,12 @@ export const chatStore = {
     const targetSession = session || currentSession;
     if (!targetSession) return;
     const msgs = targetSession.messages;
+    
+    // Clear all previous options to ensure they only appear on the last message
+    msgs.forEach(m => {
+      if (m.options) delete m.options;
+    });
+
     for (let i = msgs.length - 1; i >= 0; i--) {
       if (msgs[i].role === 'assistant') {
         msgs[i].options = options;
@@ -125,6 +144,26 @@ export const chatStore = {
     targetSession.updated_at = new Date().toISOString();
   },
 
+  addAiComment(targetMessageId, targetContentSnippet, commentContent, session = null) {
+    const targetSession = session || currentSession;
+    if (!targetSession) return null;
+    
+    // Ensure array exists for backward compatibility
+    if (!targetSession.ai_comments) targetSession.ai_comments = [];
+    
+    const comment = {
+      id: generateId(),
+      target_message_id: targetMessageId,
+      target_content_snippet: targetContentSnippet,
+      content: commentContent,
+      timestamp: new Date().toISOString(),
+    };
+    
+    targetSession.ai_comments.push(comment);
+    targetSession.updated_at = new Date().toISOString();
+    return comment;
+  },
+
   async saveSession(session = null) {
     const targetSession = session || currentSession;
     if (!targetSession) return;
@@ -132,15 +171,29 @@ export const chatStore = {
     const allSessions = sessions[characterId] || [];
 
     try {
-      await invokeTauri('save_chat', {
-        characterId,
-        data: JSON.stringify(allSessions),
-      });
-    } catch {
-      const key = `llmchat_chats_${characterId}`;
-      localStorage.setItem(key, JSON.stringify(allSessions));
+      const dataStr = JSON.stringify(allSessions);
+      
+      // 1. Always save to LocalStorage as a rock-solid backup
+      try {
+        localStorage.setItem(`llmchat_chats_${characterId}`, dataStr);
+      } catch (e) {
+        console.warn('LocalStorage save failed', e);
+      }
+
+      // 2. Try Tauri
+      try {
+        await invokeTauri('save_chat', {
+          characterId,
+          data: dataStr,
+        });
+      } catch (err) {
+        console.warn('Tauri save failed', err);
+      }
+    } catch (stringifyErr) {
+      console.error('Failed to stringify or save sessions!', stringifyErr);
     }
   },
+
 
   async saveCurrentSession() {
     return this.saveSession(currentSession);
@@ -153,11 +206,19 @@ export const chatStore = {
     if (currentSession && currentSession.id === chatId) {
       currentSession = null;
     }
+    
+    const dataStr = JSON.stringify(sessions[characterId] || []);
+    
+    // 1. Always save to LocalStorage
+    try {
+      localStorage.setItem(`llmchat_chats_${characterId}`, dataStr);
+    } catch (e) {}
+
+    // 2. Try Tauri
     try {
       await invokeTauri('delete_chat', { characterId, chatId });
-    } catch {
-      const key = `llmchat_chats_${characterId}`;
-      localStorage.setItem(key, JSON.stringify(sessions[characterId] || []));
+    } catch (e) {
+      console.warn('Tauri delete_chat failed', e);
     }
   },
 };

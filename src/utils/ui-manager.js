@@ -5,7 +5,7 @@
 class WindowManager {
   constructor() {
     this.stack = []; // elements currently open
-    this.baseElements = ['sidebar', 'main-content'];
+    this.baseElements = ['sidebar', 'main-content', 'ai-comments-sidebar'];
   }
 
   /**
@@ -18,10 +18,23 @@ class WindowManager {
     // Don't add if already in stack
     if (this.stack.includes(el)) return;
 
-    // Show the new window first so it can be added to stack for depth calculation
+    // Show the new window
     el.classList.remove('hidden');
     this.stack.push(el);
     
+    // After modal-content's opening animation ends, clear it so CSS transitions
+    // can take over for future stacking movements (animation: forwards blocks transitions)
+    if (el.classList.contains('modal')) {
+      const content = el.querySelector('.modal-content');
+      if (content) {
+        const onEnd = () => {
+          content.style.animation = 'none';
+          content.removeEventListener('animationend', onEnd);
+        };
+        content.addEventListener('animationend', onEnd);
+      }
+    }
+
     this._updateDepths();
     
     console.log('UI Stack:', this.stack.map(e => e.id));
@@ -41,6 +54,11 @@ class WindowManager {
     const isModal = el.classList.contains('modal');
     
     if (isModal) {
+      // Restore animation property so the closing animation can play
+      // (we clear it after open to allow transitions to work)
+      const content = el.querySelector('.modal-content');
+      if (content) content.style.animation = '';
+
       el.classList.add('closing');
       // If we are closing the top window, immediately start moving others forward
       if (isTop) {

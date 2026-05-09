@@ -91,12 +91,6 @@ async function init() {
   const characters = await characterStore.load();
   await bookStore.load();
 
-  // Preload EVERYTHING into RAM for maximum performance
-  console.log(`Preloading data for ${characters.length} characters...`);
-  await Promise.all([
-    ...characters.map(char => chatStore.loadForCharacter(char.id)),
-    ...characters.map(char => memoryService.loadForCharacter(char.id))
-  ]);
 
   // Initialize all components
   initCharacterPanel();
@@ -120,22 +114,7 @@ async function init() {
 // ─── Tauri Window Controls ──────────────────────────────────────────
 
 async function initWindowControls() {
-  const btnMin = document.getElementById('btn-minimize');
-  const btnMax = document.getElementById('btn-maximize');
-  const btnClose = document.getElementById('btn-close');
-
-  if (window.__TAURI__) {
-    const { getCurrentWindow } = window.__TAURI__.window;
-    const appWindow = getCurrentWindow();
-
-    btnMin?.addEventListener('click', () => appWindow.minimize());
-    btnMax?.addEventListener('click', () => appWindow.toggleMaximize());
-    btnClose?.addEventListener('click', () => appWindow.close());
-  } else {
-    // Hide controls if not in Tauri (e.g. regular browser)
-    const controls = document.querySelector('.window-controls');
-    if (controls) controls.style.display = 'none';
-  }
+  // Logic removed: using native window decorations instead of custom frameless controls
 }
 
 // ─── Check Connection ───────────────────────────────────────────────
@@ -254,12 +233,11 @@ export function showCustomConfirm(title, message, buttons = ['Cancel', 'Confirm'
     messageEl.textContent = message;
     inputContainer.classList.add('hidden');
     
-    // Save original footer content to restore later if needed, but it's okay to just clear it
-    // Wait, other dialogs rely on the original buttons. Let's just hide the original ones and add temporary ones.
-    const origButtons = Array.from(footer.children);
-    origButtons.forEach(b => b.classList.add('hidden'));
+    // Hide ALL current footer content to start fresh and avoid button duplication
+    Array.from(footer.children).forEach(child => child.classList.add('hidden'));
 
     const tempContainer = document.createElement('div');
+    tempContainer.className = 'custom-confirm-buttons';
     tempContainer.style.display = 'flex';
     tempContainer.style.gap = '1rem';
     tempContainer.style.marginLeft = 'auto';
@@ -267,7 +245,11 @@ export function showCustomConfirm(title, message, buttons = ['Cancel', 'Confirm'
     const cleanup = () => {
       closeModal(modal);
       tempContainer.remove();
-      origButtons.forEach(b => b.classList.remove('hidden'));
+      // Restore default buttons for next use (showConfirm/showPrompt)
+      const btnCancel = document.getElementById('btn-dialog-cancel');
+      const btnConfirm = document.getElementById('btn-dialog-confirm');
+      if (btnCancel) btnCancel.classList.remove('hidden');
+      if (btnConfirm) btnConfirm.classList.remove('hidden');
     };
 
     buttons.forEach((btnText, i) => {
@@ -282,9 +264,10 @@ export function showCustomConfirm(title, message, buttons = ['Cancel', 'Confirm'
     });
 
     footer.appendChild(tempContainer);
-    modal.classList.remove('hidden');
+    openWindow(modal);
   });
 }
+
 
 /**
  * Smoothly closes a modal with animation (legacy wrapper for closeWindow)

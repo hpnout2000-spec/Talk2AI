@@ -23,8 +23,9 @@ const DEFAULTS = {
   suggestions_enabled: true,
   italic_asterisks: true,
   ai_comments_enabled: true,
+  ai_comments_history_enabled: false,
   ai_comments_language: 'Auto',
-  ai_comments_prompt: "Comment on the last action, dialogue, or behavior of the character or user. Be concise, witty, and insightful. Return only the comment itself.",
+  ai_comments_prompt: "Comment on the last action, dialogue, or behavior of the character or user. Be concise, witty, and insightful. Return only the comment itself. use many emojis.",
   indicator_presets: [
     { id: 'std', name: 'Standard', indicators: ['Trust', 'Fear', 'Anger', 'Happiness', 'Sadness'] },
     { id: 'romance', name: 'Romantic RP', indicators: ['Affection', 'Lust'] }
@@ -52,7 +53,7 @@ async function invokeTauri(cmd, args = {}) {
   if (window.__TAURI_INTERNALS__) {
     return await window.__TAURI_INTERNALS__.invoke(cmd, args);
   }
-  return null;
+  throw new Error('Not running in Tauri environment');
 }
 
 export const settingsStore = {

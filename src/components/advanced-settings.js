@@ -89,6 +89,18 @@ export function initAdvancedSettings() {
   // Live save for preset editor
   presetNameInput.addEventListener('input', updateEditingPreset);
   presetContentInput.addEventListener('input', updateEditingPreset);
+
+  // Reset AI comments prompt
+  const btnResetAiComments = document.getElementById('btn-reset-ai-comments-prompt');
+  if (btnResetAiComments) {
+    btnResetAiComments.addEventListener('click', () => {
+      const defaultPrompt = "Comment on the last action, dialogue, or behavior of the character or user. Be concise, witty, and insightful. Return only the comment itself. use many emojis.";
+      if (aiCommentsPromptInput) {
+        aiCommentsPromptInput.value = defaultPrompt;
+        showToast('Default prompt restored');
+      }
+    });
+  }
 }
 
 function openModal() {
@@ -113,6 +125,11 @@ function loadSettingsToUI() {
 
   if (aiCommentsPromptInput) {
     aiCommentsPromptInput.value = currentSettings.ai_comments_prompt || "";
+  }
+  
+  const historyToggle = document.getElementById('setting-ai-comments-history');
+  if (historyToggle) {
+    historyToggle.checked = !!currentSettings.ai_comments_history_enabled;
   }
 
   // Load presets
@@ -242,6 +259,8 @@ function setRangeValue(inputId, valueId, value) {
 }
 
 async function saveAll() {
+  const historyToggle = document.getElementById('setting-ai-comments-history');
+  
   const updatedSettings = {
     ...currentSettings,
     max_tokens: parseInt(document.getElementById('adv-setting-max-tokens').value),
@@ -250,9 +269,23 @@ async function saveAll() {
     top_k: parseInt(document.getElementById('adv-setting-top-k').value),
     rep_penalty: parseFloat(document.getElementById('adv-setting-rep-penalty').value),
     ai_comments_prompt: aiCommentsPromptInput ? aiCommentsPromptInput.value.trim() : currentSettings.ai_comments_prompt,
+    ai_comments_history_enabled: historyToggle ? historyToggle.checked : currentSettings.ai_comments_history_enabled,
   };
 
   await settingsStore.save(updatedSettings);
+  
+  // Try to toggle the button visibility if chat is active
+  const toggleBtn = document.getElementById('btn-toggle-ai-comments-sidebar');
+  if (toggleBtn) {
+    if (updatedSettings.ai_comments_history_enabled) {
+      toggleBtn.classList.remove('hidden');
+    } else {
+      toggleBtn.classList.add('hidden');
+      const sidebar = document.getElementById('ai-comments-sidebar');
+      if (sidebar) sidebar.classList.add('hidden');
+      toggleBtn.classList.remove('open');
+    }
+  }
   
   // Sync sidebar settings if it's open (though generation is removed, other sync might be needed)
   window.dispatchEvent(new CustomEvent('settings-updated'));

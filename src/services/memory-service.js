@@ -12,7 +12,7 @@ async function invokeTauri(cmd, args = {}) {
   if (window.__TAURI_INTERNALS__) {
     return await window.__TAURI_INTERNALS__.invoke(cmd, args);
   }
-  return null;
+  throw new Error('Not running in Tauri environment');
 }
 
 const MEMORY_EXTRACTION_PROMPT = `You are a memory manager. Analyze the last exchange and update the character's long-term memory.

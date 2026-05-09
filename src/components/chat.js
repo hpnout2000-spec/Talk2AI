@@ -62,6 +62,12 @@ export function initChat() {
   messageInput.addEventListener('input', () => {
     autoResizeTextarea(messageInput);
 
+    // Abort pending suggestions generation if any
+    if (appState.suggestionsAbortController) {
+      appState.suggestionsAbortController.abort();
+      appState.suggestionsAbortController = null;
+    }
+
     // Fade out continuation options when typing
     if (messageInput.value.trim().length > 0) {
       const options = messagesContainer.querySelectorAll('.continuation-options:not(.fade-out)');
@@ -108,6 +114,22 @@ export function initChat() {
     startNewChat();
   });
 
+  // Chat History Toggle
+  const btnToggleHistory = document.getElementById('btn-toggle-history');
+  const historyList = document.getElementById('chat-history-list');
+  const historyChevron = document.getElementById('history-chevron');
+  
+  if (btnToggleHistory && historyChevron) {
+    btnToggleHistory.addEventListener('click', () => {
+      const section = btnToggleHistory.closest('.sidebar-section');
+      if (section) {
+        section.classList.toggle('collapsed');
+        const isCollapsed = section.classList.contains('collapsed');
+        historyChevron.style.transform = isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
+      }
+    });
+  }
+
   // Input Settings Popover
   if (btnInputSettings) {
     btnInputSettings.addEventListener('click', (e) => {
@@ -121,6 +143,8 @@ export function initChat() {
       inputSettingsPopover.classList.add('hidden');
     }
   });
+
+  setupAiCommentsSidebar();
 }
 
 function toggleInputSettings() {
@@ -167,11 +191,11 @@ function renderInputSettings() {
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
         <h4 style="margin: 0;">Mood Indicators</h4>
         ${(() => {
-          if (appState.currentChat && !appState.currentChat.indicators) {
-            appState.currentChat.indicators = { enabled: false, list: [] };
-          }
-          return '';
-        })()}
+      if (appState.currentChat && !appState.currentChat.indicators) {
+        appState.currentChat.indicators = { enabled: false, list: [] };
+      }
+      return '';
+    })()}
         <label class="toggle-switch small">
           <input type="checkbox" id="toggle-indicators" ${appState.currentChat?.indicators?.enabled ? 'checked' : ''}>
           <span class="toggle-slider"></span>
@@ -253,7 +277,7 @@ function renderInputSettings() {
       if (!appState.currentChat) return;
       const presetId = item.dataset.presetId;
       const customIdx = item.dataset.customIdx;
-      
+
       let indicatorsList = [];
       if (presetId) {
         const preset = settings.indicator_presets.find(p => p.id === presetId);
@@ -373,6 +397,17 @@ export function loadChat(session) {
     appendMessage(msg);
   }
 
+  const settings = settingsStore.get();
+  const toggleBtn = document.getElementById('btn-toggle-ai-comments-sidebar');
+  if (toggleBtn) {
+    if (settings.ai_comments_history_enabled) {
+      toggleBtn.classList.remove('hidden');
+    } else {
+      toggleBtn.classList.add('hidden');
+    }
+  }
+
+  renderAiCommentsHistory();
   renderIndicators();
   scrollToBottom();
 }
@@ -382,9 +417,6 @@ export function loadChat(session) {
 export async function selectCharacter(character) {
   const charId = character.id;
   appState.currentCharacter = character;
-  
-  // Update last chat timestamp
-  await characterStore.updateLastChat(charId);
 
   // Update header
   headerCharName.textContent = character.name;
@@ -421,7 +453,7 @@ export async function selectCharacter(character) {
 
   updateChatHistory();
   renderIndicators();
-  window.dispatchEvent(new CustomEvent('character-list-updated'));
+  window.dispatchEvent(new CustomEvent('character-selected', { detail: { id: charId } }));
 }
 
 // ─── Send Message ───────────────────────────────────────────────────
@@ -488,6 +520,12 @@ async function sendMessage() {
   const content = messageInput.value.trim();
 
   if (appState.isGenerating) return;
+
+  // Abort pending suggestions generation if any
+  if (appState.suggestionsAbortController) {
+    appState.suggestionsAbortController.abort();
+    appState.suggestionsAbortController = null;
+  }
 
   const settings = settingsStore.get();
   const character = appState.currentCharacter;
@@ -605,7 +643,7 @@ async function sendMessage() {
           const temp = document.createElement('div');
           temp.className = contentEl.className;
           temp.innerHTML = html;
-          
+
           perf.start('morphdom-patch');
           morphdom(contentEl, temp, {
             childrenOnly: true,
@@ -628,7 +666,7 @@ async function sendMessage() {
         const tempFinal = document.createElement('div');
         tempFinal.className = contentEl.className;
         tempFinal.innerHTML = finalHtml;
-        
+
         perf.start('morphdom-final-patch');
         morphdom(contentEl, tempFinal, {
           childrenOnly: true,
@@ -638,7 +676,7 @@ async function sendMessage() {
 
         let originalContent = parsed.content;
         // No more applyIndicatorUpdates here, it's now a separate call
-        
+
         let translatedContent = null;
 
         // Auto-translation (AI response)
@@ -665,10 +703,10 @@ async function sendMessage() {
         if (originalContent) {
           // 1. Update indicators (separate call)
           await triggerIndicatorUpdate(character, session, content, originalContent);
-          
+
           // 2. Extract memory
           await extractAndShowMemory(character, session, content, originalContent, msgElement);
-          
+
           // 3. Generate suggestions
           generateContinuationOptions(character, session, msgElement);
         }
@@ -956,9 +994,9 @@ function appendMessage(msg, isStreaming = false, character = null) {
             </svg>
           </button>
           <button class="btn-translate-msg" title="Translate">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M5 8l6 6M19 8l-6 6M5 16l6-6M19 16l-6-6"/>
-              <path d="M2 12h20M12 2v20"/>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              <text x="12" y="15" font-family="sans-serif" font-size="10" font-weight="bold" text-anchor="middle" stroke="none" fill="currentColor">あ</text>
             </svg>
           </button>
           <button class="btn-copy" title="Copy">
@@ -1146,6 +1184,12 @@ async function regenerateResponse(msg, msgEl) {
 async function triggerAssistantGeneration() {
   if (appState.isGenerating || !appState.currentCharacter || !appState.currentChat) return;
 
+  // Abort pending suggestions generation if any
+  if (appState.suggestionsAbortController) {
+    appState.suggestionsAbortController.abort();
+    appState.suggestionsAbortController = null;
+  }
+
   const character = appState.currentCharacter;
   const session = appState.currentChat;
   const settings = settingsStore.get();
@@ -1220,7 +1264,7 @@ async function triggerAssistantGeneration() {
         morphdom(contentEl, tempFinal, { childrenOnly: true });
 
         let originalContent = parsed.content;
-        
+
         let translatedContent = null;
         if (settings.auto_translate && originalContent) {
           headerCharStatus.textContent = 'Translating...';
@@ -1245,7 +1289,7 @@ async function triggerAssistantGeneration() {
           if (lastUserMsg) {
             // 1. Update indicators
             await triggerIndicatorUpdate(character, session, lastUserMsg.content, originalContent);
-            
+
             // 2. Extract memory
             await extractAndShowMemory(character, session, lastUserMsg.content, originalContent, msgElement);
           }
@@ -1361,7 +1405,7 @@ export function updateChatHistory() {
       }
     });
   }
-  
+
   perf.end('updateChatHistory');
 }
 
@@ -1381,7 +1425,9 @@ async function generateContinuationOptions(character, session, msgElement) {
     if (appState.suggestionsAbortController) {
       appState.suggestionsAbortController.abort();
     }
-    appState.suggestionsAbortController = new AbortController();
+    const controller = new AbortController();
+    appState.suggestionsAbortController = controller;
+    const signal = controller.signal;
 
     // Add a system instruction to generate options
     messages.push({
@@ -1402,11 +1448,17 @@ Example:
 Do not include any Markdown formatting like \`\`\`json or any other text. Return strictly the raw JSON array.`
     });
 
-    const response = await api.chatCompletion(messages, { 
-      max_tokens: 300, 
+    const response = await api.chatCompletion(messages, {
+      max_tokens: 300,
       temperature: 0.7,
-      signal: appState.suggestionsAbortController.signal
+      signal: signal
     });
+
+    // CRITICAL: Check if we were aborted while waiting for the network
+    if (signal.aborted || !msgElement.isConnected) return;
+    
+    // Check if user started typing in the meantime
+    if (messageInput.value.trim().length > 0) return;
 
     // Strip thinking blocks just in case
     const cleanResponse = response.replace(/(?:<\|?think\|?>|<reasoning>)([\s\S]*?)(?:<\|?\/think\|?>|<\/reasoning>)/g, '');
@@ -1431,13 +1483,14 @@ Do not include any Markdown formatting like \`\`\`json or any other text. Return
     if (msgElement.isConnected && appState.currentCharacter?.id === character.id) {
       renderContinuationOptions(msgElement, options, character, session);
     }
-    
+
     appState.suggestionsAbortController = null;
   } catch (err) {
-    if (err.name === 'AbortError') return;
+    if (err.name === 'AbortError' || (err.message && err.message.includes('abort'))) return;
     console.warn('Failed to generate continuation options:', err);
     appState.suggestionsAbortController = null;
   }
+
 }
 
 function renderContinuationOptions(msgElement, options, character, session) {
@@ -1513,7 +1566,7 @@ async function requestAiComment(msg, character) {
 
   // Append the comment prompt
   let commentPrompt = settings.ai_comments_prompt || 'Comment on the last action.';
-  
+
   const commentLang = settings.ai_comments_language || 'Auto';
   if (commentLang === 'Auto') {
     commentPrompt += ` Respond in the current conversation language (${settings.target_language || 'Russian'}).`;
@@ -1555,6 +1608,13 @@ async function requestAiComment(msg, character) {
         btnCopy.classList.remove('hidden');
         btnAdvice.classList.remove('hidden');
 
+        if (settings.ai_comments_history_enabled) {
+          const snippet = msg.content ? msg.content.substring(0, 60).replace(/\n/g, ' ') + (msg.content.length > 60 ? '...' : '') : '...';
+          chatStore.addAiComment(msg.id, snippet, fullComment, session);
+          chatStore.saveSession(session);
+          renderAiCommentsHistory();
+        }
+
         btnCopy.onclick = () => {
           navigator.clipboard.writeText(fullComment);
           btnCopy.textContent = 'Copied!';
@@ -1563,7 +1623,7 @@ async function requestAiComment(msg, character) {
 
         btnAdvice.onclick = async () => {
           btnAdvice.classList.add('hidden');
-          
+
           let adviceTextPrefix = "посоветуй, что мне стоит делать дальше?"; // Default
           let adviceInstruction = "";
 
@@ -1636,6 +1696,80 @@ function injectCursor(html) {
   return html + cursorHtml;
 }
 
+export function renderAiCommentsHistory() {
+  const listEl = document.getElementById('ai-comments-list');
+  if (!listEl) return;
+  
+  const session = chatStore.getCurrentSession();
+  listEl.innerHTML = '';
+  
+  if (!session || !session.ai_comments || session.ai_comments.length === 0) {
+    listEl.innerHTML = '<div style="text-align: center; color: var(--text-tertiary); padding: 20px; font-size: var(--text-sm);">No comments yet.</div>';
+    return;
+  }
+  
+  const comments = [...session.ai_comments].reverse();
+  
+  comments.forEach(comment => {
+    const item = document.createElement('div');
+    item.className = 'ai-comment-history-item';
+    
+    // Format timestamp
+    const date = new Date(comment.timestamp);
+    const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    
+    item.innerHTML = `
+      <div class="ai-comment-history-target">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/>
+        </svg>
+        <span>${escapeHtml(comment.target_content_snippet || '...')}</span>
+      </div>
+      <div class="ai-comment-history-content">
+        ${renderMarkdown(comment.content)}
+      </div>
+      <div class="ai-comment-history-meta">${timeStr}</div>
+    `;
+    listEl.appendChild(item);
+  });
+}
+
+function setupAiCommentsSidebar() {
+  const toggleBtn = document.getElementById('btn-toggle-ai-comments-sidebar');
+  const sidebar = document.getElementById('ai-comments-sidebar');
+  const closeBtn = document.getElementById('btn-close-ai-comments-sidebar');
+  const mainContent = document.getElementById('main-content');
+  
+  if (!toggleBtn || !sidebar || !closeBtn || !mainContent) return;
+  
+  const triggerMotionBlur = () => {
+    mainContent.classList.add('is-animating');
+    setTimeout(() => {
+      mainContent.classList.remove('is-animating');
+    }, 600);
+  };
+  
+  toggleBtn.addEventListener('click', () => {
+    const isHidden = sidebar.classList.contains('hidden');
+    triggerMotionBlur();
+    
+    if (isHidden) {
+      sidebar.classList.remove('hidden');
+      toggleBtn.classList.add('open');
+      renderAiCommentsHistory();
+    } else {
+      sidebar.classList.add('hidden');
+      toggleBtn.classList.remove('open');
+    }
+  });
+  
+  closeBtn.addEventListener('click', () => {
+    triggerMotionBlur();
+    sidebar.classList.add('hidden');
+    toggleBtn.classList.remove('open');
+  });
+}
+
 async function triggerIndicatorUpdate(character, session, lastUserMsg, lastAssistantMsg) {
   if (!session?.indicators?.enabled || !session.indicators.list?.length) return;
 
@@ -1643,20 +1777,20 @@ async function triggerIndicatorUpdate(character, session, lastUserMsg, lastAssis
   // We use the character's core info but minimal history to keep it fast and focused
   const settings = settingsStore.get();
   const userName = settings.user_name || 'User';
-  
+
   const context = [
-    { 
-      role: 'system', 
-      content: `You are a character state analyzer. Your task is to update mood indicators based on the last interaction.\nCharacter: ${character.name}\nUser: ${userName}` 
+    {
+      role: 'system',
+      content: `You are a character state analyzer. Your task is to update mood indicators based on the last interaction.\nCharacter: ${character.name}\nUser: ${userName}`
     }
   ];
-  
+
   // Add last few messages for context
   const recentMsgs = session.messages.slice(-4);
   for (const m of recentMsgs) {
     context.push({ role: m.role, content: m.translated_content || m.content });
   }
-  
+
   // Add the special command
   const statusStr = session.indicators.list.map(ind => `${ind.name}: ${ind.value}%`).join('\n');
   context.push({
