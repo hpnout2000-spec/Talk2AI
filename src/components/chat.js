@@ -1748,7 +1748,7 @@ function setupAiCommentsSidebar() {
     mainContent.classList.add('is-animating');
     
     if (open) {
-      app.style.setProperty('--right-sidebar-w', 'var(--sidebar-width)');
+      app.style.setProperty('--right-sidebar-w', '280px');
       sidebar.classList.remove('hidden');
       toggleBtn.classList.add('open');
       renderAiCommentsHistory();

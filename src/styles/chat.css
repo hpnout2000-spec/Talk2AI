@@ -5,7 +5,8 @@
 /* ─── Main Content Layout ────────────────────────────────────────── */
 
 .main-content {
-  width: calc(100% - var(--sidebar-width) - var(--right-sidebar-w) - 24px);
+  width: calc(100% - var(--sidebar-width) - var(--right-sidebar-w));
+  flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -16,10 +17,8 @@
   border: 1px solid var(--border-light);
   box-shadow: var(--shadow-lg);
 
-  transition:
-    width 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-    filter 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-  will-change: width, filter;
+  transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: width, flex-basis, filter;
 }
 
 .main-content.is-animating {
@@ -1018,19 +1017,21 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
 /* ─── Right Sidebar (AI Comments) ────────────────────────────────── */
 
 .right-sidebar {
-  width: var(--sidebar-width);
+  flex-basis: var(--right-sidebar-w);
+  flex-grow: 0;
   flex-shrink: 0;
+  overflow: hidden;
+  
   transition:
-    width 0.6s cubic-bezier(0.16, 1, 0.3, 1),
+    flex-basis 0.6s cubic-bezier(0.16, 1, 0.3, 1),
     opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
     transform 0.6s cubic-bezier(0.16, 1, 0.3, 1),
     filter 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-  will-change: width, opacity, transform, filter;
+  will-change: flex-basis, opacity, transform, filter;
   
   /* Additional styles for aesthetics */
   border-left: 1px solid var(--border-light);
   border-radius: var(--radius-xl);
-  overflow: hidden;
   background: rgba(var(--bg-secondary-rgb, 24, 24, 27), 0.85);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -1038,10 +1039,9 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
 
 .right-sidebar.hidden {
   display: flex !important;
-  width: 0 !important;
+  flex-basis: 0 !important;
   opacity: 0;
   transform: translateX(20px) translateZ(0);
-  overflow: hidden;
   pointer-events: none;
 }
 
