@@ -1743,14 +1743,20 @@ function setupAiCommentsSidebar() {
   if (!toggleBtn || !sidebar || !closeBtn || !mainContent) return;
   
   const setSidebarState = (open) => {
-    // Add blurring class to chat only
     mainContent.classList.add('is-animating');
     
     if (open) {
+      mainContent.classList.add('right-open');
       sidebar.classList.remove('hidden');
       toggleBtn.classList.add('open');
-      renderAiCommentsHistory();
+      
+      // ВАЖНО: Откладываем тяжелый рендер на 50мс.
+      // Это отдаст первый кадр CSS-движку и предотвратит «рывок» при открытии.
+      setTimeout(() => {
+        renderAiCommentsHistory();
+      }, 50);
     } else {
+      mainContent.classList.remove('right-open');
       sidebar.classList.add('hidden');
       toggleBtn.classList.remove('open');
     }

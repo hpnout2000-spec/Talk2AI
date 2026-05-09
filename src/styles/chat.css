@@ -5,7 +5,8 @@
 /* ─── Main Content Layout ────────────────────────────────────────── */
 
 .main-content {
-  flex: 1; /* Flex сам плавно займет всё доступное место */
+  /* Явно высчитываем ширину, чтобы animations.css мог плавно её анимировать */
+  width: calc(100% - var(--sidebar-width) - 12px);
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -15,10 +16,13 @@
   overflow: hidden;
   border: 1px solid var(--border-light);
   box-shadow: var(--shadow-lg);
+  /* Никаких transition здесь, они берутся из animations.css */
+}
 
-  /* Анимируем только блюр, ширину возьмет на себя flexbox */
-  transition: filter 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-  will-change: filter;
+/* Этот класс будет добавляться через JS, когда открыта правая панель */
+.main-content.right-open {
+  /* Вычитаем ширину панели (280) и второй gap (12) */
+  width: calc(100% - var(--sidebar-width) - 280px - 24px);
 }
 
 .main-content.is-animating {
@@ -1017,30 +1021,22 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
 /* ─── Right Sidebar (AI Comments) ────────────────────────────────── */
 
 .right-sidebar {
-  width: 280px; /* Явная ширина вместо переменных */
+  width: 280px;
   flex-shrink: 0;
   overflow: hidden;
-
-  transition:
-    width 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-    opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-    transform 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-    margin 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-    filter 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-  will-change: width, opacity, transform, margin;
-
   border-left: 1px solid var(--border-light);
   border-radius: var(--radius-xl);
   background: rgba(var(--bg-secondary-rgb, 24, 24, 27), 0.85);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+  /* Никаких transition здесь, они берутся из animations.css */
 }
 
-.right-sidebar.hidden {
-  display: flex !important; /* Не none, чтобы не убить анимацию! */
-  width: 0 !important;
-  margin-left: -12px !important; /* Убиваем gap от родительского #app */
-  border-left-width: 0 !important; /* Скрываем рамку */
+#app .right-sidebar.hidden {
+  display: flex !important;
+  width: 0px !important; /* Анимируем ширину в 0 */
+  margin-left: -12px !important; /* Гасим gap родительского #app */
+  border-left-width: 0 !important;
   opacity: 0;
   transform: translateX(20px) translateZ(0);
   pointer-events: none;
