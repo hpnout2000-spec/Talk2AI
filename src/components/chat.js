@@ -673,7 +673,13 @@ async function sendMessage() {
             html = injectCursor(html);
           }
 
-          list.innerHTML = html;
+          const temp = document.createElement('div');
+          temp.className = contentEl.className;
+          temp.innerHTML = html;
+          morphdom(contentEl, temp, {
+            childrenOnly: true,
+            getNodeKey: (node) => node.dataset?.wordIndex || node.id || node.className
+          });
         });
       },
       // onDone
@@ -813,8 +819,32 @@ function buildApiMessages(character, session) {
   // System prompt with character info and memory
   let systemContent = '';
 
+  const charData = {
+    description: character.description || '',
+    personality: character.personality ? `Personality: ${character.personality}` : '',
+    scenario: character.scenario ? `Scenario: ${character.scenario}` : ''
+  };
+
   if (character.system_prompt) {
     systemContent = character.system_prompt;
+
+    // Check if any standard placeholders are used
+    const hasPlaceholders = /\{\{description\}\}/gi.test(systemContent) ||
+      /\{\{personality\}\}/gi.test(systemContent) ||
+      /\{\{scenario\}\}/gi.test(systemContent);
+
+    // Replace placeholders
+    systemContent = systemContent.replace(/\{\{description\}\}/gi, charData.description);
+    systemContent = systemContent.replace(/\{\{personality\}\}/gi, charData.personality);
+    systemContent = systemContent.replace(/\{\{scenario\}\}/gi, charData.scenario);
+
+    // If no placeholders were used, prepend character info automatically to ensure context
+    if (!hasPlaceholders) {
+      const parts = [charData.description, charData.personality, charData.scenario].filter(Boolean);
+      if (parts.length > 0) {
+        systemContent = parts.join('\n\n') + '\n\n' + systemContent;
+      }
+    }
   } else {
     // Use active preset if available, otherwise build from fields
     const activePresetId = settings.active_system_prompt_preset_id;
@@ -823,21 +853,13 @@ function buildApiMessages(character, session) {
 
     if (activePreset) {
       systemContent = activePreset.content;
-      // Inject character fields into the preset if they exist
-      const description = character.description || '';
-      const personality = character.personality ? `Personality: ${character.personality}` : '';
-      const scenario = character.scenario ? `Scenario: ${character.scenario}` : '';
-
-      // Replace placeholders
-      systemContent = systemContent.replace(/\{\{description\}\}/gi, description);
-      systemContent = systemContent.replace(/\{\{personality\}\}/gi, personality);
-      systemContent = systemContent.replace(/\{\{scenario\}\}/gi, scenario);
+      // Inject character fields into the preset
+      systemContent = systemContent.replace(/\{\{description\}\}/gi, charData.description);
+      systemContent = systemContent.replace(/\{\{personality\}\}/gi, charData.personality);
+      systemContent = systemContent.replace(/\{\{scenario\}\}/gi, charData.scenario);
     } else {
       // Fallback to building from fields
-      const parts = [];
-      if (character.description) parts.push(character.description);
-      if (character.personality) parts.push(`Personality: ${character.personality}`);
-      if (character.scenario) parts.push(`Scenario: ${character.scenario}`);
+      const parts = [charData.description, charData.personality, charData.scenario].filter(Boolean);
       systemContent = parts.join('\n\n') || `You are ${character.name}.`;
     }
   }

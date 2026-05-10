@@ -250,6 +250,18 @@ body.genai-sidebar-open #genai-sidebar {
   color: var(--warning);
 }
 
+.genai-action-badge.result-character {
+  background: rgba(139, 92, 246, 0.1);
+  border-color: rgba(139, 92, 246, 0.3);
+  color: #a78bfa; /* Violet accent */
+}
+
+.genai-action-badge.result-error {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #f87171; /* Error red */
+}
+
 .genai-action-badge-icon { flex-shrink: 0; }
 
 .genai-action-badge-text {
