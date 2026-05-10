@@ -360,6 +360,16 @@
               <label for="char-first-message">First Message</label>
               <textarea id="char-first-message" rows="3" placeholder="Character's greeting message..."></textarea>
             </div>
+            
+            <div id="alt-greetings-container" class="form-group">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <label>Alternate Greetings</label>
+                <button id="btn-add-alt-greeting" class="btn-secondary small" style="margin: 0; padding: 4px 10px; height: auto;">+ Add</button>
+              </div>
+              <div id="alt-greetings-list" style="display: flex; flex-direction: column; gap: 8px;">
+                <!-- Alt greetings will be injected here -->
+              </div>
+            </div>
           </div>
           <div class="modal-footer">
             <button id="btn-cancel-character" class="btn-secondary">Cancel</button>

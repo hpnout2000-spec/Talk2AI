@@ -556,6 +556,14 @@
   display: inline-block;
 }
 
+.block-replacing-out {
+  animation: wordBlurOut 0.25s ease-out forwards;
+}
+
+.block-replacing-in {
+  animation: textBlurIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 @keyframes wordBlurOut {
   0% {
     opacity: 1;

@@ -368,10 +368,19 @@ export function startNewChat(character = null) {
   if (char.first_message) {
     const settings = settingsStore.get();
     const userName = settings.user_name || 'User';
-    let content = char.first_message.replace(/\{\{user\}\}/gi, userName);
-    content = content.replace(/\{\{char\}\}/gi, char.name);
+    
+    // Support random first message if multiple are available
+    let content = char.first_message;
+    let greetingIdx = 0;
+    
+    // In SillyTavern, users usually want to start with the primary one, 
+    // but some apps randomize. We'll start with index 0 (primary).
+    session.selected_greeting_index = 0;
+    
+    let processedContent = content.replace(/\{\{user\}\}/gi, userName);
+    processedContent = processedContent.replace(/\{\{char\}\}/gi, char.name);
 
-    const msg = chatStore.addMessage('assistant', content, null, session);
+    const msg = chatStore.addMessage('assistant', processedContent, null, session);
     characterStore.updateLastChat(char.id);
     window.dispatchEvent(new CustomEvent('character-list-updated'));
     if (appState.currentCharacter?.id === char.id) {
@@ -971,8 +980,29 @@ function appendMessage(msg, isStreaming = false, character = null) {
   if (msg.thinking) {
     contentHtml += createThinkingBlockHTML(msg.thinking, false);
   }
-  const displayContent = msg.translated_content || msg.content;
+  
+  // Persistence: use translated content if it exists and we're not showing original
+  const displayContent = (msg.translated_content && !msg.show_original) ? msg.translated_content : msg.content;
   contentHtml += renderMarkdown(displayContent);
+
+  // Swipe Greetings UI for the first message
+  const isFirstMessage = appState.currentChat?.messages?.[0]?.id === msg.id;
+  const greetings = char?.alternate_greetings || [];
+  const hasAltGreetings = greetings.length > 0;
+  const currentIdx = appState.currentChat?.selected_greeting_index || 0;
+  const totalGreetings = greetings.length + 1;
+
+  const swipeHtml = (isFirstMessage && hasAltGreetings) ? `
+    <div class="swipe-greetings">
+      <button class="btn-swipe btn-swipe-left" title="Previous Greeting">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <span class="swipe-index">${currentIdx + 1} / ${totalGreetings}</span>
+      <button class="btn-swipe btn-swipe-right" title="Next Greeting">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+    </div>
+  ` : '';
 
   el.innerHTML = `
     <div class="message-avatar">${avatarHtml}</div>
@@ -980,6 +1010,7 @@ function appendMessage(msg, isStreaming = false, character = null) {
       <div class="message-content">
         <div class="message-text">${contentHtml || (isStreaming ? '<span class="streaming-cursor"></span>' : '')}</div>
       </div>
+      ${swipeHtml}
       <div class="message-meta">
         <span class="message-time">${formatTime(msg.timestamp)}</span>
         <div class="message-actions">
@@ -1027,18 +1058,40 @@ function appendMessage(msg, isStreaming = false, character = null) {
     const contentEl = el.querySelector('.message-text');
     const target = msg.role === 'user' ? (settings.outgoing_target_language || 'English') : (settings.target_language || 'Russian');
 
+    // If already translated, toggle between original and translated
+    if (msg.translated_content) {
+      msg.show_original = !msg.show_original;
+      chatStore.updateMessage(msg.id, { show_original: msg.show_original });
+      await chatStore.saveCurrentSession();
+      
+      const newDisplayContent = msg.show_original ? msg.content : msg.translated_content;
+      
+      // Update UI with a nice effect
+      contentEl.classList.add('block-replacing-out');
+      setTimeout(() => {
+        let html = '';
+        if (msg.thinking) html += createThinkingBlockHTML(msg.thinking, false);
+        html += renderMarkdown(newDisplayContent);
+        contentEl.innerHTML = html;
+        contentEl.classList.remove('block-replacing-out');
+        contentEl.classList.add('block-replacing-in');
+        setTimeout(() => contentEl.classList.remove('block-replacing-in'), 400);
+      }, 300);
+      return;
+    }
+
     headerCharStatus.textContent = 'Translating message...';
     headerCharStatus.classList.add('generating');
 
     // Ensure spans exist for the replacement effect
     if (!contentEl.querySelector('.word-blur')) {
-      const displayContent = msg.translated_content || msg.content;
+      const displayContent = (msg.translated_content && !msg.show_original) ? msg.translated_content : msg.content;
       contentEl.innerHTML = wrapWordsInSpans(renderMarkdown(displayContent));
     }
 
     const translated = await performStreamingTranslation(contentEl, msg.content, target);
     if (translated) {
-      chatStore.updateMessage(msg.id, { translated_content: translated });
+      chatStore.updateMessage(msg.id, { translated_content: translated, show_original: false });
       await chatStore.saveSession(appState.currentChat);
     }
 
@@ -1048,7 +1101,8 @@ function appendMessage(msg, isStreaming = false, character = null) {
 
   // Copy button
   el.querySelector('.btn-copy')?.addEventListener('click', () => {
-    navigator.clipboard.writeText(msg.translated_content || msg.content);
+    const copyContent = (msg.translated_content && !msg.show_original) ? msg.translated_content : msg.content;
+    navigator.clipboard.writeText(copyContent);
     showToast('Copied to clipboard');
   });
 
@@ -1083,6 +1137,12 @@ function appendMessage(msg, isStreaming = false, character = null) {
     requestAiComment(msg, character || appState.currentCharacter);
   });
 
+  // Swipe listeners
+  if (isFirstMessage && hasAltGreetings) {
+    el.querySelector('.btn-swipe-left')?.addEventListener('click', () => swipeGreeting(msg.id, -1));
+    el.querySelector('.btn-swipe-right')?.addEventListener('click', () => swipeGreeting(msg.id, 1));
+  }
+
   // Regenerate button
   const btnRegen = el.querySelector('.btn-regenerate');
   btnRegen?.addEventListener('click', () => {
@@ -1099,6 +1159,32 @@ function appendMessage(msg, isStreaming = false, character = null) {
   }
 
   return el;
+}
+
+async function swipeGreeting(messageId, direction) {
+  if (!appState.currentChat || appState.isGenerating) return;
+  const char = appState.currentCharacter;
+  if (!char) return;
+
+  const greetings = [char.first_message, ...(char.alternate_greetings || [])];
+  if (greetings.length <= 1) return;
+
+  let currentIdx = appState.currentChat.selected_greeting_index || 0;
+  currentIdx = (currentIdx + direction + greetings.length) % greetings.length;
+  appState.currentChat.selected_greeting_index = currentIdx;
+
+  const newContent = greetings[currentIdx];
+  const settings = settingsStore.get();
+  const userName = settings.user_name || 'User';
+  let processedContent = newContent.replace(/\{\{user\}\}/gi, userName);
+  processedContent = processedContent.replace(/\{\{char\}\}/gi, char.name);
+
+  // Update store
+  chatStore.updateMessage(messageId, { content: processedContent, translated_content: null });
+  await chatStore.saveCurrentSession();
+
+  // Re-render chat
+  loadChat(appState.currentChat);
 }
 
 function scrollToBottom() {

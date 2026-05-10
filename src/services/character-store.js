@@ -86,6 +86,7 @@ export const characterStore = {
       scenario: characterData.scenario || '',
       system_prompt: characterData.system_prompt || '',
       first_message: characterData.first_message || '',
+      alternate_greetings: characterData.alternate_greetings || [],
       created_at: characterData.created_at || new Date().toISOString(),
       last_chat_at: characterData.last_chat_at || characterData.created_at || new Date().toISOString(),
     };

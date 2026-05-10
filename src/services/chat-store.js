@@ -101,7 +101,10 @@ export const chatStore = {
       if (msgs[i].role === 'assistant') {
         msgs[i].content = content;
         if (thinking !== null) msgs[i].thinking = thinking;
-        if (translatedContent !== null) msgs[i].translated_content = translatedContent;
+        if (translatedContent !== null) {
+          msgs[i].translated_content = translatedContent;
+          msgs[i].show_original = false;
+        }
         break;
       }
     }

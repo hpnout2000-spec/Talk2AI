@@ -720,3 +720,40 @@
   height: 18px;
   color: var(--accent-primary);
 }
+
+/* ─── Character Editor Alternate Greetings ───────────────────────── */
+
+.alt-greeting-item {
+  animation: slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.alt-greeting-textarea {
+  transition: all 0.2s ease;
+}
+
+.alt-greeting-textarea:focus {
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 0 2px var(--accent-primary-glow);
+  background: var(--bg-primary) !important;
+}
+
+.btn-delete-alt-greeting {
+  transition: all 0.2s ease;
+  color: var(--text-tertiary);
+}
+
+.btn-delete-alt-greeting:hover {
+  color: var(--error) !important;
+  background: rgba(239, 68, 68, 0.1) !important;
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}

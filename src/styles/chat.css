@@ -1180,3 +1180,54 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
   text-align: right;
   margin-top: var(--space-1);
 }
+
+/* ─── Swipe Greetings ────────────────────────────────────────────── */
+
+.swipe-greetings {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-light);
+  width: fit-content;
+}
+
+.swipe-greetings.hidden {
+  display: none !important;
+}
+
+.btn-swipe {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  border-radius: 50%;
+  transition: all var(--transition-fast);
+}
+
+.btn-swipe:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.swipe-index {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  min-width: 40px;
+  text-align: center;
+  user-select: none;
+}
+
+.btn-swipe svg {
+  width: 14px;
+  height: 14px;
+}

@@ -102,6 +102,7 @@ export function initCharacterPanel() {
             scenario: parsedChar.scenario || '',
             system_prompt: parsedChar.system_prompt || '',
             first_message: parsedChar.first_mes || parsedChar.first_message || '',
+            alternate_greetings: parsedChar.alternate_greetings || [],
             avatar: await readFileAsDataURL(file)
           });
           showToast('Character loaded from card');
@@ -119,6 +120,7 @@ export function initCharacterPanel() {
           scenario: parsedChar.scenario || '',
           system_prompt: parsedChar.system_prompt || '',
           first_message: parsedChar.first_mes || parsedChar.first_message || '',
+          alternate_greetings: parsedChar.alternate_greetings || [],
         });
         showToast('Character loaded from JSON');
       }
@@ -206,7 +208,6 @@ Do not include any Markdown formatting like \`\`\`json or any other text. Return
     renderGalleryGrid();
   });
 
-  // Listen for character selection to update active class without re-rendering
   window.addEventListener('character-selected', (e) => {
     const list = document.getElementById('character-list');
     if (!list) return;
@@ -218,6 +219,11 @@ Do not include any Markdown formatting like \`\`\`json or any other text. Return
         item.classList.remove('active');
       }
     });
+  });
+
+  // Add Alt Greeting Button
+  document.getElementById('btn-add-alt-greeting')?.addEventListener('click', () => {
+    addAltGreetingField();
   });
 }
 
@@ -355,7 +361,41 @@ function openCharacterEditor(character = null) {
     preview.dataset.avatarData = '';
   }
 
+  // Alt Greetings
+  renderAltGreetings(character?.alternate_greetings || []);
+
   openWindow(modal);
+}
+
+function renderAltGreetings(greetings) {
+  const list = document.getElementById('alt-greetings-list');
+  if (!list) return;
+  list.innerHTML = '';
+  greetings.forEach(g => addAltGreetingField(g));
+}
+
+function addAltGreetingField(value = '') {
+  const list = document.getElementById('alt-greetings-list');
+  if (!list) return;
+
+  const div = document.createElement('div');
+  div.className = 'alt-greeting-item';
+  div.style.display = 'flex';
+  div.style.gap = '8px';
+  div.innerHTML = `
+    <textarea class="alt-greeting-textarea" rows="2" style="flex: 1; padding: 8px; background: var(--bg-tertiary); border: 1px solid var(--border-light); border-radius: var(--radius-sm); color: var(--text-primary); font-family: var(--font-sans); font-size: var(--text-sm); outline: none; resize: vertical;" placeholder="Alternate greeting...">${value}</textarea>
+    <button class="btn-delete-alt-greeting btn-icon small" style="margin-top: 4px;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;">
+        <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+      </svg>
+    </button>
+  `;
+
+  div.querySelector('.btn-delete-alt-greeting').addEventListener('click', () => {
+    div.remove();
+  });
+
+  list.appendChild(div);
 }
 
 function closeCharacterEditor() {
@@ -380,6 +420,7 @@ async function saveCharacter() {
     scenario: document.getElementById('char-scenario').value,
     system_prompt: document.getElementById('char-system-prompt').value,
     first_message: document.getElementById('char-first-message').value,
+    alternate_greetings: Array.from(document.querySelectorAll('.alt-greeting-textarea')).map(ta => ta.value.trim()).filter(v => v !== ''),
   };
 
   if (editingCharacterId) {
