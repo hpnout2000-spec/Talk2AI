@@ -22,7 +22,7 @@ import { perf } from '../utils/perf.js';
 
 // Lazy notify GenAI panel when a response arrives (avoids circular import)
 function notifyGenAI(response, characterName) {
-  import('../components/genai-panel.js').then(m => m.notifyGenAIResponse(response, characterName)).catch(() => {});
+  import('../components/genai-panel.js').then(m => m.notifyGenAIResponse(response, characterName)).catch(() => { });
 }
 
 // ─── DOM Elements ───────────────────────────────────────────────────
@@ -382,15 +382,15 @@ export function startNewChat(character = null) {
   if (char.first_message) {
     const settings = settingsStore.get();
     const userName = settings.user_name || 'User';
-    
+
     // Support random first message if multiple are available
     let content = char.first_message;
     let greetingIdx = 0;
-    
+
     // In SillyTavern, users usually want to start with the primary one, 
     // but some apps randomize. We'll start with index 0 (primary).
     session.selected_greeting_index = 0;
-    
+
     let processedContent = content.replace(/\{\{user\}\}/gi, userName);
     processedContent = processedContent.replace(/\{\{char\}\}/gi, char.name);
 
@@ -1005,7 +1005,7 @@ function appendMessage(msg, isStreaming = false, character = null) {
   if (msg.thinking) {
     contentHtml += createThinkingBlockHTML(msg.thinking, false);
   }
-  
+
   // Persistence: use translated content if it exists and we're not showing original
   const displayContent = (msg.translated_content && !msg.show_original) ? msg.translated_content : msg.content;
   contentHtml += renderMarkdown(displayContent);
@@ -1088,9 +1088,9 @@ function appendMessage(msg, isStreaming = false, character = null) {
       msg.show_original = !msg.show_original;
       chatStore.updateMessage(msg.id, { show_original: msg.show_original });
       await chatStore.saveCurrentSession();
-      
+
       const newDisplayContent = msg.show_original ? msg.content : msg.translated_content;
-      
+
       // Update UI with a nice effect
       contentEl.classList.add('block-replacing-out');
       setTimeout(() => {
@@ -1424,32 +1424,27 @@ async function triggerAssistantGeneration() {
   }
 }
 
-// ─── Update Chat History Sidebar ────────────────────────────────────
-
-export function updateChatHistory(charIdOverride = null) {
-  const charId = charIdOverride || appState.currentCharacter?.id;
-  if (!charId) return;
+export function updateChatHistory() {
+  if (!appState.currentCharacter) return;
 
   const list = document.getElementById('chat-history-list');
   if (!list) return;
 
-  const sessions = chatStore.getSessions(charId);
-  const currentId = appState.currentChat?.id;
+  const sessions = chatStore.getSessions(appState.currentCharacter.id);
+  const currentChat = appState.currentChat;
 
-  // Sort sessions by updated_at (newest first)
-  const sortedSessions = [...sessions].sort((a, b) => 
-    new Date(b.updated_at) - new Date(a.updated_at)
-  );
-
-  const html = sortedSessions.map(session => {
+  // Напрямую обновляем DOM при новых сообщениях
+  list.innerHTML = sessions.map(session => {
     const firstUserMsg = session.messages.find(m => m.role === 'user');
     const title = firstUserMsg
       ? firstUserMsg.content.substring(0, 40) + (firstUserMsg.content.length > 40 ? '...' : '')
       : 'New Chat';
-    const isActive = session.id === currentId;
+
+    // Надежная проверка активного чата
+    const isActive = currentChat && (session.id === currentChat.id);
 
     return `
-      <div class="chat-history-item ${isActive ? 'active' : ''}" data-chat-id="${session.id}" id="chat-history-item-${session.id}">
+      <div class="chat-history-item ${isActive ? 'active' : ''}" data-chat-id="${session.id}">
         <div class="chat-history-item-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
@@ -1468,12 +1463,11 @@ export function updateChatHistory(charIdOverride = null) {
     `;
   }).join('');
 
-  list.innerHTML = html;
-
-  // Event delegation initialized once
+  // Инициализация обработчиков только один раз
   if (!list._listenersAttached) {
     list._listenersAttached = true;
     list.addEventListener('click', async (e) => {
+      // Обработка удаления
       const deleteBtn = e.target.closest('[data-delete-chat]');
       if (deleteBtn) {
         e.stopPropagation();
@@ -1487,6 +1481,11 @@ export function updateChatHistory(charIdOverride = null) {
             const container = document.getElementById('chat-messages');
             container.innerHTML = `
             <div class="empty-state">
+              <div class="empty-state-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+              </div>
               <h2>Start a new chat</h2>
               <p>Click the + button to begin a new conversation.</p>
             </div>
@@ -1497,17 +1496,22 @@ export function updateChatHistory(charIdOverride = null) {
         return;
       }
 
+      // Обработка клика по самому чату
       const item = e.target.closest('.chat-history-item');
       if (item) {
         const chatId = item.dataset.chatId;
-        const charId = appState.currentCharacter?.id;
-        if (!charId) return;
+        const currentSessions = chatStore.getSessions(appState.currentCharacter.id);
+        const session = currentSessions.find(s => s.id === chatId);
 
-        const currentSessions = chatStore.getSessions(charId);
-        const session = currentSessions.find(s => String(s.id) === String(chatId));
-        if (session) {
+        // Загружаем чат только если кликнули по неактивному
+        if (session && session.id !== appState.currentChat?.id) {
           loadChat(session);
-          updateChatHistory();
+
+          // Вместо полной перерисовки (updateChatHistory), просто меняем классы.
+          list.querySelectorAll('.chat-history-item').forEach(el => {
+            el.classList.remove('active');
+          });
+          item.classList.add('active');
         }
       }
     });
@@ -1845,7 +1849,7 @@ export function openAiCommentsSidebar() {
   const sidebar = document.getElementById('ai-comments-sidebar');
   const mainContent = document.getElementById('main-content');
   if (!sidebar) return;
-  
+
   sidebar.classList.remove('hidden');
   sidebar.classList.remove('panel-bounce');
   void sidebar.offsetWidth;
@@ -1853,11 +1857,11 @@ export function openAiCommentsSidebar() {
 
   if (mainContent) mainContent.classList.add('is-animating');
   document.body.classList.add('ai-sidebar-open');
-  
+
   setTimeout(() => {
     renderAiCommentsHistory();
   }, 300);
-  
+
   setTimeout(() => {
     if (mainContent) mainContent.classList.remove('is-animating');
   }, 600);
@@ -1867,7 +1871,7 @@ export function closeAiCommentsSidebar() {
   const mainContent = document.getElementById('main-content');
   if (mainContent) mainContent.classList.add('is-animating');
   document.body.classList.remove('ai-sidebar-open');
-  
+
   setTimeout(() => {
     if (mainContent) mainContent.classList.remove('is-animating');
     const sidebar = document.getElementById('ai-comments-sidebar');
@@ -1878,12 +1882,12 @@ export function closeAiCommentsSidebar() {
 function setupRightSidebarToggle() {
   const toggleBtn = document.getElementById('btn-toggle-right-sidebar');
   const closeBtn = document.getElementById('btn-close-ai-comments-sidebar');
-  
+
   if (toggleBtn) {
     toggleBtn.addEventListener('click', async () => {
       const settings = settingsStore.get();
       const isGenAIMode = settings.genai_mode_enabled;
-      
+
       if (isGenAIMode) {
         const isCurrentlyOpen = document.body.classList.contains('genai-sidebar-open');
         const genaiModule = await import('./genai-panel.js');
@@ -1894,7 +1898,7 @@ function setupRightSidebarToggle() {
           document.body.classList.remove('ai-sidebar-open');
           const commentsSidebar = document.getElementById('ai-comments-sidebar');
           if (commentsSidebar) commentsSidebar.classList.add('hidden');
-          
+
           genaiModule.openGenAIPanel();
         }
       } else {
@@ -1912,7 +1916,7 @@ function setupRightSidebarToggle() {
       }
     });
   }
-  
+
   if (closeBtn) {
     closeBtn.addEventListener('click', () => {
       closeAiCommentsSidebar();
