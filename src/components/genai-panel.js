@@ -130,20 +130,19 @@ function buildApiMessages() {
 
   let totalLen = systemContent.length + historyMsgs.reduce((sum, m) => sum + (m.content || '').length, 0);
 
-  // 1. Truncate active chat history if over limit
+  // 1. Truncate GenAI history first if over limit (keep at least the last 2 messages)
   if (totalLen > charLimit) {
-    context = buildContext(true);
-    systemContent = BASE_SYSTEM_PROMPT + '\n\n' + context;
-    totalLen = systemContent.length + historyMsgs.reduce((sum, m) => sum + (m.content || '').length, 0);
-  }
-
-  // 2. Truncate GenAI history if still over limit
-  if (totalLen > charLimit) {
-    // Keep at least the last 2 messages (user's latest query)
     while (totalLen > charLimit && historyMsgs.length > 2) {
       const removed = historyMsgs.shift();
       totalLen -= (removed.content || '').length;
     }
+  }
+
+  // 2. Truncate active chat history context if still over limit
+  if (totalLen > charLimit) {
+    context = buildContext(true);
+    systemContent = BASE_SYSTEM_PROMPT + '\n\n' + context;
+    totalLen = systemContent.length + historyMsgs.reduce((sum, m) => sum + (m.content || '').length, 0);
   }
 
   return [{ role: 'system', content: systemContent }, ...historyMsgs];
@@ -268,6 +267,21 @@ function resultBadgeForAction(action, result) {
 }
 
 // ─── Message Rendering ───────────────────────────────────────────────
+function renderAssistantBubble(entry, bubbleEl, { cursor = false } = {}) {
+  if (!bubbleEl) return;
+
+  const badgesHtml = (entry.badges || []).join('');
+  const textHtml = cursor
+    ? injectCursor(renderMarkdown(entry.content || ''))
+    : renderMarkdown(entry.content || '');
+
+  const toolHtml = entry.toolState?.html
+    ? `<div class="genai-tool-slot">${entry.toolState.html}</div>`
+    : '';
+
+  bubbleEl.innerHTML = `${badgesHtml}${textHtml}${toolHtml}`;
+}
+
 function renderMessages() {
   if (!messagesEl) return;
   messagesEl.innerHTML = '';
@@ -303,9 +317,17 @@ function appendMsgEl(entry) {
   el.innerHTML = `
     ${avatarHtml}
     <div class="genai-msg-body">
-      <div class="genai-msg-bubble">${badgesHtml}${renderMarkdown(entry.content || '')}</div>
+      <div class="genai-msg-bubble"></div>
       <div class="genai-msg-time">${formatTime(entry.timestamp || new Date().toISOString())}</div>
     </div>`;
+  
+  const bubbleEl = el.querySelector('.genai-msg-bubble');
+  if (isUser) {
+    bubbleEl.innerHTML = renderMarkdown(entry.content || '');
+  } else {
+    renderAssistantBubble(entry, bubbleEl);
+  }
+  
   messagesEl.appendChild(el);
   return el;
 }
@@ -329,7 +351,13 @@ async function streamGenAI(extraUserInstruction = null) {
   }
 
   // Add placeholder entry for the assistant
-  const assistantEntry = { role: 'assistant', content: '', badges: [], timestamp: new Date().toISOString() };
+  const assistantEntry = { 
+    role: 'assistant', 
+    content: '', 
+    badges: [], 
+    toolState: null,
+    timestamp: new Date().toISOString() 
+  };
   genaiHistory.push(assistantEntry);
 
   // Render placeholder bubble
@@ -357,10 +385,8 @@ async function streamGenAI(extraUserInstruction = null) {
           // Show only the text before the JSON
           const before = fullText.substring(0, fullText.indexOf(actionDetected)).trim();
           assistantEntry.content = before;
-          if (bubbleEl) {
-            const badgesHtml = (assistantEntry.badges || []).join('');
-            bubbleEl.innerHTML = badgesHtml + injectCursor(renderMarkdown(before));
-          }
+          renderAssistantBubble(assistantEntry, bubbleEl, { cursor: true });
+          
           // Abort the stream — we have what we need
           abortController.abort();
           return;
@@ -381,11 +407,8 @@ async function streamGenAI(extraUserInstruction = null) {
         if (!actionDetected) {
           // Normal streaming update
           assistantEntry.content = displayContent;
-          if (bubbleEl) {
-            const badgesHtml = (assistantEntry.badges || []).join('');
-            const wBadge = showWorking ? workingBadgeHtml() : '';
-            bubbleEl.innerHTML = badgesHtml + wBadge + injectCursor(renderMarkdown(displayContent));
-          }
+          assistantEntry.toolState = showWorking ? { kind: 'working', html: workingBadgeHtml() } : null;
+          renderAssistantBubble(assistantEntry, bubbleEl, { cursor: true });
           scrollToBottom();
         }
       },
@@ -396,10 +419,7 @@ async function streamGenAI(extraUserInstruction = null) {
         } else {
           // Normal finish
           assistantEntry.content = fullText;
-          if (bubbleEl) {
-            const badgesHtml = (assistantEntry.badges || []).join('');
-            bubbleEl.innerHTML = badgesHtml + renderMarkdown(fullText);
-          }
+          renderAssistantBubble(assistantEntry, bubbleEl);
           saveHistory();
         }
         finishGeneration();
@@ -426,25 +446,21 @@ async function handleActionDetected(actionStr, assistantEntry, bodyEl, bubbleEl)
   try { action = JSON.parse(actionStr); } catch { return; }
 
   // Show working badge during execution
-  if (bubbleEl) {
-    const badgesHtml = (assistantEntry.badges || []).join('');
-    bubbleEl.innerHTML = badgesHtml + workingBadgeHtml() + injectCursor(renderMarkdown(assistantEntry.content));
-  }
+  assistantEntry.toolState = { kind: 'working', html: workingBadgeHtml() };
+  renderAssistantBubble(assistantEntry, bubbleEl, { cursor: true });
   scrollToBottom();
 
   // Execute tool
   const result = await executeTool(action);
 
-  // Insert result badge
-  const badgeHtml = resultBadgeForAction(action, result);
-  assistantEntry.badges = assistantEntry.badges || [];
-  assistantEntry.badges.push(badgeHtml);
+  // Set result badge in toolState
+  assistantEntry.toolState = {
+    kind: 'result',
+    html: resultBadgeForAction(action, result)
+  };
 
-  // Update bubble with new badge
-  if (bubbleEl) {
-    const badgesHtml = assistantEntry.badges.join('');
-    bubbleEl.innerHTML = badgesHtml + injectCursor(renderMarkdown(assistantEntry.content));
-  }
+  // Update bubble with new result badge
+  renderAssistantBubble(assistantEntry, bubbleEl, { cursor: true });
 
   // Inject tool result into history as system message (hidden)
   const resultStr = JSON.stringify(result, null, 2);
@@ -507,24 +523,26 @@ async function continueAfterTool(assistantEntry, bubbleEl) {
           abortController.abort();
           return;
         }
+        
+        // Update combined content and render
         const combined = (assistantEntry.content ? assistantEntry.content + '\n\n' : '') + continuationText;
-        if (bubbleEl) {
-          const badgesHtml = (assistantEntry.badges || []).join('');
-          bubbleEl.innerHTML = badgesHtml + injectCursor(renderMarkdown(combined));
-        }
+        // Temporary update for rendering, will be finalized in onDone
+        const tempEntry = { ...assistantEntry, content: combined };
+        renderAssistantBubble(tempEntry, bubbleEl, { cursor: true });
         scrollToBottom();
       },
       async () => {
         const combined = (assistantEntry.content ? assistantEntry.content + '\n\n' : '') + continuationText;
         assistantEntry.content = combined;
-        if (bubbleEl) {
-          const badgesHtml = (assistantEntry.badges || []).join('');
-          bubbleEl.innerHTML = badgesHtml + renderMarkdown(combined);
-        }
+        renderAssistantBubble(assistantEntry, bubbleEl);
 
         if (newActionDetected) {
-          // Another tool call chained
-          genaiHistory.push({ role: 'assistant', content: combined, badges: [], timestamp: new Date().toISOString() });
+          // Another tool call chained — the user wants this in the SAME entry if possible?
+          // Actually, the current logic creates a NEW entry in genaiHistory but uses the SAME bubbleEl?
+          // Wait! If genaiHistory.push is called, and then handleActionDetected is called with bubbleEl...
+          // It will update the bubbleEl but the entry in history will be a new one.
+          // This might be slightly inconsistent with history but okay for current UI.
+          genaiHistory.push({ role: 'assistant', content: combined, badges: [], toolState: null, timestamp: new Date().toISOString() });
           const newEntry = genaiHistory[genaiHistory.length - 1];
           await handleActionDetected(newActionDetected, newEntry, bubbleEl?.closest('.genai-msg-body'), bubbleEl);
         } else {

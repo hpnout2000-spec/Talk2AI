@@ -426,11 +426,13 @@ export function loadChat(session) {
     toggleBtn.classList.remove('hidden');
   }
 
+  const settings = settingsStore.get();
   if (!settings.genai_mode_enabled) {
     renderAiCommentsHistory();
   }
   renderIndicators();
   scrollToBottom();
+  updateChatHistory();
 }
 
 // ─── Select Character ───────────────────────────────────────────────
@@ -671,16 +673,7 @@ async function sendMessage() {
             html = injectCursor(html);
           }
 
-          const temp = document.createElement('div');
-          temp.className = contentEl.className;
-          temp.innerHTML = html;
-
-          perf.start('morphdom-patch');
-          morphdom(contentEl, temp, {
-            childrenOnly: true,
-            getNodeKey: (node) => node.dataset?.wordIndex || node.id || node.className
-          });
-          perf.end('morphdom-patch');
+          list.innerHTML = html;
         });
       },
       // onDone
@@ -1433,14 +1426,13 @@ export function updateChatHistory() {
   const sessions = chatStore.getSessions(appState.currentCharacter.id);
   const currentChat = appState.currentChat;
 
-  // Напрямую обновляем DOM при новых сообщениях
+  // Напрямую обновляем DOM
   list.innerHTML = sessions.map(session => {
     const firstUserMsg = session.messages.find(m => m.role === 'user');
     const title = firstUserMsg
       ? firstUserMsg.content.substring(0, 40) + (firstUserMsg.content.length > 40 ? '...' : '')
       : 'New Chat';
 
-    // Надежная проверка активного чата
     const isActive = currentChat && (session.id === currentChat.id);
 
     return `
@@ -1467,7 +1459,7 @@ export function updateChatHistory() {
   if (!list._listenersAttached) {
     list._listenersAttached = true;
     list.addEventListener('click', async (e) => {
-      // Обработка удаления
+      // Удаление
       const deleteBtn = e.target.closest('[data-delete-chat]');
       if (deleteBtn) {
         e.stopPropagation();
@@ -1496,26 +1488,25 @@ export function updateChatHistory() {
         return;
       }
 
-      // Обработка клика по самому чату
       const item = e.target.closest('.chat-history-item');
       if (item) {
         const chatId = item.dataset.chatId;
         const currentSessions = chatStore.getSessions(appState.currentCharacter.id);
         const session = currentSessions.find(s => s.id === chatId);
 
-        // Загружаем чат только если кликнули по неактивному
+        // Загружаем только если это другой чат
         if (session && session.id !== appState.currentChat?.id) {
-          loadChat(session);
-
-          // Вместо полной перерисовки (updateChatHistory), просто меняем классы.
-          list.querySelectorAll('.chat-history-item').forEach(el => {
-            el.classList.remove('active');
-          });
-          item.classList.add('active');
+          try {
+            loadChat(session);
+          } finally {
+            updateChatHistory();
+          }
         }
       }
     });
   }
+
+  perf.end('updateChatHistory');
 }
 
 // ─── Continuation Options ───────────────────────────────────────────
@@ -1550,9 +1541,9 @@ CRITICAL INSTRUCTIONS:
 
 Example:
 [
-  { "label": "Спросить про меч", "message": "Where did you find that glowing sword?" },
-  { "label": "Убежать", "message": "I don't trust you, I'm leaving!" },
-  { "label": "Предложить помощь", "message": "How can I assist you with your quest?" }
+  { "label": "Ask about sword", "message": "Where did you find that glowing sword?" },
+  { "label": "Run away", "message": "I don't trust you, I'm leaving!" },
+  { "label": "Offer help", "message": "How can I assist you with your quest?" }
 ]
 Do not include any Markdown formatting like \`\`\`json or any other text. Return strictly the raw JSON array.`
     });
