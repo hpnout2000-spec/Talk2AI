@@ -40,12 +40,31 @@ export const chatStore = {
       console.warn('LocalStorage load failed', e);
     }
 
-    // Merge: Use whichever has more sessions (safer fallback)
-    if (parsedLocal.length > parsedTauri.length) {
-      sessions[characterId] = parsedLocal;
-    } else {
-      sessions[characterId] = parsedTauri.length > 0 ? parsedTauri : parsedLocal;
-    }
+    // Smart Merge: Merge sessions by ID, picking the newest version of each
+    const mergedMap = new Map();
+    
+    // Process local first
+    parsedLocal.forEach(s => mergedMap.set(s.id, s));
+    
+    // Process tauri, overriding if newer or if local doesn't have it
+    parsedTauri.forEach(s => {
+      if (mergedMap.has(s.id)) {
+        const localSession = mergedMap.get(s.id);
+        const tauriTime = new Date(s.updated_at || 0).getTime();
+        const localTime = new Date(localSession.updated_at || 0).getTime();
+        
+        // If tauri has more messages or is newer, pick it
+        if (tauriTime > localTime || s.messages.length > localSession.messages.length) {
+          mergedMap.set(s.id, s);
+        }
+      } else {
+        mergedMap.set(s.id, s);
+      }
+    });
+
+    sessions[characterId] = Array.from(mergedMap.values()).sort((a, b) => {
+      return new Date(b.updated_at || 0) - new Date(a.updated_at || 0);
+    });
 
     return sessions[characterId];
   },
@@ -200,6 +219,21 @@ export const chatStore = {
 
   async saveCurrentSession() {
     return this.saveSession(currentSession);
+  },
+
+  async renameSession(chatId, newTitle, characterId) {
+    const charId = characterId || (currentSession?.character_id);
+    if (!charId) return;
+    
+    // Ensure sessions are loaded
+    await this.loadForCharacter(charId);
+    
+    const session = sessions[charId]?.find(s => s.id === chatId);
+    if (session) {
+      session.custom_title = newTitle;
+      session.updated_at = new Date().toISOString();
+      await this.saveSession(session);
+    }
   },
 
   async deleteSession(characterId, chatId) {

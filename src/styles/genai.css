@@ -84,6 +84,7 @@ body.genai-sidebar-open #genai-sidebar {
   display: flex;
   gap: var(--space-3);
   animation: fadeInUp 0.3s ease forwards;
+  padding: var(--space-2) 0;
 }
 
 .genai-msg.genai-user {
@@ -123,9 +124,11 @@ body.genai-sidebar-open #genai-sidebar {
 }
 
 .genai-msg-bubble {
-  font-size: var(--text-sm);
-  line-height: 1.65;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.75;
   word-break: break-word;
+  letter-spacing: 0.01em;
 }
 
 /* User bubble — same as .user .message-content */
@@ -146,9 +149,10 @@ body.genai-sidebar-open #genai-sidebar {
 }
 
 /* Markdown inside bubbles */
-.genai-msg-bubble p { margin-bottom: 0.4em; }
+.genai-msg-bubble p { margin-bottom: 0.55em; }
 .genai-msg-bubble p:last-child { margin-bottom: 0; }
-.genai-msg-bubble ul, .genai-msg-bubble ol { padding-left: 1.4em; margin: 0.4em 0; }
+.genai-msg-bubble ul, .genai-msg-bubble ol { padding-left: 1.4em; margin: 0.5em 0; }
+.genai-msg-bubble li { margin-bottom: 0.25em; }
 .genai-msg-bubble strong { font-weight: 700; }
 .genai-msg-bubble em { font-style: italic; color: var(--text-accent); }
 .genai-msg-bubble code {
@@ -159,7 +163,7 @@ body.genai-sidebar-open #genai-sidebar {
   border-radius: var(--radius-sm);
 }
 .genai-msg-bubble h1, .genai-msg-bubble h2, .genai-msg-bubble h3 {
-  font-size: var(--text-sm);
+  font-size: 14px;
   font-weight: 600;
   margin: 0.6em 0 0.2em;
 }
@@ -168,6 +172,13 @@ body.genai-sidebar-open #genai-sidebar {
   font-size: var(--text-xs);
   color: var(--text-tertiary);
   padding: 0 2px;
+  margin-top: var(--space-2);
+  transition: opacity 0.3s ease;
+}
+
+.genai-msg.generating .genai-msg-time {
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* ─── Action Badges (tool call results) ─────────────────────────────── */
@@ -210,6 +221,45 @@ body.genai-sidebar-open #genai-sidebar {
 @keyframes genai-dot {
   0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
   40%           { transform: scale(1);   opacity: 1;   }
+}
+
+.genai-working-text {
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  display: inline-block;
+  margin: 0 var(--space-1);
+  font-style: italic;
+  opacity: 0.85;
+  position: relative;
+  background: linear-gradient(
+    90deg,
+    var(--text-tertiary) 0%,
+    rgba(196, 181, 253, 0.9) 40%,
+    var(--text-accent) 50%,
+    rgba(196, 181, 253, 0.9) 60%,
+    var(--text-tertiary) 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: workingSweep 1.8s linear infinite;
+}
+
+@keyframes workingSweep {
+  0%   { background-position: 200% center; }
+  100% { background-position: -200% center; }
+}
+
+.genai-inline-tool {
+  display: block;
+  margin: var(--space-2) 0;
+  animation: toolResultAppear 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes toolResultAppear {
+  from { opacity: 0; transform: translateY(4px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .genai-tool-slot {
@@ -443,4 +493,102 @@ body.genai-sidebar-open #genai-sidebar {
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(2px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* ─── GenAI Memory Card ─────────────────────────────────────────────── */
+
+.genai-memory-card {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3);
+  margin-top: var(--space-2);
+  animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.genai-memory-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.genai-memory-header span:first-child {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.genai-memory-count {
+  font-size: 10px;
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+}
+
+.genai-memory-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.genai-memory-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.02);
+  transition: all var(--transition-fast);
+  position: relative;
+  overflow: hidden;
+}
+
+.genai-memory-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  transform: translateX(2px);
+}
+
+.genai-memory-bullet {
+  width: 4px;
+  height: 4px;
+  background: var(--accent-primary);
+  border-radius: 50%;
+  margin-top: 6px;
+  flex-shrink: 0;
+  box-shadow: 0 0 8px var(--accent-primary);
+}
+
+.genai-memory-content {
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--text-primary);
+  flex: 1;
+}
+
+.genai-memory-id {
+  font-size: 9px;
+  font-family: var(--font-mono);
+  color: var(--text-tertiary);
+  opacity: 0.5;
+  margin-top: 2px;
+}
+
+.genai-memory-empty {
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  font-style: italic;
+  text-align: center;
+  padding: var(--space-4);
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--border-light);
 }

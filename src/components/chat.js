@@ -159,6 +159,33 @@ export function initChat() {
       sendMessage();
     }
   });
+
+  // Listen for GenAI programmatic chat management
+  window.addEventListener('genai-create-new-chat', (e) => {
+    const { character_id } = e.detail;
+    const character = characterStore.getById(character_id);
+    if (character) {
+      selectCharacter(character);
+      startNewChat(character);
+    }
+  });
+
+  window.addEventListener('genai-switch-chat', (e) => {
+    const { chat_id, character_id } = e.detail;
+    const character = characterStore.getById(character_id);
+    if (character) {
+      selectCharacter(character, chat_id);
+    }
+  });
+
+  window.addEventListener('genai-rename-chat', (e) => {
+    const { chat_id, character_id, new_title } = e.detail;
+    chatStore.renameSession(chat_id, new_title, character_id).then(() => {
+      if (appState.currentCharacter?.id === character_id) {
+        updateChatHistory();
+      }
+    });
+  });
 }
 
 function toggleInputSettings() {
@@ -437,7 +464,7 @@ export function loadChat(session) {
 
 // ─── Select Character ───────────────────────────────────────────────
 
-export async function selectCharacter(character) {
+export async function selectCharacter(character, sessionId = null) {
   const charId = character.id;
   appState.currentCharacter = character;
 
@@ -474,7 +501,14 @@ export async function selectCharacter(character) {
     if (appState.currentCharacter?.id !== charId) return;
 
     const sessions = chatStore.getSessions(charId);
-    if (sessions && sessions.length > 0) {
+    if (sessionId) {
+      const session = sessions.find(s => s.id === sessionId);
+      if (session) {
+        loadChat(session);
+      } else {
+        loadChat(sessions[0] || null);
+      }
+    } else if (sessions && sessions.length > 0) {
       loadChat(sessions[0]);
     } else {
       startNewChat(character);
@@ -592,6 +626,9 @@ async function sendMessage() {
   window.dispatchEvent(new CustomEvent('character-list-updated'));
   const userMsgElement = appendMessage(userMsg, false, character);
   const userContentEl = userMsgElement.querySelector('.message-text');
+
+  // Immediate save to prevent loss if app is closed before AI response
+  await chatStore.saveSession(session);
 
   // Clear input
   messageInput.value = '';
@@ -744,6 +781,7 @@ async function sendMessage() {
           notifyGenAI(originalContent, character.name);
         }
 
+        window.dispatchEvent(new CustomEvent('genai-chat-response-finished'));
         checkConnection();
       },
       // onError
@@ -759,6 +797,7 @@ async function sendMessage() {
           headerCharStatus.textContent = 'Error';
           headerCharStatus.classList.remove('generating');
         }
+        window.dispatchEvent(new CustomEvent('genai-chat-response-finished', { detail: { error: err.message } }));
       },
       apiOptions
     );
@@ -768,6 +807,7 @@ async function sendMessage() {
     if (appState.currentCharacter?.id === character.id) {
       appState.isGenerating = false;
     }
+    window.dispatchEvent(new CustomEvent('genai-chat-response-finished', { detail: { error: err.message } }));
   }
 }
 
@@ -853,10 +893,24 @@ function buildApiMessages(character, session) {
 
     if (activePreset) {
       systemContent = activePreset.content;
-      // Inject character fields into the preset
+
+      // Check if any standard placeholders are used
+      const hasPlaceholders = /\{\{description\}\}/gi.test(systemContent) ||
+        /\{\{personality\}\}/gi.test(systemContent) ||
+        /\{\{scenario\}\}/gi.test(systemContent);
+
+      // Replace placeholders
       systemContent = systemContent.replace(/\{\{description\}\}/gi, charData.description);
       systemContent = systemContent.replace(/\{\{personality\}\}/gi, charData.personality);
       systemContent = systemContent.replace(/\{\{scenario\}\}/gi, charData.scenario);
+
+      // If no placeholders were used, prepend character info automatically to ensure context
+      if (!hasPlaceholders) {
+        const parts = [charData.description, charData.personality, charData.scenario].filter(Boolean);
+        if (parts.length > 0) {
+          systemContent = parts.join('\n\n') + '\n\n' + systemContent;
+        }
+      }
     } else {
       // Fallback to building from fields
       const parts = [charData.description, charData.personality, charData.scenario].filter(Boolean);
@@ -1451,9 +1505,12 @@ export function updateChatHistory() {
   // Напрямую обновляем DOM
   list.innerHTML = sessions.map(session => {
     const firstUserMsg = session.messages.find(m => m.role === 'user');
-    const title = firstUserMsg
-      ? firstUserMsg.content.substring(0, 40) + (firstUserMsg.content.length > 40 ? '...' : '')
-      : 'New Chat';
+    let title = session.custom_title;
+    if (!title) {
+      title = firstUserMsg
+        ? firstUserMsg.content.substring(0, 40) + (firstUserMsg.content.length > 40 ? '...' : '')
+        : 'New Chat';
+    }
 
     const isActive = currentChat && (session.id === currentChat.id);
 

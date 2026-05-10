@@ -552,6 +552,13 @@
                   <div class="card-desc">Model parameters</div>
                 </div>
               </div>
+              <div class="settings-card" id="card-genai">
+                <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/></svg></div>
+                <div class="card-info">
+                  <div class="card-title">GenAI</div>
+                  <div class="card-desc">Assistant behavior</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -706,6 +713,62 @@
         </div>
       </div>
 
+      <!-- GenAI Settings -->
+      <div id="modal-settings-genai" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content" style="max-width: 440px;">
+          <div class="modal-header">
+            <h2>GenAI Assistant</h2>
+            <button class="btn-icon btn-close-submodal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label for="setting-genai-response-length">Response Length</label>
+              <div class="vibe-dropdown" id="dropdown-genai-response-length">
+                <div class="vibe-dropdown-trigger" data-value="default">Default</div>
+                <div class="vibe-dropdown-menu">
+                  <div class="vibe-dropdown-item" data-value="short">Short</div>
+                  <div class="vibe-dropdown-item" data-value="default">Default</div>
+                  <div class="vibe-dropdown-item" data-value="long">Long</div>
+                </div>
+                <select id="setting-genai-response-length" class="hidden">
+                  <option value="short">Short</option>
+                  <option value="default">Default</option>
+                  <option value="long">Long</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="setting-genai-speech-style">Speech Style</label>
+              <div class="vibe-dropdown" id="dropdown-genai-speech-style">
+                <div class="vibe-dropdown-trigger" data-value="default">Default</div>
+                <div class="vibe-dropdown-menu">
+                  <div class="vibe-dropdown-item" data-value="default">Default</div>
+                  <div class="vibe-dropdown-item" data-value="official">Official</div>
+                </div>
+                <select id="setting-genai-speech-style" class="hidden">
+                  <option value="default">Default</option>
+                  <option value="official">Official</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group-row">
+              <div style="display: flex; flex-direction: column; gap: 4px;">
+                <label>Safe Mode</label>
+                <span style="font-size: var(--text-xs); color: var(--text-tertiary);">Restricts GenAI from discussing any NSFW content.</span>
+              </div>
+              <label class="toggle-switch small">
+                <input type="checkbox" id="setting-genai-safe-mode" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn-primary btn-full btn-save-settings">Save Changes</button>
+          </div>
+        </div>
+      </div>
+
       <!-- ─── Memory Modal ───────────────────────────────── -->
       <div id="memory-panel" class="modal hidden">
         <div class="modal-backdrop"></div>
@@ -836,8 +899,8 @@
                         <input type="range" id="adv-setting-temperature" min="0" max="2" step="0.05" value="0.7" />
                       </div>
                       <div class="form-group">
-                        <label for="adv-setting-top-p">Top-P: <span id="adv-top-p-value">0.9</span></label>
-                        <input type="range" id="adv-setting-top-p" min="0" max="1" step="0.05" value="0.9" />
+                        <label for="adv-setting-top-p">Top-P: <span id="adv-top-p-value">0.90</span></label>
+                        <input type="range" id="adv-setting-top-p" min="0" max="1" step="0.01" value="0.9" />
                       </div>
                       <div class="form-group">
                         <label for="adv-setting-top-k">Top-K: <span id="adv-top-k-value">40</span></label>

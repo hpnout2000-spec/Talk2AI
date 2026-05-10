@@ -692,3 +692,105 @@ body {
   height: 24px;
   padding: 4px;
 }
+
+/* ─── Vibe Design Custom Dropdowns ────────────────────────────────── */
+.vibe-dropdown {
+  position: relative;
+  width: 100%;
+}
+
+.vibe-dropdown-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-base);
+  box-shadow: var(--shadow-sm);
+  user-select: none;
+}
+
+.vibe-dropdown-trigger:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-accent);
+}
+
+.vibe-dropdown-trigger:active {
+  transform: scale(0.975);
+  background: var(--bg-active);
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+}
+
+.vibe-dropdown-trigger::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--text-tertiary);
+  border-bottom: 2px solid var(--text-tertiary);
+  transform: rotate(45deg);
+  margin-top: -4px;
+  transition: transform var(--transition-base);
+}
+
+.vibe-dropdown.open .vibe-dropdown-trigger::after {
+  transform: rotate(-135deg);
+  margin-top: 4px;
+}
+
+.vibe-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  width: 100%;
+  background: rgba(47, 47, 47, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  z-index: 1000;
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  
+  /* Animation */
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+  transition: all var(--transition-base);
+}
+
+.vibe-dropdown.open .vibe-dropdown-menu {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: all;
+}
+
+.vibe-dropdown-item {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.vibe-dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  padding-left: calc(var(--space-4) + 4px);
+}
+
+.vibe-dropdown-item.selected {
+  background: var(--accent-primary-glow);
+  color: var(--text-accent);
+  font-weight: 600;
+}
