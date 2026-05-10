@@ -7,6 +7,7 @@ import { settingsStore } from '../services/settings-store.js';
 import { characterStore } from '../services/character-store.js';
 import { chatStore } from '../services/chat-store.js';
 import { genaiMemoryStore } from '../services/genai-memory-store.js';
+import { groupChatStore } from '../services/group-chat-store.js';
 import { appState } from '../state.js';
 import { renderMarkdown, autoResizeTextarea, formatTime, injectCursor, escapeHtml } from '../utils/helpers.js';
 
@@ -28,7 +29,7 @@ before you send the JSON request you can inform the user, but very short: 1-2 wo
 
 Your respond should be short and to the point. 
 
-You can help the user with character creation, management, and settings.
+You can help the user with character creation, management, settings, and GROUP CHATS (creating groups, managing members, switching group response mode).
 
 What you can't do: generate pictures, write and review books in this app. You should say that this is in the work right now and will be available in the future.
 
@@ -70,7 +71,6 @@ const SETTING_META = {
 function buildContext(trimActiveChat = false) {
   const settings = settingsStore.get();
   const characters = characterStore.getAll();
-  const session = chatStore.getCurrentSession();
   const parts = [];
 
   // Characters list
@@ -80,16 +80,42 @@ function buildContext(trimActiveChat = false) {
     parts.push(`- "${c.name}" (id: ${c.id}) — ${ago}`);
   });
 
+  // Group Chats
+  const groups = groupChatStore.getGroups();
+  if (groups.length > 0) {
+    parts.push('\n## Group Chats:');
+    groups.forEach(g => {
+      const memberNames = (g.character_ids || [])
+        .map(id => characterStore.getById(id)?.name || id)
+        .join(', ');
+      const mode = g.response_mode === 'auto' ? 'Auto (AI picks responder)' : 'Round-robin';
+      parts.push(`- "${g.name}" (id: ${g.id}) — members: [${memberNames}] — mode: ${mode}`);
+    });
+  } else {
+    parts.push('\n## Group Chats: none');
+  }
+
   // Active chat
+  let session = chatStore.getCurrentSession();
+  
+  // Robustness: If session is out of sync with current character, try to find the correct one
+  if (appState.currentCharacter && (!session || session.character_id !== appState.currentCharacter.id)) {
+    const charSessions = chatStore.getSessions(appState.currentCharacter.id);
+    if (charSessions.length > 0) {
+      session = charSessions[0]; // Use most recent session for this character
+    }
+  }
+
   if (session && appState.currentCharacter) {
     parts.push(`\n## Active Chat — Character: ${appState.currentCharacter.name} (id: ${appState.currentCharacter.id}), Session ID: ${session.id}`);
     if (trimActiveChat) {
       parts.push(`  (Chat history omitted due to token limit)`);
     } else {
-      const recent = session.messages.slice(-6);
+      // Increased from 6 to 15 for better context awareness
+      const recent = session.messages.slice(-15);
       recent.forEach(m => {
         const who = m.role === 'user' ? 'User' : appState.currentCharacter.name;
-        const text = (m.content || '').substring(0, 120).replace(/\n/g, ' ');
+        const text = (m.content || '').substring(0, 300).replace(/\n/g, ' ');
         parts.push(`  ${who}: ${text}`);
       });
       
@@ -165,6 +191,21 @@ function buildContext(trimActiveChat = false) {
 13. list_memories — Show your memories to the user in a nice UI card
     {"genai_action":"list_memories"}
 
+14. get_group_chats — Get list of all group chats
+    {"genai_action":"get_group_chats"}
+
+15. create_group — Create a new group chat
+    {"genai_action":"create_group","name":"<name>","character_ids":["<id1>","<id2>"],"response_mode":"round_robin|auto"}
+
+16. add_member_to_group — Add a character to an existing group
+    {"genai_action":"add_member_to_group","group_id":"<id>","character_id":"<id>"}
+
+17. remove_member_from_group — Remove a character from a group
+    {"genai_action":"remove_member_from_group","group_id":"<id>","character_id":"<id>"}
+
+18. switch_group_chat — Open and switch to a specific group chat
+    {"genai_action":"switch_group_chat","group_id":"<id>"}
+
 IMPORTANT: After ANY function call JSON, stop generating. The result will be appended and you will be asked to continue.`);
 
   return '[APP CONTEXT]\n' + parts.join('\n');
@@ -199,7 +240,15 @@ function buildApiMessages() {
   }
 
   let systemContent = finalBasePrompt + stylePrompt + '\n\n' + context;
-  let historyMsgs = genaiHistory.map(e => ({ role: e.role, content: e.content }));
+  let historyMsgs = genaiHistory.map(e => {
+    // Convert tool results to system messages for the API
+    if (e.role === 'tool') {
+      return { role: 'system', content: `Tool result: ${e.content}` };
+    }
+    // Strip internal tool markers before sending to API
+    const cleanContent = (e.content || '').replace(/\[\[GENAI_TOOL_\d+\]\]/g, '').trim();
+    return { role: e.role, content: cleanContent };
+  });
 
   let totalLen = systemContent.length + historyMsgs.reduce((sum, m) => sum + (m.content || '').length, 0);
 
@@ -441,6 +490,69 @@ async function executeTool(action) {
     return { success: true, info: `Renamed chat to "${new_title}".` };
   }
 
+  // ─── Group Chat Actions ──────────────────────────────────────────
+
+  if (name === 'get_group_chats') {
+    const groups = groupChatStore.getGroups();
+    return {
+      count: groups.length,
+      groups: groups.map(g => ({
+        id: g.id,
+        name: g.name,
+        response_mode: g.response_mode,
+        member_count: (g.character_ids || []).length,
+        members: (g.character_ids || []).map(id => ({
+          id,
+          name: characterStore.getById(id)?.name || id
+        }))
+      }))
+    };
+  }
+
+  if (name === 'create_group') {
+    const { name: groupName, character_ids, response_mode } = action;
+    if (!groupName) return { error: 'Group name is required.' };
+    if (!character_ids || !character_ids.length) return { error: 'At least one character_id is required.' };
+    const group = await groupChatStore.saveGroup({
+      name: groupName,
+      character_ids,
+      response_mode: response_mode || 'round_robin'
+    });
+    window.dispatchEvent(new CustomEvent('group-updated', { detail: { id: group.id } }));
+    return { success: true, id: group.id, name: group.name, response_mode: group.response_mode };
+  }
+
+  if (name === 'add_member_to_group') {
+    const { group_id, character_id } = action;
+    const group = groupChatStore.getGroupById(group_id);
+    if (!group) return { error: `Group "${group_id}" not found.` };
+    const char = characterStore.getById(character_id);
+    if (!char) return { error: `Character "${character_id}" not found.` };
+    const ids = [...new Set([...(group.character_ids || []), character_id])];
+    await groupChatStore.updateGroupMembers(group_id, ids);
+    window.dispatchEvent(new CustomEvent('group-updated', { detail: { id: group_id } }));
+    return { success: true, group_id, added: char.name, new_member_count: ids.length };
+  }
+
+  if (name === 'remove_member_from_group') {
+    const { group_id, character_id } = action;
+    const group = groupChatStore.getGroupById(group_id);
+    if (!group) return { error: `Group "${group_id}" not found.` };
+    const char = characterStore.getById(character_id);
+    const ids = (group.character_ids || []).filter(id => id !== character_id);
+    await groupChatStore.updateGroupMembers(group_id, ids);
+    window.dispatchEvent(new CustomEvent('group-updated', { detail: { id: group_id } }));
+    return { success: true, group_id, removed: char?.name || character_id, new_member_count: ids.length };
+  }
+
+  if (name === 'switch_group_chat') {
+    const { group_id } = action;
+    const group = groupChatStore.getGroupById(group_id);
+    if (!group) return { error: `Group "${group_id}" not found.` };
+    window.dispatchEvent(new CustomEvent('genai-switch-group', { detail: { group_id } }));
+    return { success: true, group_id, group_name: group.name };
+  }
+
   return { error: `Unknown action: "${name}"` };
 }
 
@@ -478,6 +590,11 @@ function resultBadgeForAction(action, result) {
   if (name === 'add_memory') return actionBadgeHtml('result-data', '🧠', 'Memory saved');
   if (name === 'delete_memory') return actionBadgeHtml('result-data', '🗑️', 'Memory deleted');
   if (name === 'list_memories') return actionBadgeHtml('result-data', '📜', `Showing ${result.count} memories`);
+  if (name === 'get_group_chats') return actionBadgeHtml('result-data', '👥', `Found ${result.count} group${result.count !== 1 ? 's' : ''}`);
+  if (name === 'create_group') return actionBadgeHtml('result-chat-action', '👥', `Created group: ${result.name}`);
+  if (name === 'add_member_to_group') return actionBadgeHtml('result-chat-action', '➕', `Added ${result.added} to group`);
+  if (name === 'remove_member_from_group') return actionBadgeHtml('result-chat-action', '➖', `Removed ${result.removed} from group`);
+  if (name === 'switch_group_chat') return actionBadgeHtml('result-chat-action', '👥', `Switched to group: ${result.group_name}`);
   return actionBadgeHtml('result-data', '🔧', 'Action completed');
 }
 
@@ -497,7 +614,7 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, streaming = fa
   // Replace tool markers with badges or specialized views
   if (entry.tools && entry.tools.length > 0) {
     entry.tools.forEach((tool, idx) => {
-      const marker = `___GENAI_TOOL_${idx}___`;
+      const marker = `[[GENAI_TOOL_${idx}]]`;
       let badgeHtml = '';
 
       if (tool.state === 'working') {
@@ -714,7 +831,7 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
           const jsonIdx = fullText.indexOf(actionDetected);
           const before = fullText.substring(0, jsonIdx);
           const toolIdx = assistantEntry.tools.length;
-          const marker = `___GENAI_TOOL_${toolIdx}___`;
+          const marker = `[[GENAI_TOOL_${toolIdx}]]`;
 
           assistantEntry.content += before + marker;
 

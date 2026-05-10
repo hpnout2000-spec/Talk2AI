@@ -18,6 +18,9 @@ import { initBookPanel } from './components/book-panel.js';
 import { initBookView } from './components/book-view.js';
 import { uiManager } from './utils/ui-manager.js';
 import { initGenAIPanel, openGenAIPanel, closeGenAIPanel } from './components/genai-panel.js';
+import { initGroupChatPanel } from './components/group-chat-panel.js';
+import { initGroupChatView } from './components/group-chat-view.js';
+import { groupChatStore } from './services/group-chat-store.js';
 
 // ─── Initialize App ─────────────────────────────────────────────────
 
@@ -91,6 +94,7 @@ async function init() {
   // Load characters and books
   const characters = await characterStore.load();
   await bookStore.load();
+  await groupChatStore.loadGroups();
 
 
   // Initialize all components
@@ -102,6 +106,8 @@ async function init() {
   initBookPanel();
   initBookView();
   initGenAIPanel();
+  initGroupChatPanel();
+  initGroupChatView();
   applyGlobalSettingsStyles();
 
   // GenAI button
