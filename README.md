@@ -18,7 +18,7 @@ VibeChatting is a modern AI chat application focused on aesthetics, performance,
 - **GenAI:** A universal AI assistant with full access to every layer of the application. It will be able to manage settings, analyze history across all chats and comments, and even write messages on behalf of the user to drive the story according to a defined plan.
 
 ## 💻 System Requirements
-- **Model:** **Gemma 4 31B** (Gemma 4 26B is a bare minimum)
+- **Model:** **Gemma 4 31B** (Gemma 4 26B is not enough.)
 - **Performance:** Generation speed of at least **20 tokens per second**.
 
 ---
