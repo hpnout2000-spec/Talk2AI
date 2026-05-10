@@ -5,7 +5,7 @@
 class WindowManager {
   constructor() {
     this.stack = []; // elements currently open
-    this.baseElements = ['sidebar', 'main-content', 'ai-comments-sidebar'];
+    this.baseElements = ['sidebar', 'main-content', 'genai-sidebar'];
   }
 
   /**

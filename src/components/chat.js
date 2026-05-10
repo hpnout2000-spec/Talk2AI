@@ -20,6 +20,11 @@ import {
 import morphdom from '../vendor/morphdom.js';
 import { perf } from '../utils/perf.js';
 
+// Lazy notify GenAI panel when a response arrives (avoids circular import)
+function notifyGenAI(response, characterName) {
+  import('../components/genai-panel.js').then(m => m.notifyGenAIResponse(response, characterName)).catch(() => {});
+}
+
 // ─── DOM Elements ───────────────────────────────────────────────────
 
 let messagesContainer;
@@ -143,8 +148,17 @@ export function initChat() {
       inputSettingsPopover.classList.add('hidden');
     }
   });
+  setupRightSidebarToggle();
 
-  setupAiCommentsSidebar();
+  // Listen for GenAI programmatic message sends
+  window.addEventListener('genai-send-chat-message', (e) => {
+    if (appState.isGenerating) return;
+    const { content } = e.detail;
+    if (content) {
+      messageInput.value = content;
+      sendMessage();
+    }
+  });
 }
 
 function toggleInputSettings() {
@@ -397,6 +411,7 @@ export function startNewChat(character = null) {
 // ─── Load Existing Chat ─────────────────────────────────────────────
 
 export function loadChat(session) {
+  if (!session) return;
   if (appState.currentCharacter?.id !== session.character_id) return;
   appState.currentChat = session;
   chatStore.setCurrentSession(session);
@@ -406,17 +421,14 @@ export function loadChat(session) {
     appendMessage(msg);
   }
 
-  const settings = settingsStore.get();
-  const toggleBtn = document.getElementById('btn-toggle-ai-comments-sidebar');
+  const toggleBtn = document.getElementById('btn-toggle-right-sidebar');
   if (toggleBtn) {
-    if (settings.ai_comments_history_enabled) {
-      toggleBtn.classList.remove('hidden');
-    } else {
-      toggleBtn.classList.add('hidden');
-    }
+    toggleBtn.classList.remove('hidden');
   }
 
-  renderAiCommentsHistory();
+  if (!settings.genai_mode_enabled) {
+    renderAiCommentsHistory();
+  }
   renderIndicators();
   scrollToBottom();
 }
@@ -439,30 +451,40 @@ export async function selectCharacter(character) {
     </svg>`;
   }
 
-  // Load chats for this character
-  await chatStore.loadForCharacter(charId);
-
-  // Check if this character is still the active one before proceeding
-  if (appState.currentCharacter?.id !== charId) return;
-
-  const sessions = chatStore.getSessions(charId);
-
-  // Load memory
-  await memoryService.loadForCharacter(charId);
-
-  if (appState.currentCharacter?.id !== charId) return;
-
-  if (sessions.length > 0) {
-    // Load most recent chat
-    loadChat(sessions[0]);
-  } else {
-    // Start a new chat
-    startNewChat(character);
+  // 1. Clear history list immediately to provide instant feedback
+  const list = document.getElementById('chat-history-list');
+  if (list) {
+    list.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-tertiary); font-size: var(--text-sm);">Loading chats...</div>';
   }
 
-  updateChatHistory();
-  renderIndicators();
-  window.dispatchEvent(new CustomEvent('character-selected', { detail: { id: charId } }));
+  try {
+    // 2. Load chats for this character
+    try {
+      await chatStore.loadForCharacter(charId);
+    } catch (err) {
+      console.warn('Failed to load chats:', err);
+    }
+
+    // 3. Load memory (don't block UI for this)
+    memoryService.loadForCharacter(charId).catch(err => console.warn('Memory load failed:', err));
+
+    // Check if this character is still the active one
+    if (appState.currentCharacter?.id !== charId) return;
+
+    const sessions = chatStore.getSessions(charId);
+    if (sessions && sessions.length > 0) {
+      loadChat(sessions[0]);
+    } else {
+      startNewChat(character);
+    }
+  } catch (err) {
+    console.error('Critical switch error:', err);
+  } finally {
+    // 4. ENSURE UI updates even if something failed
+    updateChatHistory(charId);
+    renderIndicators();
+    window.dispatchEvent(new CustomEvent('character-selected', { detail: { id: charId } }));
+  }
 }
 
 // ─── Send Message ───────────────────────────────────────────────────
@@ -718,6 +740,9 @@ async function sendMessage() {
 
           // 3. Generate suggestions
           generateContinuationOptions(character, session, msgElement);
+
+          // 4. Notify GenAI (for vibe plot mode)
+          notifyGenAI(originalContent, character.name);
         }
 
         checkConnection();
@@ -1401,15 +1426,22 @@ async function triggerAssistantGeneration() {
 
 // ─── Update Chat History Sidebar ────────────────────────────────────
 
-export function updateChatHistory() {
-  if (!appState.currentCharacter) return;
+export function updateChatHistory(charIdOverride = null) {
+  const charId = charIdOverride || appState.currentCharacter?.id;
+  if (!charId) return;
 
-  perf.start('updateChatHistory');
   const list = document.getElementById('chat-history-list');
-  const sessions = chatStore.getSessions(appState.currentCharacter.id);
+  if (!list) return;
+
+  const sessions = chatStore.getSessions(charId);
   const currentId = appState.currentChat?.id;
 
-  const html = sessions.map(session => {
+  // Sort sessions by updated_at (newest first)
+  const sortedSessions = [...sessions].sort((a, b) => 
+    new Date(b.updated_at) - new Date(a.updated_at)
+  );
+
+  const html = sortedSessions.map(session => {
     const firstUserMsg = session.messages.find(m => m.role === 'user');
     const title = firstUserMsg
       ? firstUserMsg.content.substring(0, 40) + (firstUserMsg.content.length > 40 ? '...' : '')
@@ -1436,16 +1468,7 @@ export function updateChatHistory() {
     `;
   }).join('');
 
-  const temp = document.createElement('div');
-  temp.id = list.id;
-  temp.innerHTML = html;
-
-  perf.start('morphdom-history');
-  morphdom(list, temp, {
-    childrenOnly: true,
-    getNodeKey: (node) => node.id || node.dataset?.chatId
-  });
-  perf.end('morphdom-history');
+  list.innerHTML = html;
 
   // Event delegation initialized once
   if (!list._listenersAttached) {
@@ -1464,11 +1487,6 @@ export function updateChatHistory() {
             const container = document.getElementById('chat-messages');
             container.innerHTML = `
             <div class="empty-state">
-              <div class="empty-state-icon">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                </svg>
-              </div>
               <h2>Start a new chat</h2>
               <p>Click the + button to begin a new conversation.</p>
             </div>
@@ -1482,8 +1500,11 @@ export function updateChatHistory() {
       const item = e.target.closest('.chat-history-item');
       if (item) {
         const chatId = item.dataset.chatId;
-        const currentSessions = chatStore.getSessions(appState.currentCharacter.id);
-        const session = currentSessions.find(s => s.id === chatId);
+        const charId = appState.currentCharacter?.id;
+        if (!charId) return;
+
+        const currentSessions = chatStore.getSessions(charId);
+        const session = currentSessions.find(s => String(s.id) === String(chatId));
         if (session) {
           loadChat(session);
           updateChatHistory();
@@ -1491,8 +1512,6 @@ export function updateChatHistory() {
       }
     });
   }
-
-  perf.end('updateChatHistory');
 }
 
 // ─── Continuation Options ───────────────────────────────────────────
@@ -1782,6 +1801,8 @@ function injectCursor(html) {
   return html + cursorHtml;
 }
 
+
+
 export function renderAiCommentsHistory() {
   const listEl = document.getElementById('ai-comments-list');
   if (!listEl) return;
@@ -1820,44 +1841,83 @@ export function renderAiCommentsHistory() {
   });
 }
 
-function setupAiCommentsSidebar() {
-  const toggleBtn = document.getElementById('btn-toggle-ai-comments-sidebar');
+export function openAiCommentsSidebar() {
   const sidebar = document.getElementById('ai-comments-sidebar');
-  const closeBtn = document.getElementById('btn-close-ai-comments-sidebar');
   const mainContent = document.getElementById('main-content');
+  if (!sidebar) return;
   
-  if (!toggleBtn || !sidebar || !closeBtn || !mainContent) return;
-  
-  // Принудительно очищаем старый класс при запуске
   sidebar.classList.remove('hidden');
-  toggleBtn.classList.remove('hidden');
-  const setSidebarState = (open) => {
-    mainContent.classList.add('is-animating');
-    
-    if (open) {
-      document.body.classList.add('ai-sidebar-open');
+  sidebar.classList.remove('panel-bounce');
+  void sidebar.offsetWidth;
+  sidebar.classList.add('panel-bounce');
+
+  if (mainContent) mainContent.classList.add('is-animating');
+  document.body.classList.add('ai-sidebar-open');
+  
+  setTimeout(() => {
+    renderAiCommentsHistory();
+  }, 300);
+  
+  setTimeout(() => {
+    if (mainContent) mainContent.classList.remove('is-animating');
+  }, 600);
+}
+
+export function closeAiCommentsSidebar() {
+  const mainContent = document.getElementById('main-content');
+  if (mainContent) mainContent.classList.add('is-animating');
+  document.body.classList.remove('ai-sidebar-open');
+  
+  setTimeout(() => {
+    if (mainContent) mainContent.classList.remove('is-animating');
+    const sidebar = document.getElementById('ai-comments-sidebar');
+    if (sidebar) sidebar.classList.add('hidden');
+  }, 600);
+}
+
+function setupRightSidebarToggle() {
+  const toggleBtn = document.getElementById('btn-toggle-right-sidebar');
+  const closeBtn = document.getElementById('btn-close-ai-comments-sidebar');
+  
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', async () => {
+      const settings = settingsStore.get();
+      const isGenAIMode = settings.genai_mode_enabled;
       
-      setTimeout(() => {
-        renderAiCommentsHistory();
-      }, 300);
-    } else {
-      document.body.classList.remove('ai-sidebar-open');
-    }
-    
-    setTimeout(() => {
-      mainContent.classList.remove('is-animating');
-    }, 600);
-  };
+      if (isGenAIMode) {
+        const isCurrentlyOpen = document.body.classList.contains('genai-sidebar-open');
+        const genaiModule = await import('./genai-panel.js');
+        if (isCurrentlyOpen) {
+          genaiModule.closeGenAIPanel();
+        } else {
+          // Ensure comments are closed
+          document.body.classList.remove('ai-sidebar-open');
+          const commentsSidebar = document.getElementById('ai-comments-sidebar');
+          if (commentsSidebar) commentsSidebar.classList.add('hidden');
+          
+          genaiModule.openGenAIPanel();
+        }
+      } else {
+        const isCurrentlyOpen = document.body.classList.contains('ai-sidebar-open');
+        if (isCurrentlyOpen) {
+          closeAiCommentsSidebar();
+        } else {
+          // Ensure genai is closed
+          document.body.classList.remove('genai-sidebar-open');
+          const genaiSidebar = document.getElementById('genai-sidebar');
+          if (genaiSidebar) genaiSidebar.classList.add('hidden');
+
+          openAiCommentsSidebar();
+        }
+      }
+    });
+  }
   
-  toggleBtn.addEventListener('click', () => {
-    // Теперь проверяем наличие глобального класса
-    const isCurrentlyOpen = document.body.classList.contains('ai-sidebar-open');
-    setSidebarState(!isCurrentlyOpen);
-  });
-  
-  closeBtn.addEventListener('click', () => {
-    setSidebarState(false);
-  });
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      closeAiCommentsSidebar();
+    });
+  }
 }
 
 async function triggerIndicatorUpdate(character, session, lastUserMsg, lastAssistantMsg) {

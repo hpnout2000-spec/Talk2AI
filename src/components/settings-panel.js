@@ -113,6 +113,9 @@ function loadSettingsToUI() {
 
   const apiUrlInput = document.getElementById('setting-api-url');
   if (apiUrlInput) apiUrlInput.value = settings.api_url;
+
+  const promptTokenLimitInput = document.getElementById('setting-prompt-token-limit');
+  if (promptTokenLimitInput) promptTokenLimitInput.value = settings.prompt_token_limit;
   
   setRangeValue('setting-font-size', 'font-size-value', settings.font_size);
 
@@ -167,6 +170,7 @@ async function saveSettings() {
   const newSettings = {
     ...current,
     api_url: getVal('setting-api-url') || current.api_url,
+    prompt_token_limit: parseInt(getVal('setting-prompt-token-limit')) || current.prompt_token_limit,
     thinking_enabled: getChecked('setting-thinking'),
     memory_enabled: getChecked('setting-memory'),
     auto_translate: getChecked('setting-auto-translate'),

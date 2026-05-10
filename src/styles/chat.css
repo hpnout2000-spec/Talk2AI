@@ -73,11 +73,13 @@
 }
 
 /* --- СОСТОЯНИЕ ОТКРЫТОЙ ПАНЕЛИ --- */
-body.ai-sidebar-open {
+body.ai-sidebar-open,
+body.genai-sidebar-open {
   --right-sidebar-w: 320px;
 }
 
-body.ai-sidebar-open .right-sidebar {
+body.ai-sidebar-open #ai-comments-sidebar,
+body.genai-sidebar-open #genai-sidebar {
   width: var(--right-sidebar-w);
   flex-basis: var(--right-sidebar-w);
   opacity: 1;
@@ -87,8 +89,20 @@ body.ai-sidebar-open .right-sidebar {
   margin-left: 0;
 }
 
-body.ai-sidebar-open .btn-toggle-right-sidebar svg {
+body.ai-sidebar-open .btn-toggle-right-sidebar svg,
+body.genai-sidebar-open .btn-toggle-right-sidebar svg {
   transform: rotate(180deg);
+}
+
+/* Эффект "продавливания" при переключении */
+.right-sidebar.panel-bounce {
+  animation: panelBounce 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes panelBounce {
+  0%   { transform: scale(1); opacity: 1; }
+  40%  { transform: scale(0.92); opacity: 0.8; }
+  100% { transform: scale(1); opacity: 1; }
 }
 
 /* Эффект размытия при анимации */

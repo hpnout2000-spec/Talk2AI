@@ -3,17 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>LLM Chat</title>
+    <title>VibeChatting</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <link rel="icon" type="image/jpeg" href="assets/logo.jpg" />
+    <link rel="icon" type="image/png" href="assets/logo.png" />
     <link rel="stylesheet" href="styles/index.css" />
     <link rel="stylesheet" href="styles/animations.css" />
     <link rel="stylesheet" href="styles/chat.css" />
     <link rel="stylesheet" href="styles/characters.css" />
     <link rel="stylesheet" href="styles/settings.css" />
     <link rel="stylesheet" href="styles/advanced-settings.css" />
+    <link rel="stylesheet" href="styles/genai.css" />
     <script type="module" src="/main.js" defer></script>
   </head>
 
@@ -24,9 +25,9 @@
         <div class="sidebar-header">
           <div class="app-logo">
             <div class="logo-icon">
-              <img src="assets/logo.jpg" alt="Logo" style="width: 100%; height: 100%; object-fit: cover; border-radius: var(--radius-sm);" />
+              <img src="assets/logo.png" alt="Logo" style="width: 100%; height: 100%; object-fit: cover; border-radius: var(--radius-sm);" />
             </div>
-            <span class="app-title">LLM Chat</span>
+            <span class="app-title">VibeChatting</span>
           </div>
         </div>
 
@@ -68,10 +69,10 @@
           </div>
         </div>
 
-        <div class="sidebar-section collapsed">
+        <div class="sidebar-section">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-1);">
             <div id="btn-toggle-history" style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
-              <svg id="history-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; transition: transform 0.2s; transform: rotate(-90deg);">
+              <svg id="history-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; transition: transform 0.2s; transform: rotate(0deg);">
                 <polyline points="6 9 12 15 18 9"/>
               </svg>
               <div class="section-label" style="margin-bottom: 0;">Chat History</div>
@@ -84,8 +85,6 @@
           </div>
           <div id="chat-history-list" class="chat-history-list" style="transition: all 0.2s ease-in-out;"></div>
         </div>
-        </div>
-
         <div id="books-section" class="hidden" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
           <div class="sidebar-section">
             <div class="section-label">My Books</div>
@@ -102,6 +101,18 @@
         </div>
 
         <div class="sidebar-footer">
+          <button id="btn-genai" class="btn-sidebar-action btn-genai-action" title="Toggle GenAI Assistant Mode" style="justify-content: flex-start;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/>
+            </svg>
+            <div style="display: flex; flex-direction: column; align-items: flex-start; line-height: 1.1; margin-left: 4px;">
+              <span>GenAI</span>
+              <span class="genai-status-indicator" style="display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text-tertiary); margin-top: 2px;">
+                <span class="status-dot" id="genai-status-dot" style="width: 6px; height: 6px; border-radius: 50%; background: var(--success); display: inline-block;"></span>
+                <span id="genai-status-text">Active</span>
+              </span>
+            </div>
+          </button>
           <button id="btn-settings" class="btn-sidebar-action">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="3"/>
@@ -184,10 +195,7 @@
           <!-- Chat Messages -->
           <div id="chat-messages" class="chat-messages">
             <div id="empty-state" class="empty-state">
-              <div class="empty-state-icon">
-                <img src="assets/logo.jpg" alt="Logo" style="width: 120px; height: 120px; object-fit: cover; border-radius: var(--radius-lg); opacity: 0.8; filter: grayscale(0.2);" />
-              </div>
-              <h2>Welcome to LLM Chat</h2>
+              <h2>Welcome to VibeChatting</h2>
               <p>Select a character from the sidebar or create a new one to start chatting.</p>
             </div>
           </div>
@@ -274,15 +282,15 @@
         </div>
       </main>
 
-      <!-- ─── AI Comments Toggle Button (between main and right sidebar) ── -->
-      <button id="btn-toggle-ai-comments-sidebar" class="btn-toggle-right-sidebar" title="Toggle AI Comments History">
+      <!-- ─── Right Sidebar Toggle Button (between main and right sidebar) ── -->
+      <button id="btn-toggle-right-sidebar" class="btn-toggle-right-sidebar" title="Toggle Sidebar">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="15 18 9 12 15 6"/>
         </svg>
       </button>
 
-      <!-- ─── AI Comments Right Panel (3rd top-level panel) ─────────── -->
-      <aside id="ai-comments-sidebar" class="right-sidebar">
+      <!-- ─── AI Comments Right Panel ─────────── -->
+      <aside id="ai-comments-sidebar" class="right-sidebar hidden">
         <div class="sidebar-header">
           <h2 style="display: flex; align-items: center; gap: 8px; font-size: var(--text-base); font-weight: 600;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px; flex-shrink: 0;">
@@ -301,7 +309,37 @@
         </div>
       </aside>
 
-      
+      <!-- ─── GenAI Assistant Panel ────────────────────────────── -->
+      <aside id="genai-sidebar" class="right-sidebar hidden">
+        <div class="sidebar-header">
+          <h2 style="display: flex; align-items: center; gap: 8px; font-size: var(--text-base); font-weight: 600;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-accent)" stroke-width="2" style="width: 18px; height: 18px; flex-shrink: 0;">
+              <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 17l-6.2 4.3 2.4-7.4L2 9.4h7.6z"/>
+            </svg>
+            GenAI Assistant
+          </h2>
+          <div class="genai-header-actions">
+            <button id="btn-genai-clear">Clear</button>
+            <button class="btn-icon" id="btn-close-genai">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div id="genai-messages" class="sidebar-section"></div>
+        <div class="genai-input-area">
+          <div class="genai-input-row">
+            <textarea id="genai-input" placeholder="Ask GenAI anything..." rows="1"></textarea>
+            <button id="btn-genai-send" title="Send">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </aside>
+
       <!-- ─── Character Editor Modal ─────────────────────── -->
       <div id="character-modal" class="modal hidden">
         <div class="modal-backdrop"></div>
@@ -533,6 +571,10 @@
             <div class="form-group">
               <label for="setting-api-url">KoboldCpp URL</label>
               <input type="text" id="setting-api-url" placeholder="http://localhost:5001" />
+            </div>
+            <div class="form-group">
+              <label for="setting-prompt-token-limit">Prompt Token Limit</label>
+              <input type="number" id="setting-prompt-token-limit" placeholder="4096" style="padding: var(--space-3); background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: var(--radius-md); color: var(--text-primary); font-family: var(--font-sans); font-size: var(--text-sm); width: 100%;" />
             </div>
             <button id="btn-test-connection" class="btn-secondary btn-full">Test Connection</button>
           </div>

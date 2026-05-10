@@ -1,6 +1,6 @@
-# Talk2AI — Native LLM Chat Interface
+# VibeChatting — Native LLM Chat Interface
 
-Talk2AI is a modern AI chat application focused on aesthetics, performance, and advanced functionality.
+VibeChatting is a modern AI chat application focused on aesthetics, performance, and advanced functionality.
 
 ## ✨ Key Advantages
 - **Premium Interface:** A stunning design featuring glassmorphism, smooth animations, and a deep, harmonious dark mode.

@@ -5,6 +5,7 @@
 const DEFAULTS = {
   api_url: 'http://localhost:5001',
   max_tokens: 2048,
+  prompt_token_limit: 4096,
   temperature: 0.7,
   top_p: 0.9,
   top_k: 40,
@@ -24,6 +25,7 @@ const DEFAULTS = {
   italic_asterisks: true,
   ai_comments_enabled: true,
   ai_comments_history_enabled: false,
+  genai_mode_enabled: true,
   ai_comments_language: 'Auto',
   ai_comments_prompt: "Comment on the last action, dialogue, or behavior of the character or user. Be concise, witty, and insightful. Return only the comment itself. use many emojis.",
   indicator_presets: [

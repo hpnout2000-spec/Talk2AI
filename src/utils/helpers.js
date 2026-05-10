@@ -163,3 +163,14 @@ export function wrapWordsInSpans(htmlString) {
 
   return processedParts.join('');
 }
+
+/**
+ * Injects a streaming cursor span safely before the last closing HTML tag
+ */
+export function injectCursor(html) {
+  const cursorHtml = '<span class="streaming-cursor"></span>';
+  if (html.includes('</')) {
+    return html.replace(/(<\/([a-z0-9]+)>)$/i, cursorHtml + '$1');
+  }
+  return html + cursorHtml;
+}

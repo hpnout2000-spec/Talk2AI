@@ -48,6 +48,9 @@ export function initCharacterPanel() {
   document.querySelector('.btn-close-modal').addEventListener('click', closeCharacterEditor);
   document.getElementById('btn-cancel-character').addEventListener('click', closeCharacterEditor);
   document.getElementById('btn-save-character').addEventListener('click', saveCharacter);
+  document.getElementById('btn-add-alt-greeting')?.addEventListener('click', () => {
+    addAltGreetingField();
+  });
 
   // Avatar upload
   document.getElementById('btn-upload-avatar').addEventListener('click', () => {
@@ -396,6 +399,7 @@ function addAltGreetingField(value = '') {
   });
 
   list.appendChild(div);
+  div.querySelector('textarea').focus();
 }
 
 function closeCharacterEditor() {

@@ -427,6 +427,13 @@
   flex-shrink: 0;
 }
 
+.btn-sidebar-action:active {
+  transform: scale(0.96);
+  filter: brightness(0.9);
+  transition: transform 0.1s ease, filter 0.1s ease;
+  transform-origin: center;
+}
+
 /* ─── Memory Panel Items ─────────────────────────────────────────── */
 
 .memory-entry {
