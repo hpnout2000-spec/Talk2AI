@@ -19,6 +19,8 @@ import {
 } from '../utils/helpers.js';
 import morphdom from '../vendor/morphdom.js';
 import { perf } from '../utils/perf.js';
+import { groupChatStore } from '../services/group-chat-store.js';
+import { buildGroupApiMessages } from './group-chat-view.js';
 
 // Lazy notify GenAI panel when a response arrives (avoids circular import)
 function notifyGenAI(response, characterName) {
@@ -186,6 +188,9 @@ export function initChat() {
       }
     });
   });
+
+  // Make AI comment feature global
+  window.requestAiComment = requestAiComment;
 }
 
 function toggleInputSettings() {
@@ -1715,7 +1720,25 @@ function renderContinuationOptions(msgElement, options, character, session) {
 
 async function requestAiComment(msg, character) {
   const settings = settingsStore.get();
-  const session = chatStore.getCurrentSession();
+
+  // Detect context
+  const groupViewEl = document.getElementById('group-chat-view-container');
+  const isGroupViewOpen = groupViewEl && !groupViewEl.classList.contains('hidden');
+
+  let session, store, builder;
+  if (isGroupViewOpen) {
+    session = groupChatStore.getCurrentSession();
+    store = groupChatStore;
+    const groupId = groupChatStore.getActiveGroupId();
+    const group = groupChatStore.getGroupById(groupId);
+    const members = (group?.character_ids || []).map(id => characterStore.getById(id)).filter(Boolean);
+    builder = (char, sess) => buildGroupApiMessages(char, members, sess);
+  } else {
+    session = chatStore.getCurrentSession();
+    store = chatStore;
+    builder = buildApiMessages;
+  }
+
   if (!session || !character || !settings.ai_comments_enabled) return;
 
   const modal = document.getElementById('ai-comment-modal');
@@ -1738,9 +1761,9 @@ async function requestAiComment(msg, character) {
   if (msgIndex !== -1) {
     const relevantMsgs = session.messages.slice(0, msgIndex + 1);
     const tempSession = { ...session, messages: relevantMsgs };
-    contextMessages = buildApiMessages(character, tempSession);
+    contextMessages = builder(character, tempSession);
   } else {
-    contextMessages = buildApiMessages(character, session);
+    contextMessages = builder(character, session);
   }
 
   // Append the comment prompt
@@ -1789,8 +1812,8 @@ async function requestAiComment(msg, character) {
 
         if (settings.ai_comments_history_enabled) {
           const snippet = msg.content ? msg.content.substring(0, 60).replace(/\n/g, ' ') + (msg.content.length > 60 ? '...' : '') : '...';
-          chatStore.addAiComment(msg.id, snippet, fullComment, session);
-          chatStore.saveSession(session);
+          store.addAiComment(msg.id, snippet, fullComment, session);
+          store.saveSession(session);
           renderAiCommentsHistory();
         }
 
@@ -1881,7 +1904,17 @@ export function renderAiCommentsHistory() {
   const listEl = document.getElementById('ai-comments-list');
   if (!listEl) return;
 
-  const session = chatStore.getCurrentSession();
+  // Detect context
+  const groupViewEl = document.getElementById('group-chat-view-container');
+  const isGroupViewOpen = groupViewEl && !groupViewEl.classList.contains('hidden');
+
+  let session;
+  if (isGroupViewOpen) {
+    session = groupChatStore.getCurrentSession();
+  } else {
+    session = chatStore.getCurrentSession();
+  }
+
   listEl.innerHTML = '';
 
   if (!session || !session.ai_comments || session.ai_comments.length === 0) {

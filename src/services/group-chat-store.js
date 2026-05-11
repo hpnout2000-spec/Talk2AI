@@ -181,6 +181,26 @@ export const groupChatStore = {
     targetSession.updated_at = new Date().toISOString();
   },
 
+  addAiComment(targetMessageId, targetContentSnippet, commentContent, session = null) {
+    const targetSession = session || currentGroupSession;
+    if (!targetSession) return null;
+
+    // Ensure array exists for backward compatibility
+    if (!targetSession.ai_comments) targetSession.ai_comments = [];
+
+    const comment = {
+      id: generateId(),
+      target_message_id: targetMessageId,
+      target_content_snippet: targetContentSnippet,
+      content: commentContent,
+      timestamp: new Date().toISOString(),
+    };
+
+    targetSession.ai_comments.push(comment);
+    targetSession.updated_at = new Date().toISOString();
+    return comment;
+  },
+
   deleteMessage(messageId, session = null) {
     const targetSession = session || currentGroupSession;
     if (!targetSession) return;

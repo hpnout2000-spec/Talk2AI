@@ -274,11 +274,15 @@
               </div>
             </div>
             <div class="chat-header-right" style="gap: 8px;">
-              <div class="group-mode-toggle" title="Response mode">
-                <select id="group-response-mode" class="group-mode-select">
-                  <option value="round_robin">↻ Round-robin</option>
-                  <option value="auto">🤖 Auto</option>
-                </select>
+              <div class="custom-dropdown" id="group-mode-dropdown" title="Response mode">
+                <div class="dropdown-selected">
+                  <span id="group-mode-selected-text">↻ Round-robin</span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width:12px;height:12px;"><path d="M19.5 8.25l-7.5 7.5-7.5-7.5"/></svg>
+                </div>
+                <div class="dropdown-options hidden">
+                  <div class="dropdown-option" data-value="round_robin">↻ Round-robin</div>
+                  <div class="dropdown-option" data-value="auto">🤖 Auto</div>
+                </div>
               </div>
               <button id="btn-group-new-chat" class="btn-icon" title="New Group Chat">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;">
@@ -565,8 +569,21 @@
               </span>
             </div>
             <div class="form-group">
-              <label>Characters</label>
-              <div id="group-modal-characters" class="group-char-list"></div>
+              <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 8px;">
+                <label style="margin-bottom: 0;">Characters</label>
+                <div class="group-modal-filters" style="display: flex; gap: 6px;">
+                  <div class="search-box small">
+                    <input type="text" id="group-modal-search" placeholder="Search..." style="padding: 4px 8px; font-size: 11px; height: 24px;" />
+                  </div>
+                  <button id="btn-group-sort-name" class="btn-icon small" title="Sort by Name">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+                  </button>
+                  <button id="btn-group-sort-date" class="btn-icon small" title="Sort by Recent">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;"><path d="M12 8v4l3 3m6-3a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div id="group-modal-characters" class="group-char-list" style="max-height: 250px; overflow-y: auto;"></div>
             </div>
           </div>
           <div class="modal-footer">
