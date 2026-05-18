@@ -1,60 +1,25 @@
-# Talk2AI — Native LLM Chat Interface
+# VibeChatting — Native LLM Chat Interface
 
-Talk2AI is a high-performance, desktop-native AI chat application built with **Tauri**, **Rust**, and **JavaScript**. It provides a premium, aesthetic interface for interacting with local or remote LLMs, focusing on long-term character consistency and memory management.
+VibeChatting is a modern AI chat application focused on aesthetics, performance, and advanced functionality.
 
-![Talk2AI Interface](src/assets/logo.jpg)
+## ✨ Key Advantages
+- **Premium Interface:** A stunning design featuring glassmorphism, smooth animations, and a deep, harmonious dark mode.
 
-## 🌟 Key Features
+## 🧠 AI Features
+- **Core Chat:** Advanced interface with real-time streaming and a dedicated "Thinking" mode visualization (thinking doesn't work for now)
+- **Character Creation:** Highly flexible system for defining personalities, scenarios, and greetings (including Alternate Greetings support and basically all cards compatible with SillyTavern format).
+- **Message Translation:** Seamless bidirectional real-time translation:
+  - **Input:** Automatic translation of your messages before sending.
+  - **Output:** AI response translation to your native language while preserving original context.
+- **AI Commenter:** Get situational analysis or creative (and funny) comments from a secondary AI agent.
+- **AI Suggester:** Dynamic generation of suggestions for next replies or story continuation.
 
-### 🧠 Advanced Memory System
-Unlike standard chat interfaces, Talk2AI implements a sophisticated memory extraction layer:
-- **Long-Term Memory (LTM):** Automatically extracts important facts, preferences, and events from conversations.
-- **Contextual Recall:** Feeds relevant memories back into the model to maintain consistency across long sessions.
-- **Memory Management:** View and edit what the AI "remembers" about you and the world through the integrated Memory Viewer.
+## 🚀 Future Roadmap
+- **GenAI:** A universal AI assistant with full access to every layer of the application. It will be able to manage settings, analyze history across all chats and comments, and even write messages on behalf of the user to drive the story according to a defined plan.
 
-### 🎭 Character Persona System
-Create and manage unique AI personalities with ease:
-- **Custom Personas:** Define name, description, personality traits, and world scenarios.
-- **System Prompting:** Fine-tune how the AI behaves using dedicated system instructions for each character.
-- **Visual Identity:** Support for custom avatars and unique greeting messages.
-- **Dynamic Switching:** Switch between different characters instantly without losing context.
+## 💻 System Requirements
+- **Model:** **Gemma 4 31B** (Gemma 4 26B is not enough.)
+- **Performance:** Generation speed of at least **20 tokens per second**.
 
-### ⚡ Quick Response & Aesthetic UI
-Built for speed and comfort:
-- **Glassmorphism Design:** A modern, dark-themed interface with smooth animations and high-quality typography.
-- **Streaming Responses:** Real-time text generation with a dedicated "Thinking" mode visualization.
-- **Optimized Performance:** Minimal resource footprint thanks to the Rust-based Tauri core.
-- **Responsive Layout:** Works perfectly across different window sizes.
-
-## 🛠️ Tech Stack
-- **Frontend:** Vanilla JavaScript, CSS3 (Custom Animations), HTML5.
-- **Backend:** Rust (Tauri).
-- **Communication:** Async JSON-RPC / REST API integration.
-
-## 🚀 Getting Started
-
-### Prerequisites
-- [Node.js](https://nodejs.org/) (latest LTS)
-- [Rust](https://www.rust-lang.org/tools/install)
-- A running LLM backend (compatible with the configured API URL)
-
-### Installation
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/hpnout2000-spec/Talk2AI.git
-   ```
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
-3. Run in development mode:
-   ```bash
-   npm run tauri dev
-   ```
-4. Build for production:
-   ```bash
-   npm run tauri build
-   ```
-
-## 📄 License
-This project is licensed under the MIT License.
+---
+*Developed with Tauri, Rust, and Premium JS.*

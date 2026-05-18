@@ -8,7 +8,7 @@ import { chatStore } from './services/chat-store.js';
 import { api } from './services/api.js';
 import { memoryService } from './services/memory-service.js';
 import { appState } from './state.js';
-import { initChat } from './components/chat.js';
+import { initChat, openAiCommentsSidebar, closeAiCommentsSidebar } from './components/chat.js';
 import { initCharacterPanel } from './components/character-panel.js';
 import { initSettingsPanel } from './components/settings-panel.js';
 import { initMemoryViewer } from './components/memory-viewer.js';
@@ -17,6 +17,10 @@ import { bookStore } from './services/book-store.js';
 import { initBookPanel } from './components/book-panel.js';
 import { initBookView } from './components/book-view.js';
 import { uiManager } from './utils/ui-manager.js';
+import { initGenAIPanel, openGenAIPanel, closeGenAIPanel } from './components/genai-panel.js';
+import { initGroupChatPanel } from './components/group-chat-panel.js';
+import { initGroupChatView } from './components/group-chat-view.js';
+import { groupChatStore } from './services/group-chat-store.js';
 
 // ─── Initialize App ─────────────────────────────────────────────────
 
@@ -90,6 +94,7 @@ async function init() {
   // Load characters and books
   const characters = await characterStore.load();
   await bookStore.load();
+  await groupChatStore.loadGroups();
 
 
   // Initialize all components
@@ -100,7 +105,52 @@ async function init() {
   initAdvancedSettings();
   initBookPanel();
   initBookView();
+  initGenAIPanel();
+  initGroupChatPanel();
+  initGroupChatView();
   applyGlobalSettingsStyles();
+
+  // GenAI button
+  const btnGenAI = document.getElementById('btn-genai');
+  if (btnGenAI) {
+    // Initial UI state setup
+    updateGenAIToggleUI();
+
+    btnGenAI.addEventListener('click', async () => {
+      const settings = settingsStore.get();
+      const newMode = !settings.genai_mode_enabled;
+      
+      await settingsStore.save({ ...settings, genai_mode_enabled: newMode });
+      updateGenAIToggleUI();
+
+      // If any right sidebar is currently open, switch it!
+      const isGenAIOpen = document.body.classList.contains('genai-sidebar-open');
+      const isCommentsOpen = document.body.classList.contains('ai-sidebar-open');
+      
+      if (isGenAIOpen || isCommentsOpen) {
+        // Apply bounce effect to the active sidebar
+        const activeSidebar = isGenAIOpen 
+          ? document.getElementById('genai-sidebar') 
+          : document.getElementById('ai-comments-sidebar');
+        
+        if (activeSidebar) {
+          activeSidebar.classList.remove('panel-bounce');
+          void activeSidebar.offsetWidth; // trigger reflow
+          activeSidebar.classList.add('panel-bounce');
+        }
+
+        if (newMode) {
+          // Switch to GenAI
+          closeAiCommentsSidebar();
+          openGenAIPanel();
+        } else {
+          // Switch to Comment History
+          closeGenAIPanel();
+          openAiCommentsSidebar();
+        }
+      }
+    });
+  }
 
   // Initialize Window Controls (for Tauri frameless)
   initWindowControls();
@@ -135,6 +185,29 @@ export async function checkConnection() {
   } catch {
     statusEl.classList.remove('connected');
     textEl.textContent = 'Disconnected';
+  }
+}
+
+export function updateGenAIToggleUI() {
+  const settings = settingsStore.get();
+  const isActive = settings.genai_mode_enabled;
+  const dot = document.getElementById('genai-status-dot');
+  const text = document.getElementById('genai-status-text');
+  
+  if (dot && text) {
+    if (isActive) {
+      dot.classList.add('active');
+      dot.classList.remove('inactive');
+      dot.style.background = ''; // Clear inline styles
+      text.textContent = 'Active';
+      text.style.color = 'var(--success)';
+    } else {
+      dot.classList.add('inactive');
+      dot.classList.remove('active');
+      dot.style.background = ''; // Clear inline styles
+      text.textContent = 'Inactive';
+      text.style.color = 'var(--danger, #ef4444)';
+    }
   }
 }
 

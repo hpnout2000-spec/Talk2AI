@@ -88,7 +88,9 @@ export function escapeHtml(text) {
  * Returns { thinking: string|null, content: string }
  */
 export function parseThinking(text) {
-  const thinkRegex = /(?:<\|?think\|?>|<reasoning>)([\s\S]*?)(?:<\|?\/think\|?>|<\/reasoning>)/;
+  // Matches: <|channel>thought...</channel|>  OR  <thought>...</thought>
+  // AND legacy: <think>...</think>  <|think|>...</|think|>  <reasoning>...</reasoning>
+  const thinkRegex = /(?:<\|channel>thought|<\|?think\|?>|<thought>|<reasoning>)([\s\S]*?)(?:<channel\|>|<\|?\/think\|?>|<\/thought>|<\/reasoning>)/;
   const match = text.match(thinkRegex);
 
   if (match) {
@@ -162,4 +164,15 @@ export function wrapWordsInSpans(htmlString) {
   });
 
   return processedParts.join('');
+}
+
+/**
+ * Injects a streaming cursor span safely before the last closing HTML tag
+ */
+export function injectCursor(html) {
+  const cursorHtml = '<span class="streaming-cursor"></span>';
+  if (html.includes('</')) {
+    return html.replace(/(<\/([a-z0-9]+)>)$/i, cursorHtml + '$1');
+  }
+  return html + cursorHtml;
 }

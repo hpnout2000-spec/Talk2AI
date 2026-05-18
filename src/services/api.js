@@ -59,12 +59,7 @@ export const api = {
       repeat_penalty: options.rep_penalty || settings.rep_penalty,
     };
 
-    // Inject thinking mode via jinja_kwargs (matching SillyTavern's Ji.Kwargs)
-    if (settings.thinking_enabled) {
-      body.jinja_kwargs = { enable_thinking: true };
-    } else {
-      body.jinja_kwargs = { enable_thinking: false };
-    }
+    // Removed jinja_kwargs override to avoid conflict with manual system prompt token prefill
 
     try {
       const resp = await fetch(`${settings.api_url}/v1/chat/completions`, {
@@ -130,7 +125,7 @@ export const api = {
    * @returns {string} The assistant's response
    */
   async chatCompletion(messages, options = {}) {
-    const signal = options.signal || AbortSignal.timeout(30000);
+    const signal = options.signal;
     
     // Fail immediately if already aborted
     if (signal?.aborted) {

@@ -344,21 +344,37 @@
   transform: scale(1) translateY(0) translateZ(0);
   filter: blur(0) brightness(1);
 
-  transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-    filter 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-    opacity 0.5s ease,
+  transition: transform 0.6s cubic-bezier(0.2, 1, 0.1, 1),
+    filter 0.6s cubic-bezier(0.2, 1, 0.1, 1),
+    opacity 0.6s ease,
     backdrop-filter 0.6s ease,
-    width 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-    flex-basis 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-    flex-grow 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-    flex-shrink 0.6s cubic-bezier(0.16, 1, 0.3, 1),
-    margin 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    width 0.6s cubic-bezier(0.2, 1, 0.1, 1),
+    flex-basis 0.6s cubic-bezier(0.2, 1, 0.1, 1),
+    flex-grow 0.6s cubic-bezier(0.2, 1, 0.1, 1),
+    flex-shrink 0.6s cubic-bezier(0.2, 1, 0.1, 1),
+    margin 0.6s cubic-bezier(0.2, 1, 0.1, 1),
+    border-radius 0.6s cubic-bezier(0.2, 1, 0.1, 1);
 }
 
 /* Liquid motion blur effect during layout transitions (for chat area only) */
 .main-content.is-animating {
-  filter: blur(12px) brightness(0.95) !important;
+  animation: liquidBlur 0.6s cubic-bezier(0.2, 1, 0.1, 1) forwards;
   pointer-events: none;
+}
+
+@keyframes liquidBlur {
+  0% { 
+    filter: blur(0) brightness(1) saturate(1);
+    transform: scale(1) translateZ(0);
+  }
+  35% {
+    filter: blur(10px) brightness(0.9) saturate(0.85);
+    transform: scale(0.975) translateZ(0);
+  }
+  100% {
+    filter: blur(0) brightness(1) saturate(1);
+    transform: scale(1) translateZ(0);
+  }
 }
 
 /* Special case for modal backdrop when stacked: hide it more or dim it */
@@ -443,15 +459,53 @@
   animation: gentleBounce 1.5s infinite;
 }
 
+/* Safe diagonal sweep-glow animation for "Thinking..." text and snippets */
 .thinking-text-animated {
-  background: linear-gradient(90deg, var(--text-secondary) 0%, var(--accent-primary) 50%, var(--text-secondary) 100%);
+  display: inline-block;
+  font-weight: 500;
+  background: linear-gradient(
+    120deg,
+    #64748b 30%,
+    #cbd5e1 50%,
+    #64748b 70%
+  );
   background-size: 200% auto;
   color: transparent;
   -webkit-background-clip: text;
   background-clip: text;
-  animation: textShimmer 2s linear infinite;
+  animation: sweep 2.5s linear infinite;
+  text-transform: none;
+}
+
+@keyframes sweep {
+  0% { background-position: 100% center; }
+  100% { background-position: -100% center; }
+}
+
+/* Snippet text fade-cycle animation */
+.thinking-snippet-text {
   display: inline-block;
-  font-weight: 500;
+  animation: snippetFadeIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  color: var(--thinking-text, #8a8a9a);
+  font-weight: 400;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  max-width: 320px;
+  vertical-align: middle;
+}
+
+@keyframes snippetFadeIn {
+  from {
+    opacity: 0;
+    filter: blur(4px);
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
+  }
 }
 
 @keyframes textShimmer {
@@ -554,6 +608,14 @@
 .word-replacing-in {
   animation: textBlurIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
   display: inline-block;
+}
+
+.block-replacing-out {
+  animation: wordBlurOut 0.25s ease-out forwards;
+}
+
+.block-replacing-in {
+  animation: textBlurIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @keyframes wordBlurOut {

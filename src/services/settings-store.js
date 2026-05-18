@@ -5,12 +5,14 @@
 const DEFAULTS = {
   api_url: 'http://localhost:5001',
   max_tokens: 2048,
+  prompt_token_limit: 4096,
   temperature: 0.7,
   top_p: 0.9,
   top_k: 40,
   rep_penalty: 1.1,
   user_name: 'User',
   thinking_enabled: false,
+  thinking_snippets: false,
   memory_enabled: true,
   font_size: 15,
   response_length: 'auto',
@@ -24,8 +26,12 @@ const DEFAULTS = {
   italic_asterisks: true,
   ai_comments_enabled: true,
   ai_comments_history_enabled: false,
+  genai_mode_enabled: true,
   ai_comments_language: 'Auto',
   ai_comments_prompt: "Comment on the last action, dialogue, or behavior of the character or user. Be concise, witty, and insightful. Return only the comment itself. use many emojis.",
+  genai_response_length: 'default',
+  genai_speech_style: 'default',
+  genai_safe_mode: false,
   indicator_presets: [
     { id: 'std', name: 'Standard', indicators: ['Trust', 'Fear', 'Anger', 'Happiness', 'Sadness'] },
     { id: 'romance', name: 'Romantic RP', indicators: ['Affection', 'Lust'] }

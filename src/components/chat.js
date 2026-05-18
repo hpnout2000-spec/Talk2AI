@@ -19,6 +19,13 @@ import {
 } from '../utils/helpers.js';
 import morphdom from '../vendor/morphdom.js';
 import { perf } from '../utils/perf.js';
+import { groupChatStore } from '../services/group-chat-store.js';
+import { buildGroupApiMessages } from './group-chat-view.js';
+
+// Lazy notify GenAI panel when a response arrives (avoids circular import)
+function notifyGenAI(response, characterName) {
+  import('../components/genai-panel.js').then(m => m.notifyGenAIResponse(response, characterName)).catch(() => { });
+}
 
 // ─── DOM Elements ───────────────────────────────────────────────────
 
@@ -95,15 +102,17 @@ export function initChat() {
   // Stop generation
   btnStop.addEventListener('click', stopGeneration);
 
-  // Thinking toggle
-  thinkingToggle.addEventListener('change', () => {
-    const settings = settingsStore.get();
-    settingsStore.save({ ...settings, thinking_enabled: thinkingToggle.checked });
+  // Thinking toggle (element may not exist if removed from header)
+  if (thinkingToggle) {
+    thinkingToggle.addEventListener('change', () => {
+      const settings = settingsStore.get();
+      settingsStore.save({ ...settings, thinking_enabled: thinkingToggle.checked });
 
-    // Sync settings panel toggle
-    const settingsThinking = document.getElementById('setting-thinking');
-    if (settingsThinking) settingsThinking.checked = thinkingToggle.checked;
-  });
+      // Sync settings panel toggle
+      const settingsThinking = document.getElementById('setting-thinking');
+      if (settingsThinking) settingsThinking.checked = thinkingToggle.checked;
+    });
+  }
 
   // New chat button
   document.getElementById('btn-new-chat').addEventListener('click', () => {
@@ -118,7 +127,7 @@ export function initChat() {
   const btnToggleHistory = document.getElementById('btn-toggle-history');
   const historyList = document.getElementById('chat-history-list');
   const historyChevron = document.getElementById('history-chevron');
-  
+
   if (btnToggleHistory && historyChevron) {
     btnToggleHistory.addEventListener('click', () => {
       const section = btnToggleHistory.closest('.sidebar-section');
@@ -143,8 +152,47 @@ export function initChat() {
       inputSettingsPopover.classList.add('hidden');
     }
   });
+  setupRightSidebarToggle();
 
-  setupAiCommentsSidebar();
+  // Listen for GenAI programmatic message sends
+  window.addEventListener('genai-send-chat-message', (e) => {
+    if (appState.isGenerating) return;
+    const { content } = e.detail;
+    if (content) {
+      messageInput.value = content;
+      sendMessage();
+    }
+  });
+
+  // Listen for GenAI programmatic chat management
+  window.addEventListener('genai-create-new-chat', (e) => {
+    const { character_id } = e.detail;
+    const character = characterStore.getById(character_id);
+    if (character) {
+      selectCharacter(character);
+      startNewChat(character);
+    }
+  });
+
+  window.addEventListener('genai-switch-chat', (e) => {
+    const { chat_id, character_id } = e.detail;
+    const character = characterStore.getById(character_id);
+    if (character) {
+      selectCharacter(character, chat_id);
+    }
+  });
+
+  window.addEventListener('genai-rename-chat', (e) => {
+    const { chat_id, character_id, new_title } = e.detail;
+    chatStore.renameSession(chat_id, new_title, character_id).then(() => {
+      if (appState.currentCharacter?.id === character_id) {
+        updateChatHistory();
+      }
+    });
+  });
+
+  // Make AI comment feature global
+  window.requestAiComment = requestAiComment;
 }
 
 function toggleInputSettings() {
@@ -161,6 +209,7 @@ function renderInputSettings() {
   const settings = settingsStore.get();
   const length = settings.response_length || 'auto';
   const depth = settings.description_depth || 0;
+  const thinkingEnabled = settings.thinking_enabled || false;
 
   inputSettingsPopover.innerHTML = `
     <div class="settings-group">
@@ -184,6 +233,26 @@ function renderInputSettings() {
           <span>3</span>
           <span>Max</span>
         </div>
+      </div>
+    </div>
+
+    <div class="settings-group" style="border-top: 1px solid var(--border-subtle); padding-top: 12px; margin-top: 4px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span style="font-size: 15px;">🧠</span>
+          <h4 style="margin: 0;">Think Mode</h4>
+        </div>
+        <label class="toggle-switch small">
+          <input type="checkbox" id="input-thinking-toggle" ${thinkingEnabled ? 'checked' : ''}>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-left: 4px;">
+        <span style="font-size: var(--text-xs); color: var(--text-tertiary);">&#x21b3; Show snippets</span>
+        <label class="toggle-switch small">
+          <input type="checkbox" id="input-snippets-toggle" ${settingsStore.get().thinking_snippets ? 'checked' : ''}>
+          <span class="toggle-slider"></span>
+        </label>
       </div>
     </div>
 
@@ -248,6 +317,24 @@ function renderInputSettings() {
   slider.addEventListener('input', () => {
     const newDepth = parseInt(slider.value);
     settingsStore.save({ ...settingsStore.get(), description_depth: newDepth });
+  });
+
+  // Think Mode toggle handler
+  const thinkingToggleEl = inputSettingsPopover.querySelector('#input-thinking-toggle');
+  thinkingToggleEl?.addEventListener('change', () => {
+    const newVal = thinkingToggleEl.checked;
+    settingsStore.save({ ...settingsStore.get(), thinking_enabled: newVal });
+    const settingsThinking = document.getElementById('setting-thinking');
+    if (settingsThinking) settingsThinking.checked = newVal;
+  });
+
+  // Snippets toggle handler
+  const snippetsToggleEl = inputSettingsPopover.querySelector('#input-snippets-toggle');
+  snippetsToggleEl?.addEventListener('change', () => {
+    const newVal = snippetsToggleEl.checked;
+    settingsStore.save({ ...settingsStore.get(), thinking_snippets: newVal });
+    const settingsSnippets = document.getElementById('setting-thinking-snippets');
+    if (settingsSnippets) settingsSnippets.checked = newVal;
   });
 
   // Toggle indicators
@@ -368,10 +455,19 @@ export function startNewChat(character = null) {
   if (char.first_message) {
     const settings = settingsStore.get();
     const userName = settings.user_name || 'User';
-    let content = char.first_message.replace(/\{\{user\}\}/gi, userName);
-    content = content.replace(/\{\{char\}\}/gi, char.name);
 
-    const msg = chatStore.addMessage('assistant', content, null, session);
+    // Support random first message if multiple are available
+    let content = char.first_message;
+    let greetingIdx = 0;
+
+    // In SillyTavern, users usually want to start with the primary one, 
+    // but some apps randomize. We'll start with index 0 (primary).
+    session.selected_greeting_index = 0;
+
+    let processedContent = content.replace(/\{\{user\}\}/gi, userName);
+    processedContent = processedContent.replace(/\{\{char\}\}/gi, char.name);
+
+    const msg = chatStore.addMessage('assistant', processedContent, null, session);
     characterStore.updateLastChat(char.id);
     window.dispatchEvent(new CustomEvent('character-list-updated'));
     if (appState.currentCharacter?.id === char.id) {
@@ -388,6 +484,7 @@ export function startNewChat(character = null) {
 // ─── Load Existing Chat ─────────────────────────────────────────────
 
 export function loadChat(session) {
+  if (!session) return;
   if (appState.currentCharacter?.id !== session.character_id) return;
   appState.currentChat = session;
   chatStore.setCurrentSession(session);
@@ -397,24 +494,23 @@ export function loadChat(session) {
     appendMessage(msg);
   }
 
-  const settings = settingsStore.get();
-  const toggleBtn = document.getElementById('btn-toggle-ai-comments-sidebar');
+  const toggleBtn = document.getElementById('btn-toggle-right-sidebar');
   if (toggleBtn) {
-    if (settings.ai_comments_history_enabled) {
-      toggleBtn.classList.remove('hidden');
-    } else {
-      toggleBtn.classList.add('hidden');
-    }
+    toggleBtn.classList.remove('hidden');
   }
 
-  renderAiCommentsHistory();
+  const settings = settingsStore.get();
+  if (!settings.genai_mode_enabled) {
+    renderAiCommentsHistory();
+  }
   renderIndicators();
   scrollToBottom();
+  updateChatHistory();
 }
 
 // ─── Select Character ───────────────────────────────────────────────
 
-export async function selectCharacter(character) {
+export async function selectCharacter(character, sessionId = null) {
   const charId = character.id;
   appState.currentCharacter = character;
 
@@ -430,30 +526,47 @@ export async function selectCharacter(character) {
     </svg>`;
   }
 
-  // Load chats for this character
-  await chatStore.loadForCharacter(charId);
-
-  // Check if this character is still the active one before proceeding
-  if (appState.currentCharacter?.id !== charId) return;
-
-  const sessions = chatStore.getSessions(charId);
-
-  // Load memory
-  await memoryService.loadForCharacter(charId);
-
-  if (appState.currentCharacter?.id !== charId) return;
-
-  if (sessions.length > 0) {
-    // Load most recent chat
-    loadChat(sessions[0]);
-  } else {
-    // Start a new chat
-    startNewChat(character);
+  // 1. Clear history list immediately to provide instant feedback
+  const list = document.getElementById('chat-history-list');
+  if (list) {
+    list.innerHTML = '<div style="padding: 20px; text-align: center; color: var(--text-tertiary); font-size: var(--text-sm);">Loading chats...</div>';
   }
 
-  updateChatHistory();
-  renderIndicators();
-  window.dispatchEvent(new CustomEvent('character-selected', { detail: { id: charId } }));
+  try {
+    // 2. Load chats for this character
+    try {
+      await chatStore.loadForCharacter(charId);
+    } catch (err) {
+      console.warn('Failed to load chats:', err);
+    }
+
+    // 3. Load memory (don't block UI for this)
+    memoryService.loadForCharacter(charId).catch(err => console.warn('Memory load failed:', err));
+
+    // Check if this character is still the active one
+    if (appState.currentCharacter?.id !== charId) return;
+
+    const sessions = chatStore.getSessions(charId);
+    if (sessionId) {
+      const session = sessions.find(s => s.id === sessionId);
+      if (session) {
+        loadChat(session);
+      } else {
+        loadChat(sessions[0] || null);
+      }
+    } else if (sessions && sessions.length > 0) {
+      loadChat(sessions[0]);
+    } else {
+      startNewChat(character);
+    }
+  } catch (err) {
+    console.error('Critical switch error:', err);
+  } finally {
+    // 4. ENSURE UI updates even if something failed
+    updateChatHistory(charId);
+    renderIndicators();
+    window.dispatchEvent(new CustomEvent('character-selected', { detail: { id: charId } }));
+  }
 }
 
 // ─── Send Message ───────────────────────────────────────────────────
@@ -481,7 +594,7 @@ async function performStreamingTranslation(contentEl, textToTranslate, targetLan
 
         morphdom(contentEl, temp, {
           childrenOnly: true,
-          getNodeKey: (node) => node.dataset?.wordIndex || node.id || node.className,
+          getNodeKey: (node) => node.dataset?.wordIndex || node.id || null,
           onBeforeElUpdated: (from, to) => {
             if (from.classList.contains('word-blur') && from.textContent !== to.textContent) {
               from.classList.add('word-replacing-out');
@@ -560,6 +673,9 @@ async function sendMessage() {
   const userMsgElement = appendMessage(userMsg, false, character);
   const userContentEl = userMsgElement.querySelector('.message-text');
 
+  // Immediate save to prevent loss if app is closed before AI response
+  await chatStore.saveSession(session);
+
   // Clear input
   messageInput.value = '';
   autoResizeTextarea(messageInput);
@@ -621,58 +737,70 @@ async function sendMessage() {
         requestAnimationFrame(() => {
           appState.updateScheduled = false;
 
-          const parsed = parseStreamThinking(fullResponse);
-          thinkingContent = parsed.thinking;
-          let displayContent = parsed.content;
-          isInThinking = parsed.isInThinking;
+          try {
+            const parsed = parseStreamThinking(fullResponse);
+            thinkingContent = parsed.thinking;
+            let displayContent = parsed.content;
+            isInThinking = parsed.isInThinking;
 
-          if (!isInThinking && displayContent.startsWith('*') && !displayContent.endsWith('*')) {
-            displayContent += '*';
+            if (!isInThinking && displayContent.startsWith('*') && !displayContent.endsWith('*')) {
+              displayContent += '*';
+            }
+
+            let html = '';
+            // Show thinking block whenever we are inside a think tag (even if content is still empty)
+            const showThinkingBlock = isInThinking || (thinkingContent && !displayContent);
+            if (showThinkingBlock || thinkingContent) {
+              html += createThinkingBlockHTML(thinkingContent, isInThinking);
+            }
+            html += wrapWordsInSpans(renderMarkdown(displayContent));
+
+            if (!isInThinking) {
+              html = injectCursor(html);
+            }
+
+            const temp = document.createElement('div');
+            temp.className = contentEl.className;
+            temp.innerHTML = html;
+
+            morphdom(contentEl, temp, {
+              childrenOnly: true,
+              getNodeKey: (node) => node.dataset?.wordIndex || node.id || null
+            });
+          } catch (err) {
+            console.error("STREAM CHUNK ERROR:", err);
+            showToast("Streaming UI error: " + err.message, "error");
           }
-
-          let html = '';
-          if (thinkingContent) {
-            html += createThinkingBlockHTML(thinkingContent, isInThinking);
-          }
-          html += wrapWordsInSpans(renderMarkdown(displayContent));
-
-          if (!isInThinking) {
-            html = injectCursor(html);
-          }
-
-          const temp = document.createElement('div');
-          temp.className = contentEl.className;
-          temp.innerHTML = html;
-
-          perf.start('morphdom-patch');
-          morphdom(contentEl, temp, {
-            childrenOnly: true,
-            getNodeKey: (node) => node.dataset?.wordIndex || node.id || node.className
-          });
-          perf.end('morphdom-patch');
         });
       },
       // onDone
       async () => {
-        let parsed = parseThinking(fullResponse);
+        let parsed;
+        try {
+          parsed = parseThinking(fullResponse);
 
-        // Final render to remove cursor
-        let finalHtml = '';
-        if (parsed.thinking) {
-          finalHtml += createThinkingBlockHTML(parsed.thinking, false);
+          // Final render to remove cursor
+          let finalHtml = '';
+          if (parsed.thinking) {
+            finalHtml += createThinkingBlockHTML(parsed.thinking, false);
+          }
+          finalHtml += wrapWordsInSpans(renderMarkdown(parsed.content));
+
+          const tempFinal = document.createElement('div');
+          tempFinal.className = contentEl.className;
+          tempFinal.innerHTML = finalHtml;
+
+          perf.start('morphdom-final-patch');
+          morphdom(contentEl, tempFinal, {
+            childrenOnly: true,
+            getNodeKey: (node) => node.dataset?.wordIndex || node.id || null
+          });
+          perf.end('morphdom-final-patch');
+        } catch (err) {
+          console.error("ON DONE ERROR:", err);
+          showToast("Final UI render error: " + err.message, "error");
+          parsed = parseThinking(fullResponse);
         }
-        finalHtml += wrapWordsInSpans(renderMarkdown(parsed.content));
-
-        const tempFinal = document.createElement('div');
-        tempFinal.className = contentEl.className;
-        tempFinal.innerHTML = finalHtml;
-
-        perf.start('morphdom-final-patch');
-        morphdom(contentEl, tempFinal, {
-          childrenOnly: true,
-          getNodeKey: (node) => node.dataset?.wordIndex || node.id || node.className
-        });
-        perf.end('morphdom-final-patch');
 
         let originalContent = parsed.content;
         // No more applyIndicatorUpdates here, it's now a separate call
@@ -709,8 +837,12 @@ async function sendMessage() {
 
           // 3. Generate suggestions
           generateContinuationOptions(character, session, msgElement);
+
+          // 4. Notify GenAI (for vibe plot mode)
+          notifyGenAI(originalContent, character.name);
         }
 
+        window.dispatchEvent(new CustomEvent('genai-chat-response-finished'));
         checkConnection();
       },
       // onError
@@ -726,6 +858,7 @@ async function sendMessage() {
           headerCharStatus.textContent = 'Error';
           headerCharStatus.classList.remove('generating');
         }
+        window.dispatchEvent(new CustomEvent('genai-chat-response-finished', { detail: { error: err.message } }));
       },
       apiOptions
     );
@@ -735,6 +868,7 @@ async function sendMessage() {
     if (appState.currentCharacter?.id === character.id) {
       appState.isGenerating = false;
     }
+    window.dispatchEvent(new CustomEvent('genai-chat-response-finished', { detail: { error: err.message } }));
   }
 }
 
@@ -786,8 +920,32 @@ function buildApiMessages(character, session) {
   // System prompt with character info and memory
   let systemContent = '';
 
+  const charData = {
+    description: character.description || '',
+    personality: character.personality ? `Personality: ${character.personality}` : '',
+    scenario: character.scenario ? `Scenario: ${character.scenario}` : ''
+  };
+
   if (character.system_prompt) {
     systemContent = character.system_prompt;
+
+    // Check if any standard placeholders are used
+    const hasPlaceholders = /\{\{description\}\}/gi.test(systemContent) ||
+      /\{\{personality\}\}/gi.test(systemContent) ||
+      /\{\{scenario\}\}/gi.test(systemContent);
+
+    // Replace placeholders
+    systemContent = systemContent.replace(/\{\{description\}\}/gi, charData.description);
+    systemContent = systemContent.replace(/\{\{personality\}\}/gi, charData.personality);
+    systemContent = systemContent.replace(/\{\{scenario\}\}/gi, charData.scenario);
+
+    // If no placeholders were used, prepend character info automatically to ensure context
+    if (!hasPlaceholders) {
+      const parts = [charData.description, charData.personality, charData.scenario].filter(Boolean);
+      if (parts.length > 0) {
+        systemContent = parts.join('\n\n') + '\n\n' + systemContent;
+      }
+    }
   } else {
     // Use active preset if available, otherwise build from fields
     const activePresetId = settings.active_system_prompt_preset_id;
@@ -796,21 +954,27 @@ function buildApiMessages(character, session) {
 
     if (activePreset) {
       systemContent = activePreset.content;
-      // Inject character fields into the preset if they exist
-      const description = character.description || '';
-      const personality = character.personality ? `Personality: ${character.personality}` : '';
-      const scenario = character.scenario ? `Scenario: ${character.scenario}` : '';
+
+      // Check if any standard placeholders are used
+      const hasPlaceholders = /\{\{description\}\}/gi.test(systemContent) ||
+        /\{\{personality\}\}/gi.test(systemContent) ||
+        /\{\{scenario\}\}/gi.test(systemContent);
 
       // Replace placeholders
-      systemContent = systemContent.replace(/\{\{description\}\}/gi, description);
-      systemContent = systemContent.replace(/\{\{personality\}\}/gi, personality);
-      systemContent = systemContent.replace(/\{\{scenario\}\}/gi, scenario);
+      systemContent = systemContent.replace(/\{\{description\}\}/gi, charData.description);
+      systemContent = systemContent.replace(/\{\{personality\}\}/gi, charData.personality);
+      systemContent = systemContent.replace(/\{\{scenario\}\}/gi, charData.scenario);
+
+      // If no placeholders were used, prepend character info automatically to ensure context
+      if (!hasPlaceholders) {
+        const parts = [charData.description, charData.personality, charData.scenario].filter(Boolean);
+        if (parts.length > 0) {
+          systemContent = parts.join('\n\n') + '\n\n' + systemContent;
+        }
+      }
     } else {
       // Fallback to building from fields
-      const parts = [];
-      if (character.description) parts.push(character.description);
-      if (character.personality) parts.push(`Personality: ${character.personality}`);
-      if (character.scenario) parts.push(`Scenario: ${character.scenario}`);
+      const parts = [charData.description, charData.personality, charData.scenario].filter(Boolean);
       systemContent = parts.join('\n\n') || `You are ${character.name}.`;
     }
   }
@@ -825,6 +989,11 @@ function buildApiMessages(character, session) {
     systemContent += memoryContext;
   }
 
+  // Inject <|think|> token at the very start to activate Thinking Mode
+  if (settings.thinking_enabled) {
+    systemContent = '<|think|>\n' + systemContent;
+  }
+
   messages.push({ role: 'system', content: systemContent });
 
   // Add formatting instructions based on settings
@@ -834,7 +1003,7 @@ function buildApiMessages(character, session) {
   if (settings.response_length === 'short') {
     formattingInstructions.push("Write extremely short, brief, and concise responses. Limit yourself to 1-2 sentences maximum. No fluff.");
   } else if (settings.response_length === 'medium') {
-    formattingInstructions.push("Write moderately detailed and balanced responses, typically 2-3 paragraphs.");
+    formattingInstructions.push("Write balanced, moderately detailed responses. Strictly limit your response to about 650 characters (letters and spaces) maximum.");
   } else if (settings.response_length === 'long') {
     formattingInstructions.push("Write very long, detailed, and expansive responses. Elaborate on everything and be as verbose as possible.");
   }
@@ -885,7 +1054,7 @@ function buildApiMessages(character, session) {
 
 function parseStreamThinking(text) {
   // Try to find the start tag
-  const startMatch = text.match(/<\|?think\|?>|<reasoning>/);
+  const startMatch = text.match(/<\|channel>thought|<\|?think\|?>|<thought>|<reasoning>/);
   if (!startMatch) {
     return { thinking: '', content: text, isInThinking: false };
   }
@@ -895,7 +1064,7 @@ function parseStreamThinking(text) {
   const afterStart = startIdx + thinkStart.length;
 
   // Try to find the end tag
-  const endMatch = text.substring(afterStart).match(/<\|?\/think\|?>|<\/reasoning>/);
+  const endMatch = text.substring(afterStart).match(/<channel\|>|<\|?\/think\|?>|<\/thought>|<\/reasoning>/);
 
   if (!endMatch) {
     // Still in thinking
@@ -915,15 +1084,30 @@ function parseStreamThinking(text) {
 // ─── Create Thinking Block HTML ─────────────────────────────────────
 
 function createThinkingBlockHTML(thinkingText, isActive) {
-  return `
-    <div class="thinking-inline">
-      <div class="thinking-inline-header">
-        <span class="${isActive ? 'brain-icon' : ''}">🧠</span>
-        <span class="${isActive ? 'thinking-text-animated' : ''}">Thinking...</span>
-      </div>
-      <div class="thinking-inline-content">${escapeHtml(thinkingText)}</div>
-    </div>
-  `;
+  if (isActive) {
+    const s = settingsStore.get();
+    let label = 'Thinking...';
+    let isSnippet = false;
+
+    if (s.thinking_snippets && thinkingText) {
+      const paras = thinkingText.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+      const lastPara = paras[paras.length - 1] || '';
+      const firstLine = lastPara.split('\n')[0].trim();
+      let snippet = firstLine.replace(/<|>\/?[a-z]*/gi, '').trim();
+      if (snippet) {
+        if (snippet.length > 80) {
+          snippet = snippet.substring(0, 80) + '\u2026';
+        }
+        label = snippet;
+        isSnippet = true;
+      }
+    }
+
+    const cursor = ' <span class="streaming-cursor"></span>';
+    const labelClass = isSnippet ? 'thinking-text-animated thinking-snippet-active' : 'thinking-text-animated';
+    return '<div class="thinking-inline thinking-inline-active"><div class="thinking-inline-header"><span class="brain-icon">\u{1F9E0}</span><span class="' + labelClass + '">' + escapeHtml(label) + '</span>' + cursor + '</div></div>';
+  }
+  return '<div class="thinking-inline"><div class="thinking-inline-header thinking-toggle-header" style="cursor:pointer;" onclick="this.closest(\'.thinking-inline\').classList.toggle(\'thinking-expanded\')"><span>\u{1F9E0}</span><span style="color:var(--text-tertiary);">Thought for a moment</span><span class="thinking-chevron"> ▸</span></div><div class="thinking-inline-content">' + escapeHtml(thinkingText) + '</div></div>';
 }
 
 // ─── Stop Generation ────────────────────────────────────────────────
@@ -971,8 +1155,29 @@ function appendMessage(msg, isStreaming = false, character = null) {
   if (msg.thinking) {
     contentHtml += createThinkingBlockHTML(msg.thinking, false);
   }
-  const displayContent = msg.translated_content || msg.content;
+
+  // Persistence: use translated content if it exists and we're not showing original
+  const displayContent = (msg.translated_content && !msg.show_original) ? msg.translated_content : msg.content;
   contentHtml += renderMarkdown(displayContent);
+
+  // Swipe Greetings UI for the first message
+  const isFirstMessage = appState.currentChat?.messages?.[0]?.id === msg.id;
+  const greetings = char?.alternate_greetings || [];
+  const hasAltGreetings = greetings.length > 0;
+  const currentIdx = appState.currentChat?.selected_greeting_index || 0;
+  const totalGreetings = greetings.length + 1;
+
+  const swipeHtml = (isFirstMessage && hasAltGreetings) ? `
+    <div class="swipe-greetings">
+      <button class="btn-swipe btn-swipe-left" title="Previous Greeting">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <span class="swipe-index">${currentIdx + 1} / ${totalGreetings}</span>
+      <button class="btn-swipe btn-swipe-right" title="Next Greeting">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+    </div>
+  ` : '';
 
   el.innerHTML = `
     <div class="message-avatar">${avatarHtml}</div>
@@ -980,6 +1185,7 @@ function appendMessage(msg, isStreaming = false, character = null) {
       <div class="message-content">
         <div class="message-text">${contentHtml || (isStreaming ? '<span class="streaming-cursor"></span>' : '')}</div>
       </div>
+      ${swipeHtml}
       <div class="message-meta">
         <span class="message-time">${formatTime(msg.timestamp)}</span>
         <div class="message-actions">
@@ -1027,18 +1233,40 @@ function appendMessage(msg, isStreaming = false, character = null) {
     const contentEl = el.querySelector('.message-text');
     const target = msg.role === 'user' ? (settings.outgoing_target_language || 'English') : (settings.target_language || 'Russian');
 
+    // If already translated, toggle between original and translated
+    if (msg.translated_content) {
+      msg.show_original = !msg.show_original;
+      chatStore.updateMessage(msg.id, { show_original: msg.show_original });
+      await chatStore.saveCurrentSession();
+
+      const newDisplayContent = msg.show_original ? msg.content : msg.translated_content;
+
+      // Update UI with a nice effect
+      contentEl.classList.add('block-replacing-out');
+      setTimeout(() => {
+        let html = '';
+        if (msg.thinking) html += createThinkingBlockHTML(msg.thinking, false);
+        html += renderMarkdown(newDisplayContent);
+        contentEl.innerHTML = html;
+        contentEl.classList.remove('block-replacing-out');
+        contentEl.classList.add('block-replacing-in');
+        setTimeout(() => contentEl.classList.remove('block-replacing-in'), 400);
+      }, 300);
+      return;
+    }
+
     headerCharStatus.textContent = 'Translating message...';
     headerCharStatus.classList.add('generating');
 
     // Ensure spans exist for the replacement effect
     if (!contentEl.querySelector('.word-blur')) {
-      const displayContent = msg.translated_content || msg.content;
+      const displayContent = (msg.translated_content && !msg.show_original) ? msg.translated_content : msg.content;
       contentEl.innerHTML = wrapWordsInSpans(renderMarkdown(displayContent));
     }
 
     const translated = await performStreamingTranslation(contentEl, msg.content, target);
     if (translated) {
-      chatStore.updateMessage(msg.id, { translated_content: translated });
+      chatStore.updateMessage(msg.id, { translated_content: translated, show_original: false });
       await chatStore.saveSession(appState.currentChat);
     }
 
@@ -1048,7 +1276,8 @@ function appendMessage(msg, isStreaming = false, character = null) {
 
   // Copy button
   el.querySelector('.btn-copy')?.addEventListener('click', () => {
-    navigator.clipboard.writeText(msg.translated_content || msg.content);
+    const copyContent = (msg.translated_content && !msg.show_original) ? msg.translated_content : msg.content;
+    navigator.clipboard.writeText(copyContent);
     showToast('Copied to clipboard');
   });
 
@@ -1083,6 +1312,12 @@ function appendMessage(msg, isStreaming = false, character = null) {
     requestAiComment(msg, character || appState.currentCharacter);
   });
 
+  // Swipe listeners
+  if (isFirstMessage && hasAltGreetings) {
+    el.querySelector('.btn-swipe-left')?.addEventListener('click', () => swipeGreeting(msg.id, -1));
+    el.querySelector('.btn-swipe-right')?.addEventListener('click', () => swipeGreeting(msg.id, 1));
+  }
+
   // Regenerate button
   const btnRegen = el.querySelector('.btn-regenerate');
   btnRegen?.addEventListener('click', () => {
@@ -1099,6 +1334,32 @@ function appendMessage(msg, isStreaming = false, character = null) {
   }
 
   return el;
+}
+
+async function swipeGreeting(messageId, direction) {
+  if (!appState.currentChat || appState.isGenerating) return;
+  const char = appState.currentCharacter;
+  if (!char) return;
+
+  const greetings = [char.first_message, ...(char.alternate_greetings || [])];
+  if (greetings.length <= 1) return;
+
+  let currentIdx = appState.currentChat.selected_greeting_index || 0;
+  currentIdx = (currentIdx + direction + greetings.length) % greetings.length;
+  appState.currentChat.selected_greeting_index = currentIdx;
+
+  const newContent = greetings[currentIdx];
+  const settings = settingsStore.get();
+  const userName = settings.user_name || 'User';
+  let processedContent = newContent.replace(/\{\{user\}\}/gi, userName);
+  processedContent = processedContent.replace(/\{\{char\}\}/gi, char.name);
+
+  // Update store
+  chatStore.updateMessage(messageId, { content: processedContent, translated_content: null });
+  await chatStore.saveCurrentSession();
+
+  // Re-render chat
+  loadChat(appState.currentChat);
 }
 
 function scrollToBottom() {
@@ -1238,7 +1499,8 @@ async function triggerAssistantGeneration() {
         }
 
         let html = '';
-        if (thinkingContent) html += createThinkingBlockHTML(thinkingContent, isInThinking);
+        // Show thinking block as soon as tag opens, even if content is still empty
+        if (isInThinking || thinkingContent) html += createThinkingBlockHTML(thinkingContent, isInThinking);
         html += wrapWordsInSpans(renderMarkdown(displayContent));
 
         if (!isInThinking) {
@@ -1250,7 +1512,10 @@ async function triggerAssistantGeneration() {
         const temp = document.createElement('div');
         temp.className = contentEl.className;
         temp.innerHTML = html;
-        morphdom(contentEl, temp, { childrenOnly: true });
+        morphdom(contentEl, temp, {
+          childrenOnly: true,
+          getNodeKey: (node) => node.dataset?.wordIndex || node.id || null
+        });
       },
       async () => {
         const parsed = parseThinking(fullResponse);
@@ -1261,7 +1526,10 @@ async function triggerAssistantGeneration() {
         const tempFinal = document.createElement('div');
         tempFinal.className = contentEl.className;
         tempFinal.innerHTML = finalHtml;
-        morphdom(contentEl, tempFinal, { childrenOnly: true });
+        morphdom(contentEl, tempFinal, {
+          childrenOnly: true,
+          getNodeKey: (node) => node.dataset?.wordIndex || node.id || null
+        });
 
         let originalContent = parsed.content;
 
@@ -1313,25 +1581,29 @@ async function triggerAssistantGeneration() {
   }
 }
 
-// ─── Update Chat History Sidebar ────────────────────────────────────
-
 export function updateChatHistory() {
   if (!appState.currentCharacter) return;
 
-  perf.start('updateChatHistory');
   const list = document.getElementById('chat-history-list');
-  const sessions = chatStore.getSessions(appState.currentCharacter.id);
-  const currentId = appState.currentChat?.id;
+  if (!list) return;
 
-  const html = sessions.map(session => {
+  const sessions = chatStore.getSessions(appState.currentCharacter.id);
+  const currentChat = appState.currentChat;
+
+  // Напрямую обновляем DOM
+  list.innerHTML = sessions.map(session => {
     const firstUserMsg = session.messages.find(m => m.role === 'user');
-    const title = firstUserMsg
-      ? firstUserMsg.content.substring(0, 40) + (firstUserMsg.content.length > 40 ? '...' : '')
-      : 'New Chat';
-    const isActive = session.id === currentId;
+    let title = session.custom_title;
+    if (!title) {
+      title = firstUserMsg
+        ? firstUserMsg.content.substring(0, 40) + (firstUserMsg.content.length > 40 ? '...' : '')
+        : 'New Chat';
+    }
+
+    const isActive = currentChat && (session.id === currentChat.id);
 
     return `
-      <div class="chat-history-item ${isActive ? 'active' : ''}" data-chat-id="${session.id}" id="chat-history-item-${session.id}">
+      <div class="chat-history-item ${isActive ? 'active' : ''}" data-chat-id="${session.id}">
         <div class="chat-history-item-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
@@ -1350,21 +1622,11 @@ export function updateChatHistory() {
     `;
   }).join('');
 
-  const temp = document.createElement('div');
-  temp.id = list.id;
-  temp.innerHTML = html;
-
-  perf.start('morphdom-history');
-  morphdom(list, temp, {
-    childrenOnly: true,
-    getNodeKey: (node) => node.id || node.dataset?.chatId
-  });
-  perf.end('morphdom-history');
-
-  // Event delegation initialized once
+  // Инициализация обработчиков только один раз
   if (!list._listenersAttached) {
     list._listenersAttached = true;
     list.addEventListener('click', async (e) => {
+      // Удаление
       const deleteBtn = e.target.closest('[data-delete-chat]');
       if (deleteBtn) {
         e.stopPropagation();
@@ -1398,9 +1660,14 @@ export function updateChatHistory() {
         const chatId = item.dataset.chatId;
         const currentSessions = chatStore.getSessions(appState.currentCharacter.id);
         const session = currentSessions.find(s => s.id === chatId);
-        if (session) {
-          loadChat(session);
-          updateChatHistory();
+
+        // Загружаем только если это другой чат
+        if (session && session.id !== appState.currentChat?.id) {
+          try {
+            loadChat(session);
+          } finally {
+            updateChatHistory();
+          }
         }
       }
     });
@@ -1441,9 +1708,9 @@ CRITICAL INSTRUCTIONS:
 
 Example:
 [
-  { "label": "Спросить про меч", "message": "Where did you find that glowing sword?" },
-  { "label": "Убежать", "message": "I don't trust you, I'm leaving!" },
-  { "label": "Предложить помощь", "message": "How can I assist you with your quest?" }
+  { "label": "Ask about sword", "message": "Where did you find that glowing sword?" },
+  { "label": "Run away", "message": "I don't trust you, I'm leaving!" },
+  { "label": "Offer help", "message": "How can I assist you with your quest?" }
 ]
 Do not include any Markdown formatting like \`\`\`json or any other text. Return strictly the raw JSON array.`
     });
@@ -1456,7 +1723,7 @@ Do not include any Markdown formatting like \`\`\`json or any other text. Return
 
     // CRITICAL: Check if we were aborted while waiting for the network
     if (signal.aborted || !msgElement.isConnected) return;
-    
+
     // Check if user started typing in the meantime
     if (messageInput.value.trim().length > 0) return;
 
@@ -1536,7 +1803,25 @@ function renderContinuationOptions(msgElement, options, character, session) {
 
 async function requestAiComment(msg, character) {
   const settings = settingsStore.get();
-  const session = chatStore.getCurrentSession();
+
+  // Detect context
+  const groupViewEl = document.getElementById('group-chat-view-container');
+  const isGroupViewOpen = groupViewEl && !groupViewEl.classList.contains('hidden');
+
+  let session, store, builder;
+  if (isGroupViewOpen) {
+    session = groupChatStore.getCurrentSession();
+    store = groupChatStore;
+    const groupId = groupChatStore.getActiveGroupId();
+    const group = groupChatStore.getGroupById(groupId);
+    const members = (group?.character_ids || []).map(id => characterStore.getById(id)).filter(Boolean);
+    builder = (char, sess) => buildGroupApiMessages(char, members, sess);
+  } else {
+    session = chatStore.getCurrentSession();
+    store = chatStore;
+    builder = buildApiMessages;
+  }
+
   if (!session || !character || !settings.ai_comments_enabled) return;
 
   const modal = document.getElementById('ai-comment-modal');
@@ -1559,9 +1844,9 @@ async function requestAiComment(msg, character) {
   if (msgIndex !== -1) {
     const relevantMsgs = session.messages.slice(0, msgIndex + 1);
     const tempSession = { ...session, messages: relevantMsgs };
-    contextMessages = buildApiMessages(character, tempSession);
+    contextMessages = builder(character, tempSession);
   } else {
-    contextMessages = buildApiMessages(character, session);
+    contextMessages = builder(character, session);
   }
 
   // Append the comment prompt
@@ -1610,8 +1895,8 @@ async function requestAiComment(msg, character) {
 
         if (settings.ai_comments_history_enabled) {
           const snippet = msg.content ? msg.content.substring(0, 60).replace(/\n/g, ' ') + (msg.content.length > 60 ? '...' : '') : '...';
-          chatStore.addAiComment(msg.id, snippet, fullComment, session);
-          chatStore.saveSession(session);
+          store.addAiComment(msg.id, snippet, fullComment, session);
+          store.saveSession(session);
           renderAiCommentsHistory();
         }
 
@@ -1696,28 +1981,40 @@ function injectCursor(html) {
   return html + cursorHtml;
 }
 
+
+
 export function renderAiCommentsHistory() {
   const listEl = document.getElementById('ai-comments-list');
   if (!listEl) return;
-  
-  const session = chatStore.getCurrentSession();
+
+  // Detect context
+  const groupViewEl = document.getElementById('group-chat-view-container');
+  const isGroupViewOpen = groupViewEl && !groupViewEl.classList.contains('hidden');
+
+  let session;
+  if (isGroupViewOpen) {
+    session = groupChatStore.getCurrentSession();
+  } else {
+    session = chatStore.getCurrentSession();
+  }
+
   listEl.innerHTML = '';
-  
+
   if (!session || !session.ai_comments || session.ai_comments.length === 0) {
     listEl.innerHTML = '<div style="text-align: center; color: var(--text-tertiary); padding: 20px; font-size: var(--text-sm);">No comments yet.</div>';
     return;
   }
-  
+
   const comments = [...session.ai_comments].reverse();
-  
+
   comments.forEach(comment => {
     const item = document.createElement('div');
     item.className = 'ai-comment-history-item';
-    
+
     // Format timestamp
     const date = new Date(comment.timestamp);
     const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    
+
     item.innerHTML = `
       <div class="ai-comment-history-target">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1734,40 +2031,83 @@ export function renderAiCommentsHistory() {
   });
 }
 
-function setupAiCommentsSidebar() {
-  const toggleBtn = document.getElementById('btn-toggle-ai-comments-sidebar');
+export function openAiCommentsSidebar() {
   const sidebar = document.getElementById('ai-comments-sidebar');
-  const closeBtn = document.getElementById('btn-close-ai-comments-sidebar');
   const mainContent = document.getElementById('main-content');
-  
-  if (!toggleBtn || !sidebar || !closeBtn || !mainContent) return;
-  
-  const triggerMotionBlur = () => {
-    mainContent.classList.add('is-animating');
-    setTimeout(() => {
-      mainContent.classList.remove('is-animating');
-    }, 600);
-  };
-  
-  toggleBtn.addEventListener('click', () => {
-    const isHidden = sidebar.classList.contains('hidden');
-    triggerMotionBlur();
-    
-    if (isHidden) {
-      sidebar.classList.remove('hidden');
-      toggleBtn.classList.add('open');
-      renderAiCommentsHistory();
-    } else {
-      sidebar.classList.add('hidden');
-      toggleBtn.classList.remove('open');
-    }
-  });
-  
-  closeBtn.addEventListener('click', () => {
-    triggerMotionBlur();
-    sidebar.classList.add('hidden');
-    toggleBtn.classList.remove('open');
-  });
+  if (!sidebar) return;
+
+  sidebar.classList.remove('hidden');
+  sidebar.classList.remove('panel-bounce');
+  void sidebar.offsetWidth;
+  sidebar.classList.add('panel-bounce');
+
+  if (mainContent) mainContent.classList.add('is-animating');
+  document.body.classList.add('ai-sidebar-open');
+
+  setTimeout(() => {
+    renderAiCommentsHistory();
+  }, 300);
+
+  setTimeout(() => {
+    if (mainContent) mainContent.classList.remove('is-animating');
+  }, 600);
+}
+
+export function closeAiCommentsSidebar() {
+  const mainContent = document.getElementById('main-content');
+  if (mainContent) mainContent.classList.add('is-animating');
+  document.body.classList.remove('ai-sidebar-open');
+
+  setTimeout(() => {
+    if (mainContent) mainContent.classList.remove('is-animating');
+    const sidebar = document.getElementById('ai-comments-sidebar');
+    if (sidebar) sidebar.classList.add('hidden');
+  }, 600);
+}
+
+function setupRightSidebarToggle() {
+  const toggleBtn = document.getElementById('btn-toggle-right-sidebar');
+  const closeBtn = document.getElementById('btn-close-ai-comments-sidebar');
+
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', async () => {
+      const settings = settingsStore.get();
+      const isGenAIMode = settings.genai_mode_enabled;
+
+      if (isGenAIMode) {
+        const isCurrentlyOpen = document.body.classList.contains('genai-sidebar-open');
+        const genaiModule = await import('./genai-panel.js');
+        if (isCurrentlyOpen) {
+          genaiModule.closeGenAIPanel();
+        } else {
+          // Ensure comments are closed
+          document.body.classList.remove('ai-sidebar-open');
+          const commentsSidebar = document.getElementById('ai-comments-sidebar');
+          if (commentsSidebar) commentsSidebar.classList.add('hidden');
+
+          genaiModule.openGenAIPanel();
+        }
+      } else {
+        const isCurrentlyOpen = document.body.classList.contains('ai-sidebar-open');
+        if (isCurrentlyOpen) {
+          closeAiCommentsSidebar();
+        } else {
+          // Ensure genai is closed
+          document.body.classList.remove('genai-sidebar-open');
+          const genaiSidebar = document.getElementById('genai-sidebar');
+          if (genaiSidebar) genaiSidebar.classList.add('hidden');
+
+          openAiCommentsSidebar();
+        }
+      }
+    });
+  }
+
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      closeAiCommentsSidebar();
+    });
+  }
 }
 
 async function triggerIndicatorUpdate(character, session, lastUserMsg, lastAssistantMsg) {
