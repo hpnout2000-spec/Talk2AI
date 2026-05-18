@@ -136,6 +136,7 @@ function loadSettingsToUI() {
   };
 
   checkField('setting-thinking', settings.thinking_enabled);
+  checkField('setting-thinking-snippets', settings.thinking_snippets);
   setRangeValue('adv-setting-max-tokens', 'adv-max-tokens-value', settings.max_tokens);
   setRangeValue('adv-setting-temperature', 'adv-temperature-value', settings.temperature?.toFixed(2));
   setRangeValue('adv-setting-top-p', 'adv-top-p-value', settings.top_p?.toFixed(2));
@@ -191,6 +192,7 @@ async function saveSettings() {
     api_url: getVal('setting-api-url') || current.api_url,
     prompt_token_limit: parseInt(getVal('setting-prompt-token-limit')) || current.prompt_token_limit,
     thinking_enabled: getChecked('setting-thinking'),
+    thinking_snippets: getChecked('setting-thinking-snippets'),
     memory_enabled: getChecked('setting-memory'),
     auto_translate: getChecked('setting-auto-translate'),
     translate_user_messages: getChecked('setting-translate-user'),

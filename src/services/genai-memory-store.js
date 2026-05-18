@@ -31,7 +31,7 @@ export const genaiMemoryStore = {
   },
 
   getAll() {
-    if (memories.length === 0) this.load();
+    this.load();
     return memories;
   },
 

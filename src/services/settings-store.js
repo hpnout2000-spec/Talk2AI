@@ -12,6 +12,7 @@ const DEFAULTS = {
   rep_penalty: 1.1,
   user_name: 'User',
   thinking_enabled: false,
+  thinking_snippets: false,
   memory_enabled: true,
   font_size: 15,
   response_length: 'auto',

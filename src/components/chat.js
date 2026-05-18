@@ -102,15 +102,17 @@ export function initChat() {
   // Stop generation
   btnStop.addEventListener('click', stopGeneration);
 
-  // Thinking toggle
-  thinkingToggle.addEventListener('change', () => {
-    const settings = settingsStore.get();
-    settingsStore.save({ ...settings, thinking_enabled: thinkingToggle.checked });
+  // Thinking toggle (element may not exist if removed from header)
+  if (thinkingToggle) {
+    thinkingToggle.addEventListener('change', () => {
+      const settings = settingsStore.get();
+      settingsStore.save({ ...settings, thinking_enabled: thinkingToggle.checked });
 
-    // Sync settings panel toggle
-    const settingsThinking = document.getElementById('setting-thinking');
-    if (settingsThinking) settingsThinking.checked = thinkingToggle.checked;
-  });
+      // Sync settings panel toggle
+      const settingsThinking = document.getElementById('setting-thinking');
+      if (settingsThinking) settingsThinking.checked = thinkingToggle.checked;
+    });
+  }
 
   // New chat button
   document.getElementById('btn-new-chat').addEventListener('click', () => {
@@ -207,6 +209,7 @@ function renderInputSettings() {
   const settings = settingsStore.get();
   const length = settings.response_length || 'auto';
   const depth = settings.description_depth || 0;
+  const thinkingEnabled = settings.thinking_enabled || false;
 
   inputSettingsPopover.innerHTML = `
     <div class="settings-group">
@@ -230,6 +233,26 @@ function renderInputSettings() {
           <span>3</span>
           <span>Max</span>
         </div>
+      </div>
+    </div>
+
+    <div class="settings-group" style="border-top: 1px solid var(--border-subtle); padding-top: 12px; margin-top: 4px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span style="font-size: 15px;">🧠</span>
+          <h4 style="margin: 0;">Think Mode</h4>
+        </div>
+        <label class="toggle-switch small">
+          <input type="checkbox" id="input-thinking-toggle" ${thinkingEnabled ? 'checked' : ''}>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-left: 4px;">
+        <span style="font-size: var(--text-xs); color: var(--text-tertiary);">&#x21b3; Show snippets</span>
+        <label class="toggle-switch small">
+          <input type="checkbox" id="input-snippets-toggle" ${settingsStore.get().thinking_snippets ? 'checked' : ''}>
+          <span class="toggle-slider"></span>
+        </label>
       </div>
     </div>
 
@@ -294,6 +317,24 @@ function renderInputSettings() {
   slider.addEventListener('input', () => {
     const newDepth = parseInt(slider.value);
     settingsStore.save({ ...settingsStore.get(), description_depth: newDepth });
+  });
+
+  // Think Mode toggle handler
+  const thinkingToggleEl = inputSettingsPopover.querySelector('#input-thinking-toggle');
+  thinkingToggleEl?.addEventListener('change', () => {
+    const newVal = thinkingToggleEl.checked;
+    settingsStore.save({ ...settingsStore.get(), thinking_enabled: newVal });
+    const settingsThinking = document.getElementById('setting-thinking');
+    if (settingsThinking) settingsThinking.checked = newVal;
+  });
+
+  // Snippets toggle handler
+  const snippetsToggleEl = inputSettingsPopover.querySelector('#input-snippets-toggle');
+  snippetsToggleEl?.addEventListener('change', () => {
+    const newVal = snippetsToggleEl.checked;
+    settingsStore.save({ ...settingsStore.get(), thinking_snippets: newVal });
+    const settingsSnippets = document.getElementById('setting-thinking-snippets');
+    if (settingsSnippets) settingsSnippets.checked = newVal;
   });
 
   // Toggle indicators
@@ -553,7 +594,7 @@ async function performStreamingTranslation(contentEl, textToTranslate, targetLan
 
         morphdom(contentEl, temp, {
           childrenOnly: true,
-          getNodeKey: (node) => node.dataset?.wordIndex || node.id || node.className,
+          getNodeKey: (node) => node.dataset?.wordIndex || node.id || null,
           onBeforeElUpdated: (from, to) => {
             if (from.classList.contains('word-blur') && from.textContent !== to.textContent) {
               from.classList.add('word-replacing-out');
@@ -696,55 +737,70 @@ async function sendMessage() {
         requestAnimationFrame(() => {
           appState.updateScheduled = false;
 
-          const parsed = parseStreamThinking(fullResponse);
-          thinkingContent = parsed.thinking;
-          let displayContent = parsed.content;
-          isInThinking = parsed.isInThinking;
+          try {
+            const parsed = parseStreamThinking(fullResponse);
+            thinkingContent = parsed.thinking;
+            let displayContent = parsed.content;
+            isInThinking = parsed.isInThinking;
 
-          if (!isInThinking && displayContent.startsWith('*') && !displayContent.endsWith('*')) {
-            displayContent += '*';
+            if (!isInThinking && displayContent.startsWith('*') && !displayContent.endsWith('*')) {
+              displayContent += '*';
+            }
+
+            let html = '';
+            // Show thinking block whenever we are inside a think tag (even if content is still empty)
+            const showThinkingBlock = isInThinking || (thinkingContent && !displayContent);
+            if (showThinkingBlock || thinkingContent) {
+              html += createThinkingBlockHTML(thinkingContent, isInThinking);
+            }
+            html += wrapWordsInSpans(renderMarkdown(displayContent));
+
+            if (!isInThinking) {
+              html = injectCursor(html);
+            }
+
+            const temp = document.createElement('div');
+            temp.className = contentEl.className;
+            temp.innerHTML = html;
+
+            morphdom(contentEl, temp, {
+              childrenOnly: true,
+              getNodeKey: (node) => node.dataset?.wordIndex || node.id || null
+            });
+          } catch (err) {
+            console.error("STREAM CHUNK ERROR:", err);
+            showToast("Streaming UI error: " + err.message, "error");
           }
-
-          let html = '';
-          if (thinkingContent) {
-            html += createThinkingBlockHTML(thinkingContent, isInThinking);
-          }
-          html += wrapWordsInSpans(renderMarkdown(displayContent));
-
-          if (!isInThinking) {
-            html = injectCursor(html);
-          }
-
-          const temp = document.createElement('div');
-          temp.className = contentEl.className;
-          temp.innerHTML = html;
-          morphdom(contentEl, temp, {
-            childrenOnly: true,
-            getNodeKey: (node) => node.dataset?.wordIndex || node.id || node.className
-          });
         });
       },
       // onDone
       async () => {
-        let parsed = parseThinking(fullResponse);
+        let parsed;
+        try {
+          parsed = parseThinking(fullResponse);
 
-        // Final render to remove cursor
-        let finalHtml = '';
-        if (parsed.thinking) {
-          finalHtml += createThinkingBlockHTML(parsed.thinking, false);
+          // Final render to remove cursor
+          let finalHtml = '';
+          if (parsed.thinking) {
+            finalHtml += createThinkingBlockHTML(parsed.thinking, false);
+          }
+          finalHtml += wrapWordsInSpans(renderMarkdown(parsed.content));
+
+          const tempFinal = document.createElement('div');
+          tempFinal.className = contentEl.className;
+          tempFinal.innerHTML = finalHtml;
+
+          perf.start('morphdom-final-patch');
+          morphdom(contentEl, tempFinal, {
+            childrenOnly: true,
+            getNodeKey: (node) => node.dataset?.wordIndex || node.id || null
+          });
+          perf.end('morphdom-final-patch');
+        } catch (err) {
+          console.error("ON DONE ERROR:", err);
+          showToast("Final UI render error: " + err.message, "error");
+          parsed = parseThinking(fullResponse);
         }
-        finalHtml += wrapWordsInSpans(renderMarkdown(parsed.content));
-
-        const tempFinal = document.createElement('div');
-        tempFinal.className = contentEl.className;
-        tempFinal.innerHTML = finalHtml;
-
-        perf.start('morphdom-final-patch');
-        morphdom(contentEl, tempFinal, {
-          childrenOnly: true,
-          getNodeKey: (node) => node.dataset?.wordIndex || node.id || node.className
-        });
-        perf.end('morphdom-final-patch');
 
         let originalContent = parsed.content;
         // No more applyIndicatorUpdates here, it's now a separate call
@@ -933,6 +989,11 @@ function buildApiMessages(character, session) {
     systemContent += memoryContext;
   }
 
+  // Inject <|think|> token at the very start to activate Thinking Mode
+  if (settings.thinking_enabled) {
+    systemContent = '<|think|>\n' + systemContent;
+  }
+
   messages.push({ role: 'system', content: systemContent });
 
   // Add formatting instructions based on settings
@@ -942,7 +1003,7 @@ function buildApiMessages(character, session) {
   if (settings.response_length === 'short') {
     formattingInstructions.push("Write extremely short, brief, and concise responses. Limit yourself to 1-2 sentences maximum. No fluff.");
   } else if (settings.response_length === 'medium') {
-    formattingInstructions.push("Write moderately detailed and balanced responses, typically 2-3 paragraphs.");
+    formattingInstructions.push("Write balanced, moderately detailed responses. Strictly limit your response to about 650 characters (letters and spaces) maximum.");
   } else if (settings.response_length === 'long') {
     formattingInstructions.push("Write very long, detailed, and expansive responses. Elaborate on everything and be as verbose as possible.");
   }
@@ -993,7 +1054,7 @@ function buildApiMessages(character, session) {
 
 function parseStreamThinking(text) {
   // Try to find the start tag
-  const startMatch = text.match(/<\|?think\|?>|<reasoning>/);
+  const startMatch = text.match(/<\|channel>thought|<\|?think\|?>|<thought>|<reasoning>/);
   if (!startMatch) {
     return { thinking: '', content: text, isInThinking: false };
   }
@@ -1003,7 +1064,7 @@ function parseStreamThinking(text) {
   const afterStart = startIdx + thinkStart.length;
 
   // Try to find the end tag
-  const endMatch = text.substring(afterStart).match(/<\|?\/think\|?>|<\/reasoning>/);
+  const endMatch = text.substring(afterStart).match(/<channel\|>|<\|?\/think\|?>|<\/thought>|<\/reasoning>/);
 
   if (!endMatch) {
     // Still in thinking
@@ -1023,15 +1084,30 @@ function parseStreamThinking(text) {
 // ─── Create Thinking Block HTML ─────────────────────────────────────
 
 function createThinkingBlockHTML(thinkingText, isActive) {
-  return `
-    <div class="thinking-inline">
-      <div class="thinking-inline-header">
-        <span class="${isActive ? 'brain-icon' : ''}">🧠</span>
-        <span class="${isActive ? 'thinking-text-animated' : ''}">Thinking...</span>
-      </div>
-      <div class="thinking-inline-content">${escapeHtml(thinkingText)}</div>
-    </div>
-  `;
+  if (isActive) {
+    const s = settingsStore.get();
+    let label = 'Thinking...';
+    let isSnippet = false;
+
+    if (s.thinking_snippets && thinkingText) {
+      const paras = thinkingText.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+      const lastPara = paras[paras.length - 1] || '';
+      const firstLine = lastPara.split('\n')[0].trim();
+      let snippet = firstLine.replace(/<|>\/?[a-z]*/gi, '').trim();
+      if (snippet) {
+        if (snippet.length > 80) {
+          snippet = snippet.substring(0, 80) + '\u2026';
+        }
+        label = snippet;
+        isSnippet = true;
+      }
+    }
+
+    const cursor = ' <span class="streaming-cursor"></span>';
+    const labelClass = isSnippet ? 'thinking-text-animated thinking-snippet-active' : 'thinking-text-animated';
+    return '<div class="thinking-inline thinking-inline-active"><div class="thinking-inline-header"><span class="brain-icon">\u{1F9E0}</span><span class="' + labelClass + '">' + escapeHtml(label) + '</span>' + cursor + '</div></div>';
+  }
+  return '<div class="thinking-inline"><div class="thinking-inline-header thinking-toggle-header" style="cursor:pointer;" onclick="this.closest(\'.thinking-inline\').classList.toggle(\'thinking-expanded\')"><span>\u{1F9E0}</span><span style="color:var(--text-tertiary);">Thought for a moment</span><span class="thinking-chevron"> ▸</span></div><div class="thinking-inline-content">' + escapeHtml(thinkingText) + '</div></div>';
 }
 
 // ─── Stop Generation ────────────────────────────────────────────────
@@ -1423,7 +1499,8 @@ async function triggerAssistantGeneration() {
         }
 
         let html = '';
-        if (thinkingContent) html += createThinkingBlockHTML(thinkingContent, isInThinking);
+        // Show thinking block as soon as tag opens, even if content is still empty
+        if (isInThinking || thinkingContent) html += createThinkingBlockHTML(thinkingContent, isInThinking);
         html += wrapWordsInSpans(renderMarkdown(displayContent));
 
         if (!isInThinking) {
@@ -1435,7 +1512,10 @@ async function triggerAssistantGeneration() {
         const temp = document.createElement('div');
         temp.className = contentEl.className;
         temp.innerHTML = html;
-        morphdom(contentEl, temp, { childrenOnly: true });
+        morphdom(contentEl, temp, {
+          childrenOnly: true,
+          getNodeKey: (node) => node.dataset?.wordIndex || node.id || null
+        });
       },
       async () => {
         const parsed = parseThinking(fullResponse);
@@ -1446,7 +1526,10 @@ async function triggerAssistantGeneration() {
         const tempFinal = document.createElement('div');
         tempFinal.className = contentEl.className;
         tempFinal.innerHTML = finalHtml;
-        morphdom(contentEl, tempFinal, { childrenOnly: true });
+        morphdom(contentEl, tempFinal, {
+          childrenOnly: true,
+          getNodeKey: (node) => node.dataset?.wordIndex || node.id || null
+        });
 
         let originalContent = parsed.content;
 
