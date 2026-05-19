@@ -15,6 +15,8 @@ let groupsSection;
 let chatViewContainer;
 let bookViewContainer;
 let groupViewContainer;
+let gameViewContainer;
+let gamesSection;
 
 let btnAddBook;
 let bookModal;
@@ -30,10 +32,12 @@ let initialPromptInput;
 
 // Helper: set active tab style
 function setTabActive(activeBtn, otherBtns) {
-  activeBtn.classList.add('active');
-  activeBtn.style.background = 'var(--bg-tertiary)';
-  activeBtn.style.color = 'var(--text-primary)';
-  activeBtn.style.border = '1px solid var(--border-light)';
+  if (activeBtn) {
+    activeBtn.classList.add('active');
+    activeBtn.style.background = 'var(--bg-tertiary)';
+    activeBtn.style.color = 'var(--text-primary)';
+    activeBtn.style.border = '1px solid var(--border-light)';
+  }
   otherBtns.forEach(btn => {
     if (!btn) return;
     btn.classList.remove('active');
@@ -47,12 +51,15 @@ export function initBookPanel() {
   tabCharacters = document.getElementById('tab-characters');
   tabBooks = document.getElementById('tab-books');
   tabGroups = document.getElementById('tab-groups');
+  const tabGame = document.getElementById('tab-game');
   charactersSection = document.getElementById('characters-section');
   booksSection = document.getElementById('books-section');
   groupsSection = document.getElementById('groups-section');
   chatViewContainer = document.getElementById('chat-view-container');
   bookViewContainer = document.getElementById('book-view-container');
   groupViewContainer = document.getElementById('group-chat-view-container');
+  gameViewContainer = document.getElementById('game-view-container');
+  gamesSection = document.getElementById('games-section');
 
   btnAddBook = document.getElementById('btn-add-book');
   bookModal = document.getElementById('book-modal');
@@ -66,14 +73,15 @@ export function initBookPanel() {
   allowNewCharsInput = document.getElementById('book-allow-new-chars');
   initialPromptInput = document.getElementById('book-initial-prompt');
 
-  // ─── Tab: Characters ──────────────────────────────────────────
   tabCharacters.addEventListener('click', () => {
-    setTabActive(tabCharacters, [tabBooks, tabGroups]);
+    setTabActive(tabCharacters, [tabBooks, tabGroups, document.getElementById('tab-game')]);
     charactersSection.classList.remove('hidden'); charactersSection.style.display = 'flex';
     booksSection.classList.add('hidden'); booksSection.style.display = 'none';
     if (groupsSection) { groupsSection.classList.add('hidden'); groupsSection.style.display = 'none'; }
+    if (gamesSection) { gamesSection.classList.add('hidden'); gamesSection.style.display = 'none'; }
     
     if (groupViewContainer) { groupViewContainer.classList.add('hidden'); groupViewContainer.style.display = 'none'; }
+    if (gameViewContainer) { gameViewContainer.classList.add('hidden'); gameViewContainer.style.display = 'none'; }
     chatViewContainer.classList.remove('hidden');
     chatViewContainer.style.display = 'flex';
     bookViewContainer.classList.add('hidden');
@@ -82,12 +90,14 @@ export function initBookPanel() {
 
   // ─── Tab: Books ───────────────────────────────────────────────
   tabBooks.addEventListener('click', () => {
-    setTabActive(tabBooks, [tabCharacters, tabGroups]);
+    setTabActive(tabBooks, [tabCharacters, tabGroups, document.getElementById('tab-game')]);
     booksSection.classList.remove('hidden'); booksSection.style.display = 'flex';
     charactersSection.classList.add('hidden'); charactersSection.style.display = 'none';
     if (groupsSection) { groupsSection.classList.add('hidden'); groupsSection.style.display = 'none'; }
+    if (gamesSection) { gamesSection.classList.add('hidden'); gamesSection.style.display = 'none'; }
     
     if (groupViewContainer) { groupViewContainer.classList.add('hidden'); groupViewContainer.style.display = 'none'; }
+    if (gameViewContainer) { gameViewContainer.classList.add('hidden'); gameViewContainer.style.display = 'none'; }
     chatViewContainer.classList.add('hidden');
     chatViewContainer.style.display = 'none';
     bookViewContainer.classList.remove('hidden');
@@ -98,15 +108,17 @@ export function initBookPanel() {
   // ─── Tab: Groups ──────────────────────────────────────────────
   if (tabGroups) {
     tabGroups.addEventListener('click', () => {
-      setTabActive(tabGroups, [tabCharacters, tabBooks]);
+      setTabActive(tabGroups, [tabCharacters, tabBooks, document.getElementById('tab-game')]);
       if (groupsSection) { groupsSection.classList.remove('hidden'); groupsSection.style.display = 'flex'; }
       charactersSection.classList.add('hidden'); charactersSection.style.display = 'none';
       booksSection.classList.add('hidden'); booksSection.style.display = 'none';
+      if (gamesSection) { gamesSection.classList.add('hidden'); gamesSection.style.display = 'none'; }
       
       chatViewContainer.classList.add('hidden');
       chatViewContainer.style.display = 'none';
       bookViewContainer.classList.add('hidden');
       bookViewContainer.style.display = 'none';
+      if (gameViewContainer) { gameViewContainer.classList.add('hidden'); gameViewContainer.style.display = 'none'; }
       // Group view visibility is typically managed by selectGroup() in group-chat-view.js
       // but we ensure it's at least visible if there's an active group
     });

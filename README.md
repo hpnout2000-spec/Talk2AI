@@ -6,7 +6,9 @@ VibeChatting is a modern AI chat application focused on aesthetics, performance,
 - **Premium Interface:** A stunning design featuring glassmorphism, smooth animations, and a deep, harmonious dark mode.
 
 ## 🧠 AI Features
-- **Core Chat:** Advanced interface with real-time streaming and a dedicated "Thinking" mode visualization (thinking doesn't work for now)
+- **Core Chat:** Advanced interface with real-time streaming and a dedicated "Thinking" mode visualization (thinking doesn't work for now).
+- **Interactive Game Mode:** A choices-driven interactive text-adventure game engine where the AI guides the scene dynamically in real-time, showing streamed stats, choices, extra actions, and game session history.
+- **GenAI Panel:** A universal in-app assistant with deep tool access that allows it to manage settings, write messages (vibe mode)manipulate characters and groups, query and navigate your personal memories/facts, analyze history, and even execute game actions programmatically on your behalf.
 - **Character Creation:** Highly flexible system for defining personalities, scenarios, and greetings (including Alternate Greetings support and basically all cards compatible with SillyTavern format).
 - **Message Translation:** Seamless bidirectional real-time translation:
   - **Input:** Automatic translation of your messages before sending.
@@ -15,10 +17,11 @@ VibeChatting is a modern AI chat application focused on aesthetics, performance,
 - **AI Suggester:** Dynamic generation of suggestions for next replies or story continuation.
 
 ## 🚀 Future Roadmap
-- **GenAI:** A universal AI assistant with full access to every layer of the application. It will be able to manage settings, analyze history across all chats and comments, and even write messages on behalf of the user to drive the story according to a defined plan.
+- **Book Authoring:** An automated agent system to write, review, and structure entire novels or books interactively.
+- **Image Generation:** Native diffusion-based image generation for characters, scenes, and items.
 
 ## 💻 System Requirements
-- **Model:** **Gemma 4 31B** (Gemma 4 26B is not enough.)
+- **Model:** **Gemma 4 31B (RP fine-tune reccomended)** (Gemma 4 26B is not enough.)
 - **Performance:** Generation speed of at least **20 tokens per second**.
 
 ---

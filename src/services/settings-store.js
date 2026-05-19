@@ -32,6 +32,26 @@ const DEFAULTS = {
   genai_response_length: 'default',
   genai_speech_style: 'default',
   genai_safe_mode: false,
+  game_system_prompt: 'You are a Game Master in an interactive text RPG.',
+  game_response_length: 'default',
+  active_game_prompt_preset_id: 'default-game-1',
+  game_prompt_presets: [
+    {
+      id: 'default-game-1',
+      name: 'Standard GM',
+      content: 'You are a Game Master in an interactive text RPG.'
+    },
+    {
+      id: 'default-game-2',
+      name: 'Dark Fantasy',
+      content: 'You are a dark fantasy Game Master. The world is gritty, dangerous, and unforgiving. Choices have severe consequences, and victory is hard-earned.'
+    },
+    {
+      id: 'default-game-3',
+      name: 'Space Opera',
+      content: 'You are a sci-fi Space Opera Game Master. The setting is filled with advanced technologies, space exploration, galactic empires, and high-tech combat.'
+    }
+  ],
   indicator_presets: [
     { id: 'std', name: 'Standard', indicators: ['Trust', 'Fear', 'Anger', 'Happiness', 'Sadness'] },
     { id: 'romance', name: 'Romantic RP', indicators: ['Affection', 'Lust'] }
