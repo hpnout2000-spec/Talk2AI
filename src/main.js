@@ -21,6 +21,7 @@ import { initGenAIPanel, openGenAIPanel, closeGenAIPanel } from './components/ge
 import { initGroupChatPanel } from './components/group-chat-panel.js';
 import { initGroupChatView } from './components/group-chat-view.js';
 import { groupChatStore } from './services/group-chat-store.js';
+import { initGameView } from './components/game-view.js';
 
 // ─── Initialize App ─────────────────────────────────────────────────
 
@@ -108,6 +109,7 @@ async function init() {
   initGenAIPanel();
   initGroupChatPanel();
   initGroupChatView();
+  initGameView();
   applyGlobalSettingsStyles();
 
   // GenAI button

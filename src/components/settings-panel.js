@@ -6,6 +6,9 @@ import { settingsStore } from '../services/settings-store.js';
 import { showToast, checkConnection, applyGlobalSettingsStyles, openWindow, closeWindow } from '../main.js';
 import { api } from '../services/api.js';
 
+let currentSettings;
+let editingGamePresetId = null;
+
 export function initSettingsPanel() {
   const panel = document.getElementById('settings-panel');
   const btnOpen = document.getElementById('btn-settings');
@@ -19,7 +22,8 @@ export function initSettingsPanel() {
     { id: 'card-language', modalId: 'modal-settings-language' },
     { id: 'card-interface', modalId: 'modal-settings-interface' },
     { id: 'card-advanced', modalId: 'advanced-settings-modal' },
-    { id: 'card-genai', modalId: 'modal-settings-genai' }
+    { id: 'card-genai', modalId: 'modal-settings-genai' },
+    { id: 'card-game', modalId: 'modal-settings-game' }
   ];
 
   categories.forEach(cat => {
@@ -85,6 +89,22 @@ export function initSettingsPanel() {
       });
     }
   });
+
+  // Bind GM prompt presets editor events
+  const btnAddGamePreset = document.getElementById('btn-add-game-preset');
+  if (btnAddGamePreset) {
+    btnAddGamePreset.addEventListener('click', createNewGamePreset);
+  }
+
+  const settingGamePresetName = document.getElementById('setting-game-preset-name');
+  if (settingGamePresetName) {
+    settingGamePresetName.addEventListener('input', updateEditingGamePreset);
+  }
+
+  const settingGameSystemPrompt = document.getElementById('setting-game-system-prompt');
+  if (settingGameSystemPrompt) {
+    settingGameSystemPrompt.addEventListener('input', updateEditingGamePreset);
+  }
 
   // Load initial values
   loadSettingsToUI();
@@ -158,6 +178,33 @@ function loadSettingsToUI() {
   setField('setting-genai-speech-style', settings.genai_speech_style || 'default');
   checkField('setting-genai-safe-mode', settings.genai_safe_mode);
 
+  currentSettings = settings;
+  editingGamePresetId = settings.active_game_prompt_preset_id || 'default-game-1';
+  
+  // Make sure game_prompt_presets exists in memory to prevent crashes
+  if (!currentSettings.game_prompt_presets) {
+    currentSettings.game_prompt_presets = [
+      {
+        id: 'default-game-1',
+        name: 'Standard GM',
+        content: 'You are a Game Master in an interactive text RPG.'
+      },
+      {
+        id: 'default-game-2',
+        name: 'Dark Fantasy',
+        content: 'You are a dark fantasy Game Master. The world is gritty, dangerous, and unforgiving. Choices have severe consequences, and victory is hard-earned.'
+      },
+      {
+        id: 'default-game-3',
+        name: 'Space Opera',
+        content: 'You are a sci-fi Space Opera Game Master. The setting is filled with advanced technologies, space exploration, galactic empires, and high-tech combat.'
+      }
+    ];
+  }
+
+  selectGamePreset(editingGamePresetId);
+  setField('setting-game-response-length', settings.game_response_length || 'default');
+
   // Update custom dropdown triggers
   updateVibeDropdownTriggers();
 }
@@ -206,6 +253,10 @@ async function saveSettings() {
     genai_response_length: getVal('setting-genai-response-length'),
     genai_speech_style: getVal('setting-genai-speech-style'),
     genai_safe_mode: getChecked('setting-genai-safe-mode'),
+    game_prompt_presets: currentSettings.game_prompt_presets,
+    active_game_prompt_preset_id: currentSettings.active_game_prompt_preset_id,
+    game_system_prompt: getVal('setting-game-system-prompt') || 'You are a Game Master in an interactive text RPG.',
+    game_response_length: getVal('setting-game-response-length') || 'default',
     font_size: parseInt(document.getElementById('setting-font-size')?.value || current.font_size),
   };
 
@@ -336,4 +387,103 @@ function updateVibeDropdownTriggers() {
       }
     }
   });
+}
+
+function renderGamePresets() {
+  const presetsList = document.getElementById('game-presets-list');
+  if (!presetsList) return;
+  presetsList.innerHTML = '';
+  
+  if (!currentSettings || !currentSettings.game_prompt_presets) return;
+
+  currentSettings.game_prompt_presets.forEach(preset => {
+    const item = document.createElement('div');
+    item.className = `preset-item ${preset.id === editingGamePresetId ? 'active' : ''}`;
+    item.dataset.id = preset.id;
+
+    const isDefault = preset.id.startsWith('default-game-');
+
+    item.innerHTML = `
+      <span class="preset-item-name">${preset.name}</span>
+      ${!isDefault ? `
+        <button class="btn-delete-preset btn-icon" title="Delete preset" style="background: none; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;">
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+          </svg>
+        </button>
+      ` : ''}
+    `;
+
+    item.addEventListener('click', (e) => {
+      if (e.target.closest('.btn-delete-preset')) {
+        deleteGamePreset(preset.id);
+        return;
+      }
+      selectGamePreset(preset.id);
+    });
+
+    presetsList.appendChild(item);
+  });
+}
+
+function selectGamePreset(id) {
+  editingGamePresetId = id;
+  if (currentSettings) {
+    currentSettings.active_game_prompt_preset_id = id;
+    const preset = currentSettings.game_prompt_presets.find(p => p.id === id);
+    if (preset) {
+      const nameInput = document.getElementById('setting-game-preset-name');
+      const promptInput = document.getElementById('setting-game-system-prompt');
+      if (nameInput) {
+        nameInput.value = preset.name;
+        nameInput.disabled = id.startsWith('default-game-');
+      }
+      if (promptInput) {
+        promptInput.value = preset.content;
+        promptInput.disabled = id.startsWith('default-game-');
+      }
+    }
+  }
+  renderGamePresets();
+}
+
+function createNewGamePreset() {
+  if (!currentSettings) return;
+  const id = 'custom-game-' + Date.now();
+  const newPreset = {
+    id,
+    name: 'New GM Preset',
+    content: "You are a Game Master in an interactive text RPG."
+  };
+  currentSettings.game_prompt_presets.push(newPreset);
+  selectGamePreset(id);
+}
+
+function deleteGamePreset(id) {
+  if (id.startsWith('default-game-') || !currentSettings) return;
+  const confirmDel = confirm('Are you sure you want to delete this preset?');
+  if (confirmDel) {
+    currentSettings.game_prompt_presets = currentSettings.game_prompt_presets.filter(p => p.id !== id);
+    if (editingGamePresetId === id) {
+      selectGamePreset(currentSettings.game_prompt_presets[0].id);
+    } else {
+      renderGamePresets();
+    }
+  }
+}
+
+function updateEditingGamePreset() {
+  if (!currentSettings) return;
+  const nameInput = document.getElementById('setting-game-preset-name');
+  const promptInput = document.getElementById('setting-game-system-prompt');
+  const preset = currentSettings.game_prompt_presets.find(p => p.id === editingGamePresetId);
+  if (preset && !editingGamePresetId.startsWith('default-game-')) {
+    if (nameInput) preset.name = nameInput.value;
+    if (promptInput) preset.content = promptInput.value;
+    renderGamePresets(); // update names dynamically
+  } else if (preset && editingGamePresetId.startsWith('default-game-')) {
+    // Revert edits for default ones to avoid visual desync
+    if (nameInput) nameInput.value = preset.name;
+    if (promptInput) promptInput.value = preset.content;
+  }
 }

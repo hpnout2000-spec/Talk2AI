@@ -188,4 +188,247 @@ export const api = {
     ];
     await this.streamChat(messages, signal || new AbortController().signal, onChunk, onDone, onError);
   },
+
+  /**
+   * Generates a new game scene in JSON format for the Interactive Game Mode
+   */
+  async generateGameScene(currentStats, previousSceneText, playerAction, prompt, noteToGM = '', gameSummary = '', remainingHistory = [], onChunk = null) {
+    const settings = settingsStore.get();
+    const customPrompt = settings.game_system_prompt || "You are a Game Master in an interactive text RPG.";
+    let lengthPrompt = "";
+    if (settings.game_response_length === 'short') {
+      lengthPrompt = "Keep the scene_text brief and compact, limited to a single short paragraph.";
+    } else if (settings.game_response_length === 'long') {
+      lengthPrompt = "Write a rich, detailed, and highly atmospheric scene_text containing 3 to 4 immersive paragraphs.";
+    } else {
+      lengthPrompt = "Write a moderately detailed scene_text containing 1 to 2 paragraphs.";
+    }
+
+    let historyContext = "";
+    if (gameSummary) {
+      historyContext += `SUMMARY OF PREVIOUS ADVENTURE:\n${gameSummary}\n\n`;
+    }
+
+    if (remainingHistory && remainingHistory.length > 0) {
+      historyContext += `DETAILED RECENT ADVENTURE HISTORY:\n`;
+      remainingHistory.forEach((scene, i) => {
+        historyContext += `Scene ${i+1}:\n${scene.scene_text}\n`;
+        if (scene.player_action) {
+          historyContext += `Player Action: ${scene.player_action}\n`;
+        }
+        if (scene.player_note) {
+          historyContext += `Player Note to GM: ${scene.player_note}\n`;
+        }
+        historyContext += `\n`;
+      });
+    }
+
+    const systemPrompt = `${customPrompt}
+You must return your response ONLY as a valid JSON object. Do not include any explanations, greetings, or markdown code blocks outside the JSON.
+${lengthPrompt}
+
+The user currently has these stats:
+${JSON.stringify(currentStats)}
+
+${historyContext ? `--- ADVENTURE CONTEXT ---
+${historyContext}
+------------------------\n` : ''}
+The previous scene was:
+"${previousSceneText || 'The game is just starting.'}"
+
+The player decided to:
+"${playerAction || prompt}"
+${noteToGM ? `\nNOTE FROM THE PLAYER TO THE GAME MASTER:\n"${noteToGM}"\nYou MUST incorporate this request or guidance into the next scene.` : ''}
+
+Generate the next scene. Your JSON must strictly follow this schema:
+{
+  "scene_text": "Detailed and atmospheric description of what happens next.",
+  "stats_changes": {
+    "hp": 0, // change in hp, negative for damage
+    "stress": 0, // change in stress
+    "lust": 0,
+    "money": 0
+  },
+  "text_states": [
+    {"text": "Brief textual status condition like: Hunger, Pain in arm, Euphoria, etc.", "color": "red|white|green"}
+  ],
+  "extra_actions": [
+    "Short visual physical actions player can perform under textual states (e.g. smile, pinch, scratch, stroke)"
+  ],
+  "choices": [
+     {"id": "action1", "text": "Short label for button 1", "prompt_intent": "What the player tries to do in detail"},
+     {"id": "action2", "text": "Short label for button 2", "prompt_intent": "What the player tries to do in detail"}
+  ]
+}`;
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: "Generate the next scene in JSON." }
+    ];
+
+    return new Promise((resolve, reject) => {
+      let fullResponse = '';
+      this.streamChat(
+        messages,
+        null, // signal
+        (chunk) => {
+          fullResponse += chunk;
+          if (onChunk) {
+            onChunk(fullResponse);
+          }
+        },
+        () => {
+          try {
+            let cleanText = fullResponse.trim();
+            if (cleanText.startsWith('```json')) {
+              cleanText = cleanText.replace(/^```json/m, '').replace(/```$/m, '').trim();
+            } else if (cleanText.startsWith('```')) {
+              cleanText = cleanText.replace(/^```/m, '').replace(/```$/m, '').trim();
+            }
+            resolve(JSON.parse(cleanText));
+          } catch (err) {
+            console.error('Failed to parse final JSON from game scene stream:', err, fullResponse);
+            reject(err);
+          }
+        },
+        (err) => reject(err),
+        { temperature: 0.7, max_tokens: 2048 }
+      );
+    });
+  },
+
+  /**
+   * Generates a condensed summary of past adventure scenes
+   */
+  async generateAdventureSummary(previousSummary, newScenes) {
+    let scenesText = "";
+    newScenes.forEach((scene, i) => {
+      scenesText += `Scene ${i+1}:\n${scene.scene_text}\n`;
+      if (scene.player_action) {
+        scenesText += `Player Action: ${scene.player_action}\n`;
+      }
+      if (scene.player_note) {
+        scenesText += `Player Note to GM: ${scene.player_note}\n`;
+      }
+      scenesText += `\n`;
+    });
+
+    let systemPrompt = "";
+    if (previousSummary) {
+      systemPrompt = `You are a professional RPG Chronicler. You are tasked with UPDATING an existing adventure summary with new events that occurred after it.
+Here is the EXISTING SUMMARY of the adventure so far:
+"""
+${previousSummary}
+"""
+
+Here are the NEW SCENES and choices that occurred after the existing summary:
+"""
+${scenesText}
+"""
+
+Please write a new, comprehensive, cohesive, and highly atmospheric summary of the entire adventure from the very beginning up to the latest scenes.
+Do not omit important historical plot points from the existing summary, but integrate the new events seamlessly.
+Keep the summary under 300 words. Write only the summary itself in Russian, without any introductory remarks, greetings, or meta-commentary.`;
+    } else {
+      systemPrompt = `You are a professional RPG Chronicler. You are tasked with writing a concise, comprehensive, and highly atmospheric summary of a roleplaying game session.
+Here are the SCENES and choices that occurred during the adventure:
+"""
+${scenesText}
+"""
+
+Please write a cohesive summary of the adventure from the very beginning up to the latest scenes.
+Highlight key plot points, major actions taken, and critical developments.
+Keep the summary under 300 words. Write only the summary itself in Russian, without any introductory remarks, greetings, or meta-commentary.`;
+    }
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: 'Generate the adventure summary in Russian.' }
+    ];
+
+    try {
+      return await this.chatCompletion(messages, { temperature: 0.5, max_tokens: 1536 });
+    } catch (err) {
+      console.error('Adventure summarization failed:', err);
+      throw err;
+    }
+  },
+
+  /**
+   * Generates a list of characters mentioned in the adventure history
+   */
+  async extractGameCharacters(gameSummary, history) {
+    let scenesText = "";
+    if (gameSummary) {
+      scenesText += `SUMMARY OF PREVIOUS ADVENTURE:\n${gameSummary}\n\n`;
+    }
+    history.forEach((scene, i) => {
+      scenesText += `Scene ${i+1}:\n${scene.scene_text}\n`;
+      if (scene.player_action) {
+        scenesText += `Player Action: ${scene.player_action}\n`;
+      }
+      scenesText += `\n`;
+    });
+
+    const systemPrompt = `You are an expert RPG Assistant. Analyze the following story summary and history, and identify all characters (both main and supporting) that participated or were mentioned in the game.
+This includes both named characters (e.g. "John", "Lena") and unnamed/generic characters if they played a notable role in the scene (e.g. "Some guy", "Mysterious stranger", "Tavern keeper", "Goblin scout").
+Do not include the player character ("Player", "Герой", "Игрок") unless they have a specific named identity mentioned in the history.
+Return your response ONLY as a JSON array of strings containing the character names/descriptions in English (e.g. ["John", "Some guy", "Tavern keeper"]). Do not include any formatting, markdown code blocks, or greetings. Just the clean JSON array.`;
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Story content:\n${scenesText}` }
+    ];
+
+    try {
+      const response = await this.chatCompletion(messages, { temperature: 0.3, max_tokens: 1024 });
+      let cleanText = response.trim();
+      if (cleanText.startsWith('```json')) {
+        cleanText = cleanText.replace(/^```json/m, '').replace(/```$/m, '').trim();
+      } else if (cleanText.startsWith('```')) {
+        cleanText = cleanText.replace(/^```/m, '').replace(/```$/m, '').trim();
+      }
+      return JSON.parse(cleanText);
+    } catch (err) {
+      console.error('Failed to extract characters:', err);
+      return [];
+    }
+  },
+
+  /**
+   * Generates a detailed profile description for a given character based on adventure history
+   */
+  async generateCharacterDetails(characterName, gameSummary, history) {
+    let scenesText = "";
+    if (gameSummary) {
+      scenesText += `SUMMARY OF PREVIOUS ADVENTURE:\n${gameSummary}\n\n`;
+    }
+    history.forEach((scene, i) => {
+      scenesText += `Scene ${i+1}:\n${scene.scene_text}\n`;
+      if (scene.player_action) {
+        scenesText += `Player Action: ${scene.player_action}\n`;
+      }
+      scenesText += `\n`;
+    });
+
+    const systemPrompt = `You are an expert RPG Chronicler. Write a detailed profile for the character named "${characterName}" based on the adventure history.
+Your response MUST be in English and should describe:
+1. Appearance
+2. Personality/Traits
+3. Actions/Role in story
+
+Focus ONLY on what is known or can be directly inferred from the history. Keep the profile structured, atmospheric, and under 250 words. Do not include any introductory remarks, greetings, or meta-commentary. Just start directly with the character details.`;
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Story history:\n${scenesText}\n\nProvide details for character: ${characterName}` }
+    ];
+
+    try {
+      return await this.chatCompletion(messages, { temperature: 0.5, max_tokens: 1536 });
+    } catch (err) {
+      console.error('Failed to generate character details:', err);
+      throw err;
+    }
+  }
 };

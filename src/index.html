@@ -16,6 +16,7 @@
     <link rel="stylesheet" href="styles/advanced-settings.css" />
     <link rel="stylesheet" href="styles/genai.css" />
     <link rel="stylesheet" href="styles/groups.css" />
+    <link rel="stylesheet" href="styles/game.css" />
     <script type="module" src="/main.js" defer></script>
   </head>
 
@@ -32,10 +33,11 @@
           </div>
         </div>
 
-        <div class="sidebar-tabs" style="display: flex; gap: 6px; padding: 0 16px; margin-top: 16px; margin-bottom: 16px;">
+        <div class="sidebar-tabs" style="display: flex; gap: 6px; padding: 0 16px; margin-top: 16px; margin-bottom: 16px; flex-wrap: wrap;">
           <button id="tab-characters" class="sidebar-tab active" style="flex: 1; padding: 8px; border-radius: var(--radius-sm); background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-light); cursor: pointer; font-weight: 500; font-size: var(--text-xs);">Characters</button>
           <button id="tab-books" class="sidebar-tab" style="flex: 1; padding: 8px; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); border: 1px solid transparent; cursor: pointer; font-weight: 500; font-size: var(--text-xs);">Books</button>
           <button id="tab-groups" class="sidebar-tab" style="flex: 1; padding: 8px; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); border: 1px solid transparent; cursor: pointer; font-weight: 500; font-size: var(--text-xs);">Groups</button>
+          <button id="tab-game" class="sidebar-tab" style="flex: 1; min-width: 80px; padding: 8px; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); border: 1px solid transparent; cursor: pointer; font-weight: 500; font-size: var(--text-xs);">Game</button>
         </div>
 
         <div id="characters-section" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
@@ -120,6 +122,22 @@
                   <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>
                 </svg>
                 <span>New Book</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ─── Games Section ──────────────────────────────────────── -->
+        <div id="games-section" class="hidden" style="flex-direction: column; flex: 1; min-height: 0;">
+          <div class="sidebar-section">
+            <div class="section-label">Saved Games</div>
+            <div id="game-list" class="character-list"></div>
+            <div style="display: flex; gap: 8px; margin-top: var(--space-2);">
+              <button id="btn-add-game" class="btn-add-character" style="flex: 1; margin-top: 0;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="5 3 19 12 5 21 5 3"/>
+                </svg>
+                <span>New Game</span>
               </button>
             </div>
           </div>
@@ -348,6 +366,127 @@
                   </svg>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Interactive Game View -->
+        <div id="game-view-container" class="hidden" style="display: none; height: 100%; width: 100%;">
+          <div class="game-view-container">
+            <!-- Sidebar for Stats -->
+            <div class="game-sidebar">
+              <div class="game-sidebar-header">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 24px; height: 24px;">
+                  <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="4.93" y1="4.93" x2="9.17" y2="9.17"/><line x1="14.83" y1="14.83" x2="19.07" y2="19.07"/><line x1="14.83" y1="9.17" x2="19.07" y2="4.93"/><line x1="14.83" y1="9.17" x2="18.36" y2="5.64"/><line x1="4.93" y1="19.07" x2="9.17" y2="14.83"/>
+                </svg>
+                Character Status
+              </div>
+              
+              <div class="stat-group">
+                <div class="stat-header"><span>HP</span><span id="game-stat-hp-text">100/100</span></div>
+                <div class="stat-bar"><div id="game-stat-hp" class="stat-fill hp" style="width: 100%;"></div></div>
+              </div>
+              
+              <div class="stat-group">
+                <div class="stat-header"><span>Stress</span><span id="game-stat-stress-text">0/100</span></div>
+                <div class="stat-bar"><div id="game-stat-stress" class="stat-fill stress" style="width: 0%;"></div></div>
+              </div>
+              
+              <div class="stat-group">
+                <div class="stat-header"><span>Lust</span><span id="game-stat-lust-text">0/100</span></div>
+                <div class="stat-bar"><div id="game-stat-lust" class="stat-fill lust" style="width: 0%;"></div></div>
+              </div>
+
+              <div class="stat-group" style="margin-top: 24px;">
+                <div class="stat-header"><span>Money</span></div>
+                <div class="stat-numeric">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
+                    <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                  </svg>
+                  <span id="game-stat-money">50</span>
+                </div>
+              </div>
+
+              <div class="stat-group text-states-group" style="margin-top: 20px; border-top: 1px solid var(--border-light); padding-top: 12px;">
+                <div class="stat-header"><span>Status States</span></div>
+                <div id="game-text-states" style="display: flex; flex-direction: column; gap: 6px; margin-top: 8px;"></div>
+              </div>
+
+              <div class="stat-group extra-actions-group" style="margin-top: 16px; border-top: 1px solid var(--border-light); padding-top: 12px;">
+                <div class="stat-header"><span>Extra Actions</span></div>
+                <div id="game-extra-actions" style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px;"></div>
+              </div>
+
+              <!-- Summarize History Button -->
+              <button id="btn-summarize-history" class="btn-secondary btn-full" style="margin-top: 20px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px; flex-shrink: 0; color: var(--text-accent);">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                  <polyline points="10 9 9 9 8 9"></polyline>
+                </svg>
+                <span>Summarize History</span>
+              </button>
+
+              <!-- Game Characters Button -->
+              <button id="btn-game-characters" class="btn-secondary btn-full" style="margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px; flex-shrink: 0; color: var(--text-accent);">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="9" cy="7" r="4"></circle>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+                <span>Characters</span>
+              </button>
+            </div>
+
+            <!-- Main Game Area -->
+            <div class="game-main">
+              <!-- Welcome / Start Screen -->
+              <div id="game-start-screen" class="game-start-screen hidden" style="display: none;">
+                <h2>Begin Your Adventure</h2>
+                <p>Describe the starting scenario or setting for your interactive RPG. The AI Game Master will generate the opening scene based on your description.</p>
+                <textarea id="game-start-prompt" placeholder="e.g. The player wakes up in a strange forest at dusk, holding a rusty sword..." rows="4"></textarea>
+                <button id="btn-start-game" class="btn-primary" style="margin-top: 10px;">Generate Opening Scene</button>
+              </div>
+
+              <!-- Main Scene Area -->
+              <div id="game-scene-content" class="scene-content hidden" style="display: none;">
+                <!-- History Toggle Header -->
+                <div class="game-history-toggle-container">
+                  <button id="btn-toggle-game-history" class="btn-history-toggle" title="Show/Hide Full Story History">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="arrow-icon" style="width: 14px; height: 14px;">
+                      <polyline points="18 15 12 9 6 15"/>
+                    </svg>
+                    <span>View Story History</span>
+                  </button>
+                </div>
+
+                <!-- History Container (Expanded area) -->
+                <div id="game-history-container" class="game-history-container"></div>
+
+                <div class="scene-text-container">
+                  <div id="game-scene-text" class="scene-text">
+                    <!-- Scene text injected here -->
+                  </div>
+                </div>
+                
+                <div id="game-choices" class="choices-container">
+                  <!-- Choices injected here -->
+                </div>
+                
+                <div class="game-note-container">
+                  <label for="game-gm-note" style="display: block; font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 8px; font-weight: 500;">Note to Game Master (Optional):</label>
+                  <textarea id="game-gm-note" class="game-note-input" rows="3" placeholder="If you're not satisfied, tell the GM what you want to see happen next (e.g. 'Add a sudden plot twist', 'Make it scarier')..."></textarea>
+                </div>
+              </div>
+            </div>
+
+            <!-- Loader Overlay -->
+            <div id="game-loader" class="game-loader-overlay">
+              <div class="game-spinner"></div>
+              <div class="game-loader-text">The Game Master is thinking...</div>
             </div>
           </div>
         </div>
@@ -683,6 +822,18 @@
                   <div class="card-desc">Assistant behavior</div>
                 </div>
               </div>
+              <div class="settings-card" id="card-game">
+                <div class="card-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/>
+                    <line x1="4.93" y1="4.93" x2="9.17" y2="9.17"/><line x1="14.83" y1="14.83" x2="19.07" y2="19.07"/><line x1="14.83" y1="9.17" x2="19.07" y2="4.93"/><line x1="14.83" y1="9.17" x2="18.36" y2="5.64"/><line x1="4.93" y1="19.07" x2="9.17" y2="14.83"/>
+                  </svg>
+                </div>
+                <div class="card-info">
+                  <div class="card-title">Game Mode</div>
+                  <div class="card-desc">Game Master prompt and settings</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -900,6 +1051,64 @@
         </div>
       </div>
 
+      <!-- Text Game Mode Settings -->
+      <div id="modal-settings-game" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content" style="max-width: 800px; width: 90vw;">
+          <div class="modal-header">
+            <h2>Text Game Mode Settings</h2>
+            <button class="btn-icon btn-close-submodal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          </div>
+          <div class="modal-body" style="display: flex; gap: var(--space-6); overflow: hidden; min-height: 400px; max-height: 70vh;">
+            
+            <!-- Left Side: Preset List -->
+            <div class="presets-container" style="width: 250px; flex-shrink: 0; display: flex; flex-direction: column; gap: var(--space-4);">
+              <div class="presets-list-header" style="display: flex; align-items: center; justify-content: space-between;">
+                <h3 style="font-size: var(--text-sm); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.05em; margin: 0;">GM Presets</h3>
+                <button id="btn-add-game-preset" class="btn-secondary small" style="margin: 0; padding: 4px 8px; font-size: 11px;">+ New</button>
+              </div>
+              <div id="game-presets-list" class="presets-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-2);">
+                <!-- GM prompt presets will be dynamically injected here -->
+              </div>
+            </div>
+
+            <!-- Right Side: Editor & Settings -->
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; padding-right: 8px;">
+              <div class="form-group" style="display: flex; flex-direction: column; gap: 6px;">
+                <label for="setting-game-preset-name">Preset Name</label>
+                <input type="text" id="setting-game-preset-name" placeholder="Preset Name" style="padding: 10px; background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: var(--radius-md); color: var(--text-primary); font-family: var(--font-sans); font-size: var(--text-sm); outline: none;" />
+              </div>
+              
+              <div class="form-group" style="display: flex; flex-direction: column; gap: 6px; flex: 1; min-height: 180px;">
+                <label for="setting-game-system-prompt">Game Master System Prompt</label>
+                <textarea id="setting-game-system-prompt" style="width: 100%; height: 100%; min-height: 140px; padding: 12px; background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: var(--radius-md); color: var(--text-primary); font-family: var(--font-sans); font-size: var(--text-sm); resize: vertical; outline: none;"></textarea>
+              </div>
+              
+              <div class="form-group" style="display: flex; flex-direction: column; gap: 6px;">
+                <label>Scene Response Length</label>
+                <div class="vibe-dropdown" id="dropdown-game-response-length">
+                  <div class="vibe-dropdown-trigger" data-value="default">Default (2 paragraphs)</div>
+                  <div class="vibe-dropdown-menu">
+                    <div class="vibe-dropdown-item" data-value="default">Default (2 paragraphs)</div>
+                    <div class="vibe-dropdown-item" data-value="short">Short (1 paragraph maximum)</div>
+                    <div class="vibe-dropdown-item" data-value="long">Long (3-4 paragraphs detailed)</div>
+                  </div>
+                  <select id="setting-game-response-length" class="hidden">
+                    <option value="default">Default (2 paragraphs)</option>
+                    <option value="short">Short (1 paragraph maximum)</option>
+                    <option value="long">Long (3-4 paragraphs detailed)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+          </div>
+          <div class="modal-footer">
+            <button class="btn-primary btn-full btn-save-settings">Save Changes</button>
+          </div>
+        </div>
+      </div>
+
       <!-- ─── Memory Modal ───────────────────────────────── -->
       <div id="memory-panel" class="modal hidden">
         <div class="modal-backdrop"></div>
@@ -924,6 +1133,105 @@
                 <p>Select a character to view their memory</p>
               </div>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── Summarize History Modal ────────────────────── -->
+      <div id="summarize-history-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content" style="max-width: 600px; width: 90%;">
+          <div class="modal-header">
+            <h2 style="margin: 0; font-size: 1.25rem; font-weight: 700; color: #f8fafc;">Summarize History</h2>
+            <button id="btn-close-summary-modal" class="btn-icon" style="color: var(--text-secondary); background: transparent; border: none; cursor: pointer;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          
+          <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px; max-height: 60vh; overflow-y: auto; padding: var(--space-6); scrollbar-gutter: stable;">
+            <p style="font-size: 0.9rem; color: #cbd5e1; line-height: 1.5; margin: 0;">
+              Condense past events of your story into an AI-managed chronological summary. This saves AI context window memory while fully preserving your story's continuity. 
+              <br><strong style="color: var(--text-accent);">Note:</strong> This will summarize all scenes up to (but excluding) the last two narrative steps.
+            </p>
+            
+            <div id="summary-info-block" style="background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.2); padding: 12px; border-radius: 10px; font-size: 0.85rem; color: #e2e8f0; font-weight: 500;">
+              <!-- Details on scenes to summarize -->
+            </div>
+
+            <!-- Preview of scenes to be summarized -->
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <label style="font-size: 0.85rem; font-weight: 600; color: #e2e8f0;">Scenes to be summarized:</label>
+              <div id="summary-preview-container" style="max-height: 160px; overflow-y: auto; border: 1px solid var(--border-light); background: rgba(15, 15, 20, 0.5); padding: 12px; border-radius: var(--radius-md); font-size: 0.8rem; line-height: 1.5; color: #cbd5e1; scrollbar-gutter: stable;">
+                <!-- Preview list of past items -->
+              </div>
+            </div>
+
+            <!-- The Summary Display / Editor -->
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <label for="summary-text-editor" style="font-size: 0.85rem; font-weight: 600; color: #e2e8f0;">Summary (AI generated & editable):</label>
+                <button id="btn-generate-ai-summary" class="btn-secondary" style="font-size: 0.75rem; padding: 4px 12px; border-radius: 20px; display: flex; align-items: center; gap: 6px; cursor: pointer; background: var(--bg-tertiary);">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;">
+                    <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                  </svg>
+                  <span>Generate with AI</span>
+                </button>
+              </div>
+              
+              <!-- Loader for AI summary generation -->
+              <div id="ai-summary-loader" style="display: none; align-items: center; gap: 10px; background: rgba(99, 102, 241, 0.05); padding: 10px; border-radius: var(--radius-md); border: 1px dashed rgba(99, 102, 241, 0.3);">
+                <span class="spinner-small" style="width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.1); border-top-color: var(--text-accent); border-radius: 50%; display: inline-block; animation: spin 1s linear infinite;"></span>
+                <span style="font-size: 0.8rem; color: #cbd5e1; font-style: italic;">The Chronicler is drafting the summary...</span>
+              </div>
+              
+              <textarea id="summary-text-editor" class="form-control" rows="6" placeholder="Draft your summary here or click 'Generate with AI' above to have the AI write one for you..." style="width: 100%; border-radius: var(--radius-md); padding: 12px; font-size: 0.85rem; line-height: 1.5; font-family: var(--font-sans); background: rgba(15, 15, 20, 0.8); border: 1px solid var(--border-light); color: #f8fafc; resize: vertical; outline: none;"></textarea>
+            </div>
+          </div>
+          
+          <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--border-light); padding: var(--space-4) var(--space-6);">
+            <button id="btn-close-summary-action" class="btn-secondary" style="border-radius: var(--radius-md); padding: 8px 16px;">Cancel</button>
+            <button id="btn-save-summary-action" class="btn-primary" style="border-radius: var(--radius-md); padding: 8px 20px; background: var(--accent-primary); color: #212121; border: none; font-weight: 600; cursor: pointer;">Save & Compress History</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── Game Characters Modal ────────────────────── -->
+      <div id="game-characters-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content" style="max-width: 600px; width: 90%;">
+          <div class="modal-header">
+            <h2 style="margin: 0; font-size: 1.25rem; font-weight: 700; color: #f8fafc;">Game Characters</h2>
+            <button id="btn-close-game-characters-modal" class="btn-icon" style="color: var(--text-secondary); background: transparent; border: none; cursor: pointer;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          
+          <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px; max-height: 60vh; overflow-y: auto; padding: var(--space-6); scrollbar-gutter: stable;">
+            <p style="font-size: 0.9rem; color: #cbd5e1; line-height: 1.5; margin: 0;">
+              Characters who participated in your story. The AI automatically extracts them from the adventure history. Click <strong>Details...</strong> to learn details about the character's appearance, personality, and actions.
+            </p>
+
+            <!-- Loading overlay inside the modal body -->
+            <div id="game-characters-loader" style="display: none; align-items: center; justify-content: center; flex-direction: column; gap: 12px; padding: 30px; background: rgba(99, 102, 241, 0.05); border-radius: 10px; border: 1px dashed var(--border-light);">
+              <span class="spinner-small" style="width: 24px; height: 24px; border: 2.5px solid rgba(255,255,255,0.1); border-top-color: var(--text-accent); border-radius: 50%; display: inline-block; animation: spin 1s linear infinite;"></span>
+              <span style="font-size: 0.85rem; color: #cbd5e1; font-style: italic;">AI is analyzing the history and searching for characters...</span>
+            </div>
+
+            <!-- List of game characters -->
+            <div id="game-characters-list" style="display: flex; flex-direction: column; gap: 12px;">
+              <!-- Character cards will be injected here -->
+            </div>
+            
+            <button id="btn-refresh-game-characters" class="btn-secondary" style="align-self: center; margin-top: 10px; display: flex; align-items: center; gap: 8px; border-radius: 20px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+              </svg>
+              <span>Refresh List</span>
+            </button>
           </div>
         </div>
       </div>

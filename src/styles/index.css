@@ -325,6 +325,7 @@ body {
   color: var(--text-secondary);
 }
 
+.form-control,
 .form-group input[type="text"],
 .form-group textarea {
   padding: var(--space-3);
@@ -336,14 +337,17 @@ body {
   font-size: var(--text-sm);
   transition: all var(--transition-fast);
   resize: vertical;
+  outline: none;
 }
 
+.form-control:focus,
 .form-group input[type="text"]:focus,
 .form-group textarea:focus {
   outline: none;
   border-color: var(--accent-primary);
   box-shadow: 0 0 0 3px var(--accent-primary-glow);
 }
+
 
 .form-group input[type="range"] {
   -webkit-appearance: none;

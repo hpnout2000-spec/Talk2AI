@@ -80,7 +80,7 @@ class WindowManager {
     const stackSize = this.stack.length;
     const effectiveStackSize = closingTop ? stackSize - 1 : stackSize;
 
-    // Update windows in stack
+    // 1. Обновляем модалки в стеке (твой текущий код)
     this.stack.forEach((el, i) => {
       // If we are closing the top window, it shouldn't be counted in the depth calculation for others
       if (closingTop && i === stackSize - 1) return;
@@ -95,11 +95,12 @@ class WindowManager {
       }
     });
 
-    // Update base elements (sidebar, main content)
+    // 2. Ищем ВСЕ элементы нижнего уровня динамически
+    // Берем левый сайдбар, главный контент и любой видимый правый сайдбар
+    const baseElements = document.querySelectorAll('.sidebar, .main-content, .right-sidebar:not(.hidden)');
+    
     const baseDepth = effectiveStackSize;
-    this.baseElements.forEach(id => {
-      const el = document.getElementById(id);
-      if (!el) return;
+    baseElements.forEach(el => {
       if (baseDepth > 0) {
         el.style.setProperty('--ui-depth', baseDepth);
         el.classList.add('ui-stacked');
