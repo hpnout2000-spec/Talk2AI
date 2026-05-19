@@ -17,6 +17,77 @@
     <link rel="stylesheet" href="styles/genai.css" />
     <link rel="stylesheet" href="styles/groups.css" />
     <link rel="stylesheet" href="styles/game.css" />
+    <style>
+      /* Persona List styling to prevent jumping on hover */
+      .persona-item {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        padding: 10px 12px;
+        border-radius: var(--radius-md);
+        cursor: pointer;
+        transition: background var(--transition-fast) !important;
+        position: relative;
+        transform: none !important;
+        box-shadow: none !important;
+      }
+      .persona-item:hover {
+        background: var(--bg-hover) !important;
+        transform: none !important;
+        box-shadow: none !important;
+      }
+      .persona-item.active {
+        background: var(--bg-active) !important;
+      }
+      .persona-item.active::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 3px;
+        height: 60%;
+        background: var(--accent-primary);
+        border-radius: 0 var(--radius-full) var(--radius-full) 0;
+      }
+
+      /* Custom styled premium checkbox */
+      input[type="checkbox"] {
+        appearance: none;
+        -webkit-appearance: none;
+        width: 16px;
+        height: 16px;
+        border: 1px solid var(--border-light);
+        border-radius: 4px;
+        background: var(--bg-primary);
+        outline: none;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: all var(--transition-fast) !important;
+        position: relative;
+      }
+      input[type="checkbox"]:hover {
+        border-color: var(--accent-primary);
+        box-shadow: 0 0 4px var(--accent-primary-glow);
+      }
+      input[type="checkbox"]:checked {
+        background: var(--accent-primary);
+        border-color: var(--accent-primary);
+      }
+      input[type="checkbox"]:checked::after {
+        content: "";
+        width: 4px;
+        height: 8px;
+        border: solid #212121;
+        border-width: 0 2px 2px 0;
+        transform: rotate(45deg);
+        position: absolute;
+        top: 1px;
+        left: 5px;
+      }
+    </style>
     <script type="module" src="/main.js" defer></script>
   </head>
 
@@ -215,10 +286,16 @@
                   </svg>
                   <span id="user-name-display">User</span>
                 </button>
-                <div id="user-name-popover" class="popover hidden">
+                <div id="user-name-popover" class="popover hidden" style="width: 250px;">
                   <div class="popover-content">
                     <input type="text" id="user-name-edit-input" placeholder="Enter your name..." />
-                    <button id="btn-confirm-name" class="btn-primary small">Save</button>
+                    <label style="display:flex;align-items:center;gap:6px;font-size:12px;margin:8px 0;cursor:pointer;">
+                      <input type="checkbox" id="user-name-chat-only" /> Apply to this chat only
+                    </label>
+                    <div style="display:flex;gap:8px;">
+                      <button id="btn-personas" class="btn-secondary small" style="flex:1;">Personas</button>
+                      <button id="btn-confirm-name" class="btn-primary small" style="flex:1;">Save</button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -375,11 +452,19 @@
           <div class="game-view-container">
             <!-- Sidebar for Stats -->
             <div class="game-sidebar">
-              <div class="game-sidebar-header">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 24px; height: 24px;">
-                  <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="4.93" y1="4.93" x2="9.17" y2="9.17"/><line x1="14.83" y1="14.83" x2="19.07" y2="19.07"/><line x1="14.83" y1="9.17" x2="19.07" y2="4.93"/><line x1="14.83" y1="9.17" x2="18.36" y2="5.64"/><line x1="4.93" y1="19.07" x2="9.17" y2="14.83"/>
-                </svg>
-                Character Status
+              <div class="game-sidebar-header" style="justify-content: space-between; width: 100%;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 24px; height: 24px;">
+                    <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="4.93" y1="4.93" x2="9.17" y2="9.17"/><line x1="14.83" y1="14.83" x2="19.07" y2="19.07"/><line x1="14.83" y1="9.17" x2="19.07" y2="4.93"/><line x1="14.83" y1="9.17" x2="18.36" y2="5.64"/><line x1="4.93" y1="19.07" x2="9.17" y2="14.83"/>
+                  </svg>
+                  <span>Character Status</span>
+                </div>
+                <button id="btn-undo-move" class="btn-icon small" title="Undo Last Move" style="color: var(--text-secondary); cursor: pointer; transition: all 0.2s;">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 16px; height: 16px;">
+                    <path d="M3 7v6h6"></path>
+                    <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path>
+                  </svg>
+                </button>
               </div>
               
               <div class="stat-group">
@@ -447,6 +532,14 @@
               <div id="game-start-screen" class="game-start-screen hidden" style="display: none;">
                 <h2>Begin Your Adventure</h2>
                 <p>Describe the starting scenario or setting for your interactive RPG. The AI Game Master will generate the opening scene based on your description.</p>
+                <div class="form-group" style="width: 100%; text-align: left; margin-bottom: 4px;">
+                  <label for="game-start-language" style="font-size: var(--text-sm); font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; display: block;">Adventure Language</label>
+                  <select id="game-start-language" class="form-control" style="width: 100%; cursor: pointer;">
+                    <option value="English">English</option>
+                    <option value="Russian" selected>Russian</option>
+                    <option value="Spanish">Spanish</option>
+                  </select>
+                </div>
                 <textarea id="game-start-prompt" placeholder="e.g. The player wakes up in a strange forest at dusk, holding a rusty sword..." rows="4"></textarea>
                 <button id="btn-start-game" class="btn-primary" style="margin-top: 10px;">Generate Opening Scene</button>
               </div>
@@ -722,6 +815,60 @@
           <div class="modal-footer">
             <button id="btn-cancel-group-modal" class="btn-secondary">Cancel</button>
             <button id="btn-save-group-modal" class="btn-primary">Save Group</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── Persona Modal ─────────────────────────────── -->
+      <div id="persona-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content" style="max-width: 600px;">
+          <div class="modal-header">
+            <h2>Personas</h2>
+            <button class="btn-close-persona-modal btn-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <div class="modal-body" style="display: flex; gap: 16px;">
+            <!-- Persona List -->
+            <div style="flex: 1; border-right: 1px solid var(--border-light); padding-right: 16px; display: flex; flex-direction: column;">
+              <div id="persona-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; max-height: 300px;">
+                <!-- Personas injected here -->
+              </div>
+              <button id="btn-add-persona" class="btn-secondary small" style="margin-top: 12px; width: 100%;">+ New Persona</button>
+            </div>
+            <!-- Persona Edit Form -->
+            <div style="flex: 2; display: flex; flex-direction: column;" id="persona-edit-form" class="hidden">
+              <div class="form-group">
+                <label for="persona-name">Persona Name</label>
+                <input type="text" id="persona-name" placeholder="e.g. Wizard..." />
+              </div>
+              <div class="form-group" style="flex: 1; display: flex; flex-direction: column;">
+                <label for="persona-description">Description (System Prompt)</label>
+                <textarea id="persona-description" rows="6" placeholder="Describe your persona..." style="flex: 1; resize: none;"></textarea>
+              </div>
+              <div style="display: flex; gap: 8px; margin-top: 12px; height: 32px; align-items: center; justify-content: flex-end;">
+                <button id="btn-copy-persona" class="btn-secondary small" style="display: flex; align-items: center; gap: 6px;" title="Duplicate Persona">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  Copy
+                </button>
+                <button id="btn-delete-persona" class="btn-secondary small delete" style="display: flex; align-items: center; gap: 6px; margin-left: auto;" title="Delete Persona">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer" style="justify-content: space-between;">
+            <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer;">
+              <input type="checkbox" id="persona-chat-only" /> Apply to this chat only
+            </label>
+            <div style="display: flex; gap: 8px;">
+              <button id="btn-cancel-persona" class="btn-secondary">Cancel</button>
+              <button id="btn-apply-persona" class="btn-primary">Apply</button>
+            </div>
           </div>
         </div>
       </div>

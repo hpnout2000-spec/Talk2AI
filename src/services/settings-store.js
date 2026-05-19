@@ -11,6 +11,10 @@ const DEFAULTS = {
   top_k: 40,
   rep_penalty: 1.1,
   user_name: 'User',
+  active_persona_id: 'default',
+  personas: [
+    { id: 'default', name: 'Default Persona', description: '' }
+  ],
   thinking_enabled: false,
   thinking_snippets: false,
   memory_enabled: true,

@@ -478,6 +478,9 @@ export function startNewChat(character = null) {
   chatStore.saveSession(session);
   if (appState.currentCharacter?.id === char.id) {
     updateChatHistory();
+    if (window.updateUserNameDisplay) {
+      window.updateUserNameDisplay();
+    }
   }
 }
 
@@ -489,6 +492,10 @@ export function loadChat(session) {
   appState.currentChat = session;
   chatStore.setCurrentSession(session);
   clearMessages();
+
+  if (window.updateUserNameDisplay) {
+    window.updateUserNameDisplay();
+  }
 
   for (const msg of session.messages) {
     appendMessage(msg);
@@ -914,7 +921,12 @@ function buildApiMessages(character, session) {
   if (!character || !session) return [];
 
   const settings = settingsStore.get();
-  const userName = settings.user_name || 'User';
+  const userName = session.user_name || settings.user_name || 'User';
+  
+  const personaId = session.persona_id || settings.active_persona_id || 'default';
+  const personas = settings.personas || [];
+  const activePersona = personas.find(p => p.id === personaId);
+  
   const messages = [];
 
   // System prompt with character info and memory
@@ -992,6 +1004,12 @@ function buildApiMessages(character, session) {
   // Inject <|think|> token at the very start to activate Thinking Mode
   if (settings.thinking_enabled) {
     systemContent = '<|think|>\n' + systemContent;
+  }
+
+  // Inject persona description if active
+  if (activePersona && activePersona.description) {
+    let personaStr = activePersona.description.replace(/\{\{user\}\}/gi, userName).replace(/\{\{char\}\}/gi, character.name);
+    systemContent += `\n\n[USER PERSONA]\nThe user's persona is as follows. Treat the user as this persona:\n${personaStr}`;
   }
 
   messages.push({ role: 'system', content: systemContent });

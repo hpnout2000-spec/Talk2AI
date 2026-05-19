@@ -192,7 +192,7 @@ export const api = {
   /**
    * Generates a new game scene in JSON format for the Interactive Game Mode
    */
-  async generateGameScene(currentStats, previousSceneText, playerAction, prompt, noteToGM = '', gameSummary = '', remainingHistory = [], onChunk = null) {
+  async generateGameScene(currentStats, previousSceneText, playerAction, prompt, noteToGM = '', gameSummary = '', remainingHistory = [], onChunk = null, language = 'English') {
     const settings = settingsStore.get();
     const customPrompt = settings.game_system_prompt || "You are a Game Master in an interactive text RPG.";
     let lengthPrompt = "";
@@ -226,6 +226,7 @@ export const api = {
     const systemPrompt = `${customPrompt}
 You must return your response ONLY as a valid JSON object. Do not include any explanations, greetings, or markdown code blocks outside the JSON.
 ${lengthPrompt}
+You MUST write the entire generated RPG content (including "scene_text", all items inside "text_states" array, all labels inside "extra_actions" array, and all choices button texts inside "choices" array) strictly and exclusively in the ${language} language. All user-visible narrative text and controls MUST be fully in ${language}.
 
 The user currently has these stats:
 ${JSON.stringify(currentStats)}
@@ -300,7 +301,7 @@ Generate the next scene. Your JSON must strictly follow this schema:
   /**
    * Generates a condensed summary of past adventure scenes
    */
-  async generateAdventureSummary(previousSummary, newScenes) {
+  async generateAdventureSummary(previousSummary, newScenes, language = 'Russian') {
     let scenesText = "";
     newScenes.forEach((scene, i) => {
       scenesText += `Scene ${i+1}:\n${scene.scene_text}\n`;
@@ -328,7 +329,7 @@ ${scenesText}
 
 Please write a new, comprehensive, cohesive, and highly atmospheric summary of the entire adventure from the very beginning up to the latest scenes.
 Do not omit important historical plot points from the existing summary, but integrate the new events seamlessly.
-Keep the summary under 300 words. Write only the summary itself in Russian, without any introductory remarks, greetings, or meta-commentary.`;
+Keep the summary under 300 words. Write only the summary itself in ${language}, without any introductory remarks, greetings, or meta-commentary.`;
     } else {
       systemPrompt = `You are a professional RPG Chronicler. You are tasked with writing a concise, comprehensive, and highly atmospheric summary of a roleplaying game session.
 Here are the SCENES and choices that occurred during the adventure:
@@ -338,12 +339,12 @@ ${scenesText}
 
 Please write a cohesive summary of the adventure from the very beginning up to the latest scenes.
 Highlight key plot points, major actions taken, and critical developments.
-Keep the summary under 300 words. Write only the summary itself in Russian, without any introductory remarks, greetings, or meta-commentary.`;
+Keep the summary under 300 words. Write only the summary itself in ${language}, without any introductory remarks, greetings, or meta-commentary.`;
     }
 
     const messages = [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: 'Generate the adventure summary in Russian.' }
+      { role: 'user', content: `Generate the adventure summary in ${language}.` }
     ];
 
     try {

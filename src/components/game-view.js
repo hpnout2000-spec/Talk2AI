@@ -236,11 +236,28 @@ function showStartScreen() {
     sceneContent.classList.add('hidden');
     sceneContent.style.display = 'none';
   }
+
+  // Reset sidebar text states and extra actions since there is no active scene
+  const textStatesContainer = document.getElementById('game-text-states');
+  const extraActionsContainer = document.getElementById('game-extra-actions');
+  if (textStatesContainer) {
+    textStatesContainer.innerHTML = '<div style="font-size: 0.8rem; color: var(--text-tertiary); font-style: italic;">Normal</div>';
+  }
+  if (extraActionsContainer) {
+    extraActionsContainer.innerHTML = '<div style="font-size: 0.8rem; color: var(--text-tertiary); font-style: italic;">None</div>';
+  }
   
   // Reset prompt input
   const startPrompt = document.getElementById('game-start-prompt');
   if (startPrompt) {
     startPrompt.value = 'The player wakes up in a strange place, disoriented. Generate the opening scene.';
+  }
+
+  // Set language select value to match current game (default Russian)
+  const languageSelect = document.getElementById('game-start-language');
+  if (languageSelect) {
+    const activeGame = gameStore.get();
+    languageSelect.value = (activeGame && activeGame.language) ? activeGame.language : 'Russian';
   }
 }
 
@@ -475,7 +492,8 @@ async function triggerAISummarization() {
   if (saveBtn) saveBtn.disabled = true;
 
   try {
-    const summaryResult = await api.generateAdventureSummary(game.summary || "", newScenesToSummarize);
+    const language = game.language || 'Russian';
+    const summaryResult = await api.generateAdventureSummary(game.summary || "", newScenesToSummarize, language);
     if (editor && summaryResult) {
       editor.value = summaryResult.trim();
     }
@@ -806,6 +824,16 @@ export async function initGameView() {
     btnStartGame.addEventListener('click', () => {
       const startPromptInput = document.getElementById('game-start-prompt');
       const userPrompt = startPromptInput ? startPromptInput.value.trim() : '';
+      
+      const languageSelect = document.getElementById('game-start-language');
+      const selectedLanguage = languageSelect ? languageSelect.value : 'Russian';
+
+      const activeGame = gameStore.get();
+      if (activeGame) {
+        activeGame.language = selectedLanguage;
+        gameStore.save();
+      }
+
       if (userPrompt) {
         generateNextScene(userPrompt, "Start Game");
       }
@@ -858,6 +886,43 @@ export async function initGameView() {
   const btnRefreshChars = document.getElementById('btn-refresh-game-characters');
   if (btnRefreshChars) {
     btnRefreshChars.addEventListener('click', refreshGameCharacters);
+  }
+
+  // Bind Undo Last Move button
+  const btnUndoMove = document.getElementById('btn-undo-move');
+  if (btnUndoMove) {
+    btnUndoMove.addEventListener('click', () => {
+      if (isGenerating) {
+        alert("Cannot undo while the next scene is generating!");
+        return;
+      }
+
+      const activeGame = gameStore.get();
+      if (!activeGame) return;
+
+      if (!confirm("Are you sure you want to undo the last move?")) {
+        return;
+      }
+
+      const success = gameStore.undoLastMove();
+      if (success) {
+        updateStatsUI();
+        
+        const updatedState = gameStore.get();
+        if (updatedState && updatedState.currentScene) {
+          showSceneContent();
+          renderScene(updatedState.currentScene);
+        } else {
+          showStartScreen();
+        }
+
+        if (isHistoryExpanded) {
+          renderGameHistory();
+        } else {
+          resetHistoryUI();
+        }
+      }
+    });
   }
 
   // ─── GenAI Interactivity ───
@@ -1184,6 +1249,7 @@ async function generateNextScene(promptIntent, actionText, noteToGM = '') {
   let genError = null;
 
   try {
+    const language = state.language || 'Russian';
     const newScene = await api.generateGameScene(
       state.stats,
       previousText,
@@ -1213,7 +1279,8 @@ async function generateNextScene(promptIntent, actionText, noteToGM = '') {
         if (partialChoices && partialChoices.length > 0) {
           renderStreamingChoices(partialChoices);
         }
-      }
+      },
+      language
     );
     
     // Apply stats

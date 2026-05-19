@@ -44,21 +44,34 @@ async function init() {
 
   // Update user name display
   const userNameDisplay = document.getElementById('user-name-display');
-  if (userNameDisplay) {
-    userNameDisplay.textContent = settings.user_name || 'User';
-  }
+  const updateUserNameDisplay = () => {
+    const settings = settingsStore.get();
+    const chatOverride = appState.currentChat?.user_name;
+    if (userNameDisplay) {
+      userNameDisplay.textContent = chatOverride || settings.user_name || 'User';
+    }
+  };
+  updateUserNameDisplay();
+  
+  // Expose to window so other files can trigger it
+  window.updateUserNameDisplay = updateUserNameDisplay;
 
   // User name click handler
   const btnSetName = document.getElementById('btn-set-user-name');
   const userNamePopover = document.getElementById('user-name-popover');
   const userNameInput = document.getElementById('user-name-edit-input');
+  const userNameChatOnly = document.getElementById('user-name-chat-only');
   const btnConfirmName = document.getElementById('btn-confirm-name');
+  const btnPersonas = document.getElementById('btn-personas');
 
   if (btnSetName) {
     btnSetName.addEventListener('click', (e) => {
       e.stopPropagation();
       const settings = settingsStore.get();
-      userNameInput.value = settings.user_name || 'User';
+      const chatOverride = appState.currentChat?.user_name;
+      userNameInput.value = chatOverride || settings.user_name || 'User';
+      userNameChatOnly.checked = !!chatOverride;
+      
       userNamePopover.classList.toggle('hidden');
       if (!userNamePopover.classList.contains('hidden')) {
         setTimeout(() => userNameInput.focus(), 50);
@@ -70,8 +83,18 @@ async function init() {
     btnConfirmName.addEventListener('click', async () => {
       const newName = userNameInput.value.trim();
       if (newName !== '') {
-        await settingsStore.save({ user_name: newName });
-        if (userNameDisplay) userNameDisplay.textContent = newName;
+        const isChatOnly = userNameChatOnly.checked;
+        if (isChatOnly && appState.currentChat) {
+          appState.currentChat.user_name = newName;
+          await chatStore.saveCurrentSession();
+        } else {
+          await settingsStore.save({ user_name: newName });
+          if (appState.currentChat && appState.currentChat.user_name) {
+            delete appState.currentChat.user_name;
+            await chatStore.saveCurrentSession();
+          }
+        }
+        updateUserNameDisplay();
         userNamePopover.classList.add('hidden');
         showToast(`Name updated to ${newName}`);
       }
@@ -84,6 +107,176 @@ async function init() {
       btnConfirmName.click();
     }
   });
+
+  // Personas modal logic
+  const personaModal = document.getElementById('persona-modal');
+  const btnClosePersonaModal = document.querySelector('.btn-close-persona-modal');
+  const btnCancelPersona = document.getElementById('btn-cancel-persona');
+  const btnApplyPersona = document.getElementById('btn-apply-persona');
+  const personaList = document.getElementById('persona-list');
+  const btnAddPersona = document.getElementById('btn-add-persona');
+  const personaEditForm = document.getElementById('persona-edit-form');
+  const personaName = document.getElementById('persona-name');
+  const personaDesc = document.getElementById('persona-description');
+  const btnDeletePersona = document.getElementById('btn-delete-persona');
+  const btnCopyPersona = document.getElementById('btn-copy-persona');
+  const personaChatOnly = document.getElementById('persona-chat-only');
+  let editingPersonaId = null;
+
+  const renderPersonasList = () => {
+    const settings = settingsStore.get();
+    const personas = settings.personas || [{ id: 'default', name: 'Default Persona', description: '' }];
+    personaList.innerHTML = '';
+    
+    const chatOverrideId = appState.currentChat?.persona_id;
+    const activeId = chatOverrideId || settings.active_persona_id || 'default';
+
+    personas.forEach(p => {
+      const el = document.createElement('div');
+      el.className = 'persona-item ' + (p.id === activeId ? 'active' : '');
+      el.style.padding = '10px 12px';
+      el.style.cursor = 'pointer';
+      el.style.flex = 'none'; // Prevent vertical stretching
+      el.textContent = p.name;
+      el.onclick = () => selectPersona(p);
+      personaList.appendChild(el);
+    });
+  };
+
+  const selectPersona = (p) => {
+    editingPersonaId = p.id;
+    personaName.value = p.name;
+    personaDesc.value = p.description;
+    personaEditForm.classList.remove('hidden');
+    
+    // Hide delete for default persona, but preserve height to avoid jittering
+    btnDeletePersona.style.visibility = p.id === 'default' ? 'hidden' : 'visible';
+    btnCopyPersona.style.visibility = 'visible';
+    
+    // Update active class in list
+    Array.from(personaList.children).forEach(el => {
+      if (el.textContent === p.name) el.classList.add('active');
+      else el.classList.remove('active');
+    });
+  };
+
+  if (btnPersonas) {
+    btnPersonas.addEventListener('click', () => {
+      userNamePopover.classList.add('hidden');
+      openWindow(personaModal);
+      const chatOverride = appState.currentChat?.persona_id;
+      personaChatOnly.checked = !!chatOverride;
+      renderPersonasList();
+      
+      // Auto-select active persona
+      const settings = settingsStore.get();
+      const activeId = chatOverride || settings.active_persona_id || 'default';
+      const personas = settings.personas || [];
+      const activeP = personas.find(p => p.id === activeId) || personas[0];
+      if (activeP) selectPersona(activeP);
+    });
+  }
+
+  [btnClosePersonaModal, btnCancelPersona].forEach(btn => {
+    if (btn) btn.addEventListener('click', () => closeWindow(personaModal));
+  });
+
+  if (btnAddPersona) {
+    btnAddPersona.addEventListener('click', () => {
+      editingPersonaId = 'new';
+      personaName.value = 'New Persona';
+      personaDesc.value = '';
+      personaEditForm.classList.remove('hidden');
+      btnDeletePersona.style.visibility = 'hidden';
+      btnCopyPersona.style.visibility = 'hidden';
+      personaName.focus();
+    });
+  }
+
+  if (btnCopyPersona) {
+    btnCopyPersona.addEventListener('click', async () => {
+      if (!editingPersonaId || editingPersonaId === 'new') return;
+      const settings = settingsStore.get();
+      let personas = settings.personas || [];
+      const p = personas.find(x => x.id === editingPersonaId);
+      if (p) {
+        const newId = 'p_' + Date.now();
+        const newP = { id: newId, name: p.name + ' (Copy)', description: p.description || '' };
+        personas.push(newP);
+        await settingsStore.save({ personas });
+        renderPersonasList();
+        selectPersona(newP);
+        showToast('Persona duplicated');
+      }
+    });
+  }
+
+  if (btnDeletePersona) {
+    btnDeletePersona.addEventListener('click', async () => {
+      if (!editingPersonaId || editingPersonaId === 'default' || editingPersonaId === 'new') return;
+      const settings = settingsStore.get();
+      settings.personas = settings.personas.filter(p => p.id !== editingPersonaId);
+      if (settings.active_persona_id === editingPersonaId) {
+        settings.active_persona_id = 'default';
+      }
+      await settingsStore.save({ personas: settings.personas, active_persona_id: settings.active_persona_id });
+      
+      if (appState.currentChat && appState.currentChat.persona_id === editingPersonaId) {
+        delete appState.currentChat.persona_id;
+        await chatStore.saveCurrentSession();
+      }
+      
+      personaEditForm.classList.add('hidden');
+      renderPersonasList();
+    });
+  }
+
+  // Auto-save persona when typing
+  const autoSavePersona = async () => {
+    if (!editingPersonaId) return;
+    const settings = settingsStore.get();
+    let personas = settings.personas || [];
+    
+    if (editingPersonaId === 'new') {
+      const newId = 'p_' + Date.now();
+      personas.push({ id: newId, name: personaName.value, description: personaDesc.value });
+      editingPersonaId = newId;
+    } else {
+      const p = personas.find(x => x.id === editingPersonaId);
+      if (p) {
+        p.name = personaName.value;
+        p.description = personaDesc.value;
+      }
+    }
+    await settingsStore.save({ personas });
+    renderPersonasList();
+  };
+
+  personaName.addEventListener('input', autoSavePersona);
+  personaDesc.addEventListener('input', autoSavePersona);
+
+  if (btnApplyPersona) {
+    btnApplyPersona.addEventListener('click', async () => {
+      if (!editingPersonaId || editingPersonaId === 'new') {
+        showToast('Select a persona first');
+        return;
+      }
+      
+      const isChatOnly = personaChatOnly.checked;
+      if (isChatOnly && appState.currentChat) {
+        appState.currentChat.persona_id = editingPersonaId;
+        await chatStore.saveCurrentSession();
+      } else {
+        await settingsStore.save({ active_persona_id: editingPersonaId });
+        if (appState.currentChat && appState.currentChat.persona_id) {
+          delete appState.currentChat.persona_id;
+          await chatStore.saveCurrentSession();
+        }
+      }
+      showToast('Persona applied');
+      closeWindow(personaModal);
+    });
+  }
 
   // Global click-outside handler for name popover
   document.addEventListener('click', (e) => {

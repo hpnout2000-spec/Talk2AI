@@ -132,8 +132,49 @@ export const gameStore = {
     if (game.currentScene) {
       game.history.push(game.currentScene);
     }
+    
+    // Save snapshot of stats for undo capability
+    sceneData.stats_snapshot = { ...game.stats };
+    
     game.currentScene = sceneData;
     game.updated_at = new Date().toISOString();
     this.save();
+  },
+
+  undoLastMove() {
+    const game = this.get();
+    if (!game) return false;
+
+    if (game.history.length > 0) {
+      // Revert to the previous scene in history
+      const prevScene = game.history.pop();
+      game.currentScene = prevScene;
+      if (prevScene.stats_snapshot) {
+        game.stats = { ...prevScene.stats_snapshot };
+      }
+      
+      // Prevent index out of bounds on summarized_count
+      if (game.summarized_count && game.summarized_count > game.history.length) {
+        game.summarized_count = game.history.length;
+      }
+      
+      game.updated_at = new Date().toISOString();
+      this.save();
+      return true;
+    } else if (game.currentScene) {
+      // Revert to start screen (no scene yet)
+      game.currentScene = null;
+      game.stats = { hp: 100, stress: 0, lust: 0, money: 50 };
+      
+      if (game.summarized_count) {
+        game.summarized_count = 0;
+      }
+      
+      game.updated_at = new Date().toISOString();
+      this.save();
+      return true;
+    }
+
+    return false;
   }
 };
