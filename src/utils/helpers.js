@@ -172,7 +172,9 @@ export function wrapWordsInSpans(htmlString) {
 export function injectCursor(html) {
   const cursorHtml = '<span class="streaming-cursor"></span>';
   if (html.includes('</')) {
-    return html.replace(/(<\/([a-z0-9]+)>)$/i, cursorHtml + '$1');
+    // Replaces the continuous sequence of closing tags at the very end of the string.
+    // The cursor is inserted BEFORE all these closing tags.
+    return html.replace(/(<\/[a-z0-9]+>\s*)+$/i, (match) => cursorHtml + match);
   }
   return html + cursorHtml;
 }

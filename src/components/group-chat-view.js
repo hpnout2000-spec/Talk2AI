@@ -4,6 +4,7 @@
 
 import { groupChatStore } from '../services/group-chat-store.js';
 import { characterStore } from '../services/character-store.js';
+import { gameStore } from '../services/game-store.js';
 import { api } from '../services/api.js';
 import { settingsStore } from '../services/settings-store.js';
 import { appState } from '../state.js';
@@ -77,16 +78,38 @@ export function initGroupChatView() {
       const group = groupChatStore.getGroupById(groupChatStore.getActiveGroupId());
       if (group) {
         await groupChatStore.updateGroupResponseMode(group.id, val);
-        renderHeaderModeUI(group);
+        const name = opt.textContent.trim();
+        if (selectedArea) selectedArea.innerHTML = `<span>${name}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><polyline points="6 9 12 15 18 9"/></svg>`;
+        optionsArea.classList.add('hidden');
       }
-      optionsArea.classList.add('hidden');
     });
   });
 
   document.addEventListener('click', () => {
     optionsArea?.classList.add('hidden');
-    if (membersPopover && !membersPopover.classList.contains('hidden')) {
-       // Check if click was outside popover logic... handled below
+  });
+
+  // Global click delegation for character mentions in group chat
+  messagesContainer.addEventListener('click', (e) => {
+    const mention = e.target.closest('.char-mention');
+    if (mention) {
+      const charName = mention.getAttribute('data-char-name');
+      const cleanedName = cleanCharacterName(charName);
+      
+      const game = gameStore.get();
+      if (game && game.characters) {
+        const char = game.characters.find(c => cleanCharacterName(c.name).toLowerCase() === cleanedName.toLowerCase());
+        if (char) {
+          showCharacterTooltip(mention, char);
+          return;
+        }
+      }
+      
+      const globalChars = characterStore.getAll();
+      const globalChar = globalChars.find(c => cleanCharacterName(c.name).toLowerCase() === cleanedName.toLowerCase());
+      if (globalChar) {
+        showCharacterTooltip(mention, globalChar);
+      }
     }
   });
 
@@ -130,11 +153,15 @@ export async function selectGroup(group) {
   renderGroupHeader(group);
   showGroupChatView();
 
-  await groupChatStore.loadSessionsForGroup(group.id);
-  const sessions = groupChatStore.getSessionsForGroup(group.id);
+  try {
+    await groupChatStore.loadSessionsForGroup(group.id);
+    const sessions = groupChatStore.getSessionsForGroup(group.id);
 
-  if (sessions.length > 0) loadGroupSession(sessions[0]);
-  else startNewGroupChat(group);
+    if (sessions.length > 0) loadGroupSession(sessions[0]);
+    else startNewGroupChat(group);
+  } finally {
+    window.dispatchEvent(new CustomEvent('group-selected', { detail: { id: group.id } }));
+  }
 }
 
 export function loadGroupSession(session) {
@@ -244,7 +271,10 @@ async function generateGroupResponse(respondingChar, group, characters, session)
     await api.streamChat(apiMessages, groupAbortController.signal, (chunk) => {
       fullResponse += chunk;
       if (contentEl) {
-        const html = wrapWordsInSpans(renderMarkdown(fullResponse));
+        const cleaned = stripJsonBlocks(fullResponse, true);
+        let formatted = renderMarkdown(cleaned);
+        formatted = processCharacterMentions(formatted);
+        const html = wrapWordsInSpans(formatted);
         const temp = document.createElement('div');
         temp.innerHTML = html + '<span class="streaming-cursor"></span>';
         morphdom(contentEl, temp, { childrenOnly: true });
@@ -321,13 +351,27 @@ function appendGroupMessage(msg, isStreaming = false) {
   const settings = settingsStore.get();
   const senderName = isUser ? (settings.user_name || 'You') : (char?.name || 'Unknown');
   const avatarHtml = isUser ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/></svg>' : (char?.avatar ? `<img src="${char.avatar}">` : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/></svg>');
-  const contentHtml = renderMarkdown(msg.content || '');
+  
+  const cleanedContent = stripJsonBlocks(msg.content || '', isStreaming);
+  let formattedContent = renderMarkdown(cleanedContent);
+  formattedContent = processCharacterMentions(formattedContent);
+  const contentHtml = formattedContent;
   const meta = !isStreaming ? `<div class="group-msg-meta"><span class="group-msg-time">${formatTime(msg.timestamp)}</span><div class="message-actions"><button class="btn-regenerate ${isUser ? 'hidden' : ''}" title="Regen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg></button><button class="btn-edit-msg" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button><button class="btn-copy" title="Copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button><button class="btn-ai-comment ${isUser ? 'hidden' : ''}" title="Comment"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/><path d="M12 7l1.5 3 3.5.5-2.5 2.5.5 3.5-3-1.5-3 1.5.5-3.5-2.5-2.5 3.5-.5z"/></svg></button><button class="btn-delete-msg delete" title="Del"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></div></div>` : '';
   el.innerHTML = `<div class="group-msg-avatar">${avatarHtml}</div><div class="group-msg-body"><div class="group-msg-sender">${escapeHtml(senderName)}</div><div class="group-msg-bubble"><div class="group-msg-text">${isStreaming ? '<span class="streaming-cursor"></span>' : contentHtml}</div></div>${meta}</div>`;
   if (!isStreaming) {
     el.querySelector('.btn-copy')?.addEventListener('click', () => { navigator.clipboard.writeText(msg.content); showToast('Copied'); });
     el.querySelector('.btn-delete-msg')?.addEventListener('click', async () => { if (await showConfirm('Delete?')) { groupChatStore.deleteMessage(msg.id); el.remove(); groupChatStore.saveGroups(); } });
-    el.querySelector('.btn-edit-msg')?.addEventListener('click', () => { const t = prompt('Edit:', msg.content); if (t !== null) { msg.content = t; el.querySelector('.group-msg-text').innerHTML = renderMarkdown(t); groupChatStore.saveGroups(); } });
+    el.querySelector('.btn-edit-msg')?.addEventListener('click', () => { 
+      const t = prompt('Edit:', msg.content); 
+      if (t !== null) { 
+        msg.content = t; 
+        const cleaned = stripJsonBlocks(t, false);
+        let formatted = renderMarkdown(cleaned);
+        formatted = processCharacterMentions(formatted);
+        el.querySelector('.group-msg-text').innerHTML = formatted; 
+        groupChatStore.saveGroups(); 
+      } 
+    });
     el.querySelector('.btn-ai-comment')?.addEventListener('click', () => { if (window.requestAiComment && char) window.requestAiComment(msg, char); });
     el.querySelector('.btn-regenerate')?.addEventListener('click', () => regenerateGroupResponse(msg, el));
   }
@@ -426,4 +470,121 @@ export function renderGroupHistoryInPanel() {
       if (item) { const s = groupChatStore.getSessionsForGroup(groupId).find(x => x.id === item.dataset.groupSessionId); if (s) loadGroupSession(s); }
     });
   }
+}
+
+// ─── Character Mentions & JSON Cleaning Helpers ───
+
+function cleanCharacterName(name) {
+  if (!name) return '';
+  return name.replace(/\{\{char:/g, '').replace(/\}\}/g, '').replace(/char:/g, '').trim();
+}
+
+function stripJsonBlocks(text, isStreaming = false) {
+  if (!text) return '';
+  
+  let cleaned = text;
+
+  // 1. Remove complete markdown JSON blocks
+  cleaned = cleaned.replace(/```json[\s\S]*?```/g, '');
+  cleaned = cleaned.replace(/```[\s\S]*?```/g, (match) => {
+    const inner = match.slice(3, -3).trim();
+    if ((inner.startsWith('{') && inner.endsWith('}')) || (inner.startsWith('[') && inner.endsWith(']'))) {
+      return '';
+    }
+    return match;
+  });
+
+  // 2. If streaming, remove any incomplete markdown code blocks starting with ```json or ```{
+  if (isStreaming) {
+    const index = cleaned.indexOf('```json');
+    if (index !== -1) {
+      cleaned = cleaned.substring(0, index);
+    }
+    const indexPlain = cleaned.indexOf('```');
+    if (indexPlain !== -1) {
+      const rest = cleaned.substring(indexPlain + 3).trim();
+      if (rest.startsWith('{') || rest.startsWith('[')) {
+        cleaned = cleaned.substring(0, indexPlain);
+      }
+    }
+    // Hide partial char mentions so they don't leak as raw text during streaming
+    cleaned = cleaned.replace(/\{\{[^}]*$/, '');
+  }
+
+  // 3. Remove raw trailing JSON objects or arrays
+  const lastCurly = cleaned.lastIndexOf('{');
+  if (lastCurly !== -1) {
+    const candidate = cleaned.substring(lastCurly).trim();
+    if (candidate.startsWith('{') && (candidate.includes('":') || candidate.endsWith('}'))) {
+      cleaned = cleaned.substring(0, lastCurly);
+    }
+  }
+  const lastSquare = cleaned.lastIndexOf('[');
+  if (lastSquare !== -1) {
+    const candidate = cleaned.substring(lastSquare).trim();
+    if (candidate.startsWith('[') && (candidate.includes('{') || candidate.endsWith(']'))) {
+      cleaned = cleaned.substring(0, lastSquare);
+    }
+  }
+
+  return cleaned.trim();
+}
+
+function processCharacterMentions(text) {
+  if (!text) return '';
+  return text.replace(/\{\{char:([^|}]+)(?:\|([^}]+))?\}\}/g, (match, name, alias) => {
+    const displayName = alias ? alias.trim() : name.trim();
+    return `<span class="char-mention" data-char-name="${name.trim()}">${displayName}</span>`;
+  });
+}
+
+function showCharacterTooltip(element, char) {
+  // Remove existing tooltips
+  document.querySelectorAll('.char-tooltip').forEach(t => t.remove());
+
+  const tooltip = document.createElement('div');
+  tooltip.className = 'char-tooltip';
+  tooltip.style.position = 'absolute';
+  tooltip.style.background = 'rgba(15, 15, 20, 0.95)';
+  tooltip.style.backdropFilter = 'blur(10px)';
+  tooltip.style.border = '1px solid var(--border-subtle)';
+  tooltip.style.borderRadius = 'var(--radius-md)';
+  tooltip.style.padding = '12px 16px';
+  tooltip.style.zIndex = '9999';
+  tooltip.style.maxWidth = '250px';
+  tooltip.style.boxShadow = '0 8px 32px rgba(0,0,0,0.5)';
+  tooltip.style.color = 'var(--text-primary)';
+  tooltip.style.animation = 'fadeIn 0.2s ease';
+  
+  const shortDesc = char.short_description || char.description || 'No description available.';
+  tooltip.innerHTML = `
+    <div style="font-weight: 600; font-size: 0.95rem; margin-bottom: 4px; color: var(--text-accent);">${char.name}</div>
+    <div style="font-size: 0.85rem; line-height: 1.4; color: var(--text-secondary);">${shortDesc}</div>
+  `;
+
+  document.body.appendChild(tooltip);
+
+  const rect = element.getBoundingClientRect();
+  tooltip.style.top = `${rect.bottom + window.scrollY + 8}px`;
+  
+  // Center relative to element, but keep inside window bounds
+  let left = rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2);
+  if (left < 10) left = 10;
+  if (left + tooltip.offsetWidth > window.innerWidth - 10) {
+    left = window.innerWidth - tooltip.offsetWidth - 10;
+  }
+  tooltip.style.left = `${left}px`;
+
+  // Close when clicking outside
+  const closeHandler = (e) => {
+    if (!tooltip.contains(e.target) && e.target !== element) {
+      tooltip.remove();
+      document.removeEventListener('click', closeHandler);
+    }
+  };
+  
+  // Use timeout to avoid immediately closing from the current click event
+  setTimeout(() => {
+    document.addEventListener('click', closeHandler);
+  }, 10);
 }

@@ -513,6 +513,52 @@
   height: 14px;
 }
 
+.memory-entry-edit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  opacity: 0;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.memory-entry:hover .memory-entry-edit {
+  opacity: 1;
+}
+
+.memory-entry-edit:hover {
+  color: var(--text-accent);
+  background: var(--accent-primary-glow);
+}
+
+.memory-entry-edit svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Memory Entry Editing state adjustments */
+.memory-entry.editing {
+  background: var(--bg-hover) !important;
+  border-color: var(--accent-primary) !important;
+}
+
+.edit-memory-textarea {
+  transition: all 0.2s ease;
+}
+
+.edit-memory-textarea:focus {
+  border-color: var(--accent-primary) !important;
+  box-shadow: 0 0 0 2px var(--accent-primary-glow);
+  background: var(--bg-primary) !important;
+}
+
 .memory-section-title {
   font-size: var(--text-xs);
   font-weight: 700;

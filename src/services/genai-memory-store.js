@@ -50,6 +50,17 @@ export const genaiMemoryStore = {
     return memory;
   },
 
+  update(id, content) {
+    const memory = memories.find(m => m.id === id);
+    if (memory) {
+      memory.content = content.trim();
+      memory.timestamp = new Date().toISOString();
+      this.save();
+      return memory;
+    }
+    return null;
+  },
+
   delete(id) {
     const index = memories.findIndex(m => m.id === id);
     if (index !== -1) {

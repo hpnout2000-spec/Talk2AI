@@ -14,7 +14,11 @@ pub struct Character {
     pub scenario: String,
     pub system_prompt: String,
     pub first_message: String,
+    #[serde(default)]
+    pub alternate_greetings: Vec<String>,
     pub created_at: String,
+    #[serde(default)]
+    pub last_chat_at: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -242,6 +246,113 @@ fn load_settings() -> Result<String, String> {
     }
 }
 
+// ─── Skills Commands ────────────────────────────────────────────────
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SkillInfo {
+    pub name: String,
+    pub filename: String,
+    pub is_default: bool,
+    pub content: String,
+}
+
+fn ensure_default_skills() {
+    let dir = get_app_dir().join("skills");
+    ensure_dir(&dir);
+    
+    // Skill 1: VibeChatting Guide
+    let guide_path = dir.join("VibeChatting Guide.txt");
+    if !guide_path.exists() {
+        let content = "VibeChatting Application Guide:\n\
+- Characters: Users can chat with individual character cards. Each character has a unique description, personality, scenario, system prompt, and alternate greetings.\n\
+- Group Chats: Multiple characters can be added to a group chat. The response mode can be Auto (AI chooses who speaks) or Round-robin.\n\
+- RPG Game Mode: Interactive text-based RPG adventures where a Game Master (GM) guides the story, tracks stats (HP, Stress, Lust, Money), manages scene choices, and maintains a story chronicle.\n\
+- Settings: Customizable parameters including API URL, font size, AI comments, AI suggestions, Thinking Mode, Auto Memory, and translation options.";
+        fs::write(&guide_path, content).ok();
+    }
+    
+    // Skill 2: GenAI Features
+    let features_path = dir.join("GenAI Features.json");
+    if !features_path.exists() {
+        let content = r#"{
+  "name": "GenAI Features",
+  "capabilities": [
+    "Personal Memory: Can remember facts about the user across sessions using 'add_memory', 'delete_memory', and 'list_memories' commands.",
+    "Character Customization: Can create or refine character cards step-by-step using 'save_character' or via GenAI Creator panel facts/final texts.",
+    "Interface Controls: Can change app settings (like font size, safe mode, suggestions, AI comments) on request via 'set_setting'.",
+    "Active Roleplay Interventions: Can send messages in individual chats, orchestrate group chats, or take actions in interactive games."
+  ]
+}"#;
+        fs::write(&features_path, content).ok();
+    }
+}
+
+#[tauri::command]
+fn load_skills() -> Result<String, String> {
+    ensure_default_skills();
+    let dir = get_app_dir().join("skills");
+    let mut skills = Vec::new();
+    
+    if let Ok(entries) = fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
+                if ext == "txt" || ext == "json" {
+                    let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string();
+                    let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
+                    let is_default = filename == "VibeChatting Guide.txt" || filename == "GenAI Features.json";
+                    
+                    if let Ok(content) = fs::read_to_string(&path) {
+                        skills.push(SkillInfo {
+                            name,
+                            filename,
+                            is_default,
+                            content,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    
+    serde_json::to_string(&skills).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn save_skill(filename: String, content: String) -> Result<(), String> {
+    let dir = get_app_dir().join("skills");
+    ensure_dir(&dir);
+    
+    let is_default = filename == "VibeChatting Guide.txt" || filename == "GenAI Features.json";
+    if is_default {
+        return Err("Cannot overwrite default skills".to_string());
+    }
+    
+    if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
+        return Err("Invalid filename".to_string());
+    }
+    
+    let path = dir.join(&filename);
+    fs::write(&path, content).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn delete_skill(filename: String) -> Result<(), String> {
+    let is_default = filename == "VibeChatting Guide.txt" || filename == "GenAI Features.json";
+    if is_default {
+        return Err("Cannot delete default skills".to_string());
+    }
+    
+    let dir = get_app_dir().join("skills");
+    let path = dir.join(&filename);
+    if path.exists() {
+        fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 // ─── App Entry ──────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -258,7 +369,10 @@ pub fn run() {
             load_chats,
             delete_chat,
             save_settings,
-            load_settings
+            load_settings,
+            load_skills,
+            save_skill,
+            delete_skill
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

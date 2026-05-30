@@ -6,6 +6,7 @@ import { showToast, checkConnection, showConfirm, showPrompt, openWindow, closeW
 import { appState } from '../state.js';
 import { chatStore } from '../services/chat-store.js';
 import { characterStore } from '../services/character-store.js';
+import { gameStore } from '../services/game-store.js';
 import { api } from '../services/api.js';
 import { settingsStore } from '../services/settings-store.js';
 import { memoryService } from '../services/memory-service.js';
@@ -40,6 +41,59 @@ let headerAvatar;
 let thinkingToggle;
 let btnInputSettings;
 let inputSettingsPopover;
+
+// ─── Suggestions Explorer State ──────────────────────────────────────
+let moreSuggestionsAbortController = null;
+let moreSuggestionsContext = { character: null, session: null, msgElement: null };
+let generatedSuggestionsHistory = [];
+
+// ─── Floating Streaming Cursor ───────────────────────────────────────
+// A single absolutely-positioned cursor element that glides smoothly
+// to the end of the last rendered word using CSS transition.
+
+let _chatCursor = null;
+let _chatCursorRafId = null;
+
+function getOrCreateChatCursor() {
+  if (!_chatCursor || !_chatCursor.isConnected) {
+    _chatCursor = document.createElement('span');
+    _chatCursor.className = 'streaming-cursor streaming-cursor--float';
+    document.body.appendChild(_chatCursor);
+  }
+  return _chatCursor;
+}
+
+function repositionChatCursor(contentEl) {
+  if (_chatCursorRafId) cancelAnimationFrame(_chatCursorRafId);
+  _chatCursorRafId = requestAnimationFrame(() => {
+    const cursor = _chatCursor;
+    if (!cursor || !cursor.isConnected) return;
+
+    // Walk the contentEl to find the last visible text node
+    const walker = document.createTreeWalker(contentEl, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) => node.textContent.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP
+    });
+    let lastTextNode = null;
+    while (walker.nextNode()) lastTextNode = walker.currentNode;
+
+    if (lastTextNode) {
+      const range = document.createRange();
+      range.setStart(lastTextNode, lastTextNode.length);
+      range.setEnd(lastTextNode, lastTextNode.length);
+      const rect = range.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) return; // not in viewport yet
+      const cursorH = cursor.offsetHeight || 16;
+      // position:fixed uses viewport coordinates — no scroll offset needed
+      cursor.style.transform = `translate(${rect.right}px, ${rect.top + (rect.height - cursorH) / 2}px)`;
+    }
+  });
+}
+
+function removeChatCursor() {
+  if (_chatCursorRafId) { cancelAnimationFrame(_chatCursorRafId); _chatCursorRafId = null; }
+  if (_chatCursor && _chatCursor.isConnected) _chatCursor.remove();
+  _chatCursor = null;
+}
 
 // ─── Init ───────────────────────────────────────────────────────────
 
@@ -101,6 +155,32 @@ export function initChat() {
 
   // Stop generation
   btnStop.addEventListener('click', stopGeneration);
+
+  // Global click delegation for character mentions in chat
+  messagesContainer.addEventListener('click', (e) => {
+    const mention = e.target.closest('.char-mention');
+    if (mention) {
+      const charName = mention.getAttribute('data-char-name');
+      const cleanedName = cleanCharacterName(charName);
+      
+      // 1. Look up in active game characters
+      const game = gameStore.get();
+      if (game && game.characters) {
+        const char = game.characters.find(c => cleanCharacterName(c.name).toLowerCase() === cleanedName.toLowerCase());
+        if (char) {
+          showCharacterTooltip(mention, char);
+          return;
+        }
+      }
+      
+      // 2. Fallback to global chatbot directory
+      const globalChars = characterStore.getAll();
+      const globalChar = globalChars.find(c => cleanCharacterName(c.name).toLowerCase() === cleanedName.toLowerCase());
+      if (globalChar) {
+        showCharacterTooltip(mention, globalChar);
+      }
+    }
+  });
 
   // Thinking toggle (element may not exist if removed from header)
   if (thinkingToggle) {
@@ -169,8 +249,7 @@ export function initChat() {
     const { character_id } = e.detail;
     const character = characterStore.getById(character_id);
     if (character) {
-      selectCharacter(character);
-      startNewChat(character);
+      selectCharacter(character, 'NEW');
     }
   });
 
@@ -193,6 +272,41 @@ export function initChat() {
 
   // Make AI comment feature global
   window.requestAiComment = requestAiComment;
+
+  // ─── Suggestions Explorer Modal Event Listeners ────────────────────
+  const btnCloseMore = document.getElementById('btn-close-more-suggestions');
+  if (btnCloseMore) {
+    btnCloseMore.addEventListener('click', () => {
+      closeWindow('more-suggestions-modal');
+      abortMoreSuggestionsGeneration();
+    });
+  }
+
+  const btnMoreRefresh = document.getElementById('btn-more-suggestions-refresh');
+  if (btnMoreRefresh) {
+    btnMoreRefresh.addEventListener('click', () => {
+      generateMoreSuggestions();
+    });
+  }
+
+  const btnMoreSendTopic = document.getElementById('btn-more-suggestions-send-topic');
+  const inputMoreTopic = document.getElementById('more-suggestions-topic-input');
+  if (btnMoreSendTopic && inputMoreTopic) {
+    const handleSendTopic = () => {
+      const topic = inputMoreTopic.value.trim();
+      if (topic) {
+        generateMoreSuggestions(topic);
+        inputMoreTopic.value = '';
+      }
+    };
+    btnMoreSendTopic.addEventListener('click', handleSendTopic);
+    inputMoreTopic.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleSendTopic();
+      }
+    });
+  }
 }
 
 function toggleInputSettings() {
@@ -554,7 +668,9 @@ export async function selectCharacter(character, sessionId = null) {
     if (appState.currentCharacter?.id !== charId) return;
 
     const sessions = chatStore.getSessions(charId);
-    if (sessionId) {
+    if (sessionId === 'NEW') {
+      startNewChat(character);
+    } else if (sessionId) {
       const session = sessions.find(s => s.id === sessionId);
       if (session) {
         loadChat(session);
@@ -723,11 +839,6 @@ async function sendMessage() {
 
   // Dynamic options override
   const apiOptions = {};
-  if (settings.response_length === 'short') {
-    // Cap max_tokens to prevent long responses, but allow buffer for thinking
-    const thinkingBuffer = settings.thinking_enabled ? 1024 : 0;
-    apiOptions.max_tokens = Math.min(settings.max_tokens, 256 + thinkingBuffer);
-  }
 
   try {
     await api.streamChat(
@@ -760,11 +871,12 @@ async function sendMessage() {
             if (showThinkingBlock || thinkingContent) {
               html += createThinkingBlockHTML(thinkingContent, isInThinking);
             }
-            html += wrapWordsInSpans(renderMarkdown(displayContent));
+            const cleaned = stripJsonBlocks(displayContent, true);
+            let formatted = renderMarkdown(cleaned);
+            formatted = processCharacterMentions(formatted);
+            html += wrapWordsInSpans(formatted);
 
-            if (!isInThinking) {
-              html = injectCursor(html);
-            }
+            // No inline cursor injection — we use the floating cursor instead
 
             const temp = document.createElement('div');
             temp.className = contentEl.className;
@@ -774,6 +886,12 @@ async function sendMessage() {
               childrenOnly: true,
               getNodeKey: (node) => node.dataset?.wordIndex || node.id || null
             });
+
+            // Move the floating cursor to the end of the last rendered word
+            if (!isInThinking) {
+              getOrCreateChatCursor();
+              repositionChatCursor(contentEl);
+            }
           } catch (err) {
             console.error("STREAM CHUNK ERROR:", err);
             showToast("Streaming UI error: " + err.message, "error");
@@ -786,12 +904,16 @@ async function sendMessage() {
         try {
           parsed = parseThinking(fullResponse);
 
-          // Final render to remove cursor
+          // Final render — remove floating cursor first, then do clean render
+          removeChatCursor();
           let finalHtml = '';
           if (parsed.thinking) {
             finalHtml += createThinkingBlockHTML(parsed.thinking, false);
           }
-          finalHtml += wrapWordsInSpans(renderMarkdown(parsed.content));
+          const cleaned = stripJsonBlocks(parsed.content, false);
+          let formatted = renderMarkdown(cleaned);
+          formatted = processCharacterMentions(formatted);
+          finalHtml += wrapWordsInSpans(formatted);
 
           const tempFinal = document.createElement('div');
           tempFinal.className = contentEl.className;
@@ -855,6 +977,7 @@ async function sendMessage() {
       // onError
       (err) => {
         console.error('Stream error:', err);
+        removeChatCursor();
         contentEl.innerHTML = `<p style="color: var(--error)">Error: ${escapeHtml(err.message)}</p>`;
 
         if (appState.currentCharacter?.id === character.id) {
@@ -1012,8 +1135,6 @@ function buildApiMessages(character, session) {
     systemContent += `\n\n[USER PERSONA]\nThe user's persona is as follows. Treat the user as this persona:\n${personaStr}`;
   }
 
-  messages.push({ role: 'system', content: systemContent });
-
   // Add formatting instructions based on settings
   const formattingInstructions = [];
 
@@ -1039,20 +1160,16 @@ function buildApiMessages(character, session) {
   }
 
   if (formattingInstructions.length > 0) {
-    messages.push({
-      role: 'system',
-      content: `[MANDATORY FORMATTING RULES]\n${formattingInstructions.join("\n")}`
-    });
+    systemContent += `\n\n[MANDATORY FORMATTING RULES]\n${formattingInstructions.join("\n")}`;
   }
 
   // Inject mood indicators if enabled
   if (session.indicators?.enabled && session.indicators.list?.length > 0) {
     const statusStr = session.indicators.list.map(ind => `${ind.name}: ${ind.value}%`).join('\n');
-    messages.push({
-      role: 'system',
-      content: `[CURRENT MOOD STATUS]\n${statusStr}`
-    });
+    systemContent += `\n\n[CURRENT MOOD STATUS]\n${statusStr}`;
   }
+
+  messages.push({ role: 'system', content: systemContent });
 
   // Chat messages (skip empty assistant messages)
   for (const msg of session.messages) {
@@ -1176,7 +1293,10 @@ function appendMessage(msg, isStreaming = false, character = null) {
 
   // Persistence: use translated content if it exists and we're not showing original
   const displayContent = (msg.translated_content && !msg.show_original) ? msg.translated_content : msg.content;
-  contentHtml += renderMarkdown(displayContent);
+  const cleanedContent = stripJsonBlocks(displayContent, isStreaming);
+  let formatted = renderMarkdown(cleanedContent);
+  formatted = processCharacterMentions(formatted);
+  contentHtml += formatted;
 
   // Swipe Greetings UI for the first message
   const isFirstMessage = appState.currentChat?.messages?.[0]?.id === msg.id;
@@ -1264,7 +1384,10 @@ function appendMessage(msg, isStreaming = false, character = null) {
       setTimeout(() => {
         let html = '';
         if (msg.thinking) html += createThinkingBlockHTML(msg.thinking, false);
-        html += renderMarkdown(newDisplayContent);
+        const cleaned = stripJsonBlocks(newDisplayContent, false);
+        let formatted = renderMarkdown(cleaned);
+        formatted = processCharacterMentions(formatted);
+        html += formatted;
         contentEl.innerHTML = html;
         contentEl.classList.remove('block-replacing-out');
         contentEl.classList.add('block-replacing-in');
@@ -1279,7 +1402,10 @@ function appendMessage(msg, isStreaming = false, character = null) {
     // Ensure spans exist for the replacement effect
     if (!contentEl.querySelector('.word-blur')) {
       const displayContent = (msg.translated_content && !msg.show_original) ? msg.translated_content : msg.content;
-      contentEl.innerHTML = wrapWordsInSpans(renderMarkdown(displayContent));
+      const cleaned = stripJsonBlocks(displayContent, false);
+      let formatted = renderMarkdown(cleaned);
+      formatted = processCharacterMentions(formatted);
+      contentEl.innerHTML = wrapWordsInSpans(formatted);
     }
 
     const translated = await performStreamingTranslation(contentEl, msg.content, target);
@@ -1439,7 +1565,10 @@ function enterEditMode(msg, msgEl) {
       // Update UI
       msg.content = newContent;
       msg.translated_content = null;
-      contentEl.innerHTML = renderMarkdown(newContent);
+      const cleaned = stripJsonBlocks(newContent, false);
+      let formatted = renderMarkdown(cleaned);
+      formatted = processCharacterMentions(formatted);
+      contentEl.innerHTML = formatted;
     }
     editor.remove();
     contentEl.style.display = 'block';
@@ -1496,10 +1625,6 @@ async function triggerAssistantGeneration() {
 
   let fullResponse = '';
   const apiOptions = {};
-  if (settings.response_length === 'short') {
-    const thinkingBuffer = settings.thinking_enabled ? 1024 : 0;
-    apiOptions.max_tokens = Math.min(settings.max_tokens, 256 + thinkingBuffer);
-  }
 
   try {
     await api.streamChat(
@@ -1521,12 +1646,6 @@ async function triggerAssistantGeneration() {
         if (isInThinking || thinkingContent) html += createThinkingBlockHTML(thinkingContent, isInThinking);
         html += wrapWordsInSpans(renderMarkdown(displayContent));
 
-        if (!isInThinking) {
-          const cursorHtml = '<span class="streaming-cursor"></span>';
-          if (html.includes('</')) html = html.replace(/(<\/([a-z0-9]+)>)$/i, cursorHtml + '$1');
-          else html += cursorHtml;
-        }
-
         const temp = document.createElement('div');
         temp.className = contentEl.className;
         temp.innerHTML = html;
@@ -1534,8 +1653,15 @@ async function triggerAssistantGeneration() {
           childrenOnly: true,
           getNodeKey: (node) => node.dataset?.wordIndex || node.id || null
         });
+
+        // Move the floating cursor to the end of the last rendered word
+        if (!isInThinking) {
+          getOrCreateChatCursor();
+          repositionChatCursor(contentEl);
+        }
       },
       async () => {
+        removeChatCursor();
         const parsed = parseThinking(fullResponse);
         let finalHtml = '';
         if (parsed.thinking) finalHtml += createThinkingBlockHTML(parsed.thinking, false);
@@ -1585,6 +1711,7 @@ async function triggerAssistantGeneration() {
       },
       (err) => {
         console.error('Regeneration error:', err);
+        removeChatCursor();
         appState.isGenerating = false;
         btnSend.classList.remove('hidden');
         btnStop.classList.add('hidden');
@@ -1811,6 +1938,21 @@ function renderContinuationOptions(msgElement, options, character, session) {
     optionsContainer.appendChild(btn);
   });
 
+  // Append + button after the options
+  const btnPlus = document.createElement('button');
+  btnPlus.className = 'continuation-option-btn plus-option-btn';
+  btnPlus.title = "Explore more unique options";
+  btnPlus.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 14px; height: 14px; display: block;">
+      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    </svg>
+  `;
+  btnPlus.style.animationDelay = `${options.slice(0, 3).length * 0.15}s`;
+  btnPlus.addEventListener('click', () => {
+    openMoreSuggestionsModal(character || appState.currentCharacter, session || appState.currentChat, msgElement);
+  });
+  optionsContainer.appendChild(btnPlus);
+
   if (optionsContainer.children.length > 0) {
     msgElement.querySelector('.message-body').appendChild(optionsContainer);
     scrollToBottom();
@@ -1991,10 +2133,10 @@ async function requestAiComment(msg, character) {
 }
 
 function injectCursor(html) {
+  // Used for non-streaming contexts (e.g. genai-panel, book-view)
   const cursorHtml = '<span class="streaming-cursor"></span>';
   if (html.includes('</')) {
-    // Inject before the last closing tag
-    return html.replace(/(<\/([a-z0-9]+)>)$/i, cursorHtml + '$1');
+    return html.replace(/(<\/[a-z0-9]+>\s*)+$/i, (match) => cursorHtml + match);
   }
   return html + cursorHtml;
 }
@@ -2204,3 +2346,360 @@ function applyIndicatorUpdates(text, session) {
   // though we'll remove calls to it.
   return text;
 }
+
+// ─── Character Mentions & JSON Cleaning Helpers ───
+
+function cleanCharacterName(name) {
+  if (!name) return '';
+  return name.replace(/\{\{char:/g, '').replace(/\}\}/g, '').replace(/char:/g, '').trim();
+}
+
+function stripJsonBlocks(text, isStreaming = false) {
+  if (!text) return '';
+  
+  let cleaned = text;
+
+  // 1. Remove complete markdown JSON blocks
+  cleaned = cleaned.replace(/```json[\s\S]*?```/g, '');
+  cleaned = cleaned.replace(/```[\s\S]*?```/g, (match) => {
+    const inner = match.slice(3, -3).trim();
+    if ((inner.startsWith('{') && inner.endsWith('}')) || (inner.startsWith('[') && inner.endsWith(']'))) {
+      return '';
+    }
+    return match;
+  });
+
+  // 2. If streaming, remove any incomplete markdown code blocks starting with ```json or ```{
+  if (isStreaming) {
+    const index = cleaned.indexOf('```json');
+    if (index !== -1) {
+      cleaned = cleaned.substring(0, index);
+    }
+    const indexPlain = cleaned.indexOf('```');
+    if (indexPlain !== -1) {
+      const rest = cleaned.substring(indexPlain + 3).trim();
+      if (rest.startsWith('{') || rest.startsWith('[')) {
+        cleaned = cleaned.substring(0, indexPlain);
+      }
+    }
+    // Hide partial char mentions so they don't leak as raw text during streaming
+    cleaned = cleaned.replace(/\{\{[^}]*$/, '');
+  }
+
+  // 3. Remove raw trailing JSON objects or arrays
+  const lastCurly = cleaned.lastIndexOf('{');
+  if (lastCurly !== -1) {
+    const candidate = cleaned.substring(lastCurly).trim();
+    if (candidate.startsWith('{') && (candidate.includes('":') || candidate.endsWith('}'))) {
+      cleaned = cleaned.substring(0, lastCurly);
+    }
+  }
+  const lastSquare = cleaned.lastIndexOf('[');
+  if (lastSquare !== -1) {
+    const candidate = cleaned.substring(lastSquare).trim();
+    if (candidate.startsWith('[') && (candidate.includes('{') || candidate.endsWith(']'))) {
+      cleaned = cleaned.substring(0, lastSquare);
+    }
+  }
+
+  return cleaned.trim();
+}
+
+function processCharacterMentions(text) {
+  if (!text) return '';
+  return text.replace(/\{\{char:([^|}]+)(?:\|([^}]+))?\}\}/g, (match, name, alias) => {
+    const displayName = alias ? alias.trim() : name.trim();
+    return `<span class="char-mention" data-char-name="${name.trim()}">${displayName}</span>`;
+  });
+}
+
+function showCharacterTooltip(element, char) {
+  // Remove existing tooltips
+  document.querySelectorAll('.char-tooltip').forEach(t => t.remove());
+
+  const tooltip = document.createElement('div');
+  tooltip.className = 'char-tooltip';
+  tooltip.style.position = 'absolute';
+  tooltip.style.background = 'rgba(15, 15, 20, 0.95)';
+  tooltip.style.backdropFilter = 'blur(10px)';
+  tooltip.style.border = '1px solid var(--border-subtle)';
+  tooltip.style.borderRadius = 'var(--radius-md)';
+  tooltip.style.padding = '12px 16px';
+  tooltip.style.zIndex = '9999';
+  tooltip.style.maxWidth = '250px';
+  tooltip.style.boxShadow = '0 8px 32px rgba(0,0,0,0.5)';
+  tooltip.style.color = 'var(--text-primary)';
+  tooltip.style.animation = 'fadeIn 0.2s ease';
+  
+  const shortDesc = char.short_description || char.description || 'No description available.';
+  tooltip.innerHTML = `
+    <div style="font-weight: 600; font-size: 0.95rem; margin-bottom: 4px; color: var(--text-accent);">${char.name}</div>
+    <div style="font-size: 0.85rem; line-height: 1.4; color: var(--text-secondary);">${shortDesc}</div>
+  `;
+
+  document.body.appendChild(tooltip);
+
+  const rect = element.getBoundingClientRect();
+  tooltip.style.top = `${rect.bottom + window.scrollY + 8}px`;
+  
+  // Center relative to element, but keep inside window bounds
+  let left = rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2);
+  if (left < 10) left = 10;
+  if (left + tooltip.offsetWidth > window.innerWidth - 10) {
+    left = window.innerWidth - tooltip.offsetWidth - 10;
+  }
+  tooltip.style.left = `${left}px`;
+
+  // Close when clicking outside
+  const closeHandler = (e) => {
+    if (!tooltip.contains(e.target) && e.target !== element) {
+      tooltip.remove();
+      document.removeEventListener('click', closeHandler);
+    }
+  };
+  
+  // Use timeout to avoid immediately closing from the current click event
+  setTimeout(() => {
+    document.addEventListener('click', closeHandler);
+  }, 10);
+}
+
+// ─── Suggestions Explorer Modal Logic ───────────────────────────────
+
+function openMoreSuggestionsModal(character, session, msgElement) {
+  moreSuggestionsContext = { character, session, msgElement };
+  generatedSuggestionsHistory = [];
+  
+  // Also collect the options already shown in the chat so we avoid them too!
+  if (session && msgElement) {
+    const msgId = msgElement.dataset.messageId;
+    const msg = session.messages.find(m => m.id === msgId);
+    if (msg && msg.options) {
+      msg.options.forEach(opt => {
+        if (opt.label) generatedSuggestionsHistory.push(opt.label);
+      });
+    }
+  }
+  
+  const modal = document.getElementById('more-suggestions-modal');
+  const welcome = document.getElementById('more-suggestions-welcome');
+  const content = document.getElementById('more-suggestions-content');
+  const topicInput = document.getElementById('more-suggestions-topic-input');
+  
+  if (welcome) welcome.classList.remove('hidden');
+  if (content) {
+    content.innerHTML = '';
+    content.classList.add('hidden');
+  }
+  if (topicInput) topicInput.value = '';
+  
+  openWindow(modal);
+  
+  // Kick off automatic initial generation
+  generateMoreSuggestions();
+}
+
+async function generateMoreSuggestions(customTopic = null) {
+  const { character, session } = moreSuggestionsContext;
+  if (!character || !session) return;
+  
+  // Abort previous generation if any
+  abortMoreSuggestionsGeneration();
+  
+  const welcome = document.getElementById('more-suggestions-welcome');
+  const content = document.getElementById('more-suggestions-content');
+  const body = document.getElementById('more-suggestions-body');
+  
+  if (welcome) welcome.classList.add('hidden');
+  if (content) {
+    content.classList.remove('hidden');
+    content.innerHTML = '<span class="streaming-cursor"></span>';
+    content.classList.add('generating');
+  }
+  
+  const controller = new AbortController();
+  moreSuggestionsAbortController = controller;
+  
+  try {
+    const messages = buildApiMessages(character, session);
+    if (messages.length === 0) return;
+    
+    const settings = settingsStore.get();
+    const suggestionsLang = settings.suggestions_language || 'Russian';
+    
+    let systemInstruction = `Based on the conversation so far, generate several highly unique, engaging, and creative reply options for the user.
+For each option:
+1. Write a brief narrative description of the option's tone, style, and potential consequences (1-2 sentences).
+2. Follow it with a JSON block representing the action/button.
+
+Each JSON block must strictly follow this exact format:
+\`\`\`json
+{
+  "label": "Button Name",
+  "message": "Full hidden message to send to the chat"
+}
+\`\`\`
+
+CRITICAL INSTRUCTIONS:
+1. The description and the JSON "label" field (button name, max 4 words) MUST be strictly in ${suggestionsLang}.
+2. The JSON "message" field (the actual prompt to send to chat) MUST be strictly in English.
+3. You must generate at least 3-4 distinct and highly creative options.`;
+
+    if (customTopic) {
+      systemInstruction += `\n\nCRITICAL SPECIAL REQUEST: The user specifically requested that all options should fit this theme or topic: "${customTopic}". Make sure ALL generated choices match this theme!`;
+    }
+
+    if (generatedSuggestionsHistory.length > 0) {
+      systemInstruction += `\n\nCRITICAL DIVERSITY INSTRUCTION: Avoid generating options that are similar to or duplicate these already generated choices: ${JSON.stringify(generatedSuggestionsHistory)}. Ensure the new reply choices are completely fresh, unique, and present different pathways!`;
+    }
+    
+    messages.push({
+      role: 'system',
+      content: systemInstruction
+    });
+    
+    let fullText = '';
+    
+    await api.streamChat(
+      messages,
+      controller.signal,
+      (chunk) => {
+        fullText += chunk;
+        
+        const rendered = renderSuggestionsHTML(fullText);
+        content.innerHTML = rendered.html + '<span class="streaming-cursor"></span>';
+        
+        attachSuggestionButtonListeners(content, rendered.buttonsData);
+        
+        if (body) {
+          body.scrollTop = body.scrollHeight;
+        }
+      },
+      () => {
+        moreSuggestionsAbortController = null;
+        content.classList.remove('generating');
+        
+        const rendered = renderSuggestionsHTML(fullText);
+        content.innerHTML = rendered.html;
+        attachSuggestionButtonListeners(content, rendered.buttonsData);
+        
+        // Save the newly generated options into the avoid list/history
+        if (rendered.buttonsData && rendered.buttonsData.length > 0) {
+          rendered.buttonsData.forEach(btn => {
+            if (btn.label && !generatedSuggestionsHistory.includes(btn.label)) {
+              generatedSuggestionsHistory.push(btn.label);
+            }
+          });
+        }
+        
+        if (body) {
+          body.scrollTop = body.scrollHeight;
+        }
+      },
+      (err) => {
+        if (err.name === 'AbortError' || err.message?.includes('abort')) return;
+        console.error('Failed to stream more suggestions:', err);
+        content.innerHTML = `<p style="color: var(--error);">Error: ${escapeHtml(err.message)}</p>`;
+        content.classList.remove('generating');
+        moreSuggestionsAbortController = null;
+      },
+      {
+        max_tokens: 1000,
+        temperature: 0.85
+      }
+    );
+  } catch (err) {
+    console.error('generateMoreSuggestions error:', err);
+    if (content) {
+      content.innerHTML = `<p style="color: var(--error);">Error: ${escapeHtml(err.message)}</p>`;
+      content.classList.remove('generating');
+    }
+    moreSuggestionsAbortController = null;
+  }
+}
+
+function abortMoreSuggestionsGeneration() {
+  if (moreSuggestionsAbortController) {
+    moreSuggestionsAbortController.abort();
+    moreSuggestionsAbortController = null;
+  }
+}
+
+function renderSuggestionsHTML(rawText) {
+  const blockRegex = /```(?:json)?\s*([\s\S]*?)```/g;
+  let processedText = rawText;
+  const matches = [...rawText.matchAll(blockRegex)];
+  const buttonsData = [];
+  let buttonIndex = 0;
+  
+  matches.forEach(m => {
+    const fullBlock = m[0];
+    const innerContent = m[1].trim();
+    try {
+      const json = JSON.parse(innerContent);
+      if (json && (json.label || json.message)) {
+        const token = `__BUTTON_PLACEHOLDER_${buttonIndex}__`;
+        processedText = processedText.replace(fullBlock, token);
+        buttonsData.push({
+          label: json.label || 'Select option',
+          message: json.message || ''
+        });
+        buttonIndex++;
+      }
+    } catch (e) {
+      // Ignore incomplete / invalid JSON
+    }
+  });
+  
+  let finalHtml = renderMarkdown(processedText);
+  
+  buttonsData.forEach((btnData, i) => {
+    const placeholder = `__BUTTON_PLACEHOLDER_${i}__`;
+    const btnHtml = `<div class="inline-suggestion-btn-container">
+      <button class="continuation-option-btn inline-suggest-btn" data-btn-index="${i}">
+        ${escapeHtml(btnData.label)}
+      </button>
+    </div>`;
+    finalHtml = finalHtml.replace(placeholder, btnHtml);
+  });
+  
+  return { html: finalHtml, buttonsData };
+}
+
+function attachSuggestionButtonListeners(container, buttonsData) {
+  const buttons = container.querySelectorAll('.inline-suggest-btn');
+  buttons.forEach(btn => {
+    if (btn._listenerBound) return;
+    btn._listenerBound = true;
+    
+    const index = parseInt(btn.getAttribute('data-btn-index'));
+    const data = buttonsData[index];
+    if (!data) return;
+    
+    btn.addEventListener('click', () => {
+      closeWindow('more-suggestions-modal');
+      abortMoreSuggestionsGeneration();
+      
+      const { msgElement, session } = moreSuggestionsContext;
+      if (msgElement) {
+        const optionsEl = msgElement.querySelector('.continuation-options');
+        if (optionsEl) optionsEl.remove();
+        
+        const msgId = msgElement.dataset.messageId;
+        if (session) {
+          const msg = session.messages.find(m => m.id === msgId);
+          if (msg) {
+            delete msg.options;
+            chatStore.saveSession(session);
+          }
+        }
+      }
+      
+      if (data.message) {
+        messageInput.value = data.message;
+        sendMessage();
+      }
+    });
+  });
+}
+

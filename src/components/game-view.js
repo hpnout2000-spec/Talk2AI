@@ -3,6 +3,7 @@
    ════════════════════════════════════════════════════════════════════ */
 
 import { gameStore } from '../services/game-store.js';
+import { characterStore } from '../services/character-store.js';
 import { api } from '../services/api.js';
 import { showPrompt } from '../main.js';
 import { uiManager } from '../utils/ui-manager.js';
@@ -22,10 +23,80 @@ function resetStreamingRenderer() {
   streamingTextStates = [];
   const textContainer = document.getElementById('game-scene-text');
   if (textContainer) textContainer.innerHTML = '';
+  removeGameCursor();
+}
+
+function cleanCharacterName(name) {
+  if (!name) return '';
+  // Support both {{char:Name}} and {{char:Name|Alias}}
+  let clean = name;
+  const match = clean.match(/\{\{char:([^|}]+)(?:\|([^}]+))?\}\}/);
+  if (match) {
+    clean = match[1];
+  }
+  return clean.replace(/\{\{char:/g, '').replace(/\}\}/g, '').replace(/char:/g, '').trim();
+}
+
+function stripCharTagsForUI(text) {
+  if (!text) return '';
+  return text.replace(/\{\{char:([^|}]+)(?:\|([^}]+))?\}\}/g, (match, name, alias) => {
+    return alias ? alias.trim() : name.trim();
+  });
+}
+
+function stripJsonBlocks(text, isStreaming = false) {
+  if (!text) return '';
+  
+  let cleaned = text;
+
+  // 1. Remove complete markdown JSON blocks
+  cleaned = cleaned.replace(/```json[\s\S]*?```/g, '');
+  cleaned = cleaned.replace(/```[\s\S]*?```/g, (match) => {
+    const inner = match.slice(3, -3).trim();
+    if ((inner.startsWith('{') && inner.endsWith('}')) || (inner.startsWith('[') && inner.endsWith(']'))) {
+      return '';
+    }
+    return match;
+  });
+
+  // 2. If streaming, remove any incomplete markdown code blocks starting with ```json or ```{
+  if (isStreaming) {
+    const index = cleaned.indexOf('```json');
+    if (index !== -1) {
+      cleaned = cleaned.substring(0, index);
+    }
+    const indexPlain = cleaned.indexOf('```');
+    if (indexPlain !== -1) {
+      const rest = cleaned.substring(indexPlain + 3).trim();
+      if (rest.startsWith('{') || rest.startsWith('[')) {
+        cleaned = cleaned.substring(0, indexPlain);
+      }
+    }
+    // Hide partial char mentions so they don't leak as raw text during streaming
+    cleaned = cleaned.replace(/\{\{[^}]*$/, '');
+  }
+
+  // 3. Remove raw trailing JSON objects or arrays
+  const lastCurly = cleaned.lastIndexOf('{');
+  if (lastCurly !== -1) {
+    const candidate = cleaned.substring(lastCurly).trim();
+    if (candidate.startsWith('{') && (candidate.includes('":') || candidate.endsWith('}'))) {
+      cleaned = cleaned.substring(0, lastCurly);
+    }
+  }
+  const lastSquare = cleaned.lastIndexOf('[');
+  if (lastSquare !== -1) {
+    const candidate = cleaned.substring(lastSquare).trim();
+    if (candidate.startsWith('[') && (candidate.includes('{') || candidate.endsWith(']'))) {
+      cleaned = cleaned.substring(0, lastSquare);
+    }
+  }
+
+  return cleaned.trim();
 }
 
 function tokenizeText(text) {
-  return text.match(/([^\s\n]+|\n|[ ]+)/g) || [];
+  return text.match(/(\{\{char:[^}]*\}\}|\n|[ ]+|[^\s\n]+)/g) || [];
 }
 
 function parsePartialSceneText(partialJson) {
@@ -176,25 +247,93 @@ function renderStreamingChoices(choices) {
   streamingChoices = choices;
 }
 
+// Persistent floating cursor element for smooth glide animation
+let _gameCursor = null;
+let _cursorRafId = null;
+
+function getOrCreateGameCursor(container) {
+  if (!_gameCursor || !_gameCursor.isConnected) {
+    _gameCursor = document.createElement('span');
+    _gameCursor.className = 'streaming-cursor streaming-cursor--float';
+    // Place it relative to the game-main scroll container
+    const anchor = container.closest('.game-main') || container.parentElement;
+    anchor.style.position = 'relative';
+    anchor.appendChild(_gameCursor);
+  }
+  return _gameCursor;
+}
+
+function repositionGameCursor(container) {
+  if (_cursorRafId) cancelAnimationFrame(_cursorRafId);
+  _cursorRafId = requestAnimationFrame(() => {
+    const cursor = _gameCursor;
+    if (!cursor || !cursor.isConnected) return;
+
+    // Find the last text / inline node in the container
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
+      acceptNode: (node) => {
+        if (node.nodeType === Node.TEXT_NODE) return node.textContent.trim() ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+        if (node.tagName === 'BR') return NodeFilter.FILTER_ACCEPT;
+        return NodeFilter.FILTER_SKIP;
+      }
+    });
+    let lastNode = null;
+    while (walker.nextNode()) lastNode = walker.currentNode;
+
+    const anchorEl = cursor.parentElement;
+    const anchorRect = anchorEl.getBoundingClientRect();
+
+    let x = 0, y = 0;
+    if (lastNode) {
+      const range = document.createRange();
+      if (lastNode.nodeType === Node.TEXT_NODE) {
+        range.setStart(lastNode, lastNode.length);
+        range.setEnd(lastNode, lastNode.length);
+      } else {
+        range.selectNode(lastNode);
+      }
+      const rect = range.getBoundingClientRect();
+      x = rect.right - anchorRect.left;
+      y = rect.top - anchorRect.top + (rect.height - cursor.offsetHeight) / 2 + anchorEl.scrollTop;
+    }
+
+    cursor.style.transform = `translate(${x}px, ${y}px)`;
+  });
+}
+
+function removeGameCursor() {
+  if (_cursorRafId) { cancelAnimationFrame(_cursorRafId); _cursorRafId = null; }
+  if (_gameCursor && _gameCursor.isConnected) _gameCursor.remove();
+  _gameCursor = null;
+}
+
 function updateStreamingText(text, isComplete) {
   const textContainer = document.getElementById('game-scene-text');
   if (!textContainer) return;
 
-  if (text.length < renderedText.length) {
+  // Clean the input text by stripping raw or partial JSON blocks
+  const cleanedText = stripJsonBlocks(text, !isComplete);
+
+  if (cleanedText.length < renderedText.length) {
     resetStreamingRenderer();
   }
 
-  const newText = text.slice(renderedText.length);
-  if (!newText) return;
-
-  // Remove existing cursor if present, so we can append new words
-  let cursor = textContainer.querySelector('.streaming-cursor');
-  if (cursor) {
-    cursor.remove();
-  } else {
-    cursor = document.createElement('span');
-    cursor.className = 'streaming-cursor';
+  const newText = cleanedText.slice(renderedText.length);
+  
+  // If it's complete, render full text and remove the floating cursor
+  if (isComplete) {
+    let formattedText = cleanedText
+      .replace(/\n/g, '<br>')
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em>$1</em>');
+    formattedText = processCharacterMentions(formattedText);
+    textContainer.innerHTML = formattedText;
+    renderedText = cleanedText;
+    removeGameCursor();
+    return;
   }
+
+  if (!newText) return;
 
   const tokens = tokenizeText(newText);
 
@@ -206,9 +345,11 @@ function updateStreamingText(text, isComplete) {
       const space = document.createTextNode(token);
       textContainer.appendChild(space);
     } else {
-      const formatted = token
+      let formatted = token
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
         .replace(/\*(.*?)\*/g, '<em>$1</em>');
+        
+      formatted = processCharacterMentions(formatted);
 
       const span = document.createElement('span');
       span.className = 'word-stream';
@@ -217,12 +358,10 @@ function updateStreamingText(text, isComplete) {
     }
   });
 
-  // Append cursor if not complete
-  if (!isComplete) {
-    textContainer.appendChild(cursor);
-  }
-
-  renderedText = text;
+  // Ensure cursor exists and reposition it smoothly
+  getOrCreateGameCursor(textContainer);
+  repositionGameCursor(textContainer);
+  renderedText = cleanedText;
 }
 
 function showStartScreen() {
@@ -250,7 +389,7 @@ function showStartScreen() {
   // Reset prompt input
   const startPrompt = document.getElementById('game-start-prompt');
   if (startPrompt) {
-    startPrompt.value = 'The player wakes up in a strange place, disoriented. Generate the opening scene.';
+    startPrompt.value = '';
   }
 
   // Set language select value to match current game (default Russian)
@@ -258,6 +397,13 @@ function showStartScreen() {
   if (languageSelect) {
     const activeGame = gameStore.get();
     languageSelect.value = (activeGame && activeGame.language) ? activeGame.language : 'Russian';
+  }
+
+  // Set story prompt value to match current game
+  const storyPromptInput = document.getElementById('game-start-story-prompt');
+  if (storyPromptInput) {
+    const activeGame = gameStore.get();
+    storyPromptInput.value = (activeGame && activeGame.story_prompt) ? activeGame.story_prompt : '';
   }
 }
 
@@ -344,10 +490,14 @@ function renderGameHistory() {
     // Render Scene Text
     const sceneEl = document.createElement('div');
     sceneEl.className = 'history-scene-text';
-    sceneEl.innerHTML = scene.scene_text
+    let textHtml = scene.scene_text
+      .replace(/\n/g, '<br>')
       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.*?)\*/g, '<em>$1</em>')
-      .replace(/\n/g, '<br>');
+      .replace(/\*(.*?)\*/g, '<em>$1</em>');
+      
+    textHtml = processCharacterMentions(textHtml);
+      
+    sceneEl.innerHTML = textHtml;
     container.appendChild(sceneEl);
 
     // Render player transition action if saved
@@ -542,12 +692,6 @@ function openGameCharactersModal() {
 
   uiManager.open('game-characters-modal');
   renderGameCharacters();
-
-  // Automatically refresh character list if it is completely empty
-  const characters = game.characters || [];
-  if (characters.length === 0) {
-    refreshGameCharacters();
-  }
 }
 
 function closeGameCharactersModal() {
@@ -567,7 +711,7 @@ function renderGameCharacters() {
   if (characters.length === 0) {
     container.innerHTML = `
       <div style="text-align: center; color: var(--text-tertiary); font-style: italic; padding: 20px 0; font-size: 0.85rem;">
-        The character list is empty. Click the "Refresh List" button below to let the AI find them.
+        No characters yet. The AI Game Master will add characters as the story progresses, or you can add them manually.
       </div>
     `;
     return;
@@ -586,7 +730,6 @@ function renderGameCharacters() {
     card.style.gap = '8px';
     card.style.transition = 'all 0.2s ease';
 
-    // Hover micro-animations
     card.onmouseenter = () => {
       card.style.background = 'rgba(255, 255, 255, 0.05)';
       card.style.borderColor = 'var(--border-subtle)';
@@ -597,21 +740,45 @@ function renderGameCharacters() {
     };
 
     const hasDetails = !!char.details;
+    const shortDesc = char.short_description || '';
 
     card.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--bg-tertiary); border: 1px solid var(--border-light); display: flex; align-items: center; justify-content: center; color: var(--text-accent);">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+        <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;">
+          <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--bg-tertiary); border: 1px solid var(--border-light); display: flex; align-items: center; justify-content: center; color: var(--text-accent); flex-shrink: 0;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
               <circle cx="12" cy="8" r="4"></circle>
               <path d="M20 21a8 8 0 1 0-16 0"></path>
             </svg>
           </div>
-          <span style="font-weight: 600; color: #f8fafc; font-size: 0.95rem;">${char.name}</span>
+          <div style="min-width: 0; display: flex; flex-direction: column; gap: 2px;">
+            <div style="font-weight: 600; color: #f8fafc; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <span>${char.name}</span>
+              ${char.system_prompt ? `
+                <span style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.65rem; color: #818cf8; background: rgba(99, 102, 241, 0.15); padding: 1px 6px; border-radius: 10px; border: 1px solid rgba(99, 102, 241, 0.3); font-weight: 500;" title="Individual AI behavior directive is configured">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 8px; height: 8px;">
+                    <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                    <polyline points="2 17 12 22 22 17"></polyline>
+                    <polyline points="2 12 12 17 22 12"></polyline>
+                  </svg>
+                  <span>Directive</span>
+                </span>
+              ` : ''}
+            </div>
+            ${shortDesc ? `<div style="font-size: 0.8rem; color: #94a3b8; line-height: 1.4; margin-top: 2px;">${shortDesc}</div>` : ''}
+          </div>
         </div>
-        <button class="btn-secondary small btn-char-details" data-name="${char.name}" style="padding: 4px 10px; font-size: 0.8rem; border-radius: 20px; border: 1px solid var(--border-light); cursor: pointer;">
-          ${hasDetails ? 'Update Details...' : 'Details...'}
-        </button>
+        <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0; margin-left: 8px;">
+          <button class="btn-secondary small btn-char-edit" data-name="${char.name}" style="padding: 4px 10px; font-size: 0.75rem; border-radius: 20px; border: 1px solid var(--border-light); cursor: pointer;" title="Edit character">
+            Edit
+          </button>
+          <button class="btn-secondary small btn-char-details" data-name="${char.name}" style="padding: 4px 10px; font-size: 0.75rem; border-radius: 20px; border: 1px solid var(--border-light); cursor: pointer;">
+            ${hasDetails ? 'Update Details...' : 'Details...'}
+          </button>
+          <button class="btn-icon small btn-char-delete" data-name="${char.name}" style="color: var(--danger, #ef4444); padding: 4px; cursor: pointer;" title="Remove character">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+          </button>
+        </div>
       </div>
       
       ${hasDetails ? `
@@ -627,8 +794,97 @@ function renderGameCharacters() {
       detailsBtn.onclick = () => fetchCharacterDetails(char.name);
     }
 
+    // Bind edit click
+    const editBtn = card.querySelector('.btn-char-edit');
+    if (editBtn) {
+      editBtn.onclick = () => openEditCharacterDialog(char);
+    }
+
+    // Bind delete click
+    const deleteBtn = card.querySelector('.btn-char-delete');
+    if (deleteBtn) {
+      deleteBtn.onclick = () => {
+        if (confirm(`Remove character "${char.name}"?`)) {
+          gameStore.removeCharacter(char.name);
+          renderGameCharacters();
+        }
+      };
+    }
+
     container.appendChild(card);
   });
+}
+
+function openEditCharacterDialog(char) {
+  const oldNameInput = document.getElementById('game-character-edit-old-name');
+  const nameInput = document.getElementById('game-character-edit-name');
+  const descInput = document.getElementById('game-character-edit-short-desc');
+  const promptInput = document.getElementById('game-character-edit-prompt');
+  const title = document.getElementById('game-character-edit-title');
+
+  if (title) title.textContent = 'Edit Character';
+  if (oldNameInput) oldNameInput.value = char.name || '';
+  if (nameInput) nameInput.value = char.name || '';
+  if (descInput) descInput.value = char.short_description || '';
+  if (promptInput) promptInput.value = char.system_prompt || '';
+
+  uiManager.open('game-character-edit-modal');
+}
+
+function addManualCharacter() {
+  const oldNameInput = document.getElementById('game-character-edit-old-name');
+  const nameInput = document.getElementById('game-character-edit-name');
+  const descInput = document.getElementById('game-character-edit-short-desc');
+  const promptInput = document.getElementById('game-character-edit-prompt');
+  const title = document.getElementById('game-character-edit-title');
+
+  if (title) title.textContent = 'Add Character';
+  if (oldNameInput) oldNameInput.value = '';
+  if (nameInput) nameInput.value = '';
+  if (descInput) descInput.value = '';
+  if (promptInput) promptInput.value = '';
+
+  uiManager.open('game-character-edit-modal');
+}
+
+function closeGameCharacterEditModal() {
+  uiManager.close('game-character-edit-modal');
+}
+
+function saveGameCharacter() {
+  const oldNameInput = document.getElementById('game-character-edit-old-name');
+  const nameInput = document.getElementById('game-character-edit-name');
+  const descInput = document.getElementById('game-character-edit-short-desc');
+  const promptInput = document.getElementById('game-character-edit-prompt');
+
+  const oldName = oldNameInput ? oldNameInput.value.trim() : '';
+  const name = nameInput ? nameInput.value.trim() : '';
+  const shortDesc = descInput ? descInput.value.trim() : '';
+  const systemPrompt = promptInput ? promptInput.value.trim() : '';
+
+  if (!name) {
+    alert("Character name cannot be empty.");
+    return;
+  }
+
+  // If we are editing and changed name, delete the old name first
+  if (oldName && oldName !== name) {
+    gameStore.removeCharacter(oldName);
+  }
+
+  // Get existing details if modifying, otherwise empty
+  const existingChar = gameStore.getCharacter(name);
+  const details = existingChar ? existingChar.details : '';
+
+  gameStore.upsertCharacter({
+    name,
+    short_description: shortDesc,
+    system_prompt: systemPrompt,
+    details
+  });
+
+  renderGameCharacters();
+  closeGameCharacterEditModal();
 }
 
 async function fetchCharacterDetails(name) {
@@ -656,15 +912,7 @@ async function fetchCharacterDetails(name) {
     const details = await api.generateCharacterDetails(name, game.summary || '', fullHistoryToAnalyze);
     
     // Save to store
-    if (!game.characters) game.characters = [];
-    const char = game.characters.find(c => c.name === name);
-    if (char) {
-      char.details = details.trim();
-    } else {
-      game.characters.push({ name, details: details.trim() });
-    }
-    
-    gameStore.save();
+    gameStore.upsertCharacter({ name, details: details.trim() });
     renderGameCharacters();
   } catch (err) {
     console.error(err);
@@ -673,53 +921,6 @@ async function fetchCharacterDetails(name) {
       btn.disabled = false;
       btn.innerHTML = originalHtml;
     }
-  }
-}
-
-async function refreshGameCharacters() {
-  const game = gameStore.get();
-  if (!game) return;
-
-  const loader = document.getElementById('game-characters-loader');
-  const listContainer = document.getElementById('game-characters-list');
-  const refreshBtn = document.getElementById('btn-refresh-game-characters');
-
-  if (loader) loader.style.display = 'flex';
-  if (listContainer) listContainer.style.display = 'none';
-  if (refreshBtn) refreshBtn.disabled = true;
-
-  try {
-    const history = game.history || [];
-    const summarizedCount = game.summarized_count || 0;
-    const remainingHistory = history.slice(summarizedCount);
-    
-    const fullHistoryToAnalyze = [...remainingHistory];
-    if (game.currentScene) {
-      fullHistoryToAnalyze.push(game.currentScene);
-    }
-
-    const names = await api.extractGameCharacters(game.summary || '', fullHistoryToAnalyze);
-    
-    // Merge names with existing characters to preserve details
-    const existingChars = game.characters || [];
-    const newChars = names.map(name => {
-      const existing = existingChars.find(c => c.name === name);
-      return {
-        name,
-        details: existing ? existing.details : ''
-      };
-    });
-
-    game.characters = newChars;
-    gameStore.save();
-    renderGameCharacters();
-  } catch (err) {
-    console.error(err);
-    alert('Failed to refresh the character list.');
-  } finally {
-    if (loader) loader.style.display = 'none';
-    if (listContainer) listContainer.style.display = 'flex';
-    if (refreshBtn) refreshBtn.disabled = false;
   }
 }
 
@@ -828,15 +1029,19 @@ export async function initGameView() {
       const languageSelect = document.getElementById('game-start-language');
       const selectedLanguage = languageSelect ? languageSelect.value : 'Russian';
 
+      const storyPromptInput = document.getElementById('game-start-story-prompt');
+      const storyPrompt = storyPromptInput ? storyPromptInput.value.trim() : '';
+
       const activeGame = gameStore.get();
       if (activeGame) {
         activeGame.language = selectedLanguage;
+        activeGame.story_prompt = storyPrompt;
         gameStore.save();
       }
 
-      if (userPrompt) {
-        generateNextScene(userPrompt, "Start Game");
-      }
+      const defaultStartPrompt = "The player wakes up in a strange forest at dusk, holding a rusty sword.";
+      const promptToUse = userPrompt || defaultStartPrompt;
+      generateNextScene(promptToUse, "Start Game");
     });
   }
 
@@ -883,9 +1088,37 @@ export async function initGameView() {
     btnCloseCharsModal.addEventListener('click', closeGameCharactersModal);
   }
 
-  const btnRefreshChars = document.getElementById('btn-refresh-game-characters');
-  if (btnRefreshChars) {
-    btnRefreshChars.addEventListener('click', refreshGameCharacters);
+  const btnAddGameChar = document.getElementById('btn-add-game-character');
+  if (btnAddGameChar) {
+    btnAddGameChar.addEventListener('click', addManualCharacter);
+  }
+
+  // Bind Game Character Edit Modal
+  const btnCloseCharEdit = document.getElementById('btn-close-game-character-edit-modal');
+  if (btnCloseCharEdit) {
+    btnCloseCharEdit.addEventListener('click', closeGameCharacterEditModal);
+  }
+  const btnCancelCharEdit = document.getElementById('btn-cancel-game-character-edit');
+  if (btnCancelCharEdit) {
+    btnCancelCharEdit.addEventListener('click', closeGameCharacterEditModal);
+  }
+  const btnSaveCharEdit = document.getElementById('btn-save-game-character-edit');
+  if (btnSaveCharEdit) {
+    btnSaveCharEdit.addEventListener('click', saveGameCharacter);
+  }
+
+  // Bind Game Settings Modal
+  const btnCloseGameSettings = document.getElementById('btn-close-game-settings-modal');
+  if (btnCloseGameSettings) {
+    btnCloseGameSettings.addEventListener('click', closeGameSettingsModal);
+  }
+  const btnCancelGameSettings = document.getElementById('btn-cancel-game-settings');
+  if (btnCancelGameSettings) {
+    btnCancelGameSettings.addEventListener('click', closeGameSettingsModal);
+  }
+  const btnSaveGameSettings = document.getElementById('btn-save-game-settings');
+  if (btnSaveGameSettings) {
+    btnSaveGameSettings.addEventListener('click', saveGameSettings);
   }
 
   // Bind Undo Last Move button
@@ -1034,13 +1267,9 @@ function renderGamesList() {
 
     // Rename game
     const renameBtn = el.querySelector('.btn-rename-game');
-    renameBtn.addEventListener('click', async (e) => {
+    renameBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const newTitle = await showPrompt('Rename Game', 'Enter a new title for this game session:', game.title);
-      if (newTitle && newTitle.trim()) {
-        gameStore.renameGame(game.id, newTitle.trim());
-        renderGamesList();
-      }
+      openGameSettingsModal(game.id);
     });
 
     // Delete game
@@ -1107,9 +1336,8 @@ function renderScene(sceneData, skipText = false) {
   
   if (noteInput) noteInput.value = ''; // Clear GM note on new scene
   
-  // Remove streaming cursor at the end of stream!
-  const cursor = document.querySelector('.streaming-cursor');
-  if (cursor) cursor.remove();
+  // Remove the persistent floating cursor at the end of stream
+  removeGameCursor();
 
   if (!skipText) {
     resetStreamingRenderer();
@@ -1117,13 +1345,20 @@ function renderScene(sceneData, skipText = false) {
       updateStreamingText(sceneData.scene_text, true);
     }
   } else {
-    // If skipping text rendering (because it streamed already), transition word-stream elements to fully stable
-    const streams = document.querySelectorAll('.word-stream');
-    streams.forEach(el => {
-      el.style.filter = 'none';
-      el.style.opacity = '1';
-      el.style.transform = 'none';
-    });
+    // If skipping text rendering (because it streamed already), we still want to make sure
+    // we render the clean final stable text properly formatted and parsed, hiding any JSON!
+    if (sceneData.scene_text) {
+      const textContainer = document.getElementById('game-scene-text');
+      if (textContainer) {
+        const cleanedText = stripJsonBlocks(sceneData.scene_text, false);
+        let formattedText = cleanedText
+          .replace(/\n/g, '<br>')
+          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+          .replace(/\*(.*?)\*/g, '<em>$1</em>');
+        formattedText = processCharacterMentions(formattedText);
+        textContainer.innerHTML = formattedText;
+      }
+    }
   }
 
   // 1. Render Choices with sequential animations
@@ -1136,7 +1371,7 @@ function renderScene(sceneData, skipText = false) {
     choices.forEach((choice, idx) => {
       const btn = document.createElement('button');
       btn.className = 'btn-choice';
-      btn.textContent = choice.text;
+      btn.textContent = stripCharTagsForUI(choice.text);
       
       if (skipText) {
         btn.style.animation = 'none';
@@ -1159,7 +1394,7 @@ function renderScene(sceneData, skipText = false) {
         const el = document.createElement('span');
         const color = ['green', 'red', 'white'].includes(state.color) ? state.color : 'white';
         el.className = `game-text-state color-${color}`;
-        el.textContent = state.text;
+        el.textContent = stripCharTagsForUI(state.text);
         
         if (skipText) {
           el.style.animation = 'none';
@@ -1183,7 +1418,7 @@ function renderScene(sceneData, skipText = false) {
       sceneData.extra_actions.forEach((action, idx) => {
         const btn = document.createElement('button');
         btn.className = 'btn-extra-action';
-        btn.textContent = action;
+        btn.textContent = stripCharTagsForUI(action);
         
         if (skipText) {
           btn.style.animation = 'none';
@@ -1246,6 +1481,8 @@ async function generateNextScene(promptIntent, actionText, noteToGM = '') {
   const gameSummary = state.summary || "";
   const summarizedCount = state.summarized_count || 0;
   const remainingHistory = state.history ? state.history.slice(summarizedCount) : [];
+  const storyPrompt = state.story_prompt || '';
+  const existingCharacters = state.characters || [];
   let genError = null;
 
   try {
@@ -1280,7 +1517,9 @@ async function generateNextScene(promptIntent, actionText, noteToGM = '') {
           renderStreamingChoices(partialChoices);
         }
       },
-      language
+      language,
+      storyPrompt,
+      existingCharacters
     );
     
     // Apply stats
@@ -1305,6 +1544,25 @@ async function generateNextScene(promptIntent, actionText, noteToGM = '') {
     // If history is currently expanded, re-render it to include the latest additions!
     if (isHistoryExpanded) {
       renderGameHistory();
+    }
+
+    // ─── Separate API call: update game characters from the new scene ───
+    if (newScene.scene_text) {
+      try {
+        const updatedChars = await api.updateGameCharacters(
+          newScene.scene_text,
+          gameStore.get().characters || [],
+          gameSummary,
+          state.language || 'Russian'
+        );
+        if (updatedChars && updatedChars.length > 0) {
+          updatedChars.forEach(charData => {
+            gameStore.upsertCharacter(charData);
+          });
+        }
+      } catch (charErr) {
+        console.warn('Character update failed (non-critical):', charErr);
+      }
     }
     
   } catch (error) {
@@ -1334,3 +1592,140 @@ function setLoaderVisible(visible) {
   if (noteInput) noteInput.disabled = visible;
 }
 
+// ─── Character Mentions ───
+function processCharacterMentions(text) {
+  if (!text) return '';
+  return text.replace(/\{\{char:([^|}]+)(?:\|([^}]+))?\}\}/g, (match, name, alias) => {
+    const displayName = alias ? alias.trim() : name.trim();
+    return `<span class="char-mention" data-char-name="${name.trim()}">${displayName}</span>`;
+  });
+}
+
+// Global click delegation for character mentions
+document.addEventListener('click', (e) => {
+  const mention = e.target.closest('.char-mention');
+  if (mention) {
+    const charName = mention.getAttribute('data-char-name');
+    const cleanedName = cleanCharacterName(charName);
+    
+    // 1. Look up in active game characters
+    const game = gameStore.get();
+    if (game && game.characters) {
+      const char = game.characters.find(c => cleanCharacterName(c.name).toLowerCase() === cleanedName.toLowerCase());
+      if (char) {
+        showCharacterTooltip(mention, char);
+        return;
+      }
+    }
+    
+    // 2. Fallback to global chatbot directory
+    const globalChars = characterStore.getAll();
+    const globalChar = globalChars.find(c => cleanCharacterName(c.name).toLowerCase() === cleanedName.toLowerCase());
+    if (globalChar) {
+      showCharacterTooltip(mention, globalChar);
+    }
+  }
+});
+
+function showCharacterTooltip(element, char) {
+  // Remove existing tooltips
+  document.querySelectorAll('.char-tooltip').forEach(t => t.remove());
+
+  const tooltip = document.createElement('div');
+  tooltip.className = 'char-tooltip';
+  tooltip.style.position = 'absolute';
+  tooltip.style.background = 'rgba(15, 15, 20, 0.95)';
+  tooltip.style.backdropFilter = 'blur(10px)';
+  tooltip.style.border = '1px solid var(--border-subtle)';
+  tooltip.style.borderRadius = 'var(--radius-md)';
+  tooltip.style.padding = '12px 16px';
+  tooltip.style.zIndex = '9999';
+  tooltip.style.maxWidth = '250px';
+  tooltip.style.boxShadow = '0 8px 32px rgba(0,0,0,0.5)';
+  tooltip.style.color = 'var(--text-primary)';
+  tooltip.style.animation = 'fadeIn 0.2s ease';
+  
+  const shortDesc = char.short_description || 'No description available.';
+  tooltip.innerHTML = `
+    <div style="font-weight: 600; font-size: 0.95rem; margin-bottom: 4px; color: var(--text-accent);">${char.name}</div>
+    <div style="font-size: 0.85rem; line-height: 1.4; color: var(--text-secondary);">${shortDesc}</div>
+  `;
+
+  document.body.appendChild(tooltip);
+
+  const rect = element.getBoundingClientRect();
+  tooltip.style.top = `${rect.bottom + window.scrollY + 8}px`;
+  
+  // Center relative to element, but keep inside window bounds
+  let left = rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2);
+  if (left < 10) left = 10;
+  if (left + tooltip.offsetWidth > window.innerWidth - 10) {
+    left = window.innerWidth - tooltip.offsetWidth - 10;
+  }
+  tooltip.style.left = `${left}px`;
+
+  // Close when clicking outside
+  const closeHandler = (e) => {
+    if (!tooltip.contains(e.target) && e.target !== element) {
+      tooltip.remove();
+      document.removeEventListener('click', closeHandler);
+    }
+  };
+  
+  // Use timeout to avoid immediately closing from the current click event
+  setTimeout(() => {
+    document.addEventListener('click', closeHandler);
+  }, 10);
+}
+
+// ─── Game Settings Modal ───
+function openGameSettingsModal(gameId) {
+  const game = gameStore.getAllGames().find(g => g.id === gameId);
+  if (!game) return;
+
+  const modal = document.getElementById('game-settings-modal');
+  const titleInput = document.getElementById('game-settings-title');
+  const promptInput = document.getElementById('game-settings-story-prompt');
+  
+  if (titleInput) titleInput.value = game.title || '';
+  if (promptInput) promptInput.value = game.story_prompt || '';
+  
+  modal.setAttribute('data-game-id', gameId);
+  uiManager.open('game-settings-modal');
+}
+
+function closeGameSettingsModal() {
+  uiManager.close('game-settings-modal');
+}
+
+function saveGameSettings() {
+  const modal = document.getElementById('game-settings-modal');
+  const gameId = modal.getAttribute('data-game-id');
+  if (!gameId) return;
+
+  const titleInput = document.getElementById('game-settings-title');
+  const promptInput = document.getElementById('game-settings-story-prompt');
+  
+  const title = titleInput ? titleInput.value.trim() : '';
+  const storyPrompt = promptInput ? promptInput.value.trim() : '';
+  
+  if (!title) {
+    alert("Game title cannot be empty.");
+    return;
+  }
+  
+  gameStore.updateGameSettings(gameId, { title, story_prompt: storyPrompt });
+  
+  // Re-render games list and potentially update start screen if it's the active game
+  renderGamesList();
+  
+  const activeGame = gameStore.get();
+  if (activeGame && activeGame.id === gameId) {
+    const startPromptInput = document.getElementById('game-start-story-prompt');
+    if (startPromptInput) {
+      startPromptInput.value = storyPrompt;
+    }
+  }
+
+  closeGameSettingsModal();
+}

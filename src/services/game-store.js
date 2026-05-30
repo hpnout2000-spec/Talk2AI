@@ -3,6 +3,11 @@
    ════════════════════════════════════════════════════════════════════ */
 import { generateId } from '../utils/helpers.js';
 
+function cleanCharacterName(name) {
+  if (!name) return '';
+  return name.replace(/\{\{char:/g, '').replace(/\}\}/g, '').replace(/char:/g, '').trim();
+}
+
 let gamesState = {
   games: [],
   activeGameId: null
@@ -79,6 +84,8 @@ export const gameStore = {
       inventory: [],
       currentScene: null,
       history: [],
+      story_prompt: '',
+      characters: [],
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
@@ -104,6 +111,48 @@ export const gameStore = {
       game.updated_at = new Date().toISOString();
       this.save();
     }
+  },
+
+  updateGameSettings(id, settings) {
+    const game = gamesState.games.find(g => g.id === id);
+    if (!game) return;
+    if (settings.title !== undefined) game.title = settings.title || 'Untitled Game';
+    if (settings.story_prompt !== undefined) game.story_prompt = settings.story_prompt;
+    game.updated_at = new Date().toISOString();
+    this.save();
+  },
+
+  upsertCharacter(charData) {
+    const game = this.get();
+    if (!game) return;
+    if (!game.characters) game.characters = [];
+    
+    const cleanedName = cleanCharacterName(charData.name);
+    charData.name = cleanedName;
+
+    const idx = game.characters.findIndex(c => cleanCharacterName(c.name).toLowerCase() === cleanedName.toLowerCase());
+    if (idx >= 0) {
+      game.characters[idx] = { ...game.characters[idx], ...charData };
+    } else {
+      game.characters.push(charData);
+    }
+    game.updated_at = new Date().toISOString();
+    this.save();
+  },
+
+  removeCharacter(name) {
+    const game = this.get();
+    if (!game || !game.characters) return;
+    const cleanedName = cleanCharacterName(name);
+    game.characters = game.characters.filter(c => cleanCharacterName(c.name).toLowerCase() !== cleanedName.toLowerCase());
+    game.updated_at = new Date().toISOString();
+    this.save();
+  },
+
+  getCharacter(name) {
+    const game = this.get();
+    if (!game || !game.characters) return null;
+    return game.characters.find(c => c.name === name) || null;
   },
 
 

@@ -192,7 +192,7 @@ export const api = {
   /**
    * Generates a new game scene in JSON format for the Interactive Game Mode
    */
-  async generateGameScene(currentStats, previousSceneText, playerAction, prompt, noteToGM = '', gameSummary = '', remainingHistory = [], onChunk = null, language = 'English') {
+  async generateGameScene(currentStats, previousSceneText, playerAction, prompt, noteToGM = '', gameSummary = '', remainingHistory = [], onChunk = null, language = 'English', storyPrompt = '', existingCharacters = []) {
     const settings = settingsStore.get();
     const customPrompt = settings.game_system_prompt || "You are a Game Master in an interactive text RPG.";
     let lengthPrompt = "";
@@ -223,10 +223,27 @@ export const api = {
       });
     }
 
+    const storyPremiseBlock = storyPrompt ? `\nSTORY PREMISE:\n${storyPrompt}\n` : '';
+
+    let existingCharsBlock = '';
+    if (existingCharacters && existingCharacters.length > 0) {
+      existingCharsBlock = `\nKNOWN CHARACTERS:\n${existingCharacters.map(c => {
+        let block = `- ${c.name}: ${c.short_description || 'No description yet'}`;
+        if (c.system_prompt) {
+          block += `\n  Behavioral Directive/Prompt: ${c.system_prompt}`;
+        }
+        return block;
+      }).join('\n')}\n`;
+    }
+
     const systemPrompt = `${customPrompt}
+${storyPremiseBlock}
 You must return your response ONLY as a valid JSON object. Do not include any explanations, greetings, or markdown code blocks outside the JSON.
 ${lengthPrompt}
 You MUST write the entire generated RPG content (including "scene_text", all items inside "text_states" array, all labels inside "extra_actions" array, and all choices button texts inside "choices" array) strictly and exclusively in the ${language} language. All user-visible narrative text and controls MUST be fully in ${language}.
+
+    IMPORTANT: When referring to named characters (NPCs) in scene_text, you MUST wrap their name with the {{char:Name}} tag. For example: "{{char:Lena}} looked at you." To display a different text (like a pronoun or alias), use {{char:Name|alias}}. For example: "{{char:Lena|She}} looked at you." or "{{char:Guard|The tall man}} stood there." This applies to ALL character names and meaningful references in the scene_text ONLY. Do NOT use the {{char:}} syntax inside choices, actions, text_states, or extra_actions. Write character names normally there. Do NOT use {{char:}} for the player character.
+${existingCharsBlock}
 
 The user currently has these stats:
 ${JSON.stringify(currentStats)}
@@ -234,16 +251,17 @@ ${JSON.stringify(currentStats)}
 ${historyContext ? `--- ADVENTURE CONTEXT ---
 ${historyContext}
 ------------------------\n` : ''}
-The previous scene was:
-"${previousSceneText || 'The game is just starting.'}"
+${previousSceneText ? `The previous scene was:
+"${previousSceneText}"
 
 The player decided to:
-"${playerAction || prompt}"
+"${playerAction}"` : `The initial starting scenario is:
+"${prompt || 'The game is just starting.'}"`}
 ${noteToGM ? `\nNOTE FROM THE PLAYER TO THE GAME MASTER:\n"${noteToGM}"\nYou MUST incorporate this request or guidance into the next scene.` : ''}
 
 Generate the next scene. Your JSON must strictly follow this schema:
 {
-  "scene_text": "Detailed and atmospheric description of what happens next.",
+  "scene_text": "Detailed and atmospheric description of what happens next. Use {{char:Name}} for character references.",
   "stats_changes": {
     "hp": 0, // change in hp, negative for damage
     "stress": 0, // change in stress
@@ -296,6 +314,49 @@ Generate the next scene. Your JSON must strictly follow this schema:
         { temperature: 0.7, max_tokens: 2048 }
       );
     });
+  },
+
+  /**
+   * Extracts and updates game characters from the latest scene (separate API call after scene generation)
+   * Returns an array of character objects: [{ name, short_description }]
+   */
+  async updateGameCharacters(sceneText, existingCharacters = [], gameSummary = '', language = 'English') {
+    let existingCharsBlock = '';
+    if (existingCharacters && existingCharacters.length > 0) {
+      existingCharsBlock = `\nCurrently known characters:\n${existingCharacters.map(c => `- ${c.name}: ${c.short_description || 'No description'}`).join('\n')}\n`;
+    }
+
+    const systemPrompt = `You are an expert RPG Character Tracker. Analyze the latest scene text and identify ALL characters (NPCs) that appear or are mentioned.
+${existingCharsBlock}
+For each character (new or existing), provide:
+- "name": The character's name or identifier (e.g. "Лена", "Guard", "Старик у ворот")
+- "short_description": A concise description (20-40 words) of the character based on what is known so far. Write in ${language}.
+
+Return ONLY a valid JSON array. Do NOT include the player character. Include both new and existing characters that appear in this scene (update their descriptions if something new was learned about them).
+If no characters appear, return an empty array [].
+Do not include any formatting, markdown code blocks, or greetings. Just the clean JSON array.
+
+Example response:
+[{"name": "Лена", "short_description": "Молодая женщина с рыжими волосами, работает в таверне. Выглядит настороженной, но доброжелательной."}]`;
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Latest scene text:\n${sceneText}\n\nIdentify and describe all characters from this scene.` }
+    ];
+
+    try {
+      const response = await this.chatCompletion(messages, { temperature: 0.3, max_tokens: 1536 });
+      let cleanText = response.trim();
+      if (cleanText.startsWith('```json')) {
+        cleanText = cleanText.replace(/^```json/m, '').replace(/```$/m, '').trim();
+      } else if (cleanText.startsWith('```')) {
+        cleanText = cleanText.replace(/^```/m, '').replace(/```$/m, '').trim();
+      }
+      return JSON.parse(cleanText);
+    } catch (err) {
+      console.error('Failed to update game characters:', err);
+      return [];
+    }
   },
 
   /**

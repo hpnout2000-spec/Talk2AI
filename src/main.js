@@ -22,6 +22,8 @@ import { initGroupChatPanel } from './components/group-chat-panel.js';
 import { initGroupChatView } from './components/group-chat-view.js';
 import { groupChatStore } from './services/group-chat-store.js';
 import { initGameView } from './components/game-view.js';
+import { initGenAIMemoriesMgr } from './components/genai-memories-mgr.js';
+import { initGenAISkillsMgr } from './components/genai-skills-mgr.js';
 
 // ─── Initialize App ─────────────────────────────────────────────────
 
@@ -300,6 +302,8 @@ async function init() {
   initBookPanel();
   initBookView();
   initGenAIPanel();
+  initGenAIMemoriesMgr();
+  initGenAISkillsMgr();
   initGroupChatPanel();
   initGroupChatView();
   initGameView();

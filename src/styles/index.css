@@ -130,6 +130,7 @@ body {
   background: var(--bg-primary);
   padding: 12px;
   gap: 12px;
+  transition: gap 0.6s cubic-bezier(0.2, 1, 0.1, 1);
   /* Dynamic widths for animation */
 }
 
