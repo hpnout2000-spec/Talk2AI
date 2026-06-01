@@ -99,7 +99,7 @@ SPECIAL Directives:
 - personal memory system: You can add_memory, delete_memory, and list_memories.
 - Group Chats: You can manage groups and response modes. Do not switch to group chats unless explicitly asked.
 - Game GM Mode: You can interact with games and actions.
-- Skills System: You can call {"genai_action":"get_skills"} to retrieve all available custom background information/guides, and {"genai_action":"read_skill","filename":"..."} to read their full contents. Use them when the user asks for details or background help (like how the app works, etc.).
+- Skills System: CRITICAL RULE: BEFORE you perform ANY action, activation, toggling, or reading of background skills, you MUST call {"genai_action":"get_skills"} to inspect the exact current list of available skills! You are strictly prohibited from guessing skill names or toggling skills without checking the list first. Once checked, you can call {"genai_action":"get_skills"} to retrieve all available custom background information/guides, and {"genai_action":"read_skill","filename":"..."} to read their full contents. Use them when the user asks for details or background help (like how the app works, etc.).
 - Image Generation (CRITICAL DIRECTIVE): If the user requests to create, generate, draw, paint, or illustrate any image, illustration, character, scene, background, avatar, or custom object, you MUST execute the image generation tool. It is strictly forbidden to just write a text description or ignore the generation request. You MUST output the JSON tool call: {"genai_action":"generate_image","prompt":"...","loading_message":"..."} on its own line.
   * The prompt parameter MUST be a detailed, rich description in English (with all character details, context, and aesthetic tags) to ensure premium illustration quality.
   * The loading_message parameter MUST be a creative, highly contextual status message in Russian that is displayed in the UI while the image is generating.
@@ -438,6 +438,14 @@ You MUST use the following JSON function calls to interact with the application 
       - "filename": string (required) - the exact filename of the skill or "nhentai" (e.g. "Rules for RP. Russian.txt" or "nhentai").
       - "active": boolean (required) - true to activate, false to deactivate.
     - Example: {"genai_action":"set_skill_active","filename":"Rules for RP. Russian.txt","active":true}
+${settings.comfyui_enabled_genai ? `
+31. generate_image: Generate or illustrate an image using premium ComfyUI diffusion models.
+    - When to use: ALWAYS use this when the user asks you to generate, draw, paint, create, or show an image, scene, character illustration, or background.
+    - Parameters:
+      - "prompt": string (required) - Extremely detailed descriptive prompt in English detailing style, quality, lighting, and subjects.
+      - "loading_message": string (required) - Contextual status message in Russian shown to the user while generating.
+    - Example: {"genai_action":"generate_image","prompt":"highly detailed scenery of a fantasy lake, twilight lighting, masterpieces","loading_message":"Рисую волшебное озеро..."}` : ''}
+
 
 44. add_char_fact: Add a numbered fact to a specific character creation tab.
     - When to use: When the user provides a detail about the character in Character Creation mode.
@@ -665,8 +673,8 @@ async function buildApiMessages(extraUserInstruction = null) {
 
   // Asynchronously build the active skills block early so we can account for its size in character limit subtraction
   let activeSkillsBlock = '';
-  const currentSession = getCurrentGenaiSession();
-  if (currentSession && currentSession.activeSkills && currentSession.activeSkills.length > 0) {
+  const activeSkills = getActiveSkillsForCurrentSession();
+  if (activeSkills && activeSkills.length > 0) {
     activeSkillsBlock += '\n\n[ACTIVE SKILLS]\n';
     
     let allSkills = [];
@@ -676,7 +684,7 @@ async function buildApiMessages(extraUserInstruction = null) {
       console.error('Failed to get skills for system prompt:', e);
     }
 
-    for (const skillId of currentSession.activeSkills) {
+    for (const skillId of activeSkills) {
       if (skillId === 'nhentai') {
         activeSkillsBlock += `You have active skill: nhentai / Tag Search Assistant.
 - Purpose: Helping user search and browse galleries, tags, and related content from the nhentai API v2.
@@ -1567,18 +1575,15 @@ async function executeTool(action) {
     const active = !!action.active;
     if (!filename) return { error: 'Missing filename parameter.' };
 
-    const session = getCurrentGenaiSession();
-    if (!session) return { error: 'No active session found to activate skill.' };
-    if (!session.activeSkills) session.activeSkills = [];
-
+    const activeSkills = getActiveSkillsForCurrentSession();
     // Map filename to id 'nhentai' when applicable
     const id = filename === 'nhentai' || filename === 'nhentai.txt' ? 'nhentai' : filename;
 
-    const isCurrentlyActive = session.activeSkills.includes(id);
+    const isCurrentlyActive = activeSkills.includes(id);
 
     if (active && !isCurrentlyActive) {
-      session.activeSkills.push(id);
-      saveHistory();
+      const updated = [...activeSkills, id];
+      await setActiveSkillsForCurrentSession(updated);
       // Update UI asynchronously
       setTimeout(async () => {
         await renderSkillsList();
@@ -1590,8 +1595,8 @@ async function executeTool(action) {
       }, 50);
       return { success: true, filename: id, active: true, info: `Skill "${id}" activated.` };
     } else if (!active && isCurrentlyActive) {
-      session.activeSkills = session.activeSkills.filter(s => s !== id);
-      saveHistory();
+      const updated = activeSkills.filter(s => s !== id);
+      await setActiveSkillsForCurrentSession(updated);
       // Update UI asynchronously
       setTimeout(async () => {
         await renderSkillsList();
@@ -2437,6 +2442,12 @@ function continueAfterTool(action, result, assistantEntry, bubbleEl) {
 
   let instruction = `[TOOL RESULT] ${action.genai_action}: ${JSON.stringify(resultForLlm)}\n\nContinue your GenAI response now. IMPORTANT: Continue naturally from where you left off as GenAI. Do not repeat your previous text and do not write as a character in the roleplay, just provide the next part of your previous GenAI answer.`;
 
+  if (action.genai_action === 'get_skills') {
+    instruction += `\n\nCRITICAL REMINDER: You just retrieved the list of available skills. If you find a suitable skill (like a rule file, etc.), you MUST ask the user if they want to activate it for the current session, or offer them an interactive suggestion button to do so. Remember, a skill is NOT active until you call {"genai_action":"set_skill_active","filename":"...","active":true}!`;
+  } else if (action.genai_action === 'read_skill') {
+    instruction += `\n\nCRITICAL REMINDER: You just read the content of the skill "${action.filename}". If the user wants to apply these rules/skills in the conversation, they must be activated! You MUST explicitly ask the user if they want to activate this skill for the current chat session, and offer them an interactive suggestion button to do so. Remember, a skill is NOT active until you call {"genai_action":"set_skill_active","filename":"...","active":true}!`;
+  }
+
   if (action.genai_action === 'list_memories') {
     instruction += `\n\nCRITICAL: You have already shown your memories in the UI card. You MUST remain silent now by outputting exactly the following JSON action on a new line and nothing else: {"genai_action":"silent"}`;
   } else {
@@ -2664,6 +2675,9 @@ function createNewGenaiChat() {
 
   saveHistory();
   renderMessages();
+  updateGenaiPlusButtonState();
+  renderSkillsList();
+  renderAllSkillsList();
 }
 
 function switchGenaiChat(id) {
@@ -2698,6 +2712,9 @@ function switchGenaiChat(id) {
     }
     saveHistory();
     renderMessages();
+    updateGenaiPlusButtonState();
+    renderSkillsList();
+    renderAllSkillsList();
   }
 }
 
@@ -3003,6 +3020,26 @@ export function initGenAIPanel() {
 
   loadHistory();
   renderMessages();
+  updateGenaiPlusButtonState();
+  renderSkillsList();
+  renderAllSkillsList();
+
+  // Listen to chat switches in main app to keep plus button and skills list in perfect sync
+  window.addEventListener('character-selected', () => {
+    updateGenaiPlusButtonState();
+    renderSkillsList();
+    renderAllSkillsList();
+  });
+  window.addEventListener('group-selected', () => {
+    updateGenaiPlusButtonState();
+    renderSkillsList();
+    renderAllSkillsList();
+  });
+  window.addEventListener('genai-active-skills-changed', () => {
+    updateGenaiPlusButtonState();
+    renderSkillsList();
+    renderAllSkillsList();
+  });
 
   sendBtn.addEventListener('click', sendUserMessage);
   stopBtn?.addEventListener('click', () => {
@@ -3086,6 +3123,48 @@ export function initGenAIPanel() {
     syncCreatorUI();
   });
 
+  // ─── Reverse (Undo) Button Logic ───
+  const btnReverse = document.getElementById('btn-genai-reverse');
+  btnReverse?.addEventListener('click', () => {
+    if (isGenerating || genaiHistory.length === 0) return;
+
+    // Find the last assistant message and the last user message
+    let lastAssistantIdx = -1;
+    let lastUserIdx = -1;
+
+    for (let i = genaiHistory.length - 1; i >= 0; i--) {
+      if (lastAssistantIdx === -1 && genaiHistory[i].role === 'assistant') {
+        lastAssistantIdx = i;
+      } else if (genaiHistory[i].role === 'user') {
+        lastUserIdx = i;
+        break; // Found both
+      }
+    }
+
+    if (lastUserIdx !== -1) {
+      const lastUserMsgText = genaiHistory[lastUserIdx].content;
+      
+      // Move user message text back to writing textarea
+      inputEl.value = lastUserMsgText;
+      autoResizeTextarea(inputEl);
+
+      // Remove the assistant reply that came after, and the user message itself
+      if (lastAssistantIdx !== -1) {
+        genaiHistory.splice(lastAssistantIdx, 1);
+      }
+      // Re-evaluate index in case splice shifted it
+      const newLastUserIdx = genaiHistory.findIndex(m => m.role === 'user' && m.content === lastUserMsgText);
+      if (newLastUserIdx !== -1) {
+        genaiHistory.splice(newLastUserIdx, 1);
+      }
+
+      saveHistory();
+      renderMessages();
+      inputEl.focus();
+    }
+  });
+
+
   // Listen for chat message responses (from send_chat_message tool)
   window.addEventListener('genai-chat-response-ready', async (e) => {
     if (!vibeMode || vibeMode.aborted) return;
@@ -3118,13 +3197,19 @@ export function initGenAIPanel() {
       e.stopPropagation();
       const isHidden = plusPopover.classList.contains('hidden');
       if (isHidden) {
-        // Reset slider transform instantly before unhiding to completely avoid visual slide-in glitches!
+        // Reset to main page instantly (no transition needed — just set data-page)
         const slider = document.getElementById('genai-plus-slider');
         if (slider) {
+          // Temporarily suppress child transitions so reset is instant
           slider.style.transition = 'none';
           slider.style.transform = 'translateX(0)';
-          void slider.offsetHeight; // Force layout reflow
-          slider.style.transition = '';
+          slider.dataset.page = '0';
+          // Force layout commit so CSS picks up data-page="0" state
+          void slider.offsetHeight;
+          // Restore transition for slider itself after paint
+          requestAnimationFrame(() => {
+            if (slider) slider.style.transition = '';
+          });
         }
         plusPopover.classList.remove('hidden');
         const mainEl = document.getElementById('genai-plus-main');
@@ -3357,11 +3442,12 @@ export function initGenAIPanel() {
   const genaiPlusAllSkills = document.getElementById('genai-plus-all-skills');
 
   if (btnGenaiPlusSkills && plusPopover) {
-    btnGenaiPlusSkills.addEventListener('click', async (e) => {
+    btnGenaiPlusSkills.addEventListener('click', (e) => {
       e.stopPropagation();
-      await renderSkillsList();
+      renderSkillsList();
       if (genaiPlusSlider) {
         genaiPlusSlider.style.transform = 'translateX(-33.333%)';
+        genaiPlusSlider.dataset.page = '1';
       }
       // Wait a tick for render height calculation
       setTimeout(() => {
@@ -3377,6 +3463,7 @@ export function initGenAIPanel() {
       e.stopPropagation();
       if (genaiPlusSlider) {
         genaiPlusSlider.style.transform = 'translateX(0)';
+        genaiPlusSlider.dataset.page = '0';
       }
       if (genaiPlusMain) {
         plusPopover.style.height = genaiPlusMain.offsetHeight + 'px';
@@ -3385,11 +3472,12 @@ export function initGenAIPanel() {
   }
 
   if (btnGenaiShowAllSkills && plusPopover) {
-    btnGenaiShowAllSkills.addEventListener('click', async (e) => {
+    btnGenaiShowAllSkills.addEventListener('click', (e) => {
       e.stopPropagation();
-      await renderAllSkillsList();
+      renderAllSkillsList();
       if (genaiPlusSlider) {
         genaiPlusSlider.style.transform = 'translateX(-66.666%)';
+        genaiPlusSlider.dataset.page = '2';
       }
       setTimeout(() => {
         if (genaiPlusAllSkills) {
@@ -3405,6 +3493,7 @@ export function initGenAIPanel() {
       await renderSkillsList();
       if (genaiPlusSlider) {
         genaiPlusSlider.style.transform = 'translateX(-33.333%)';
+        genaiPlusSlider.dataset.page = '1';
       }
       setTimeout(() => {
         if (genaiPlusSkills) {
@@ -3497,8 +3586,8 @@ export function updateGenaiPlusButtonState() {
   const badgeEl = document.getElementById('genai-skills-badge');
   if (!btnGenaiPlus) return;
 
-  const currentSession = getCurrentGenaiSession();
-  const activeSkillsCount = currentSession && currentSession.activeSkills ? currentSession.activeSkills.length : 0;
+  const activeSkills = getActiveSkillsForCurrentSession();
+  const activeSkillsCount = activeSkills ? activeSkills.length : 0;
   
   // Safe settings retrieve
   let imageGenEnabled = false;
@@ -3530,8 +3619,7 @@ export async function renderSkillsList() {
   const container = document.getElementById('genai-skills-list');
   if (!container) return;
 
-  const session = getCurrentGenaiSession();
-  const activeSkills = session ? (session.activeSkills || []) : [];
+  const activeSkills = getActiveSkillsForCurrentSession();
 
   const skills = [
     { id: 'nhentai', name: 'nhentai / Tag Search', description: 'API v2 galleries & tag assistant' }
@@ -3568,11 +3656,8 @@ export async function renderSkillsList() {
 }
 
 export async function handleNhentaiToggle(el) {
-  const session = ensureGenaiSession();
-  if (!session) return;
-  if (!session.activeSkills) session.activeSkills = [];
-
-  const isCurrentlyActive = session.activeSkills.includes('nhentai');
+  const activeSkills = getActiveSkillsForCurrentSession();
+  const isCurrentlyActive = activeSkills.includes('nhentai');
 
   if (isCurrentlyActive) {
     // Visually toggle immediately to preserve CSS transition
@@ -3582,10 +3667,13 @@ export async function handleNhentaiToggle(el) {
       if (input) input.checked = false;
     }
 
-    session.activeSkills = session.activeSkills.filter(id => id !== 'nhentai');
-    saveHistory();
+    const updated = activeSkills.filter(id => id !== 'nhentai');
+    await setActiveSkillsForCurrentSession(updated);
     updateGenaiPlusButtonState();
     await renderAllSkillsList(); // Также обновляем Page 3
+    if (window.renderSkills) {
+      try { window.renderSkills(); } catch (e) {}
+    }
     showToast('nhentai skill deactivated for this chat');
   } else {
     let key = '';
@@ -3612,21 +3700,21 @@ export async function handleNhentaiToggle(el) {
         if (input) input.checked = true;
       }
 
-      session.activeSkills.push('nhentai');
-      saveHistory();
+      const updated = [...activeSkills, 'nhentai'];
+      await setActiveSkillsForCurrentSession(updated);
       updateGenaiPlusButtonState();
       await renderAllSkillsList(); // Также обновляем Page 3
+      if (window.renderSkills) {
+        try { window.renderSkills(); } catch (e) {}
+      }
       showToast('nhentai skill activated for this chat');
     }
   }
 }
 
 export async function handleCustomSkillToggle(skillId, el) {
-  const session = ensureGenaiSession();
-  if (!session) return;
-  if (!session.activeSkills) session.activeSkills = [];
-
-  const isCurrentlyActive = session.activeSkills.includes(skillId);
+  const activeSkills = getActiveSkillsForCurrentSession();
+  const isCurrentlyActive = activeSkills.includes(skillId);
 
   // Visually toggle immediately in the DOM to trigger smooth spring CSS animation
   if (el) {
@@ -3636,26 +3724,31 @@ export async function handleCustomSkillToggle(skillId, el) {
   }
 
   if (isCurrentlyActive) {
-    session.activeSkills = session.activeSkills.filter(id => id !== skillId);
+    const updated = activeSkills.filter(id => id !== skillId);
+    await setActiveSkillsForCurrentSession(updated);
     showToast('Custom skill deactivated for this chat');
   } else {
-    session.activeSkills.push(skillId);
+    const updated = [...activeSkills, skillId];
+    await setActiveSkillsForCurrentSession(updated);
     showToast('Custom skill activated for this chat');
   }
 
-  saveHistory();
   await renderSkillsList();
   updateGenaiPlusButtonState();
-  // Note: We intentionally avoid immediate renderAllSkillsList() calls when el is clicked
-  // on Page 3, keeping the DOM untouched so the spring slide animation can finish seamlessly!
+  if (window.renderSkills) {
+    try { window.renderSkills(); } catch (e) {}
+  }
+  if (!el || !el.classList.contains('skill-all-list-item')) {
+    await renderAllSkillsList();
+  }
 }
 
 export async function renderAllSkillsList() {
   const container = document.getElementById('genai-all-skills-list');
   if (!container) return;
 
-  const session = getCurrentGenaiSession();
-  const activeSkills = session ? (session.activeSkills || []) : [];
+  const activeSkills = getActiveSkillsForCurrentSession();
+
 
   let list = [];
   try {
@@ -3695,10 +3788,77 @@ export async function renderAllSkillsList() {
   });
 }
 
+export function getActiveSkillsForCurrentSession() {
+  let chatSession = appState.currentChat;
+  if (!chatSession) {
+    const groupViewEl = document.getElementById('group-chat-view-container');
+    const isGroupViewOpen = groupViewEl && !groupViewEl.classList.contains('hidden') && groupViewEl.style.display !== 'none';
+    
+    if (isGroupViewOpen) {
+      const activeGroupId = groupChatStore.getActiveGroupId();
+      if (activeGroupId) {
+        chatSession = groupChatStore.getCurrentSession ? groupChatStore.getCurrentSession() : null;
+      }
+    } else {
+      chatSession = chatStore.getCurrentSession();
+    }
+  }
+
+  if (chatSession) {
+    if (!chatSession.activeSkills) {
+      chatSession.activeSkills = [];
+    }
+    return chatSession.activeSkills;
+  }
+
+  // Fallback to global GenAI session
+  const genaiSession = ensureGenaiSession();
+  if (!genaiSession.activeSkills) genaiSession.activeSkills = [];
+  return genaiSession.activeSkills;
+}
+
+export async function setActiveSkillsForCurrentSession(skills) {
+  let chatSession = appState.currentChat;
+  let isGroup = false;
+
+  const groupViewEl = document.getElementById('group-chat-view-container');
+  const isGroupViewOpen = groupViewEl && !groupViewEl.classList.contains('hidden') && groupViewEl.style.display !== 'none';
+
+  if (!chatSession) {
+    if (isGroupViewOpen) {
+      const activeGroupId = groupChatStore.getActiveGroupId();
+      if (activeGroupId) {
+        chatSession = groupChatStore.getCurrentSession ? groupChatStore.getCurrentSession() : null;
+      }
+      isGroup = true;
+    } else {
+      chatSession = chatStore.getCurrentSession();
+    }
+  } else {
+    isGroup = isGroupViewOpen;
+  }
+
+  if (chatSession) {
+    chatSession.activeSkills = skills;
+    if (isGroup) {
+      if (groupChatStore.saveSession) await groupChatStore.saveSession(chatSession);
+    } else {
+      if (chatStore.saveSession) await chatStore.saveSession(chatSession);
+    }
+    window.dispatchEvent(new CustomEvent('genai-active-skills-changed'));
+    return;
+  }
+
+  // Fallback to global GenAI session
+  const genaiSession = ensureGenaiSession();
+  genaiSession.activeSkills = skills;
+  saveHistory();
+  window.dispatchEvent(new CustomEvent('genai-active-skills-changed'));
+}
+
 // Global window helpers for genai-skills-mgr.js and others
 window.getGenAiActiveSkills = () => {
-  const session = getCurrentGenaiSession();
-  return session ? (session.activeSkills || []) : [];
+  return getActiveSkillsForCurrentSession();
 };
 
 window.toggleGenAiSkill = async (skillId, el) => {

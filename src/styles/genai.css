@@ -45,7 +45,28 @@ body.genai-fullscreen #app {
   transition-duration: 0.8s !important;
 }
 
+/* Show GenAI Reverse/Undo button ONLY in fullscreen mode */
+body.genai-fullscreen .genai-reverse-btn {
+  display: flex !important;
+}
+
+.genai-reverse-btn {
+  margin-left: 4px;
+  background: transparent;
+  color: var(--text-tertiary);
+  opacity: 0.8;
+  cursor: pointer;
+  transition: all var(--transition-fast) ease;
+}
+
+.genai-reverse-btn:hover {
+  color: var(--text-accent);
+  opacity: 1;
+  transform: rotate(-15deg);
+}
+
 body.genai-fullscreen #app {
+
   gap: 0 !important;
 }
 
@@ -563,6 +584,22 @@ body.genai-fullscreen .genai-fullscreen-placeholder {
   padding: 0;
   max-width: 100%;
 }
+
+/* Premium styling for assistant messages in fullscreen mode */
+body.genai-fullscreen .genai-msg.genai-assistant {
+  max-width: 70%;
+  margin-right: auto;
+}
+
+body.genai-fullscreen .genai-msg.genai-assistant .genai-msg-bubble {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3) var(--space-4);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(8px);
+}
+
 
 /* Markdown inside bubbles */
 .genai-msg-bubble p { margin-bottom: 0.55em; }
@@ -1178,4 +1215,72 @@ body.genai-fullscreen .genai-fullscreen-placeholder {
     transform: translateY(0) scale(1) translateZ(0);
     filter: blur(0);
   }
+}
+
+/* ─── 3D Perspective Popover Transition Animations ────────────────── */
+#genai-plus-popover {
+  perspective: 800px;
+}
+
+#genai-plus-slider > div {
+  transition: transform 0.4s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.4s ease, filter 0.4s ease;
+  will-change: transform, opacity, filter;
+}
+
+/* Subtle hover reaction for option buttons in GenAI Plus Popover */
+#genai-plus-popover .dropdown-option {
+  transition: background-color var(--transition-fast) ease, padding-left var(--transition-fast) ease, opacity var(--transition-fast) ease;
+}
+
+#genai-plus-popover .dropdown-option:hover {
+  background-color: rgba(255, 255, 255, 0.03) !important;
+  opacity: 0.95;
+}
+
+
+/* State 1: Main View Active (Page 1) — data-page="0" on slider */
+#genai-plus-slider[data-page="0"] #genai-plus-main {
+  transform: scale(1) translateZ(0);
+  opacity: 1;
+  filter: blur(0);
+}
+#genai-plus-slider[data-page="0"] #genai-plus-skills,
+#genai-plus-slider[data-page="0"] #genai-plus-all-skills {
+  transform: translateY(40px) rotateX(15deg) scale(0.9);
+  opacity: 0;
+  filter: blur(8px);
+}
+
+/* State 2: Skills View Active (Page 2) — data-page="1" on slider */
+#genai-plus-slider[data-page="1"] #genai-plus-main {
+  transform: scale(0.85) translateZ(-50px);
+  opacity: 0;
+  filter: blur(8px);
+}
+#genai-plus-slider[data-page="1"] #genai-plus-skills {
+  transform: scale(1) translateZ(0);
+  opacity: 1;
+  filter: blur(0);
+}
+#genai-plus-slider[data-page="1"] #genai-plus-all-skills {
+  transform: translateY(40px) rotateX(15deg) scale(0.9);
+  opacity: 0;
+  filter: blur(8px);
+}
+
+/* State 3: Show All Active (Page 3) — data-page="2" on slider */
+#genai-plus-slider[data-page="2"] #genai-plus-main {
+  transform: scale(0.8) translateZ(-80px);
+  opacity: 0;
+  filter: blur(12px);
+}
+#genai-plus-slider[data-page="2"] #genai-plus-skills {
+  transform: scale(0.85) translateZ(-50px);
+  opacity: 0;
+  filter: blur(8px);
+}
+#genai-plus-slider[data-page="2"] #genai-plus-all-skills {
+  transform: scale(1) translateZ(0);
+  opacity: 1;
+  filter: blur(0);
 }
