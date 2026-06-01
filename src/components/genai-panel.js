@@ -191,7 +191,7 @@ const SETTING_META = {
   temperature: { label: 'Temperature', type: 'number' },
 };
 
-function buildContext(maxMessages = 15) {
+function buildStaticContext() {
   const settings = settingsStore.get();
   const characters = characterStore.getAll();
   const parts = [];
@@ -225,144 +225,6 @@ function buildContext(maxMessages = 15) {
     parts.push('\n## Group Chats: none');
   }
 
-  // Active chat (primary from appState, fallback to store)
-  let session = appState.currentChat || chatStore.getCurrentSession();
-
-  // Robustness: If session is out of sync with current character, try to find the correct one
-  if (appState.currentCharacter && (!session || session.character_id !== appState.currentCharacter.id)) {
-    const charSessions = chatStore.getSessions(appState.currentCharacter.id);
-    if (charSessions.length > 0) {
-      session = charSessions[0]; // Use most recent session for this character
-    }
-  }
-
-  // Determine which view container is currently visible in the DOM
-  const groupViewEl = document.getElementById('group-chat-view-container');
-  const isGroupViewOpen = groupViewEl && !groupViewEl.classList.contains('hidden') && groupViewEl.style.display !== 'none';
-
-  const gameViewEl = document.getElementById('game-view-container');
-  const isGameViewOpen = gameViewEl && !gameViewEl.classList.contains('hidden') && gameViewEl.style.display !== 'none';
-
-  const bookViewEl = document.getElementById('book-view-container');
-  const isBookViewOpen = bookViewEl && !bookViewEl.classList.contains('hidden') && bookViewEl.style.display !== 'none';
-
-  const chatViewEl = document.getElementById('chat-view-container');
-  const isChatViewOpen = chatViewEl && !chatViewEl.classList.contains('hidden') && chatViewEl.style.display !== 'none';
-
-  if (isGroupViewOpen) {
-    // ── Group chat is the active view ──────────────────────────────
-    const activeGroupId = groupChatStore.getActiveGroupId();
-    const activeGroupSession = groupChatStore.getCurrentSession?.();
-    const activeGroup = activeGroupId ? groupChatStore.getGroupById(activeGroupId) : null;
-
-    if (activeGroup) {
-      const memberNames = (activeGroup.character_ids || [])
-        .map(id => characterStore.getById(id)?.name || id)
-        .join(', ');
-      const modeLabel = activeGroup.response_mode === 'auto' ? 'Auto (AI picks)' : 'Round-robin';
-      parts.push(`\n## Active Chat — GROUP: "${activeGroup.name}" (id: ${activeGroup.id})`);
-      parts.push(`Response mode: ${modeLabel}`);
-      parts.push(`Members: ${memberNames}`);
-
-      if (activeGroupSession) {
-        parts.push(`Session ID: ${activeGroupSession.id}`);
-        if (maxMessages === 0) {
-          parts.push(`  (Chat history omitted due to token limit)`);
-        } else {
-          const recent = activeGroupSession.messages.slice(-maxMessages);
-          if (recent.length === 0) {
-            parts.push(`  (No messages yet)`);
-          } else {
-            recent.forEach(m => {
-              const settings = settingsStore.get();
-              let who;
-              if (m.role === 'user') {
-                who = settings.user_name || 'User';
-              } else {
-                const char = characterStore.getById(m.character_id);
-                who = char?.name || 'Unknown';
-              }
-              const text = (m.content || '').substring(0, 300).replace(/\n/g, ' ');
-              parts.push(`  ${who}: ${text}`);
-            });
-          }
-        }
-      } else {
-        parts.push(`  (No active session yet)`);
-      }
-    } else {
-      parts.push('\n## Active Chat: Group view open but no group selected');
-    }
-  } else if (isGameViewOpen) {
-    // ── Game is the active view ────────────────────────────────────
-    const activeGame = gameStore.get();
-    if (activeGame) {
-      parts.push(`\n## Active View — GAME MODE: "${activeGame.title}" (id: ${activeGame.id})`);
-      parts.push(`Stats: HP=${activeGame.stats.hp}, Stress=${activeGame.stats.stress}, Lust=${activeGame.stats.lust}, Money=${activeGame.stats.money}`);
-      if (activeGame.story_prompt) {
-        parts.push(`Story Premise: ${activeGame.story_prompt}`);
-      }
-      if (activeGame.characters && activeGame.characters.length > 0) {
-        parts.push(`Characters in Game:`);
-        activeGame.characters.forEach(c => {
-          parts.push(`- ${c.name}: ${c.short_description || 'No description'}${c.system_prompt ? ` (Directive: ${c.system_prompt})` : ''}`);
-        });
-      }
-      if (activeGame.summary) {
-        parts.push(`Game Summary (Chronicle): ${activeGame.summary}`);
-      }
-      if (activeGame.currentScene) {
-        parts.push(`Current Scene:\n${activeGame.currentScene.scene_text.substring(0, 500)}`);
-        if (activeGame.currentScene.choices && activeGame.currentScene.choices.length > 0) {
-          parts.push(`Available Choices:\n${activeGame.currentScene.choices.map(c => `- ${c.text} (intent: ${c.prompt_intent})`).join('\n')}`);
-        }
-        if (activeGame.currentScene.extra_actions && activeGame.currentScene.extra_actions.length > 0) {
-          parts.push(`Available Extra Actions:\n${activeGame.currentScene.extra_actions.map(a => `- ${a}`).join('\n')}`);
-        }
-      }
-    } else {
-      parts.push('\n## Active View: Game view open but no game selected');
-    }
-  } else if (isBookViewOpen) {
-    // ── Book is the active view ────────────────────────────────────
-    parts.push('\n## Active View — BOOK MODE: A book is currently open, but no active chat context is visible.');
-  } else if ((isChatViewOpen || (!isGroupViewOpen && !isGameViewOpen && !isBookViewOpen)) && session && appState.currentCharacter) {
-    // ── Individual character chat is the active view ───────────────
-    parts.push(`\n## Active Chat — Character: ${appState.currentCharacter.name} (id: ${appState.currentCharacter.id}), Session ID: ${session.id}`);
-    if (maxMessages === 0) {
-      parts.push(`  (Chat history omitted due to token limit)`);
-    } else {
-      const recent = session.messages.slice(-maxMessages);
-      recent.forEach(m => {
-        const who = m.role === 'user' ? 'User' : appState.currentCharacter.name;
-        // User messages are user-facing as is. Assistant messages are user-facing after translation.
-        const userFacingContent = m.role === 'user' ? m.content : (m.translated_content || m.content);
-        const text = (userFacingContent || '').substring(0, 300).replace(/\n/g, ' ');
-        parts.push(`  ${who}: ${text}`);
-      });
-
-      const char = appState.currentCharacter;
-      parts.push(`\n## Character Card: ${char.name}`);
-      if (char.description) parts.push(`Description: ${char.description}`);
-      if (char.personality) parts.push(`Personality: ${char.personality}`);
-      if (char.scenario) parts.push(`Scenario: ${char.scenario}`);
-
-      if (session.ai_comments?.length) {
-        parts.push(`  (${session.ai_comments.length} AI comments in this session)`);
-      }
-    }
-  } else {
-    parts.push('\n## Active View: none');
-  }
-
-  // GenAI Memories
-  const memories = genaiMemoryStore.getAll();
-  if (memories.length) {
-    parts.push('\n## GenAI Memories (Facts to consider for your response):');
-    parts.push('These are the facts you asked to remember. You MUST take these facts into account and consider them when generating your response to the user. Do not contradict them:');
-    memories.forEach(m => parts.push(`- [id: ${m.id}] ${m.content}`));
-  }
-
   // Settings
   parts.push('\n## App Settings (current values):');
   for (const [key, meta] of Object.entries(SETTING_META)) {
@@ -376,7 +238,7 @@ function buildContext(maxMessages = 15) {
     parts.push(`\n## Detailed Guide to Available Function Calls:
 
 You MUST use the following JSON function calls to record the character's traits as you design them. You must write the JSON block on its own line.
-CRITICAL: In Character Creation mode, you MUST write monolithically! This means you should output your JSON tool calls (like {"genai_action":"add_char_fact",...} or {"genai_action":"show_char_tab",...}) and then IMMEDIATELY continue writing your conversational dialogue, thoughts, suggestions, and further tool calls in the SAME response. Do NOT stop generating after outputting a JSON block.`);
+CRITICAL: In Character Creation mode, you MUST write monolithically! This means you should output your JSON tool calls (like {\"genai_action\":\"add_char_fact\",...} or {\"genai_action\":\"show_char_tab\",...}) and then IMMEDIATELY continue writing your conversational dialogue, thoughts, suggestions, and further tool calls in the SAME response. Do NOT stop generating after outputting a JSON block.`);
   } else {
     parts.push(`\n## Detailed Guide to Available Function Calls:
 
@@ -569,6 +431,13 @@ You MUST use the following JSON function calls to interact with the application 
       - "filename": string (required) - the exact filename of the skill (e.g. "VibeChatting Guide.txt" or "GenAI Features.json").
     - Example: {"genai_action":"read_skill","filename":"VibeChatting Guide.txt"}
 
+30. set_skill_active: Dynamically activate or deactivate (toggle) a specific background skill/information file for this chat session, which will persist it across all future messages.
+    - When to use: When the user explicitly requests you to activate, toggle, or turn on/off a skill or background information file.
+    - Parameters:
+      - "filename": string (required) - the exact filename of the skill or "nhentai" (e.g. "Rules for RP. Russian.txt" or "nhentai").
+      - "active": boolean (required) - true to activate, false to deactivate.
+    - Example: {"genai_action":"set_skill_active","filename":"Rules for RP. Russian.txt","active":true}
+
 44. add_char_fact: Add a numbered fact to a specific character creation tab.
     - When to use: When the user provides a detail about the character in Character Creation mode.
     - Parameters:
@@ -594,6 +463,7 @@ You MUST use the following JSON function calls to interact with the application 
     - When to use: When you want to bring the user's focus to another tab to continue building the character.
     - Parameters:
       - "tab": string (required) - Name of the tab.
+      - "text": string (required) - The assembled text.
     - Example: {"genai_action":"show_char_tab","tab":"Personality"}
 `);
 
@@ -603,17 +473,157 @@ You MUST use the following JSON function calls to interact with the application 
     parts.push(`\nIMPORTANT: After outputting a JSON block, immediately STOP generating. Do not write text after the JSON object.`);
   }
 
-  return '[APP CONTEXT]\n' + parts.join('\n');
+  return '[APP CONTEXT - TOOLS & CONFIG]\n' + parts.join('\n');
 }
 
-// ─── Build API Messages ─────────────────────────────────────────────
-function buildApiMessages(extraUserInstruction = null) {
+function buildDynamicContext(maxMessages = 15) {
   const settings = settingsStore.get();
-  // Respect the exact prompt token limit the user entered in connection/advanced settings.
-  // Multiply by 4 to convert tokens → approximate char count.
-  // Use 8192 as a safe floor so the static base prompt always fits.
+  const parts = [];
+
+  // Active chat (primary from appState, fallback to store)
+  let session = appState.currentChat || chatStore.getCurrentSession();
+
+  // Robustness: If session is out of sync with current character, try to find the correct one
+  if (appState.currentCharacter && (!session || session.character_id !== appState.currentCharacter.id)) {
+    const charSessions = chatStore.getSessions(appState.currentCharacter.id);
+    if (charSessions.length > 0) {
+      session = charSessions[0]; // Use most recent session for this character
+    }
+  }
+
+  // Determine which view container is currently visible in the DOM
+  const groupViewEl = document.getElementById('group-chat-view-container');
+  const isGroupViewOpen = groupViewEl && !groupViewEl.classList.contains('hidden') && groupViewEl.style.display !== 'none';
+
+  const gameViewEl = document.getElementById('game-view-container');
+  const isGameViewOpen = gameViewEl && !gameViewEl.classList.contains('hidden') && gameViewEl.style.display !== 'none';
+
+  const bookViewEl = document.getElementById('book-view-container');
+  const isBookViewOpen = bookViewEl && !bookViewEl.classList.contains('hidden') && bookViewEl.style.display !== 'none';
+
+  const chatViewEl = document.getElementById('chat-view-container');
+  const isChatViewOpen = chatViewEl && !chatViewEl.classList.contains('hidden') && chatViewEl.style.display !== 'none';
+
+  if (isGroupViewOpen) {
+    // ── Group chat is the active view ──────────────────────────────
+    const activeGroupId = groupChatStore.getActiveGroupId();
+    const activeGroupSession = groupChatStore.getCurrentSession?.();
+    const activeGroup = activeGroupId ? groupChatStore.getGroupById(activeGroupId) : null;
+
+    if (activeGroup) {
+      const memberNames = (activeGroup.character_ids || [])
+        .map(id => characterStore.getById(id)?.name || id)
+        .join(', ');
+      const modeLabel = activeGroup.response_mode === 'auto' ? 'Auto (AI picks)' : 'Round-robin';
+      parts.push(`\n## Active Chat — GROUP: "${activeGroup.name}" (id: ${activeGroup.id})`);
+      parts.push(`Response mode: ${modeLabel}`);
+      parts.push(`Members: ${memberNames}`);
+
+      if (activeGroupSession) {
+        parts.push(`Session ID: ${activeGroupSession.id}`);
+        if (maxMessages === 0) {
+          parts.push(`  (Chat history omitted due to token limit)`);
+        } else {
+          const recent = activeGroupSession.messages.slice(-maxMessages);
+          if (recent.length === 0) {
+            parts.push(`  (No messages yet)`);
+          } else {
+            recent.forEach(m => {
+              const settings = settingsStore.get();
+              let who;
+              if (m.role === 'user') {
+                who = settings.user_name || 'User';
+              } else {
+                const char = characterStore.getById(m.character_id);
+                who = char?.name || 'Unknown';
+              }
+              const text = (m.content || '').substring(0, 300).replace(/\n/g, ' ');
+              parts.push(`  ${who}: ${text}`);
+            });
+          }
+        }
+      } else {
+        parts.push(`  (No active session yet)`);
+      }
+    } else {
+      parts.push('\n## Active Chat: Group view open but no group selected');
+    }
+  } else if (isGameViewOpen) {
+    // ── Game is the active view ────────────────────────────────────
+    const activeGame = gameStore.get();
+    if (activeGame) {
+      parts.push(`\n## Active View — GAME MODE: "${activeGame.title}" (id: ${activeGame.id})`);
+      parts.push(`Stats: HP=${activeGame.stats.hp}, Stress=${activeGame.stats.stress}, Lust=${activeGame.stats.lust}, Money=${activeGame.stats.money}`);
+      if (activeGame.story_prompt) {
+        parts.push(`Story Premise: ${activeGame.story_prompt}`);
+      }
+      if (activeGame.characters && activeGame.characters.length > 0) {
+        parts.push(`Characters in Game:`);
+        activeGame.characters.forEach(c => {
+          parts.push(`- ${c.name}: ${c.short_description || 'No description'}${c.system_prompt ? ` (Directive: ${c.system_prompt})` : ''}`);
+        });
+      }
+      if (activeGame.summary) {
+        parts.push(`Game Summary (Chronicle): ${activeGame.summary}`);
+      }
+      if (activeGame.currentScene) {
+        parts.push(`Current Scene:\n${activeGame.currentScene.scene_text.substring(0, 500)}`);
+        if (activeGame.currentScene.choices && activeGame.currentScene.choices.length > 0) {
+          parts.push(`Available Choices:\n${activeGame.currentScene.choices.map(c => `- ${c.text} (intent: ${c.prompt_intent})`).join('\n')}`);
+        }
+        if (activeGame.currentScene.extra_actions && activeGame.currentScene.extra_actions.length > 0) {
+          parts.push(`Available Extra Actions:\n${activeGame.currentScene.extra_actions.map(a => `- ${a}`).join('\n')}`);
+        }
+      }
+    } else {
+      parts.push('\n## Active View: Game view open but no game selected');
+    }
+  } else if (isBookViewOpen) {
+    // ── Book is the active view ────────────────────────────────────
+    parts.push('\n## Active View — BOOK MODE: A book is currently open, but no active chat context is visible.');
+  } else if ((isChatViewOpen || (!isGroupViewOpen && !isGameViewOpen && !isBookViewOpen)) && session && appState.currentCharacter) {
+    // ── Individual character chat is the active view ───────────────
+    parts.push(`\n## Active Chat — Character: ${appState.currentCharacter.name} (id: ${appState.currentCharacter.id}), Session ID: ${session.id}`);
+    if (maxMessages === 0) {
+      parts.push(`  (Chat history omitted due to token limit)`);
+    } else {
+      const recent = session.messages.slice(-maxMessages);
+      recent.forEach(m => {
+        const who = m.role === 'user' ? 'User' : appState.currentCharacter.name;
+        // User messages are user-facing as is. Assistant messages are user-facing after translation.
+        const userFacingContent = m.role === 'user' ? m.content : (m.translated_content || m.content);
+        const text = (userFacingContent || '').substring(0, 300).replace(/\n/g, ' ');
+        parts.push(`  ${who}: ${text}`);
+      });
+
+      const char = appState.currentCharacter;
+      parts.push(`\n## Character Card: ${char.name}`);
+      if (char.description) parts.push(`Description: ${char.description}`);
+      if (char.personality) parts.push(`Personality: ${char.personality}`);
+      if (char.scenario) parts.push(`Scenario: ${char.scenario}`);
+
+      if (session.ai_comments?.length) {
+        parts.push(`  (${session.ai_comments.length} AI comments in this session)`);
+      }
+    }
+  } else {
+    parts.push('\n## Active View: none');
+  }
+
+  // GenAI Memories
+  const memories = genaiMemoryStore.getAll();
+  if (memories.length) {
+    parts.push('\n## GenAI Memories (Facts to consider for your response):');
+    parts.push('These are the facts you asked to remember. You MUST take these facts into account and consider them when generating your response to the user. Do not contradict them:');
+    memories.forEach(m => parts.push(`- [id: ${m.id}] ${m.content}`));
+  }
+
+  return '[APP CONTEXT - DYNAMIC SESSION DATA]\n' + parts.join('\n');
+}
+
+async function buildApiMessages(extraUserInstruction = null) {
+  const settings = settingsStore.get();
   const tokenLimit = Math.max(settings.prompt_token_limit || 4096, 2048);
-  const charLimit = tokenLimit * 4;
 
   // Inject GenAI specific style/length instructions
   let stylePrompt = '';
@@ -645,9 +655,138 @@ function buildApiMessages(extraUserInstruction = null) {
   // Build static base (never truncated — always needed for instructions & tools)
   const staticBase = finalBasePrompt + stylePrompt + '\n\n';
 
-  // Build dynamic context (character chat history lives here — this IS what we truncate)
+  // Build static context (tools description + settings - never truncated to ensure core capabilities)
+  const staticContext = buildStaticContext();
+
+  // Asynchronously build the active skills block early so we can account for its size in character limit subtraction
+  let activeSkillsBlock = '';
+  const currentSession = getCurrentGenaiSession();
+  if (currentSession && currentSession.activeSkills && currentSession.activeSkills.length > 0) {
+    activeSkillsBlock += '\n\n[ACTIVE SKILLS]\n';
+    
+    let allSkills = [];
+    try {
+      allSkills = await skillsStore.getSkills();
+    } catch (e) {
+      console.error('Failed to get skills for system prompt:', e);
+    }
+
+    for (const skillId of currentSession.activeSkills) {
+      if (skillId === 'nhentai') {
+        activeSkillsBlock += `You have active skill: nhentai / Tag Search Assistant.
+- Purpose: Helping user search and browse galleries, tags, and related content from the nhentai API v2.
+- Rules:
+  * Search by tags first when user uses a tag-like query.
+  * If query is ambiguous, ask one clarifying question to the user.
+  * Show compact search results (e.g. title, ID, tag snippets, page count) and explain them to the user.
+  * Fetch gallery details by ID when needed or requested.
+  * NEVER invent search results or fake API responses under any circumstances. If the search returns nothing, state that clearly.
+  * NEVER expose the secret API Key in your conversation text, suggestions, or tool parameters.
+  * NEVER put raw external website URLs or nhentai links in your text replies.
+  * NEVER try to write Markdown image links like ![alt](url) yourself — the URL format is handled internally and you will get 404 errors if you guess it. Instead:
+    - To show a gallery cover: call the \`nhentai_get_cover\` tool — it fetches and renders the cover automatically.
+    - To show a specific page: call the \`nhentai_get_page\` tool — it fetches and renders the page automatically.
+    - You can call these tools multiple times in sequence to show multiple pages.
+  * Proactively and occasionally hint at what else you are capable of doing to keep the user engaged. For example, suggest that you can:
+    - Show the gallery cover or specific pages (\`nhentai_get_cover\`, \`nhentai_get_page\`).
+    - Load and show user comments for a gallery (include \`"comments"\` in \`nhentai_get_gallery\`).
+    - Explore related works (\`nhentai_get_related_galleries\`).
+    - Deep search tags (\`nhentai_search_tags\`, \`nhentai_get_tag_by_slug\`, etc.).
+    - Fetch today's popular (\`nhentai_get_popular_galleries\`) or a random gallery (\`nhentai_get_random_gallery\`).
+    - Get a download/archival link (\`nhentai_get_download_link\`).
+  * Keep helping in the same chat until this skill is disabled or the chat ends.
+  * Act as a helpful search assistant.
+
+- Allowed Skill Function Calls (ONLY available when nhentai active skill is ON):
+  1. nhentai_search_galleries: Search galleries by tag (prefix look up tag ID first) or general query.
+     - Parameters:
+       - "query": string (required)
+       - "page": number (optional, default 1)
+       - "per_page": number (optional, default 25)
+     - Example: {"genai_action":"nhentai_search_galleries","query":"parody"}
+
+  2. nhentai_get_gallery: Retrieve a single gallery with details by its ID.
+     - Parameters:
+       - "gallery_id": string or number (required)
+       - "include": array of strings (optional, e.g. ["comments","related","suggestions"])
+     - Example: {"genai_action":"nhentai_get_gallery","gallery_id":"12345"}
+
+  3. nhentai_get_cover: Fetch and display the gallery cover image directly in chat.
+     - Parameters:
+       - "gallery_id": string or number (required)
+     - Example: {"genai_action":"nhentai_get_cover","gallery_id":"12345"}
+
+  4. nhentai_get_page: Fetch and display a specific page image directly in chat.
+     - Parameters:
+       - "gallery_id": string or number (required)
+       - "page_num": number (required, starts at 1)
+     - Example: {"genai_action":"nhentai_get_page","gallery_id":"12345","page_num":1}
+
+  5. nhentai_search_tags: Search tags by name prefix.
+     - Parameters:
+       - "type": string (optional, e.g. "tag", "artist", "character", "group", "parody", "language", "category")
+       - "query": string (required)
+       - "limit": number (optional, default 10)
+     - Example: {"genai_action":"nhentai_search_tags","query":"gothic"}
+
+  6. nhentai_get_tags_by_ids: Look up multiple tags by their IDs.
+     - Parameters:
+       - "ids": array of numbers (required)
+     - Example: {"genai_action":"nhentai_get_tags_by_ids","ids":[1, 2]}
+
+  7. nhentai_get_tags_by_type: Get tags of a specific type with pagination.
+     - Parameters:
+       - "tag_type": string (required)
+       - "sort": string (optional, "name" or "popular")
+       - "page": number (optional, default 1)
+       - "per_page": number (optional, default 25)
+     - Example: {"genai_action":"nhentai_get_tags_by_type","tag_type":"artist","sort":"popular"}
+
+  8. nhentai_get_tag_by_slug: Get a specific tag by type and slug.
+     - Parameters:
+       - "tag_type": string (required)
+       - "slug": string (required)
+     - Example: {"genai_action":"nhentai_get_tag_by_slug","tag_type":"tag","slug":"swimsuit"}
+
+  9. nhentai_get_popular_galleries: Retrieve today's popular galleries.
+     - Parameters: none
+     - Example: {"genai_action":"nhentai_get_popular_galleries"}
+
+  10. nhentai_get_random_gallery: Fetch a random gallery.
+      - Parameters: none
+      - Example: {"genai_action":"nhentai_get_random_gallery"}
+
+  11. nhentai_get_related_galleries: Fetch related galleries for a given gallery ID.
+      - Parameters:
+        - "gallery_id": string or number (required)
+      - Example: {"genai_action":"nhentai_get_related_galleries","gallery_id":"12345"}
+
+  12. nhentai_get_download_link: Get download/archival URL for a gallery.
+      - Parameters:
+        - "gallery_id": string or number (required)
+      - Example: {"genai_action":"nhentai_get_download_link","gallery_id":"12345"}
+`;
+      } else {
+        const skill = allSkills.find(s => s.filename === skillId);
+        if (skill) {
+          activeSkillsBlock += `\nYou have active skill: ${skill.name} (from ${skill.filename}).
+- Content:
+${skill.content}
+`;
+        }
+      }
+    }
+  }
+
+  // Calculate dynamic character limit by subtracting the static system prompt, tools instructions,
+  // active skills blocks, and settings.max_tokens (response tokens) from the total backend token capacity.
+  // Use Math.max with 4096 so we always guarantee at least a safe minimal history fits.
+  const staticLen = staticBase.length + staticContext.length + activeSkillsBlock.length;
+  const charLimit = Math.max((tokenLimit - settings.max_tokens) * 4 - staticLen, 4096);
+
+  // Build dynamic context (character chat/game details — this is what we prune first)
   let activeChatMsgCount = 15;
-  let context = buildContext(activeChatMsgCount);
+  let dynamicContext = buildDynamicContext(activeChatMsgCount);
 
   let historyMsgs = genaiHistory.map(e => {
     // Convert tool results to user messages to prevent Jinja system message errors
@@ -663,39 +802,40 @@ function buildApiMessages(extraUserInstruction = null) {
     historyMsgs.push({ role: 'user', content: extraUserInstruction });
   }
 
-  // Only count the DYNAMIC parts (context + genai conversation) against the charLimit.
-  // The static base prompt is fixed overhead and cannot be removed, so measuring it
-  // would always cause chat history to be stripped even when there's plenty of room.
+  // Only count the truly DYNAMIC parts (dynamic chat context + genai conversation) against the charLimit.
   const dynamicLen = () =>
-    context.length + historyMsgs.reduce((sum, m) => sum + (m.content || '').length, 0);
+    dynamicContext.length + historyMsgs.reduce((sum, m) => sum + (m.content || '').length, 0);
 
-  // 1. Truncate the GenAI conversation history first (keep at least the last 2 messages)
+  // 1. Progressively reduce the number of character chat messages shown in dynamic context FIRST
+  if (dynamicLen() > charLimit) {
+    activeChatMsgCount = 10;
+    dynamicContext = buildDynamicContext(activeChatMsgCount);
+  }
+  if (dynamicLen() > charLimit) {
+    activeChatMsgCount = 5;
+    dynamicContext = buildDynamicContext(activeChatMsgCount);
+  }
+  if (dynamicLen() > charLimit) {
+    activeChatMsgCount = 2;
+    dynamicContext = buildDynamicContext(activeChatMsgCount);
+  }
+  if (dynamicLen() > charLimit) {
+    activeChatMsgCount = 1;
+    dynamicContext = buildDynamicContext(activeChatMsgCount);
+  }
+  if (dynamicLen() > charLimit) {
+    activeChatMsgCount = 0; // Omit chat history completely if dynamic length is still too large
+    dynamicContext = buildDynamicContext(activeChatMsgCount);
+  }
+
+  // 2. Truncate the GenAI conversation history LAST (keep at least the last 2 messages as fallback)
   if (dynamicLen() > charLimit) {
     while (dynamicLen() > charLimit && historyMsgs.length > 2) {
       historyMsgs.shift();
     }
   }
 
-  // 2. Progressively reduce the number of character chat messages shown in context
-  if (dynamicLen() > charLimit) {
-    activeChatMsgCount = 10;
-    context = buildContext(activeChatMsgCount);
-  }
-  if (dynamicLen() > charLimit) {
-    activeChatMsgCount = 5;
-    context = buildContext(activeChatMsgCount);
-  }
-  if (dynamicLen() > charLimit) {
-    activeChatMsgCount = 2;
-    context = buildContext(activeChatMsgCount);
-  }
-  // Absolute fallback: keep 1 message minimum so GenAI always knows the last exchange
-  if (dynamicLen() > charLimit) {
-    activeChatMsgCount = 1;
-    context = buildContext(activeChatMsgCount);
-  }
-
-  const systemContent = staticBase + context;
+  const systemContent = staticBase + staticContext + '\n\n' + dynamicContext + activeSkillsBlock;
 
   const finalMessages = [{ role: 'system', content: systemContent }, ...historyMsgs];
 
@@ -1302,6 +1442,81 @@ async function executeTool(action) {
     };
   }
 
+  if (name.startsWith('nhentai_')) {
+    try {
+      if (name === 'nhentai_search_galleries') {
+        const { query, page } = action;
+        return await nhentaiApi.searchGalleries(query, page);
+      }
+      if (name === 'nhentai_get_gallery') {
+        const { gallery_id } = action;
+        return await nhentaiApi.getGallery(gallery_id);
+      }
+      if (name === 'nhentai_search_tags') {
+        const { query } = action;
+        return await nhentaiApi.searchTags(query);
+      }
+      if (name === 'nhentai_get_tags_by_ids') {
+        const { ids } = action;
+        return await nhentaiApi.getTagsByIds(ids);
+      }
+      if (name === 'nhentai_get_tags_by_type') {
+        const { tag_type, page } = action;
+        return await nhentaiApi.getTagsByType(tag_type, page);
+      }
+      if (name === 'nhentai_get_tag_by_slug') {
+        const { slug } = action;
+        return await nhentaiApi.getTagBySlug(slug);
+      }
+      if (name === 'nhentai_get_popular_galleries') {
+        return await nhentaiApi.getPopularGalleries();
+      }
+      if (name === 'nhentai_get_random_gallery') {
+        return await nhentaiApi.getRandomGallery();
+      }
+      if (name === 'nhentai_get_related_galleries') {
+        const { gallery_id } = action;
+        return await nhentaiApi.getRelatedGalleries(gallery_id);
+      }
+      if (name === 'nhentai_get_download_link') {
+        const { gallery_id } = action;
+        return await nhentaiApi.getDownloadLink(gallery_id);
+      }
+      if (name === 'nhentai_debug_gallery') {
+        // Debug tool: returns the raw gallery API JSON so we can inspect structure
+        const { gallery_id } = action;
+        const gallery = await nhentaiApi.getGallery(gallery_id);
+        const keys = Object.keys(gallery);
+        const imagesKeys = gallery.images ? Object.keys(gallery.images) : [];
+        const coverInfo = gallery.images?.cover || gallery.cover || null;
+        const firstPage = gallery.images?.pages?.[0] || gallery.pages?.[0] || null;
+        return {
+          top_level_keys: keys,
+          media_id: gallery.media_id,
+          id: gallery.id,
+          images_keys: imagesKeys,
+          cover_object: coverInfo,
+          first_page_object: firstPage,
+          raw_snippet: JSON.stringify(gallery).slice(0, 800)
+        };
+      }
+      if (name === 'nhentai_get_cover') {
+        const { gallery_id } = action;
+        const base64DataUrl = await nhentaiApi.getCoverImageBase64(gallery_id);
+        return { _type: 'image', base64: base64DataUrl?.replace(/^data:image\/\w+;base64,/, ''), label: `Cover — Gallery #${gallery_id}` };
+      }
+      if (name === 'nhentai_get_page') {
+        const { gallery_id, page_num } = action;
+        const base64DataUrl = await nhentaiApi.getPageImageBase64(gallery_id, page_num || 1);
+        return { _type: 'image', base64: base64DataUrl?.replace(/^data:image\/\w+;base64,/, ''), label: `Gallery #${gallery_id} — Page ${page_num || 1}` };
+      }
+      return { error: `Unsupported nhentai action: "${name}"` };
+    } catch (err) {
+      console.error(`nhentai tool execution failed for "${name}":`, err);
+      return { error: err.message || err };
+    }
+  }
+
   if (name === 'generate_image') {
     const session = chatStore.getCurrentSession();
     if (!session) return { error: 'No active session found to generate image.' };
@@ -1395,6 +1610,29 @@ function resultBadgeForAction(action, result) {
     return actionBadgeHtml('result-data', '💬', `Loaded ${result.message_count} group messages`);
   }
 
+  // nhentai tool badges
+  if (name === 'nhentai_search_galleries') return actionBadgeHtml('result-data', '🔍', `nhentai: Searched galleries for "${action.query}"`);
+  if (name === 'nhentai_get_gallery') return actionBadgeHtml('result-data', '📖', `nhentai: Loaded gallery details for ID ${action.gallery_id}`);
+  if (name === 'nhentai_debug_gallery') return actionBadgeHtml('result-data', '🔍', `nhentai: Debug structure for ID ${action.gallery_id}`);
+  if (name === 'nhentai_search_tags') return actionBadgeHtml('result-data', '🏷️', `nhentai: Searched tags matching "${action.query}"`);
+  if (name === 'nhentai_get_tags_by_ids') return actionBadgeHtml('result-data', '🏷️', `nhentai: Looked up ${action.ids?.length} tags by ID`);
+  if (name === 'nhentai_get_tags_by_type') return actionBadgeHtml('result-data', '🏷️', `nhentai: Loaded "${action.tag_type}" tags`);
+  if (name === 'nhentai_get_tag_by_slug') return actionBadgeHtml('result-data', '🏷️', `nhentai: Loaded tag slug "${action.slug}"`);
+  if (name === 'nhentai_get_popular_galleries') return actionBadgeHtml('result-data', '🔥', `nhentai: Loaded today’s popular galleries`);
+  if (name === 'nhentai_get_random_gallery') return actionBadgeHtml('result-data', '🏒', `nhentai: Loaded random gallery`);
+  if (name === 'nhentai_get_related_galleries') return actionBadgeHtml('result-data', '🔗', `nhentai: Loaded related galleries for ID ${action.gallery_id}`);
+  if (name === 'nhentai_get_download_link') return actionBadgeHtml('result-setting', '📥', `nhentai: Generated download link for ID ${action.gallery_id}`);
+  if (name === 'nhentai_get_cover' || name === 'nhentai_get_page') {
+    const badge = actionBadgeHtml('result-data', '🖼️', result._type === 'image' ? (result.label || 'Gallery image loaded') : (result.error ? `Error: ${result.error}` : 'Image unavailable'));
+    if (result._type === 'image' && result.base64) {
+      const imgHtml = `<div class="generated-image-container" style="margin-top:10px;animation:fadeIn 0.4s ease">
+        <img src="${result.base64}" alt="${result.label || 'Gallery image'}" style="max-width:360px;width:100%;height:auto;border-radius:var(--radius-md);box-shadow:var(--shadow-md);display:block;border:1px solid var(--border-light);cursor:pointer;" onclick="if(window.openLightbox){window.openLightbox(this.src)}else{window.open(this.src,'_blank')}">
+      </div>`;
+      return badge + imgHtml;
+    }
+    return badge;
+  }
+
   if (name === 'get_games') return actionBadgeHtml('result-data', '🎮', `Found ${result.count} games`);
   if (name === 'create_game') return actionBadgeHtml('result-chat-action', '🎮', `Created Game: ${action.title}`);
   if (name === 'switch_game') return actionBadgeHtml('result-chat-action', '🔄', `Switched Game`);
@@ -1473,9 +1711,10 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
       } else if (tool.action.genai_action === 'silent') {
         badgeHtml = `<div id="genai-tool-${idx}"></div>`;
       } else {
-        const badge = tool.action.genai_action === 'list_memories' && tool.result && !tool.result.error
-          ? renderMemoryListCardHtml(tool.result)
-          : resultBadgeForAction(tool.action, tool.result);
+        const toolResultForRender = tool.renderResult || tool.result;
+        const badge = tool.action.genai_action === 'list_memories' && toolResultForRender && !toolResultForRender.error
+          ? renderMemoryListCardHtml(toolResultForRender)
+          : resultBadgeForAction(tool.action, toolResultForRender);
 
         badgeHtml = `<div class="genai-inline-tool genai-tool-done" id="genai-tool-${idx}">
           <span class="genai-working-text exiting">Working...</span>
@@ -1781,7 +2020,7 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
   if (stopBtn) stopBtn.classList.remove('hidden');
 
   abortController = new AbortController();
-  const apiMessages = buildApiMessages(extraUserInstruction);
+  const apiMessages = await buildApiMessages(extraUserInstruction);
 
   // Reuse existing bubble if this is a continuation, otherwise create a new one
   let assistantEntry, bubbleEl;
@@ -2011,7 +2250,20 @@ async function handleActionDetected(assistantEntry, bubbleEl) {
 
     // Update tool state
     tool.state = 'done';
-    tool.result = result;
+
+    // Strip binary data BEFORE storing in history (prevents localStorage bloat
+    // and prevents base64 from being injected into the LLM prompt context).
+    // Keep a separate in-memory-only 'renderResult' for the current session UI.
+    if (result && result._type === 'image') {
+      tool.renderResult = result;        // full result (with base64) — in-memory only
+      tool.result = {                    // lightweight result — stored in history
+        _type: 'image',
+        label: result.label,
+        success: true
+      };
+    } else {
+      tool.result = result;
+    }
 
     // Update UI
     renderAssistantBubble(assistantEntry, bubbleEl);
@@ -2061,7 +2313,28 @@ async function handleActionDetected(assistantEntry, bubbleEl) {
 }
 
 function continueAfterTool(action, result, assistantEntry, bubbleEl) {
-  let instruction = `[TOOL RESULT] ${action.genai_action}: ${JSON.stringify(result)}\n\nContinue your GenAI response now. IMPORTANT: Continue naturally from where you left off as GenAI. Do not repeat your previous text and do not write as a character in the roleplay, just provide the next part of your previous GenAI answer.`;
+  // Strip binary/base64 data from tool results before sending to LLM.
+  // This prevents megabytes of image data from polluting the LLM context.
+  let resultForLlm = result;
+  if (result && result._type === 'image') {
+    // Replace image data with a compact confirmation so LLM knows it succeeded
+    resultForLlm = {
+      success: true,
+      label: result.label || 'Image displayed',
+      note: 'Image has been rendered in the chat UI. Do NOT describe or repeat the base64 data.'
+    };
+  } else if (result && typeof result === 'object') {
+    // Also strip any accidental base64 fields from other results
+    resultForLlm = Object.fromEntries(
+      Object.entries(result).filter(([k, v]) => {
+        if (k === 'base64' || k === '_base64') return false;
+        if (typeof v === 'string' && v.startsWith('data:') && v.length > 200) return false;
+        return true;
+      })
+    );
+  }
+
+  let instruction = `[TOOL RESULT] ${action.genai_action}: ${JSON.stringify(resultForLlm)}\n\nContinue your GenAI response now. IMPORTANT: Continue naturally from where you left off as GenAI. Do not repeat your previous text and do not write as a character in the roleplay, just provide the next part of your previous GenAI answer.`;
 
   if (action.genai_action === 'list_memories') {
     instruction += `\n\nCRITICAL: You have already shown your memories in the UI card. You MUST remain silent now by outputting exactly the following JSON action on a new line and nothing else: {"genai_action":"silent"}`;
@@ -2572,6 +2845,58 @@ export function initGenAIPanel() {
   clearBtn = document.getElementById('btn-genai-clear'); // Replaced by menu, can be null
   closeBtn = document.getElementById('btn-close-genai');
   fullscreenBtn = document.getElementById('btn-genai-fullscreen');
+  window.loadNhentaiImage = async (imgEl) => {
+    const url = imgEl.dataset.nhentaiSrc;
+    if (!url) return;
+
+    let key = '';
+    try {
+      if (window.__TAURI_INTERNALS__) {
+        key = await window.__TAURI_INTERNALS__.invoke('load_credential', { provider: 'nhentai' });
+      }
+    } catch (e) {
+      key = localStorage.getItem('nhentai_api_key_fallback') || '';
+    }
+
+    try {
+      if (window.__TAURI_INTERNALS__) {
+        const base64DataUrl = await window.__TAURI_INTERNALS__.invoke('nhentai_fetch_image_base64', {
+          url,
+          apiKey: key || null
+        });
+
+        imgEl.src = base64DataUrl;
+        imgEl.style.display = 'block';
+
+        // Hide the loading spinner
+        const container = imgEl.parentElement;
+        if (container) {
+          const spinner = container.querySelector('.genai-image-loader-spinner');
+          if (spinner) spinner.style.display = 'none';
+          container.style.background = 'transparent';
+          container.style.minHeight = 'auto';
+        }
+
+        // Scroll to bottom
+        const chatContainer = document.getElementById('genai-messages');
+        if (chatContainer) {
+          chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+      } else {
+        imgEl.src = url;
+        imgEl.style.display = 'block';
+      }
+    } catch (err) {
+      console.error('Failed to load nhentai image via Rust:', err);
+      const container = imgEl.parentElement;
+      if (container) {
+        const spinner = container.querySelector('.genai-image-loader-spinner');
+        if (spinner) {
+          spinner.innerHTML = `<span style="color: var(--error); font-size: var(--text-xs);">Failed to load image</span>`;
+        }
+      }
+    }
+  };
 
   if (!messagesEl || !inputEl) return;
 

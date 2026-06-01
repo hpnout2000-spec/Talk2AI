@@ -601,10 +601,10 @@ body.genai-fullscreen .genai-fullscreen-placeholder {
 
 .genai-action-badge {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--space-2);
-  padding: 5px 10px;
-  border-radius: var(--radius-full);
+  padding: 6px 12px;
+  border-radius: 12px;
   font-size: var(--text-xs);
   font-weight: 500;
   border: 1px solid;
@@ -785,9 +785,8 @@ body.genai-fullscreen .genai-fullscreen-placeholder {
 .genai-action-badge-icon { flex-shrink: 0; }
 
 .genai-action-badge-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  word-break: break-word;
 }
 
 /* ─── Input Area — mirrors .chat-input-area / .input-container ───────── */
@@ -832,8 +831,9 @@ body.genai-fullscreen .genai-fullscreen-placeholder {
   color: var(--text-secondary);
 }
 
-/* Custom swap effect for GenAI plus / image icon toggle */
-#btn-genai-plus .icon-image {
+/* Custom swap effect for GenAI plus / image / skills icon toggle */
+#btn-genai-plus .icon-image,
+#btn-genai-plus .icon-skills {
   display: none !important;
 }
 
@@ -854,8 +854,47 @@ body.genai-fullscreen .genai-fullscreen-placeholder {
   transform: rotate(90deg);
 }
 
+#btn-genai-plus.skills-active .icon-skills {
+  display: block !important;
+}
+
+#btn-genai-plus.skills-active .icon-plus,
+#btn-genai-plus.skills-active .icon-image {
+  display: none !important;
+}
+
+#btn-genai-plus.skills-active:hover .icon-skills {
+  display: none !important;
+}
+
+#btn-genai-plus.skills-active:hover .icon-plus {
+  display: block !important;
+  transform: rotate(90deg);
+}
+
 #btn-genai-plus svg {
   transition: transform 0.2s ease, color 0.2s ease;
+}
+
+/* Skills Badge */
+.genai-skills-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: var(--warning, #f59e0b);
+  color: #000 !important;
+  font-size: 9px;
+  font-weight: 700;
+  height: 14px;
+  min-width: 14px;
+  padding: 0 3px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 6px var(--warning, #f59e0b);
+  pointer-events: none;
+  z-index: 10;
 }
 
 #btn-genai-send {

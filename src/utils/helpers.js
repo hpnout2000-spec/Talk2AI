@@ -43,6 +43,18 @@ export function renderMarkdown(text) {
   html = html.replace(/!\[(.*?)\]\((.*?)\)/g, (match, alt, url) => {
     const cleanUrl = url.replace(/&amp;/g, '&');
     const cleanAlt = alt.replace(/<[^>]+>/g, '').replace(/"/g, '&quot;');
+    
+    const isNhentai = /nhentai\.net/.test(cleanUrl);
+    if (isNhentai) {
+      return `<div class="generated-image-container nhentai-image-container" style="margin-top: 12px; animation: fadeIn 0.4s ease; min-height: 100px; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.15); border-radius: var(--radius-md);">
+        <div class="chat-image-loader genai-image-loader-spinner" style="display: flex; align-items: center; gap: 8px;">
+          <div class="genai-working-dots" style="display:flex; gap:3px;"><span></span><span></span><span></span></div>
+          <span class="genai-working-text" style="font-size: var(--text-xs); font-style: italic; margin-left: 4px; color: var(--text-secondary);">Loading gallery image...</span>
+        </div>
+        <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-nhentai-src="${cleanUrl}" alt="${cleanAlt}" style="display: none; max-width: 360px; width: 100%; height: auto; border-radius: var(--radius-md); box-shadow: var(--shadow-md); border: 1px solid var(--border-light); cursor: pointer;" onclick="if(window.openLightbox){window.openLightbox(this.src)}else{window.open(this.src,'_blank')}" onload="if(!this.dataset.loaded){ this.dataset.loaded='1'; if(window.loadNhentaiImage){ window.loadNhentaiImage(this); } }">
+      </div>`;
+    }
+
     return `<div class="generated-image-container" style="margin-top: 12px; animation: fadeIn 0.4s ease;"><img src="${cleanUrl}" alt="${cleanAlt}" style="max-width: 360px; width: 100%; height: auto; border-radius: var(--radius-md); box-shadow: var(--shadow-md); display: block; border: 1px solid var(--border-light); cursor: pointer;" onclick="if(window.openLightbox){window.openLightbox(this.src)}else{window.open(this.src,'_blank')}" onload="if(window.scrollToBottom){window.scrollToBottom()}"></div>`;
   });
 

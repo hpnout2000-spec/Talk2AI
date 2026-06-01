@@ -42,6 +42,27 @@ pub struct ContinuationOption {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct AiComment {
+    pub id: String,
+    pub target_message_id: String,
+    pub target_content_snippet: String,
+    pub content: String,
+    pub timestamp: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Indicator {
+    pub name: String,
+    pub value: i32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ChatIndicators {
+    pub enabled: bool,
+    pub list: Vec<Indicator>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ChatMessage {
     pub id: String,
     pub role: String,
@@ -49,6 +70,12 @@ pub struct ChatMessage {
     pub thinking: Option<String>,
     pub options: Option<Vec<ContinuationOption>>,
     pub timestamp: String,
+    #[serde(default)]
+    pub translated_content: Option<String>,
+    #[serde(default)]
+    pub show_original: Option<bool>,
+    #[serde(default)]
+    pub original_text: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -58,6 +85,18 @@ pub struct ChatSession {
     pub messages: Vec<ChatMessage>,
     pub created_at: String,
     pub updated_at: String,
+    #[serde(default)]
+    pub custom_title: Option<String>,
+    #[serde(default)]
+    pub selected_greeting_index: Option<u32>,
+    #[serde(default)]
+    pub user_name: Option<String>,
+    #[serde(default)]
+    pub persona_id: Option<String>,
+    #[serde(default)]
+    pub ai_comments: Vec<AiComment>,
+    #[serde(default)]
+    pub indicators: Option<ChatIndicators>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -353,6 +392,157 @@ fn delete_skill(filename: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn save_credential(provider: String, key: String) -> Result<(), String> {
+    let dir = get_app_dir().join("credentials");
+    ensure_dir(&dir);
+    let path = dir.join(format!("{}.txt", provider));
+    fs::write(&path, key).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn load_credential(provider: String) -> Result<String, String> {
+    let path = get_app_dir().join("credentials").join(format!("{}.txt", provider));
+    if path.exists() {
+        fs::read_to_string(&path).map_err(|e| e.to_string())
+    } else {
+        Ok("".to_string())
+    }
+}
+
+#[tauri::command]
+async fn nhentai_request(
+    url: String,
+    method: String,
+    body: Option<String>,
+    api_key: Option<String>,
+) -> Result<String, String> {
+    use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, USER_AGENT, CONTENT_TYPE};
+
+    let client = reqwest::Client::new();
+    let mut headers = HeaderMap::new();
+    
+    headers.insert(
+        USER_AGENT,
+        HeaderValue::from_static("VibeChatting/1.0.0 (contact@vibechatting.org)"),
+    );
+
+    if let Some(ref key) = api_key {
+        if !key.trim().is_empty() {
+            if let Ok(val) = HeaderValue::from_str(&format!("Key {}", key)) {
+                headers.insert(AUTHORIZATION, val);
+            }
+        }
+    }
+
+    let mut req_builder = match method.to_uppercase().as_str() {
+        "POST" => client.post(&url),
+        _ => client.get(&url),
+    };
+
+    req_builder = req_builder.headers(headers);
+
+    if let Some(ref body_str) = body {
+        req_builder = req_builder
+            .header(CONTENT_TYPE, "application/json")
+            .body(body_str.clone());
+    }
+
+    let resp = req_builder
+        .send()
+        .await
+        .map_err(|e| format!("Network request failed: {}", e))?;
+
+    let status = resp.status();
+    if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        return Err("nhentai API Rate limit exceeded (429). Please wait a moment and try again.".to_string());
+    }
+
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read response body: {}", e))?;
+
+    if !status.is_success() {
+        return Err(format!("nhentai API Error ({}): {}", status.as_u16(), text));
+    }
+
+    Ok(text)
+}
+
+#[tauri::command]
+async fn nhentai_fetch_image_base64(
+    url: String,
+    api_key: Option<String>,
+) -> Result<String, String> {
+    use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, USER_AGENT, REFERER};
+    use base64::{Engine as _, engine::general_purpose};
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap_or_default();
+    let mut headers = HeaderMap::new();
+    
+    headers.insert(
+        USER_AGENT,
+        HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"),
+    );
+
+    // Referer header is required to bypass Cloudflare hotlink protection on nhentai CDN
+    headers.insert(
+        REFERER,
+        HeaderValue::from_static("https://nhentai.net/"),
+    );
+
+    if let Some(ref key) = api_key {
+        if !key.trim().is_empty() {
+            if let Ok(val) = HeaderValue::from_str(&format!("Key {}", key)) {
+                headers.insert(AUTHORIZATION, val);
+            }
+        }
+    }
+
+    let resp = client.get(&url)
+        .headers(headers)
+        .send()
+        .await
+        .map_err(|e| format!("Network request failed: {}", e))?;
+
+    let status = resp.status();
+
+    // Read content-type BEFORE consuming the response body
+    let content_type = resp.headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("image/jpeg")
+        .to_string();
+
+    let bytes = resp.bytes().await.map_err(|e| format!("Failed to read image bytes: {}", e))?;
+
+    // Check status AFTER reading body (so the body is consumed), but before encoding
+    if !status.is_success() {
+        return Err(format!(
+            "CDN returned HTTP {} for image URL. This is usually a hotlink/auth restriction. Content-Type was: {}",
+            status.as_u16(),
+            content_type
+        ));
+    }
+
+    // Ensure the response is actually an image (not an HTML error page)
+    if !content_type.starts_with("image/") {
+        return Err(format!(
+            "CDN returned non-image content-type '{}' instead of image data for URL: {}",
+            content_type, url
+        ));
+    }
+
+    let b64 = general_purpose::STANDARD.encode(&bytes);
+
+    Ok(format!("data:{};base64,{}", content_type, b64))
+}
+
 // ─── App Entry ──────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -372,7 +562,11 @@ pub fn run() {
             load_settings,
             load_skills,
             save_skill,
-            delete_skill
+            delete_skill,
+            save_credential,
+            load_credential,
+            nhentai_request,
+            nhentai_fetch_image_base64
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

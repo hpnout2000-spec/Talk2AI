@@ -1043,9 +1043,10 @@ async function sendMessage() {
 
             try {
               // 2. Process Image Gen suggestion popup (High Priority UI)
-              if (settings.comfyui_enabled && settings.comfyui_auto_chat) {
+              const freshSettings = settingsStore.get();
+              if (freshSettings.comfyui_enabled && freshSettings.comfyui_auto_chat) {
                 await triggerAutomaticImageGeneration(character, session, originalContent);
-              } else if (settings.comfyui_enabled && !settings.comfyui_auto_chat) {
+              } else if (freshSettings.comfyui_enabled && !freshSettings.comfyui_auto_chat) {
                 await triggerImageGenerationSuggestion(character, session, originalContent, msgElement);
               }
             } catch (e) {
@@ -1809,8 +1810,11 @@ async function triggerAssistantGeneration() {
 
             try {
               // 2. Process Automatic Image Gen if active (High Priority UI)
-              if (settings.comfyui_enabled && settings.comfyui_auto_chat) {
+              const freshSettings = settingsStore.get();
+              if (freshSettings.comfyui_enabled && freshSettings.comfyui_auto_chat) {
                 await triggerAutomaticImageGeneration(character, session, originalContent);
+              } else if (freshSettings.comfyui_enabled && !freshSettings.comfyui_auto_chat) {
+                await triggerImageGenerationSuggestion(character, session, originalContent, msgElement);
               }
             } catch (e) {
               console.warn('Failed to handle image generation:', e);

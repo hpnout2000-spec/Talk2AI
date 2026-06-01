@@ -220,7 +220,7 @@ export const chatStore = {
       try {
         await invokeTauri('save_chat', {
           characterId,
-          data: dataStr,
+          data: JSON.stringify(targetSession),
         });
       } catch (err) {
         console.warn('Tauri save failed', err);
