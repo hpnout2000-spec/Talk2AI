@@ -585,7 +585,11 @@ function buildDynamicContext(maxMessages = 15) {
   } else if ((isChatViewOpen || (!isGroupViewOpen && !isGameViewOpen && !isBookViewOpen)) && session && appState.currentCharacter) {
     // ── Individual character chat is the active view ───────────────
     parts.push(`\n## Active Chat — Character: ${appState.currentCharacter.name} (id: ${appState.currentCharacter.id}), Session ID: ${session.id}`);
-    if (maxMessages === 0) {
+    
+    const isFullscreen = document.body.classList.contains('genai-fullscreen');
+    if (isFullscreen) {
+      parts.push(`  (Chat history is omitted because the GenAI panel is currently expanded to fullscreen.)`);
+    } else if (maxMessages === 0) {
       parts.push(`  (Chat history omitted due to token limit)`);
     } else {
       const recent = session.messages.slice(-maxMessages);
@@ -596,16 +600,16 @@ function buildDynamicContext(maxMessages = 15) {
         const text = (userFacingContent || '').substring(0, 300).replace(/\n/g, ' ');
         parts.push(`  ${who}: ${text}`);
       });
+    }
 
-      const char = appState.currentCharacter;
-      parts.push(`\n## Character Card: ${char.name}`);
-      if (char.description) parts.push(`Description: ${char.description}`);
-      if (char.personality) parts.push(`Personality: ${char.personality}`);
-      if (char.scenario) parts.push(`Scenario: ${char.scenario}`);
+    const char = appState.currentCharacter;
+    parts.push(`\n## Character Card: ${char.name}`);
+    if (char.description) parts.push(`Description: ${char.description}`);
+    if (char.personality) parts.push(`Personality: ${char.personality}`);
+    if (char.scenario) parts.push(`Scenario: ${char.scenario}`);
 
-      if (session.ai_comments?.length) {
-        parts.push(`  (${session.ai_comments.length} AI comments in this session)`);
-      }
+    if (!isFullscreen && session.ai_comments?.length) {
+      parts.push(`  (${session.ai_comments.length} AI comments in this session)`);
     }
   } else {
     parts.push('\n## Active View: none');
@@ -684,6 +688,8 @@ async function buildApiMessages(extraUserInstruction = null) {
   * NEVER invent search results or fake API responses under any circumstances. If the search returns nothing, state that clearly.
   * NEVER expose the secret API Key in your conversation text, suggestions, or tool parameters.
   * NEVER put raw external website URLs or nhentai links in your text replies.
+  * CRITICAL MANDATORY DIRECTIVE FOR SHOWING IMAGES/PAGES: Whenever the user asks to see, open, view, or read a specific page (e.g., "show page 2", "next page", "show cover") or when you tell the user you are showing or delivering a page/cover, you MUST absolutely and obligatorily execute the corresponding JSON function call (e.g., {"genai_action":"nhentai_get_page",...} or {"genai_action":"nhentai_get_cover",...}) on its own line in your response.
+  * It is STRICTLY FORBIDDEN to write text promising, claiming, or pretending to show the page/cover (e.g., "Here is page 2 for you:") without actually emitting the JSON function call. You must ALWAYS output the JSON tool call block in the same response!
   * NEVER try to write Markdown image links like ![alt](url) yourself — the URL format is handled internally and you will get 404 errors if you guess it. Instead:
     - To show a gallery cover: call the \`nhentai_get_cover\` tool — it fetches and renders the cover automatically.
     - To show a specific page: call the \`nhentai_get_page\` tool — it fetches and renders the page automatically.
@@ -780,10 +786,10 @@ ${skill.content}
   }
 
   // Calculate dynamic character limit by subtracting the static system prompt, tools instructions,
-  // active skills blocks, and settings.max_tokens (response tokens) from the total backend token capacity.
+  // active skills blocks, and 1024 (GenAI response tokens) from the total backend token capacity.
   // Use Math.max with 4096 so we always guarantee at least a safe minimal history fits.
   const staticLen = staticBase.length + staticContext.length + activeSkillsBlock.length;
-  const charLimit = Math.max((tokenLimit - settings.max_tokens) * 4 - staticLen, 4096);
+  const charLimit = Math.max((tokenLimit - 1024) * 4 - staticLen, 4096);
 
   // Build dynamic context (character chat/game details — this is what we prune first)
   let activeChatMsgCount = 15;
@@ -1725,7 +1731,7 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
     const fullBlock = m[0];
     const innerContent = m[1].trim();
     try {
-      const json = JSON.parse(innerContent);
+      const json = healAndParseJsonAction(innerContent);
       if (json && (json.label || json.message) && !json.genai_action) {
         const token = `__GENAI_BUTTON_PLACEHOLDER_${buttonIndex}__`;
         processedText = processedText.replace(fullBlock, token);
@@ -1745,8 +1751,8 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
 
   buttonsData.forEach((btnData, i) => {
     const placeholder = `__GENAI_BUTTON_PLACEHOLDER_${i}__`;
-    const btnHtml = `<div class="inline-suggestion-btn-container" style="margin: var(--space-2) 0;">
-      <button class="continuation-option-btn genai-inline-suggest-btn" data-message="${escapeHtml(btnData.message)}" data-target="${escapeHtml(btnData.target)}" style="opacity: 1; transform: none; animation: none;">
+    const btnHtml = `<div class="inline-suggestion-btn-container" id="genai-btn-container-${i}" style="margin: var(--space-2) 0;">
+      <button class="continuation-option-btn genai-inline-suggest-btn" id="genai-inline-btn-${i}" data-message="${escapeHtml(btnData.message)}" data-target="${escapeHtml(btnData.target)}" style="animation-delay: ${i * 0.1}s;">
         ${escapeHtml(btnData.label)}
       </button>
     </div>`;
@@ -1931,6 +1937,54 @@ function scrollToBottom() {
 }
 
 // ─── Streaming with tool detection ──────────────────────────────────
+
+// Check if curly brace starting at startIndex is unclosed
+function isBraceUnclosed(text, startIndex) {
+  if (startIndex === -1 || startIndex >= text.length) return false;
+  let braceCount = 0;
+  let inString = false;
+  let stringChar = null;
+  let isEscaped = false;
+
+  for (let i = startIndex; i < text.length; i++) {
+    const char = text[i];
+
+    if (isEscaped) {
+      isEscaped = false;
+      continue;
+    }
+
+    if (char === '\\') {
+      isEscaped = true;
+      continue;
+    }
+
+    if (inString) {
+      if (char === stringChar) {
+        inString = false;
+        stringChar = null;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      inString = true;
+      stringChar = char;
+      continue;
+    }
+
+    if (char === '{') {
+      braceCount++;
+    } else if (char === '}') {
+      braceCount--;
+      if (braceCount === 0) {
+        return false; // Closed successfully!
+      }
+    }
+  }
+
+  return true; // Still unclosed
+}
 
 // Robust character-by-character scanner to locate and extract a complete JSON action object.
 // Returns { json: string, startIdx: number, endIdx: number } or null if incomplete.
@@ -2206,7 +2260,10 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
         if (isInsideUnclosedCodeBlock) {
           unclosedTickIndex = displayContent.lastIndexOf('```');
           const afterTick = displayContent.substring(unclosedTickIndex).replace(/\s/g, '').toLowerCase();
-          if (['', 'j', 'js', 'jso', 'json'].some(s => afterTick === '```' + s) || afterTick.startsWith('```json')) {
+          const braceInBlockIdx = displayContent.indexOf('{', unclosedTickIndex);
+          const hasUnclosedBrace = braceInBlockIdx !== -1 && isBraceUnclosed(displayContent, braceInBlockIdx);
+
+          if (['', 'j', 'js', 'jso', 'json'].some(s => afterTick === '```' + s) || afterTick.startsWith('```json') || hasUnclosedBrace) {
             isInsideUnclosedJsonCodeBlock = true;
           }
         }
@@ -2221,31 +2278,21 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
             const normalized = afterBrace.replace(/\s/g, '').toLowerCase();
 
             // Check if it starts like a JSON tool/button block
-            const isJsonBlock = normalized.startsWith('{"label') || 
-                                normalized.startsWith('{"message') || 
-                                normalized.startsWith('{"genai_action') || 
-                                normalized.startsWith('{"target') ||
+            const isJsonBlock = normalized.startsWith('{') || 
+                                normalized.startsWith('{"') ||
                                 normalized.includes('genai') || 
-                                normalized.includes('action');
+                                normalized.includes('action') ||
+                                normalized.includes('label') ||
+                                normalized.includes('message');
 
             if (isJsonBlock || afterBrace.length < 25) {
-              finalDisplay = displayContent.substring(0, braceIndex);
-              showPreemptiveWorking = true;
+              if (isBraceUnclosed(displayContent, braceIndex)) {
+                finalDisplay = displayContent.substring(0, braceIndex);
+                showPreemptiveWorking = true;
+              }
             }
           }
         }
-
-        if (showPreemptiveWorking) {
-          // Clean up any preceding code block markers so they don't leak either
-          const precedingTick = finalDisplay.lastIndexOf('```');
-          if (precedingTick !== -1) {
-            const afterPreceding = finalDisplay.substring(precedingTick).replace(/\s/g, '').toLowerCase();
-            if (['', 'j', 'js', 'jso', 'json'].some(s => afterPreceding === '```' + s)) {
-              finalDisplay = finalDisplay.substring(0, precedingTick);
-            }
-          }
-        }
-
 
         // Normal (first-pass) render
         const currentBubbleText = assistantEntry.content + finalDisplay;
@@ -2281,7 +2328,8 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
       },
       {
         temperature: 0.7,
-        top_p: 0.95
+        top_p: 0.95,
+        max_tokens: 1024
       }
     );
   } catch (err) {
