@@ -145,6 +145,19 @@ export async function renderSkills() {
               <polyline points="6 9 12 15 18 9"/>
             </svg>
           </button>
+          <button class="skill-entry-activate btn-icon small" data-filename="${entry.filename}" title="Toggle activate" style="background: none; border: none; cursor: pointer; padding: 4px 6px; display: flex; align-items: center; justify-content: center;">
+            <label class="toggle-switch small" style="pointer-events: none; flex-shrink: 0;">
+              <input type="checkbox" ${(() => {
+                try {
+                  const active = window.getGenAiActiveSkills ? window.getGenAiActiveSkills() : [];
+                  const fname = entry.filename;
+                  const isAct = active.includes(fname);
+                  return isAct ? 'checked' : '';
+                } catch (e) { return ''; }
+              })()} />
+              <span class="toggle-slider"></span>
+            </label>
+          </button>
           
           ${!isDefault ? `
             <button class="skill-entry-delete btn-icon small" data-filename="${entry.filename}" title="Delete skill" style="background: none; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; color: var(--text-tertiary);">
@@ -163,7 +176,7 @@ export async function renderSkills() {
   container.querySelectorAll('.skill-entry').forEach(row => {
     row.addEventListener('click', (e) => {
       // Ignore click if it's on a delete button, inside content view, or inside an input/button
-      if (e.target.closest('.skill-entry-delete') || e.target.closest('.skill-content-view') || e.target.closest('.skill-entry-toggle')) {
+      if (e.target.closest('.skill-entry-delete') || e.target.closest('.skill-content-view') || e.target.closest('.skill-entry-toggle') || e.target.closest('.skill-entry-activate')) {
         return;
       }
       
@@ -180,6 +193,26 @@ export async function renderSkills() {
       const filename = btn.dataset.filename;
       expandedFilename = expandedFilename === filename ? null : filename;
       renderSkills();
+    });
+  });
+
+  // Activate toggle buttons
+  container.querySelectorAll('.skill-entry-activate').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const filename = btn.dataset.filename;
+      try {
+        if (window.toggleGenAiSkill) {
+          // Map filename to id 'nhentai' when applicable
+          const id = filename === 'nhentai' || filename === 'nhentai.txt' ? 'nhentai' : filename;
+          await window.toggleGenAiSkill(id, btn);
+          await renderSkills();
+        } else {
+          showToast('Skill activation not available', 'error');
+        }
+      } catch (err) {
+        showToast('Failed to toggle skill', 'error');
+      }
     });
   });
 
@@ -205,3 +238,6 @@ export async function renderSkills() {
     });
   });
 }
+
+// Bind globally
+window.renderSkills = renderSkills;

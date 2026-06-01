@@ -15,6 +15,7 @@ import { renderMarkdown, autoResizeTextarea, formatTime, injectCursor, escapeHtm
 import morphdom from '../vendor/morphdom.js';
 import { generateImageComfyUI, checkComfyUIConnection, buildAutoPromptFromContext } from '../services/comfyui-service.js';
 import { loadChat } from './chat.js';
+import { nhentaiApi } from '../services/nhentai-api.js';
 
 // ─── State ──────────────────────────────────────────────────────────
 const STORAGE_KEY = 'vibechat_genai_history';
@@ -1555,6 +1556,51 @@ async function executeTool(action) {
     }
   }
 
+  if (name === 'set_skill_active') {
+    const filename = action.filename;
+    const active = !!action.active;
+    if (!filename) return { error: 'Missing filename parameter.' };
+
+    const session = getCurrentGenaiSession();
+    if (!session) return { error: 'No active session found to activate skill.' };
+    if (!session.activeSkills) session.activeSkills = [];
+
+    // Map filename to id 'nhentai' when applicable
+    const id = filename === 'nhentai' || filename === 'nhentai.txt' ? 'nhentai' : filename;
+
+    const isCurrentlyActive = session.activeSkills.includes(id);
+
+    if (active && !isCurrentlyActive) {
+      session.activeSkills.push(id);
+      saveHistory();
+      // Update UI asynchronously
+      setTimeout(async () => {
+        await renderSkillsList();
+        updateGenaiPlusButtonState();
+        await renderAllSkillsList();
+        if (window.renderSkills) {
+          try { await window.renderSkills(); } catch (e) {}
+        }
+      }, 50);
+      return { success: true, filename: id, active: true, info: `Skill "${id}" activated.` };
+    } else if (!active && isCurrentlyActive) {
+      session.activeSkills = session.activeSkills.filter(s => s !== id);
+      saveHistory();
+      // Update UI asynchronously
+      setTimeout(async () => {
+        await renderSkillsList();
+        updateGenaiPlusButtonState();
+        await renderAllSkillsList();
+        if (window.renderSkills) {
+          try { await window.renderSkills(); } catch (e) {}
+        }
+      }, 50);
+      return { success: true, filename: id, active: false, info: `Skill "${id}" deactivated.` };
+    }
+
+    return { success: true, filename: id, active: isCurrentlyActive, info: `Skill "${id}" was already in requested state.` };
+  }
+
 
   if (name === 'silent') {
     return { silent: true };
@@ -1625,12 +1671,19 @@ function resultBadgeForAction(action, result) {
   if (name === 'nhentai_get_cover' || name === 'nhentai_get_page') {
     const badge = actionBadgeHtml('result-data', '🖼️', result._type === 'image' ? (result.label || 'Gallery image loaded') : (result.error ? `Error: ${result.error}` : 'Image unavailable'));
     if (result._type === 'image' && result.base64) {
+      const src = result.base64.startsWith('data:') ? result.base64 : `data:image/jpeg;base64,${result.base64}`;
       const imgHtml = `<div class="generated-image-container" style="margin-top:10px;animation:fadeIn 0.4s ease">
-        <img src="${result.base64}" alt="${result.label || 'Gallery image'}" style="max-width:360px;width:100%;height:auto;border-radius:var(--radius-md);box-shadow:var(--shadow-md);display:block;border:1px solid var(--border-light);cursor:pointer;" onclick="if(window.openLightbox){window.openLightbox(this.src)}else{window.open(this.src,'_blank')}">
+        <img src="${src}" alt="${result.label || 'Gallery image'}" style="max-width:360px;width:100%;height:auto;border-radius:var(--radius-md);box-shadow:var(--shadow-md);display:block;border:1px solid var(--border-light);cursor:pointer;" onclick="if(window.openLightbox){window.openLightbox(this.src)}else{window.open(this.src,'_blank')}">
       </div>`;
       return badge + imgHtml;
     }
     return badge;
+  }
+
+  if (name === 'set_skill_active') {
+    return result.active
+      ? actionBadgeHtml('result-setting', '✅', `Skill Activated: ${result.filename}`)
+      : actionBadgeHtml('result-setting', '❌', `Skill Deactivated: ${result.filename}`);
   }
 
   if (name === 'get_games') return actionBadgeHtml('result-data', '🎮', `Found ${result.count} games`);
@@ -3015,7 +3068,24 @@ export function initGenAIPanel() {
   if (btnPlus && plusPopover) {
     btnPlus.addEventListener('click', (e) => {
       e.stopPropagation();
-      plusPopover.classList.toggle('hidden');
+      const isHidden = plusPopover.classList.contains('hidden');
+      if (isHidden) {
+        // Reset slider transform instantly before unhiding to completely avoid visual slide-in glitches!
+        const slider = document.getElementById('genai-plus-slider');
+        if (slider) {
+          slider.style.transition = 'none';
+          slider.style.transform = 'translateX(0)';
+          void slider.offsetHeight; // Force layout reflow
+          slider.style.transition = '';
+        }
+        plusPopover.classList.remove('hidden');
+        const mainEl = document.getElementById('genai-plus-main');
+        if (mainEl) {
+          plusPopover.style.height = mainEl.scrollHeight + 'px';
+        }
+      } else {
+        plusPopover.classList.add('hidden');
+      }
     });
     document.addEventListener('click', (e) => {
       if (!btnPlus.contains(e.target) && !plusPopover.contains(e.target)) {
@@ -3227,6 +3297,74 @@ export function initGenAIPanel() {
   } else {
     syncCreatorUI();
   }
+
+  // Popover slider Transitions & Active Skills listeners
+  const btnGenaiPlusSkills = document.getElementById('btn-genai-plus-skills');
+  const btnGenaiSkillsBack = document.getElementById('btn-genai-skills-back');
+  const genaiPlusSlider = document.getElementById('genai-plus-slider');
+  const genaiPlusMain = document.getElementById('genai-plus-main');
+  const genaiPlusSkills = document.getElementById('genai-plus-skills');
+  const btnGenaiShowAllSkills = document.getElementById('btn-genai-show-all-skills');
+  const btnGenaiAllSkillsBack = document.getElementById('btn-genai-all-skills-back');
+  const genaiPlusAllSkills = document.getElementById('genai-plus-all-skills');
+
+  if (btnGenaiPlusSkills && plusPopover) {
+    btnGenaiPlusSkills.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await renderSkillsList();
+      if (genaiPlusSlider) {
+        genaiPlusSlider.style.transform = 'translateX(-33.333%)';
+      }
+      // Wait a tick for render height calculation
+      setTimeout(() => {
+        if (genaiPlusSkills) {
+          plusPopover.style.height = genaiPlusSkills.scrollHeight + 'px';
+        }
+      }, 50);
+    });
+  }
+
+  if (btnGenaiSkillsBack && plusPopover) {
+    btnGenaiSkillsBack.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (genaiPlusSlider) {
+        genaiPlusSlider.style.transform = 'translateX(0)';
+      }
+      if (genaiPlusMain) {
+        plusPopover.style.height = genaiPlusMain.offsetHeight + 'px';
+      }
+    });
+  }
+
+  if (btnGenaiShowAllSkills && plusPopover) {
+    btnGenaiShowAllSkills.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await renderAllSkillsList();
+      if (genaiPlusSlider) {
+        genaiPlusSlider.style.transform = 'translateX(-66.666%)';
+      }
+      setTimeout(() => {
+        if (genaiPlusAllSkills) {
+          plusPopover.style.height = genaiPlusAllSkills.scrollHeight + 'px';
+        }
+      }, 50);
+    });
+  }
+
+  if (btnGenaiAllSkillsBack && plusPopover) {
+    btnGenaiAllSkillsBack.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await renderSkillsList();
+      if (genaiPlusSlider) {
+        genaiPlusSlider.style.transform = 'translateX(-33.333%)';
+      }
+      setTimeout(() => {
+        if (genaiPlusSkills) {
+          plusPopover.style.height = genaiPlusSkills.scrollHeight + 'px';
+        }
+      }, 50);
+    });
+  }
 }
 
 // ─── Open / Close helpers (called from main.js) ───────────────────────
@@ -3275,3 +3413,250 @@ export function startVibeMode(goal) {
   vibeMode = { goal, iterations: 0, maxIterations: 10, aborted: false };
   showVibeBanner(goal);
 }
+
+// ─── Active Skills State Machine & UI Helpers ───────────────────────
+
+export function getCurrentGenaiSession() {
+  if (!currentGenaiSessionId) return null;
+  return genaiSessions.find(s => s.id === currentGenaiSessionId) || null;
+}
+
+export function ensureGenaiSession() {
+  let session = getCurrentGenaiSession();
+  if (!session) {
+    currentGenaiSessionId = Date.now().toString();
+    session = {
+      id: currentGenaiSessionId,
+      updated_at: new Date().toISOString(),
+      messages: [],
+      pinned: false,
+      title: 'New Chat',
+      isCharacterCreationMode: isCharacterCreationMode,
+      creatorPanelClosedByUser: creatorPanelClosedByUser,
+      currentCreatorTab: currentCreatorTab,
+      creatorState: creatorState,
+      activeSkills: []
+    };
+    genaiSessions.unshift(session);
+    saveHistory();
+  }
+  return session;
+}
+
+
+export function updateGenaiPlusButtonState() {
+  const btnGenaiPlus = document.getElementById('btn-genai-plus');
+  const badgeEl = document.getElementById('genai-skills-badge');
+  if (!btnGenaiPlus) return;
+
+  const currentSession = getCurrentGenaiSession();
+  const activeSkillsCount = currentSession && currentSession.activeSkills ? currentSession.activeSkills.length : 0;
+  
+  // Safe settings retrieve
+  let imageGenEnabled = false;
+  try {
+    imageGenEnabled = settingsStore.get().comfyui_enabled_genai;
+  } catch (e) {}
+
+  // Render Badge
+  if (badgeEl) {
+    if (activeSkillsCount > 0) {
+      badgeEl.textContent = activeSkillsCount;
+      badgeEl.classList.remove('hidden');
+    } else {
+      badgeEl.classList.add('hidden');
+    }
+  }
+
+  // Determine State Priority
+  btnGenaiPlus.classList.remove('imagegen-active', 'skills-active');
+
+  if (activeSkillsCount > 0) {
+    btnGenaiPlus.classList.add('skills-active');
+  } else if (imageGenEnabled) {
+    btnGenaiPlus.classList.add('imagegen-active');
+  }
+}
+
+export async function renderSkillsList() {
+  const container = document.getElementById('genai-skills-list');
+  if (!container) return;
+
+  const session = getCurrentGenaiSession();
+  const activeSkills = session ? (session.activeSkills || []) : [];
+
+  const skills = [
+    { id: 'nhentai', name: 'nhentai / Tag Search', description: 'API v2 galleries & tag assistant' }
+  ];
+
+  container.innerHTML = skills.map(s => {
+    const isActive = activeSkills.includes(s.id);
+    return `
+      <div class="dropdown-option skill-list-item ${isActive ? 'active' : ''}" data-id="${s.id}" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; width: 100%; text-align: left; transition: background var(--transition-fast);">
+        <div style="display: flex; flex-direction: column; gap: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; padding-right: 8px;">
+          <span style="font-weight: 500; font-size: var(--text-sm); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${s.name}</span>
+          <span style="font-size: 11px; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${s.description}</span>
+        </div>
+        <label class="toggle-switch small" style="pointer-events: none; flex-shrink: 0;">
+          <input type="checkbox" ${isActive ? 'checked' : ''} />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    `;
+  }).join('');
+
+  // Bind click handlers to list items
+  container.querySelectorAll('.skill-list-item').forEach(el => {
+    el.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const skillId = el.dataset.id;
+      if (skillId === 'nhentai') {
+        await handleNhentaiToggle(el);
+      } else {
+        await handleCustomSkillToggle(skillId, el);
+      }
+    });
+  });
+}
+
+export async function handleNhentaiToggle(el) {
+  const session = ensureGenaiSession();
+  if (!session) return;
+  if (!session.activeSkills) session.activeSkills = [];
+
+  const isCurrentlyActive = session.activeSkills.includes('nhentai');
+
+  if (isCurrentlyActive) {
+    // Visually toggle immediately to preserve CSS transition
+    if (el) {
+      el.classList.remove('active');
+      const input = el.querySelector('input[type="checkbox"]');
+      if (input) input.checked = false;
+    }
+
+    session.activeSkills = session.activeSkills.filter(id => id !== 'nhentai');
+    saveHistory();
+    updateGenaiPlusButtonState();
+    await renderAllSkillsList(); // Также обновляем Page 3
+    showToast('nhentai skill deactivated for this chat');
+  } else {
+    let key = '';
+    try {
+      key = await invokeTauri('load_credential', { provider: 'nhentai' });
+    } catch (e) {
+      key = localStorage.getItem('nhentai_api_key_fallback') || '';
+    }
+
+    if (!key) {
+      // Open modal configuration
+      const modal = document.getElementById('modal-nhentai-config');
+      if (modal) {
+        const urlInput = document.getElementById('nhentai-api-url');
+        const settings = settingsStore.get();
+        if (urlInput) urlInput.value = settings.nhentai_api_url || '';
+        openWindow(modal);
+      }
+    } else {
+      // Visually toggle immediately to preserve CSS transition
+      if (el) {
+        el.classList.add('active');
+        const input = el.querySelector('input[type="checkbox"]');
+        if (input) input.checked = true;
+      }
+
+      session.activeSkills.push('nhentai');
+      saveHistory();
+      updateGenaiPlusButtonState();
+      await renderAllSkillsList(); // Также обновляем Page 3
+      showToast('nhentai skill activated for this chat');
+    }
+  }
+}
+
+export async function handleCustomSkillToggle(skillId, el) {
+  const session = ensureGenaiSession();
+  if (!session) return;
+  if (!session.activeSkills) session.activeSkills = [];
+
+  const isCurrentlyActive = session.activeSkills.includes(skillId);
+
+  // Visually toggle immediately in the DOM to trigger smooth spring CSS animation
+  if (el) {
+    el.classList.toggle('active', !isCurrentlyActive);
+    const input = el.querySelector('input[type="checkbox"]');
+    if (input) input.checked = !isCurrentlyActive;
+  }
+
+  if (isCurrentlyActive) {
+    session.activeSkills = session.activeSkills.filter(id => id !== skillId);
+    showToast('Custom skill deactivated for this chat');
+  } else {
+    session.activeSkills.push(skillId);
+    showToast('Custom skill activated for this chat');
+  }
+
+  saveHistory();
+  await renderSkillsList();
+  updateGenaiPlusButtonState();
+  // Note: We intentionally avoid immediate renderAllSkillsList() calls when el is clicked
+  // on Page 3, keeping the DOM untouched so the spring slide animation can finish seamlessly!
+}
+
+export async function renderAllSkillsList() {
+  const container = document.getElementById('genai-all-skills-list');
+  if (!container) return;
+
+  const session = getCurrentGenaiSession();
+  const activeSkills = session ? (session.activeSkills || []) : [];
+
+  let list = [];
+  try {
+    list = await skillsStore.getSkills();
+  } catch (e) {
+    console.error('Failed to get all skills for Page 3:', e);
+  }
+
+  // Фильтруем список, чтобы nhentai НЕ попадал в Show All (Page 3)
+  list = list.filter(s => s.filename !== 'nhentai' && s.name !== 'nhentai');
+
+  container.innerHTML = list.map(s => {
+    const isAct = activeSkills.includes(s.filename);
+    const format = s.filename.toLowerCase().endsWith('.json') ? 'json' : 'txt';
+    
+    return `
+      <div class="dropdown-option skill-all-list-item ${isAct ? 'active' : ''}" data-id="${escapeHtml(s.filename)}" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; width: 100%; text-align: left; transition: background var(--transition-fast);">
+        <div style="display: flex; flex-direction: column; gap: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; padding-right: 8px;">
+          <span style="font-weight: 500; font-size: var(--text-sm); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(s.name)}</span>
+          <span style="font-size: 11px; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(format)}</span>
+        </div>
+        <label class="toggle-switch small" style="pointer-events: none; flex-shrink: 0;">
+          <input type="checkbox" ${isAct ? 'checked' : ''} />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    `;
+  }).join('');
+
+  // Bind click handlers
+  container.querySelectorAll('.skill-all-list-item').forEach(el => {
+    el.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const skillId = el.dataset.id;
+      await handleCustomSkillToggle(skillId, el);
+    });
+  });
+}
+
+// Global window helpers for genai-skills-mgr.js and others
+window.getGenAiActiveSkills = () => {
+  const session = getCurrentGenaiSession();
+  return session ? (session.activeSkills || []) : [];
+};
+
+window.toggleGenAiSkill = async (skillId, el) => {
+  if (skillId === 'nhentai') {
+    await handleNhentaiToggle(el);
+  } else {
+    await handleCustomSkillToggle(skillId, el);
+  }
+};
