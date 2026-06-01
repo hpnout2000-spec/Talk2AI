@@ -11,6 +11,7 @@ import { appState } from './state.js';
 import { initChat, openAiCommentsSidebar, closeAiCommentsSidebar } from './components/chat.js';
 import { initCharacterPanel } from './components/character-panel.js';
 import { initSettingsPanel } from './components/settings-panel.js';
+import { initStorageSettings } from './components/storage-panel.js';
 import { initMemoryViewer } from './components/memory-viewer.js';
 import { initAdvancedSettings } from './components/advanced-settings.js';
 import { bookStore } from './services/book-store.js';
@@ -24,6 +25,7 @@ import { groupChatStore } from './services/group-chat-store.js';
 import { initGameView } from './components/game-view.js';
 import { initGenAIMemoriesMgr } from './components/genai-memories-mgr.js';
 import { initGenAISkillsMgr } from './components/genai-skills-mgr.js';
+import { initLightbox } from './utils/lightbox.js';
 
 // ─── Initialize App ─────────────────────────────────────────────────
 
@@ -297,6 +299,7 @@ async function init() {
   initCharacterPanel();
   initChat();
   initSettingsPanel();
+  initStorageSettings();
   initMemoryViewer();
   initAdvancedSettings();
   initBookPanel();
@@ -307,6 +310,7 @@ async function init() {
   initGroupChatPanel();
   initGroupChatView();
   initGameView();
+  initLightbox();
   applyGlobalSettingsStyles();
 
   // GenAI button

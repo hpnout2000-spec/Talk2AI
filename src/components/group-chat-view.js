@@ -222,10 +222,13 @@ async function pickCharacterWithAI(group, characters, session) {
   try {
     const charNames = characters.map(c => c.name).join(', ');
     const history = session.messages.slice(-6).map(m => {
-      const char = characters.find(c => c.id === m.character_id);
-      const name = m.role === 'user' ? 'User' : (char?.name || 'AI');
-      return `${name}: ${m.content}`;
-    }).join('\n');
+      const char = m.role === 'assistant' ? groupChatStore.getParticipant(m.character_id) : null;
+      return {
+        role: m.role,
+        sender: m.role === 'user' ? (settingsStore.get().user_name || 'User') : (char?.name || 'Unknown'),
+        content: m.original_text || m.content || ''
+      };
+    }).map(m => `${m.sender}: ${m.content}`).join('\n');
 
     const prompt = [
       { role: 'system', content: `You are an orchestrator for a group chat. Based on the conversation history, decide who should speak next.
@@ -522,7 +525,7 @@ function stripJsonBlocks(text, isStreaming = false) {
   const lastSquare = cleaned.lastIndexOf('[');
   if (lastSquare !== -1) {
     const candidate = cleaned.substring(lastSquare).trim();
-    if (candidate.startsWith('[') && (candidate.includes('{') || candidate.endsWith(']'))) {
+    if (candidate.startsWith('[') && (candidate.includes('{') || candidate.endsWith(']')) && !candidate.toLowerCase().includes('loader:')) {
       cleaned = cleaned.substring(0, lastSquare);
     }
   }

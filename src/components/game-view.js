@@ -87,7 +87,7 @@ function stripJsonBlocks(text, isStreaming = false) {
   const lastSquare = cleaned.lastIndexOf('[');
   if (lastSquare !== -1) {
     const candidate = cleaned.substring(lastSquare).trim();
-    if (candidate.startsWith('[') && (candidate.includes('{') || candidate.endsWith(']'))) {
+    if (candidate.startsWith('[') && (candidate.includes('{') || candidate.endsWith(']')) && !candidate.toLowerCase().includes('loader:')) {
       cleaned = cleaned.substring(0, lastSquare);
     }
   }

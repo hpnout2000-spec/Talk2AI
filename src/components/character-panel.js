@@ -183,6 +183,7 @@ Do not include any Markdown formatting like \`\`\`json or any other text. Return
         document.getElementById('char-name').value = charData.name || '';
         document.getElementById('char-description').value = charData.description || '';
         document.getElementById('char-personality').value = charData.personality || '';
+        document.getElementById('char-image-tags').value = charData.image_tags || '';
         document.getElementById('char-scenario').value = charData.scenario || '';
         document.getElementById('char-system-prompt').value = charData.system_prompt || '';
         document.getElementById('char-first-message').value = charData.first_message || '';
@@ -349,6 +350,7 @@ function openCharacterEditor(character = null) {
   document.getElementById('char-name').value = character?.name || '';
   document.getElementById('char-description').value = character?.description || '';
   document.getElementById('char-personality').value = character?.personality || '';
+  document.getElementById('char-image-tags').value = character?.image_tags || '';
   document.getElementById('char-scenario').value = character?.scenario || '';
   document.getElementById('char-system-prompt').value = character?.system_prompt || '';
   document.getElementById('char-first-message').value = character?.first_message || '';
@@ -421,6 +423,7 @@ async function saveCharacter() {
     avatar: preview.dataset.avatarData || '',
     description: document.getElementById('char-description').value,
     personality: document.getElementById('char-personality').value,
+    image_tags: document.getElementById('char-image-tags').value,
     scenario: document.getElementById('char-scenario').value,
     system_prompt: document.getElementById('char-system-prompt').value,
     first_message: document.getElementById('char-first-message').value,

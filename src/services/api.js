@@ -4,6 +4,80 @@
 
 import { settingsStore } from './settings-store.js';
 
+class RequestQueue {
+  constructor() {
+    this.queue = [];
+    this.currentActive = null;
+  }
+
+  async add(fn, onError, options = {}) {
+    const isBackground = options.priority === 'background';
+
+    if (!isBackground) {
+      // High-priority request!
+      // 1. Clear all queued background requests
+      this.queue = this.queue.filter(item => {
+        if (item.isBackground) {
+          // Trigger onError for the cancelled background request so its promise/caller knows it aborted
+          if (item.onError) {
+            item.onError(new Error('Aborted: high priority request took precedence'));
+          }
+          item.resolve(); // Resolve the queue promise so we don't have unhandled rejections
+          return false;
+        }
+        return true;
+      });
+
+      // 2. Abort active background request if one is running
+      if (this.currentActive && this.currentActive.isBackground) {
+        console.log('Aborting active background LLM request for high-priority request');
+        this.currentActive.abortController.abort();
+      }
+    }
+
+    const internalAbortController = new AbortController();
+
+    return new Promise((resolve) => {
+      const queueItem = {
+        fn,
+        isBackground,
+        abortController: internalAbortController,
+        onError,
+        resolve
+      };
+
+      this.queue.push(queueItem);
+      this.process();
+    });
+  }
+
+  async process() {
+    if (this.currentActive || this.queue.length === 0) return;
+
+    const item = this.queue.shift();
+    this.currentActive = item;
+
+    try {
+      if (item.abortController.signal.aborted) {
+        throw new Error('Aborted before starting');
+      }
+
+      await item.fn(item.abortController.signal);
+      item.resolve();
+    } catch (err) {
+      if (item.onError) {
+        item.onError(err);
+      }
+      item.resolve();
+    } finally {
+      this.currentActive = null;
+      this.process();
+    }
+  }
+}
+
+const llmQueue = new RequestQueue();
+
 export const api = {
   /**
    * Check if the API server is reachable
@@ -47,76 +121,109 @@ export const api = {
    * @param {Function} onError - Callback on error
    */
   async streamChat(messages, signal, onChunk, onDone, onError, options = {}) {
-    const settings = settingsStore.get();
+    return llmQueue.add(async (internalSignal) => {
+      const settings = settingsStore.get();
 
-    const body = {
-      messages,
-      stream: true,
-      max_tokens: options.max_tokens || settings.max_tokens,
-      temperature: options.temperature || settings.temperature,
-      top_p: options.top_p || settings.top_p,
-      top_k: options.top_k || settings.top_k,
-      repeat_penalty: options.rep_penalty || settings.rep_penalty,
-    };
+      // Combine caller's signal and our queue's internal signal
+      const combinedController = new AbortController();
+      const onAbort = () => {
+        combinedController.abort();
+      };
 
-    // Removed jinja_kwargs override to avoid conflict with manual system prompt token prefill
-
-    try {
-      const resp = await fetch(`${settings.api_url}/v1/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        signal,
-      });
-
-      if (!resp.ok) {
-        const errText = await resp.text();
-        onError(new Error(`API error ${resp.status}: ${errText}`));
-        return;
-      }
-
-      const reader = resp.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop(); // Keep incomplete line in buffer
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || !trimmed.startsWith('data: ')) continue;
-
-          const data = trimmed.slice(6);
-          if (data === '[DONE]') {
-            onDone();
-            return;
-          }
-
-          try {
-            const parsed = JSON.parse(data);
-            const delta = parsed.choices?.[0]?.delta;
-            if (delta?.content) {
-              onChunk(delta.content);
-            }
-          } catch {
-            // Skip malformed JSON
-          }
+      if (signal) {
+        if (signal.aborted) {
+          onAbort();
+        } else {
+          signal.addEventListener('abort', onAbort);
         }
       }
 
-      onDone();
-    } catch (err) {
-      if (err.name === 'AbortError') {
-        onDone();
-      } else {
-        onError(err);
+      if (internalSignal) {
+        if (internalSignal.aborted) {
+          onAbort();
+        } else {
+          internalSignal.addEventListener('abort', onAbort);
+        }
       }
-    }
+
+      const body = {
+        messages,
+        stream: true,
+        max_tokens: options.max_tokens || settings.max_tokens,
+        temperature: options.temperature || settings.temperature,
+        top_p: options.top_p || settings.top_p,
+        top_k: options.top_k || settings.top_k,
+        repeat_penalty: options.rep_penalty || settings.rep_penalty,
+      };
+
+      // Removed jinja_kwargs override to avoid conflict with manual system prompt token prefill
+
+      try {
+        if (combinedController.signal.aborted) {
+          onDone();
+          return;
+        }
+
+        const resp = await fetch(`${settings.api_url}/v1/chat/completions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: combinedController.signal,
+        });
+
+        if (!resp.ok) {
+          const errText = await resp.text();
+          onError(new Error(`API error ${resp.status}: ${errText}`));
+          return;
+        }
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop(); // Keep incomplete line in buffer
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || !trimmed.startsWith('data: ')) continue;
+
+            const data = trimmed.slice(6);
+            if (data === '[DONE]') {
+              onDone();
+              return;
+            }
+
+            try {
+              const parsed = JSON.parse(data);
+              const delta = parsed.choices?.[0]?.delta;
+              if (delta?.content) {
+                onChunk(delta.content);
+              }
+            } catch {
+              // Skip malformed JSON
+            }
+          }
+        }
+
+        onDone();
+      } catch (err) {
+        if (err.name === 'AbortError' || combinedController.signal.aborted) {
+          onDone();
+        } else {
+          onError(err);
+        }
+      } finally {
+        // Clean up listeners
+        if (signal) signal.removeEventListener('abort', onAbort);
+        if (internalSignal) internalSignal.removeEventListener('abort', onAbort);
+      }
+    }, onError, options);
   },
 
   /**

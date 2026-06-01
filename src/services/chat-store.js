@@ -66,6 +66,19 @@ export const chatStore = {
       return new Date(b.updated_at || 0) - new Date(a.updated_at || 0);
     });
 
+    // Clean recovery: strip any active loader tags from loaded messages on startup/restart
+    sessions[characterId].forEach(s => {
+      s.messages.forEach(m => {
+        if (m.content && m.content.includes('[[loader:')) {
+          if (m.original_text) {
+            m.content = m.original_text;
+          } else {
+            m.content = m.content.replace(/\n\n\[\[loader:[^\]]*\]\]/g, '').replace(/\[\[loader:[^\]]*\]\]/g, '').trim();
+          }
+        }
+      });
+    });
+
     return sessions[characterId];
   },
 
@@ -189,6 +202,7 @@ export const chatStore = {
   async saveSession(session = null) {
     const targetSession = session || currentSession;
     if (!targetSession) return;
+    targetSession.updated_at = new Date().toISOString();
     const characterId = targetSession.character_id;
     const allSessions = sessions[characterId] || [];
 

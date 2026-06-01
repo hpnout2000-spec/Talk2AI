@@ -22,6 +22,7 @@ import morphdom from '../vendor/morphdom.js';
 import { perf } from '../utils/perf.js';
 import { groupChatStore } from '../services/group-chat-store.js';
 import { buildGroupApiMessages } from './group-chat-view.js';
+import { generateImageComfyUI } from '../services/comfyui-service.js';
 
 // Lazy notify GenAI panel when a response arrives (avoids circular import)
 function notifyGenAI(response, characterName) {
@@ -224,6 +225,53 @@ export function initChat() {
     btnInputSettings.addEventListener('click', (e) => {
       e.stopPropagation();
       toggleInputSettings();
+      // Hide other popover
+      const chatPlusPopover = document.getElementById('chat-plus-popover');
+      if (chatPlusPopover) chatPlusPopover.classList.add('hidden');
+    });
+  }
+
+  // Chat Plus Popover
+  const btnChatPlus = document.getElementById('btn-chat-plus');
+  const chatPlusPopover = document.getElementById('chat-plus-popover');
+  const btnChatToggleImagegen = document.getElementById('btn-chat-toggle-imagegen');
+  const chatImagegenToggleCheck = document.getElementById('chat-imagegen-toggle-check');
+
+  if (btnChatPlus && chatPlusPopover) {
+    btnChatPlus.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isHidden = chatPlusPopover.classList.contains('hidden');
+      if (isHidden) {
+        const enabled = settingsStore.get().comfyui_enabled;
+        if (chatImagegenToggleCheck) chatImagegenToggleCheck.checked = !!enabled;
+        chatPlusPopover.classList.remove('hidden');
+        if (inputSettingsPopover) inputSettingsPopover.classList.add('hidden');
+      } else {
+        chatPlusPopover.classList.add('hidden');
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      if (chatPlusPopover && !chatPlusPopover.contains(e.target) && (!btnChatPlus || !btnChatPlus.contains(e.target))) {
+        chatPlusPopover.classList.add('hidden');
+      }
+    });
+  }
+
+  if (btnChatToggleImagegen) {
+    btnChatToggleImagegen.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const current = settingsStore.get();
+      const newVal = !current.comfyui_enabled;
+      settingsStore.save({ ...current, comfyui_enabled: newVal });
+      if (window.syncImageGenIndicators) {
+        window.syncImageGenIndicators();
+      } else {
+        const chatInd = document.getElementById('chat-imagegen-indicator');
+        if (chatInd) chatInd.classList.toggle('hidden', !newVal);
+        if (chatImagegenToggleCheck) chatImagegenToggleCheck.checked = newVal;
+      }
+      setTimeout(() => chatPlusPopover.classList.add('hidden'), 350);
     });
   }
 
@@ -233,6 +281,18 @@ export function initChat() {
     }
   });
   setupRightSidebarToggle();
+
+  // Init Image Gen indicator based on saved settings and add click handler to open settings modal
+  const _chatInd = document.getElementById('chat-imagegen-indicator');
+  if (_chatInd) {
+    const _igEnabled = settingsStore.get().comfyui_enabled;
+    _chatInd.classList.toggle('hidden', !_igEnabled);
+    
+    _chatInd.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openWindow('modal-settings-imagegen');
+    });
+  }
 
   // Listen for GenAI programmatic message sends
   window.addEventListener('genai-send-chat-message', (e) => {
@@ -523,6 +583,19 @@ function renderInputSettings() {
   btnAdv?.addEventListener('click', () => {
     inputSettingsPopover.classList.add('hidden');
     window.dispatchEvent(new CustomEvent('open-advanced-settings'));
+  });
+
+  // Image Gen toggle handler
+  const imageGenToggle = inputSettingsPopover.querySelector('#input-imagegen-toggle-check');
+  imageGenToggle?.addEventListener('change', () => {
+    const newVal = imageGenToggle.checked;
+    settingsStore.save({ ...settingsStore.get(), comfyui_enabled: newVal });
+    // Sync all indicators + genai popover toggle via global helper
+    if (window.syncImageGenIndicators) window.syncImageGenIndicators();
+    else {
+      const chatInd = document.getElementById('chat-imagegen-indicator');
+      if (chatInd) chatInd.classList.toggle('hidden', !newVal);
+    }
   });
 }
 
@@ -954,21 +1027,48 @@ async function sendMessage() {
           headerCharStatus.textContent = 'Ready';
           headerCharStatus.classList.remove('generating');
           updateChatHistory();
+          updateRegenerateVisibility();
           scrollToBottom();
         }
 
         if (originalContent) {
-          // 1. Update indicators (separate call)
-          await triggerIndicatorUpdate(character, session, content, originalContent);
+          // Strict sequential execution IIFE to respect single-concurrency LLM limits
+          (async () => {
+            try {
+              // 1. Generate continuation options replies first (High Priority UI)
+              await generateContinuationOptions(character, session, msgElement);
+            } catch (e) {
+              console.warn('Failed to generate suggestions:', e);
+            }
 
-          // 2. Extract memory
-          await extractAndShowMemory(character, session, content, originalContent, msgElement);
+            try {
+              // 2. Process Image Gen suggestion popup (High Priority UI)
+              if (settings.comfyui_enabled && settings.comfyui_auto_chat) {
+                await triggerAutomaticImageGeneration(character, session, originalContent);
+              } else if (settings.comfyui_enabled && !settings.comfyui_auto_chat) {
+                await triggerImageGenerationSuggestion(character, session, originalContent, msgElement);
+              }
+            } catch (e) {
+              console.warn('Failed to handle image generation:', e);
+            }
 
-          // 3. Generate suggestions
-          generateContinuationOptions(character, session, msgElement);
+            try {
+              // 3. Extract and save memory (Low Priority Background)
+              await extractAndShowMemory(character, session, content, originalContent, msgElement);
+            } catch (e) {
+              console.warn('Failed to extract memory:', e);
+            }
 
-          // 4. Notify GenAI (for vibe plot mode)
-          notifyGenAI(originalContent, character.name);
+            try {
+              // 4. Update indicators status (Low Priority Background)
+              await triggerIndicatorUpdate(character, session, content, originalContent);
+            } catch (e) {
+              console.warn('Failed to update indicators:', e);
+            }
+
+            // 5. Notify GenAI (for vibe plot mode)
+            notifyGenAI(originalContent, character.name);
+          })();
         }
 
         window.dispatchEvent(new CustomEvent('genai-chat-response-finished'));
@@ -1178,7 +1278,7 @@ function buildApiMessages(character, session) {
 
     // For user messages, use translation (English) if available
     // For assistant messages, we stored original English in content
-    let content = msg.role === 'user' ? (msg.translated_content || msg.content) : msg.content;
+    let content = msg.role === 'user' ? (msg.translated_content || msg.content) : (msg.original_text || msg.content);
     messages.push({ role: msg.role, content: content });
   }
 
@@ -1511,6 +1611,7 @@ function scrollToBottom() {
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
   });
 }
+window.scrollToBottom = scrollToBottom;
 
 // ─── Edit & Regenerate Logic ────────────────────────────────────────
 
@@ -1697,16 +1798,41 @@ async function triggerAssistantGeneration() {
         scrollToBottom();
 
         if (originalContent) {
-          const lastUserMsg = session.messages.slice().reverse().find(m => m.role === 'user');
-          if (lastUserMsg) {
-            // 1. Update indicators
-            await triggerIndicatorUpdate(character, session, lastUserMsg.content, originalContent);
+          // Strict sequential execution IIFE to respect single-concurrency LLM limits
+          (async () => {
+            try {
+              // 1. Generate continuation options replies first (High Priority UI)
+              await generateContinuationOptions(character, session, msgElement);
+            } catch (e) {
+              console.warn('Failed to generate suggestions:', e);
+            }
 
-            // 2. Extract memory
-            await extractAndShowMemory(character, session, lastUserMsg.content, originalContent, msgElement);
-          }
-          // 3. Generate suggestions
-          generateContinuationOptions(character, session, msgElement);
+            try {
+              // 2. Process Automatic Image Gen if active (High Priority UI)
+              if (settings.comfyui_enabled && settings.comfyui_auto_chat) {
+                await triggerAutomaticImageGeneration(character, session, originalContent);
+              }
+            } catch (e) {
+              console.warn('Failed to handle image generation:', e);
+            }
+
+            const lastUserMsg = session.messages.slice().reverse().find(m => m.role === 'user');
+            if (lastUserMsg) {
+              try {
+                // 3. Extract and save memory (Low Priority Background)
+                await extractAndShowMemory(character, session, lastUserMsg.content, originalContent, msgElement);
+              } catch (e) {
+                console.warn('Failed to extract memory:', e);
+              }
+
+              try {
+                // 4. Update indicators status (Low Priority Background)
+                await triggerIndicatorUpdate(character, session, lastUserMsg.content, originalContent);
+              } catch (e) {
+                console.warn('Failed to update indicators:', e);
+              }
+            }
+          })();
         }
       },
       (err) => {
@@ -1863,7 +1989,8 @@ Do not include any Markdown formatting like \`\`\`json or any other text. Return
     const response = await api.chatCompletion(messages, {
       max_tokens: 300,
       temperature: 0.7,
-      signal: signal
+      signal: signal,
+      priority: 'background'
     });
 
     // CRITICAL: Check if we were aborted while waiting for the network
@@ -2308,7 +2435,7 @@ Example: {"indicators": {"Trust": +5, "Fear": -10}}`
   });
 
   try {
-    const response = await api.chatCompletion(context, { max_tokens: 150, temperature: 0.1 });
+    const response = await api.chatCompletion(context, { max_tokens: 150, temperature: 0.1, priority: 'background' });
     // More flexible JSON extraction (greedy to capture nested braces)
     const jsonMatch = response.match(/\{[\s\S]*"indicators"[\s\S]*\}/);
     if (jsonMatch) {
@@ -2391,13 +2518,20 @@ function stripJsonBlocks(text, isStreaming = false) {
   if (lastCurly !== -1) {
     const candidate = cleaned.substring(lastCurly).trim();
     if (candidate.startsWith('{') && (candidate.includes('":') || candidate.endsWith('}'))) {
-      cleaned = cleaned.substring(0, lastCurly);
+      try {
+        JSON.parse(candidate + (candidate.endsWith('}') ? '' : '}'));
+        cleaned = cleaned.substring(0, lastCurly);
+      } catch (e) {
+        if (candidate.includes('":') && candidate.endsWith('}')) {
+          cleaned = cleaned.substring(0, lastCurly);
+        }
+      }
     }
   }
   const lastSquare = cleaned.lastIndexOf('[');
   if (lastSquare !== -1) {
     const candidate = cleaned.substring(lastSquare).trim();
-    if (candidate.startsWith('[') && (candidate.includes('{') || candidate.endsWith(']'))) {
+    if (candidate.startsWith('[{') && candidate.endsWith('}]')) {
       cleaned = cleaned.substring(0, lastSquare);
     }
   }
@@ -2626,9 +2760,64 @@ function abortMoreSuggestionsGeneration() {
 }
 
 function renderSuggestionsHTML(rawText) {
+  // Strip leading whitespace
+  let displayContent = rawText.replace(/^[\s\n]+/, '');
+
+  let processedText = displayContent;
+  let showPreemptiveWorking = false;
+
+  // Mathematically robust tick block tracking
+  const tickCount = (displayContent.match(/```/g) || []).length;
+  const isInsideUnclosedCodeBlock = (tickCount % 2 === 1);
+  let isInsideUnclosedJsonCodeBlock = false;
+  let unclosedTickIndex = -1;
+
+  if (isInsideUnclosedCodeBlock) {
+    unclosedTickIndex = displayContent.lastIndexOf('```');
+    const afterTick = displayContent.substring(unclosedTickIndex).replace(/\s/g, '').toLowerCase();
+    if (['', 'j', 'js', 'jso', 'json'].some(s => afterTick === '```' + s) || afterTick.startsWith('```json')) {
+      isInsideUnclosedJsonCodeBlock = true;
+    }
+  }
+
+  const braceIndex = displayContent.lastIndexOf('{');
+
+  if (isInsideUnclosedJsonCodeBlock) {
+    processedText = displayContent.substring(0, unclosedTickIndex);
+    showPreemptiveWorking = true;
+  } else {
+    // If not already preemptively showing, check curly braces
+    if (braceIndex !== -1) {
+      const afterBrace = displayContent.substring(braceIndex);
+      const normalized = afterBrace.replace(/\s/g, '').toLowerCase();
+
+      // Check if it starts like a JSON block
+      const isJsonBlock = normalized.startsWith('{"label') || 
+                          normalized.startsWith('{"message') || 
+                          normalized.startsWith('{"target') ||
+                          normalized.includes('label') || 
+                          normalized.includes('message');
+
+      if (isJsonBlock || afterBrace.length < 25) {
+        processedText = displayContent.substring(0, braceIndex);
+        showPreemptiveWorking = true;
+      }
+    }
+  }
+
+  if (showPreemptiveWorking) {
+    // Clean up any preceding code block markers so they don't leak either
+    const precedingTick = processedText.lastIndexOf('```');
+    if (precedingTick !== -1) {
+      const afterPreceding = processedText.substring(precedingTick).replace(/\s/g, '').toLowerCase();
+      if (['', 'j', 'js', 'jso', 'json'].some(s => afterPreceding === '```' + s)) {
+        processedText = processedText.substring(0, precedingTick);
+      }
+    }
+  }
+
   const blockRegex = /```(?:json)?\s*([\s\S]*?)```/g;
-  let processedText = rawText;
-  const matches = [...rawText.matchAll(blockRegex)];
+  const matches = [...processedText.matchAll(blockRegex)];
   const buttonsData = [];
   let buttonIndex = 0;
   
@@ -2662,6 +2851,10 @@ function renderSuggestionsHTML(rawText) {
     </div>`;
     finalHtml = finalHtml.replace(placeholder, btnHtml);
   });
+
+  if (showPreemptiveWorking) {
+    finalHtml += `<div class="genai-inline-tool genai-tool-working" style="margin-top: 10px;"><span class="genai-working-text">Working...</span></div>`;
+  }
   
   return { html: finalHtml, buttonsData };
 }
@@ -2702,4 +2895,332 @@ function attachSuggestionButtonListeners(container, buttonsData) {
     });
   });
 }
+
+async function triggerAutomaticImageGeneration(character, session, assistantReply) {
+  // 1. Find the last assistant message to embed in
+  const lastMsg = session.messages.slice().reverse().find(m => m.role === 'assistant');
+  if (!lastMsg) return;
+
+  // Start image generation state
+  appState.isGenerating = true;
+  appState.abortController = new AbortController();
+
+  if (appState.currentCharacter?.id === character.id) {
+    btnSend.classList.add('hidden');
+    btnStop.classList.remove('hidden');
+    headerCharStatus.textContent = 'Generating illustration...';
+    headerCharStatus.classList.add('generating');
+  }
+
+  // Preserve the original text of the message so we can restore/append cleanly
+  if (!lastMsg.original_text) {
+    lastMsg.original_text = lastMsg.content;
+  }
+
+  // Set initial loading state while the LLM is writing the prompt
+  lastMsg.content = lastMsg.original_text + '\n\n[[loader:Drafting the scene description...]]';
+  loadChat(session); // re-render instantly to show loader
+
+  // Build a complete history context up to settings.prompt_token_limit
+  const settings = settingsStore.get();
+  const userName = session.user_name || settings.user_name || 'User';
+
+  const historyLines = session.messages
+    .filter(m => m.role !== 'system' && (m.content || m.original_text))
+    .map(m => {
+      const name = m.role === 'user' ? userName : character.name;
+      const text = m.role === 'user' ? (m.translated_content || m.content) : (m.original_text || m.content);
+      return `${name}: ${text}`;
+    });
+
+  const tokenLimit = Math.max(settings.prompt_token_limit || 4096, 2048);
+  const charLimit = tokenLimit * 4;
+
+  const charData = `Character: ${character.name}\nDescription: ${character.description || ''}\nPersonality: ${character.personality || ''}\nScenario: ${character.scenario || ''}`;
+  const mandatoryTags = (character.image_tags && character.image_tags.trim() !== '') 
+    ? `\n\nMANDATORY IMAGE TAGS: ${character.image_tags}\nYou MUST include these exact tags in your final Stable Diffusion prompt.` 
+    : '';
+
+  // Base overhead length estimation (prompts, instruction template)
+  const baseOverheadLen = charData.length + mandatoryTags.length + 1500;
+
+  let selectedLines = [];
+  let currentLen = baseOverheadLen;
+
+  for (let i = historyLines.length - 1; i >= 0; i--) {
+    const line = historyLines[i];
+    if (currentLen + line.length + 1 > charLimit) {
+      break;
+    }
+    selectedLines.unshift(line);
+    currentLen += line.length + 1;
+  }
+
+  const formattedHistory = selectedLines.join('\n');
+
+  let contextText = `${charData}\n\nCONVERSATION HISTORY:\n${formattedHistory}`;
+  if (character.image_tags && character.image_tags.trim() !== '') {
+    contextText += mandatoryTags;
+  }
+  
+  const messages = [
+    {
+      role: 'system',
+      content: `You are an expert prompt engineer and scenic narrator for AI image generators.
+Analyze the character profile and the entire conversation history context carefully.
+CRITICAL DIRECTIVE: You MUST pay close attention to all visual and narrative context clues, details, and progression in the conversation history (such as the character's attire/clothing, physical pose, emotions, facial expressions, weapons or objects held, background environment, lighting, time of day, and active setting). Do NOT miss or ignore these details! Your generated Stable Diffusion prompt must accurately reflect the CURRENT state and context of the scene.
+
+You must generate two things:
+1. An array of 3 creative loading status messages in English describing the drawing process (e.g. "Sketching the forest outline...", "Detailing character clothing...", "Adding volumetric lighting..."). Be very short (3-5 words each).
+2. A detailed, highly descriptive illustration prompt for Stable Diffusion (Anima model) in English that incorporates all mandatory tags and the full visual context.
+
+You MUST respond strictly in the following JSON format. Output ONLY raw JSON, do not include markdown codeblocks or conversational text:
+{
+  "statuses": ["creative message 1", "creative message 2", "creative message 3"],
+  "prompt": "detailed stable diffusion keywords in English"
+}`
+    },
+    {
+      role: 'user',
+      content: `Create an image prompt and status messages for this scene:\n\n${contextText}`
+    }
+  ];
+
+  let parsed = null;
+  try {
+    if (appState.abortController.signal.aborted) throw new Error('Stopped by user');
+    const rawResponse = await api.chatCompletion(messages, { temperature: 0.7, max_tokens: 250 });
+    let cleanText = rawResponse.trim();
+    if (cleanText.startsWith('```json')) {
+      cleanText = cleanText.replace(/^```json/m, '').replace(/```$/m, '').trim();
+    } else if (cleanText.startsWith('```')) {
+      cleanText = cleanText.replace(/^```/m, '').replace(/```$/m, '').trim();
+    }
+    parsed = JSON.parse(cleanText);
+    
+    // Strictly enforce tags by prepending them to the generated prompt
+    if (parsed.prompt && character.image_tags && character.image_tags.trim() !== '') {
+      // Ensure we don't duplicate if the LLM already included them at the start
+      if (!parsed.prompt.toLowerCase().includes(character.image_tags.trim().toLowerCase())) {
+        parsed.prompt = `${character.image_tags.trim()}, ${parsed.prompt}`;
+      }
+    }
+  } catch (e) {
+    console.warn('Failed to parse LLM prompt generation JSON:', e);
+    parsed = {
+      statuses: ['Generating illustration...', 'Rendering details...', 'Adding final touches...'],
+      prompt: `anime illustration, detailed, ${character.name}, ${lastMsg.original_text.substring(0, 150)}`
+    };
+  }
+
+  if (appState.abortController?.signal?.aborted) {
+    cleanupState();
+    return;
+  }
+
+  // Update loader with the custom neural-network selected status messages
+  const statusesStr = Array.isArray(parsed.statuses) ? parsed.statuses.join('|') : (parsed.status || 'Generating...');
+  lastMsg.content = lastMsg.original_text + `\n\n[[loader:${statusesStr}]]`;
+  chatStore.saveCurrentSession();
+  loadChat(session); // re-render instantly to show the custom status message
+
+  function cleanupState() {
+    if (appState.currentCharacter?.id === character.id) {
+      appState.isGenerating = false;
+      appState.abortController = null;
+      btnSend.classList.remove('hidden');
+      btnStop.classList.add('hidden');
+      headerCharStatus.textContent = 'Ready';
+      headerCharStatus.classList.remove('generating');
+      updateRegenerateVisibility();
+      scrollToBottom();
+    } else {
+      appState.isGenerating = false;
+      appState.abortController = null;
+    }
+  }
+
+  try {
+    // 2. Generate the image via ComfyUI service with Abort Signal
+    const blobUrl = await generateImageComfyUI(parsed.prompt, null, appState.abortController.signal);
+
+    if (appState.abortController?.signal?.aborted) {
+      cleanupState();
+      return;
+    }
+
+    // 3. Replace loading message with the final image markdown
+    lastMsg.content = lastMsg.original_text + `\n\n![${parsed.prompt}](${blobUrl})`;
+    chatStore.saveCurrentSession();
+    cleanupState();
+    loadChat(session); // re-render to display the image!
+  } catch (err) {
+    console.error('Auto image generation failed:', err);
+    
+    if (appState.abortController?.signal?.aborted) {
+      cleanupState();
+      return;
+    }
+
+    // Replace loader with the error block
+    lastMsg.content = lastMsg.original_text + `\n\n❌ **Ошибка генерации:** ${err.message}`;
+    chatStore.saveCurrentSession();
+    cleanupState();
+    loadChat(session); // re-render to show the error
+  }
+}
+
+// ─── Auto-Suggest Image Generation ───
+
+async function triggerImageGenerationSuggestion(character, session, assistantReply, msgElement) {
+  // Check if a suggestion popup is already active or generation is in progress
+  if (appState.isGenerating || !document.getElementById('image-suggestion-wrapper').classList.contains('hidden')) {
+    return;
+  }
+
+  const contextText = `Character: ${character.name} (${character.description || character.personality || ''})\n\nScene/Action: ${assistantReply}`;
+  
+  const messages = [
+    {
+      role: 'system',
+      content: 'You are an AI assistant that analyzes a roleplay scene to decide if an image illustration should be generated. If the scene contains strong visual elements, action, or a distinct setting, you should recommend generating an image. If it is just dialogue or internal thoughts with no visual substance, decline.\n\nRespond strictly in the following JSON format:\n{\n  "should_generate": true/false,\n  "suggestion_text": "A very short, 1-sentence prompt suggestion describing what you envision (e.g. \\\'A cozy fireplace scene with the character reading a book\\\')"\n}'
+    },
+    {
+      role: 'user',
+      content: `Analyze this scene:\n\n${contextText}`
+    }
+  ];
+
+  try {
+    const rawResponse = await api.chatCompletion(messages, { temperature: 0.5, max_tokens: 200, priority: 'background' });
+    let cleanText = rawResponse.trim();
+    if (cleanText.startsWith('```json')) cleanText = cleanText.replace(/^```json/m, '').replace(/```$/m, '').trim();
+    else if (cleanText.startsWith('```')) cleanText = cleanText.replace(/^```/m, '').replace(/```$/m, '').trim();
+    
+    const parsed = JSON.parse(cleanText);
+    
+    if (parsed.should_generate && parsed.suggestion_text) {
+      showImageSuggestionPopup(character, session, parsed.suggestion_text);
+    }
+  } catch (e) {
+    console.warn('Failed to parse LLM image suggestion JSON:', e);
+  }
+}
+
+function showImageSuggestionPopup(character, session, suggestionText) {
+  const wrapper = document.getElementById('image-suggestion-wrapper');
+  const textEl = document.getElementById('image-suggestion-text');
+  const btnDecline = document.getElementById('btn-suggestion-decline');
+  const btnGenerate = document.getElementById('btn-suggestion-generate');
+
+  if (!wrapper || !textEl) return;
+
+  textEl.textContent = suggestionText;
+  wrapper.classList.remove('hidden');
+
+  // Clear previous listeners
+  const newBtnDecline = btnDecline.cloneNode(true);
+  const newBtnGenerate = btnGenerate.cloneNode(true);
+  btnDecline.replaceWith(newBtnDecline);
+  btnGenerate.replaceWith(newBtnGenerate);
+
+  newBtnDecline.addEventListener('click', () => {
+    wrapper.classList.add('hidden');
+  });
+
+  newBtnGenerate.addEventListener('click', () => {
+    wrapper.classList.add('hidden');
+    // Find the last assistant message
+    const lastMsg = session.messages.slice().reverse().find(m => m.role === 'assistant');
+    if (!lastMsg) return;
+
+    // Trigger standard automatic generation flow
+    triggerAutomaticImageGeneration(character, session, lastMsg.content);
+  });
+}
+
+async function triggerAutomaticImageGenerationWithPrompt(character, session, msg, prompt) {
+  appState.isGenerating = true;
+  appState.abortController = new AbortController();
+
+  if (appState.currentCharacter?.id === character.id) {
+    btnSend.classList.add('hidden');
+    btnStop.classList.remove('hidden');
+    headerCharStatus.textContent = 'Generating illustration...';
+    headerCharStatus.classList.add('generating');
+  }
+
+  if (!msg.original_text) msg.original_text = msg.content;
+  msg.content = msg.original_text + '\n\n[[loader:Generating suggested illustration...|Rendering details...|Adding final touches...]]';
+  loadChat(session);
+
+  function cleanupState() {
+    if (appState.currentCharacter?.id === character.id) {
+      appState.isGenerating = false;
+      appState.abortController = null;
+      btnSend.classList.remove('hidden');
+      btnStop.classList.add('hidden');
+      headerCharStatus.textContent = 'Ready';
+      headerCharStatus.classList.remove('generating');
+      updateRegenerateVisibility();
+      scrollToBottom();
+    } else {
+      appState.isGenerating = false;
+      appState.abortController = null;
+    }
+  }
+
+  try {
+    const blobUrl = await generateImageComfyUI(prompt, null, appState.abortController.signal);
+    if (appState.abortController?.signal?.aborted) { cleanupState(); return; }
+
+    msg.content = msg.original_text + `\n\n![${prompt}](${blobUrl})`;
+    chatStore.saveCurrentSession();
+    cleanupState();
+    loadChat(session);
+  } catch (err) {
+    console.error('Auto image generation failed:', err);
+    if (appState.abortController?.signal?.aborted) { cleanupState(); return; }
+
+    msg.content = msg.original_text + `\n\n❌ **Ошибка генерации:** ${err.message}`;
+    chatStore.saveCurrentSession();
+    cleanupState();
+    loadChat(session);
+  }
+}
+
+// Global function to initialize status rotation
+window.initStatusRotation = function(container) {
+  if (!container || container.dataset.rotatorInited) return;
+  container.dataset.rotatorInited = '1';
+
+  const statuses = container.querySelectorAll('.chat-image-loader-status');
+  if (statuses.length <= 1) return;
+
+  let currentIndex = 0;
+
+  // Random interval between 4s and 6s
+  const getRandomInterval = () => Math.floor(Math.random() * 2000) + 4000;
+
+  const rotate = () => {
+    // If element is no longer in DOM, stop rotation
+    if (!container.isConnected) return;
+
+    const currentStatus = statuses[currentIndex];
+    const nextIndex = (currentIndex + 1) % statuses.length;
+    const nextStatus = statuses[nextIndex];
+
+    currentStatus.classList.remove('active');
+    currentStatus.classList.add('exit');
+
+    nextStatus.classList.remove('exit');
+    nextStatus.classList.add('active');
+
+    currentIndex = nextIndex;
+
+    setTimeout(rotate, getRandomInterval());
+  };
+
+  setTimeout(rotate, getRandomInterval());
+};
 

@@ -39,6 +39,31 @@ export function renderMarkdown(text) {
   // Quotes ("...") - Must be first to avoid matching quotes in HTML tags
   html = html.replace(/"([^"]+)"/g, '<span class="text-quotes">"$1"</span>');
 
+  // Custom Image syntax: ![alt](url)
+  html = html.replace(/!\[(.*?)\]\((.*?)\)/g, (match, alt, url) => {
+    const cleanUrl = url.replace(/&amp;/g, '&');
+    const cleanAlt = alt.replace(/<[^>]+>/g, '').replace(/"/g, '&quot;');
+    return `<div class="generated-image-container" style="margin-top: 12px; animation: fadeIn 0.4s ease;"><img src="${cleanUrl}" alt="${cleanAlt}" style="max-width: 360px; width: 100%; height: auto; border-radius: var(--radius-md); box-shadow: var(--shadow-md); display: block; border: 1px solid var(--border-light); cursor: pointer;" onclick="if(window.openLightbox){window.openLightbox(this.src)}else{window.open(this.src,'_blank')}" onload="if(window.scrollToBottom){window.scrollToBottom()}"></div>`;
+  });
+
+  // Custom Image Loader syntax: [[loader:status1|status2|...]]
+  html = html.replace(/\[\[loader:(.*?)\]\]/g, (match, statusStr) => {
+    const statuses = statusStr.split('|').map(s => s.trim()).filter(Boolean);
+    if (statuses.length === 1) {
+      return `<div class="chat-image-loader" style="margin-top: 12px; display: flex; align-items: center; gap: 8px; animation: fadeIn 0.3s ease;"><div class="genai-working-dots" style="display:flex; gap:3px;"><span></span><span></span><span></span></div><span class="genai-working-text" style="font-size: var(--text-xs); font-style: italic; margin-left: 4px;">${statuses[0]}</span></div>`;
+    }
+    
+    // Multi-status loader
+    const spans = statuses.map((s, i) => `<span class="chat-image-loader-status ${i === 0 ? 'active' : ''}">${s}</span>`).join('');
+    return `<div class="chat-image-loader multi-status-loader" data-statuses-count="${statuses.length}" style="margin-top: 12px; display: flex; align-items: center; gap: 8px; animation: fadeIn 0.3s ease;">
+      <div class="genai-working-dots" style="display:flex; gap:3px;"><span></span><span></span><span></span></div>
+      <div class="chat-image-loader-statuses" style="margin-left: 4px;">
+        ${spans}
+      </div>
+      <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onload="if(!this.dataset.inited && window.initStatusRotation){this.dataset.inited='1'; window.initStatusRotation(this.parentElement);}" style="display:none;">
+    </div>`;
+  });
+
   // Code blocks (```...```)
   html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
     return `<pre><code class="language-${lang}">${code.trim()}</code></pre>`;

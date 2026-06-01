@@ -832,6 +832,32 @@ body.genai-fullscreen .genai-fullscreen-placeholder {
   color: var(--text-secondary);
 }
 
+/* Custom swap effect for GenAI plus / image icon toggle */
+#btn-genai-plus .icon-image {
+  display: none !important;
+}
+
+#btn-genai-plus.imagegen-active .icon-image {
+  display: block !important;
+}
+
+#btn-genai-plus.imagegen-active .icon-plus {
+  display: none !important;
+}
+
+#btn-genai-plus.imagegen-active:hover .icon-image {
+  display: none !important;
+}
+
+#btn-genai-plus.imagegen-active:hover .icon-plus {
+  display: block !important;
+  transform: rotate(90deg);
+}
+
+#btn-genai-plus svg {
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
 #btn-genai-send {
   display: flex;
   align-items: center;

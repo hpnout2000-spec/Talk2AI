@@ -5,6 +5,7 @@
 import { settingsStore } from '../services/settings-store.js';
 import { showToast, checkConnection, applyGlobalSettingsStyles, openWindow, closeWindow } from '../main.js';
 import { api } from '../services/api.js';
+import { checkComfyUIConnection } from '../services/comfyui-service.js';
 
 let currentSettings;
 let editingGamePresetId = null;
@@ -23,7 +24,9 @@ export function initSettingsPanel() {
     { id: 'card-interface', modalId: 'modal-settings-interface' },
     { id: 'card-advanced', modalId: 'advanced-settings-modal' },
     { id: 'card-genai', modalId: 'modal-settings-genai' },
-    { id: 'card-game', modalId: 'modal-settings-game' }
+    { id: 'card-game', modalId: 'modal-settings-game' },
+    { id: 'card-imagegen', modalId: 'modal-settings-imagegen' },
+    { id: 'card-storage', modalId: 'modal-settings-storage' }
   ];
 
   categories.forEach(cat => {
@@ -109,6 +112,7 @@ export function initSettingsPanel() {
   // Load initial values
   loadSettingsToUI();
   initVibeDropdowns();
+  initImageGenSettings();
 
   // Listen for global settings updates
   window.addEventListener('settings-updated', () => {
@@ -177,6 +181,28 @@ function loadSettingsToUI() {
   setField('setting-genai-response-length', settings.genai_response_length || 'default');
   setField('setting-genai-speech-style', settings.genai_speech_style || 'default');
   checkField('setting-genai-safe-mode', settings.genai_safe_mode);
+
+  // Image Gen settings
+  checkField('setting-comfyui-enabled', settings.comfyui_enabled);
+  checkField('setting-comfyui-auto-chat', settings.comfyui_auto_chat);
+  setField('setting-comfyui-url', settings.comfyui_url || 'http://localhost:8188');
+  setField('setting-comfyui-neg-prompt', settings.comfyui_negative_prompt || '');
+  setField('setting-comfyui-sampler', settings.comfyui_sampler || 'euler');
+  setField('setting-comfyui-scheduler', settings.comfyui_scheduler || 'normal');
+  setField('setting-comfyui-unet', settings.comfyui_unet_name || 'anima-base-v1.0.safetensors');
+  setField('setting-comfyui-clip', settings.comfyui_clip_name || 'qwen_3_06b_base.safetensors');
+  setField('setting-comfyui-vae', settings.comfyui_vae_name || 'qwen_image_vae.safetensors');
+  const stepsEl = document.getElementById('setting-comfyui-steps');
+  const stepsVal = document.getElementById('comfyui-steps-val');
+  if (stepsEl) { stepsEl.value = settings.comfyui_steps ?? 30; if (stepsVal) stepsVal.textContent = stepsEl.value; }
+  const cfgEl = document.getElementById('setting-comfyui-cfg');
+  const cfgVal = document.getElementById('comfyui-cfg-val');
+  if (cfgEl) { cfgEl.value = settings.comfyui_cfg ?? 4.5; if (cfgVal) cfgVal.textContent = parseFloat(cfgEl.value).toFixed(1); }
+  const wEl = document.getElementById('setting-comfyui-width');
+  const hEl = document.getElementById('setting-comfyui-height');
+  if (wEl) wEl.value = settings.comfyui_width ?? 832;
+  if (hEl) hEl.value = settings.comfyui_height ?? 1216;
+  _updateResolutionButtons(settings.comfyui_width ?? 832, settings.comfyui_height ?? 1216);
 
   currentSettings = settings;
   editingGamePresetId = settings.active_game_prompt_preset_id || 'default-game-1';
@@ -258,6 +284,19 @@ async function saveSettings() {
     game_system_prompt: getVal('setting-game-system-prompt') || 'You are a Game Master in an interactive text RPG.',
     game_response_length: getVal('setting-game-response-length') || 'default',
     font_size: parseInt(document.getElementById('setting-font-size')?.value || current.font_size),
+    comfyui_enabled: getChecked('setting-comfyui-enabled'),
+    comfyui_auto_chat: getChecked('setting-comfyui-auto-chat'),
+    comfyui_url: getVal('setting-comfyui-url') || current.comfyui_url,
+    comfyui_steps: parseInt(document.getElementById('setting-comfyui-steps')?.value || current.comfyui_steps),
+    comfyui_cfg: parseFloat(document.getElementById('setting-comfyui-cfg')?.value || current.comfyui_cfg),
+    comfyui_width: parseInt(document.getElementById('setting-comfyui-width')?.value || current.comfyui_width),
+    comfyui_height: parseInt(document.getElementById('setting-comfyui-height')?.value || current.comfyui_height),
+    comfyui_negative_prompt: getVal('setting-comfyui-neg-prompt') || current.comfyui_negative_prompt,
+    comfyui_sampler: getVal('setting-comfyui-sampler') || current.comfyui_sampler,
+    comfyui_scheduler: getVal('setting-comfyui-scheduler') || current.comfyui_scheduler,
+    comfyui_unet_name: getVal('setting-comfyui-unet') || current.comfyui_unet_name,
+    comfyui_clip_name: getVal('setting-comfyui-clip') || current.comfyui_clip_name,
+    comfyui_vae_name: getVal('setting-comfyui-vae') || current.comfyui_vae_name,
   };
 
   await settingsStore.save(newSettings);
@@ -273,6 +312,8 @@ async function saveSettings() {
 
   showToast('Settings saved');
   checkConnection();
+  // Sync image gen indicators after save
+  if (window.syncImageGenIndicators) window.syncImageGenIndicators();
 }
 
 async function testConnection() {
@@ -486,4 +527,134 @@ function updateEditingGamePreset() {
     if (nameInput) nameInput.value = preset.name;
     if (promptInput) promptInput.value = preset.content;
   }
+}
+
+function initImageGenSettings() {
+  // Slider listeners
+  const stepsEl = document.getElementById('setting-comfyui-steps');
+  const stepsVal = document.getElementById('comfyui-steps-val');
+  if (stepsEl) {
+    stepsEl.addEventListener('input', () => {
+      if (stepsVal) stepsVal.textContent = stepsEl.value;
+      const min = parseFloat(stepsEl.min);
+      const max = parseFloat(stepsEl.max);
+      const val = parseFloat(stepsEl.value);
+      const pct = ((val - min) / (max - min)) * 100;
+      stepsEl.style.setProperty('--range-fill', `${pct}%`);
+    });
+  }
+
+  const cfgEl = document.getElementById('setting-comfyui-cfg');
+  const cfgVal = document.getElementById('comfyui-cfg-val');
+  if (cfgEl) {
+    cfgEl.addEventListener('input', () => {
+      if (cfgVal) cfgVal.textContent = parseFloat(cfgEl.value).toFixed(1);
+      const min = parseFloat(cfgEl.min);
+      const max = parseFloat(cfgEl.max);
+      const val = parseFloat(cfgEl.value);
+      const pct = ((val - min) / (max - min)) * 100;
+      cfgEl.style.setProperty('--range-fill', `${pct}%`);
+    });
+  }
+
+  // Resolution buttons listener
+  const resButtons = document.querySelectorAll('.imagegen-res-btn');
+  const wInput = document.getElementById('setting-comfyui-width');
+  const hInput = document.getElementById('setting-comfyui-height');
+
+  resButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const w = btn.dataset.w;
+      const h = btn.dataset.h;
+      if (wInput) wInput.value = w;
+      if (hInput) hInput.value = h;
+      _updateResolutionButtons(parseInt(w), parseInt(h));
+    });
+  });
+
+  // Manual resolution inputs listener to sync buttons
+  if (wInput) {
+    wInput.addEventListener('input', () => {
+      const w = parseInt(wInput.value) || 0;
+      const h = parseInt(hInput?.value) || 0;
+      _updateResolutionButtons(w, h);
+    });
+  }
+  if (hInput) {
+    hInput.addEventListener('input', () => {
+      const w = parseInt(wInput?.value) || 0;
+      const h = parseInt(hInput.value) || 0;
+      _updateResolutionButtons(w, h);
+    });
+  }
+
+  // ComfyUI Test connection button
+  const btnTestComfy = document.getElementById('btn-test-comfyui');
+  const comfyuiUrlInput = document.getElementById('setting-comfyui-url');
+  const connectionResult = document.getElementById('comfyui-connection-result');
+
+  if (btnTestComfy) {
+    btnTestComfy.addEventListener('click', async () => {
+      const url = comfyuiUrlInput ? comfyuiUrlInput.value.trim() : 'http://localhost:8188';
+      btnTestComfy.textContent = 'Testing...';
+      btnTestComfy.disabled = true;
+      if (connectionResult) {
+        connectionResult.className = '';
+        connectionResult.textContent = '';
+      }
+
+      try {
+        const isOk = await checkComfyUIConnection(url);
+        if (isOk) {
+          if (connectionResult) {
+            connectionResult.className = 'connection-result success';
+            connectionResult.style.color = 'var(--success)';
+            connectionResult.textContent = '✓ Connected successfully to ComfyUI!';
+          }
+          showToast('ComfyUI connected!');
+        } else {
+          if (connectionResult) {
+            connectionResult.className = 'connection-result error';
+            connectionResult.style.color = 'var(--error)';
+            connectionResult.innerHTML = '✗ Connection failed. Is ComfyUI running?<br><span style="font-size:11px;opacity:0.8;display:block;margin-top:4px;">Note: You must start ComfyUI with CORS allowed. Add <strong>--enable-cors-header "*"</strong> to your startup command/bat file.</span>';
+          }
+          showToast('ComfyUI connection failed', 'error');
+        }
+      } catch (err) {
+        if (connectionResult) {
+          connectionResult.className = 'connection-result error';
+          connectionResult.style.color = 'var(--error)';
+          connectionResult.textContent = `✗ Error: ${err.message}`;
+        }
+        showToast('Error testing connection', 'error');
+      } finally {
+        btnTestComfy.textContent = 'Test';
+        btnTestComfy.disabled = false;
+      }
+    });
+  }
+
+  // ComfyUI Save button handler
+  const btnSaveComfy = document.getElementById('btn-save-imagegen-settings');
+  if (btnSaveComfy) {
+    btnSaveComfy.addEventListener('click', async () => {
+      await saveSettings();
+      closeWindow('modal-settings-imagegen');
+    });
+  }
+}
+
+function _updateResolutionButtons(w, h) {
+  const resButtons = document.querySelectorAll('.imagegen-res-btn');
+  resButtons.forEach(btn => {
+    const btnW = parseInt(btn.dataset.w);
+    const btnH = parseInt(btn.dataset.h);
+    if (btnW === w && btnH === h) {
+      btn.classList.remove('btn-secondary');
+      btn.classList.add('btn-primary');
+    } else {
+      btn.classList.remove('btn-primary');
+      btn.classList.add('btn-secondary');
+    }
+  });
 }

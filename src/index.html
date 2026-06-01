@@ -323,28 +323,83 @@
 
           <!-- Chat Input -->
           <div id="chat-input-area" class="chat-input-area">
-            <div class="input-container">
-              <button id="btn-input-settings" class="btn-icon btn-input-settings" title="Input Settings">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="3"/>
-                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                </svg>
-              </button>
-              <div id="input-settings-popover" class="input-settings-popover hidden">
-                <!-- Content will be injected by JS -->
+            <!-- Auto-suggest Image Generation Popup -->
+            <div id="image-suggestion-wrapper" class="image-suggestion-wrapper hidden">
+              <div class="image-suggestion-card">
+                <div class="image-suggestion-header">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                  Image Suggestion
+                </div>
+                <div id="image-suggestion-text" class="image-suggestion-text">
+                  <!-- Suggestion text here -->
+                </div>
+                <div class="image-suggestion-actions">
+                  <button id="btn-suggestion-decline" class="btn-suggestion-decline">Decline</button>
+                  <button id="btn-suggestion-generate" class="btn-suggestion-generate">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                    Generate
+                  </button>
+                </div>
               </div>
+            </div>
+            <div class="input-container">
               <textarea id="message-input" class="message-input" placeholder="Type your message..." rows="1"></textarea>
-              <div class="input-actions">
-                <button id="btn-send" class="btn-send" title="Send">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
-                  </svg>
-                </button>
-                <button id="btn-stop" class="btn-stop hidden" title="Stop generation">
-                  <svg viewBox="0 0 24 24" fill="currentColor">
-                    <rect x="6" y="6" width="12" height="12" rx="2"/>
-                  </svg>
-                </button>
+              
+              <div class="input-bottom-row">
+                <div class="input-bottom-left">
+                  <!-- Plus Options Button -->
+                  <div class="chat-plus-wrapper">
+                    <button id="btn-chat-plus" class="btn-icon btn-chat-plus" title="More options">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                      </svg>
+                    </button>
+                    <div id="chat-plus-popover" class="popover hidden">
+                      <button id="btn-chat-toggle-imagegen" class="dropdown-option" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; width: 100%; text-align: left;">
+                        <span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
+                          <span style="font-weight: 500; font-size: var(--text-sm); color: var(--text-primary);">Image Gen</span>
+                          <span style="font-size: 11px; color: var(--text-tertiary);">Anima · ComfyUI</span>
+                        </span>
+                        <label class="toggle-switch small" style="pointer-events: none; flex-shrink: 0;">
+                          <input type="checkbox" id="chat-imagegen-toggle-check" />
+                          <span class="toggle-slider"></span>
+                        </label>
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Input Settings Gear -->
+                  <button id="btn-input-settings" class="btn-icon btn-input-settings" title="Input Settings">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="12" cy="12" r="3"/>
+                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                  </button>
+                  
+                  <div id="input-settings-popover" class="input-settings-popover hidden">
+                    <!-- Content will be injected by JS -->
+                  </div>
+
+                  <!-- Image Gen Premium Pill Button Indicator -->
+                  <div id="chat-imagegen-indicator" class="imagegen-active-indicator hidden" title="Image Gen is ON — Click to open settings">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                    <span>Image Gen</span>
+                  </div>
+                </div>
+
+                <!-- Actions: Send / Stop -->
+                <div class="input-actions">
+                  <button id="btn-send" class="btn-send" title="Send">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
+                    </svg>
+                  </button>
+                  <button id="btn-stop" class="btn-stop hidden" title="Stop generation">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                      <rect x="6" y="6" width="12" height="12" rx="2"/>
+                    </svg>
+                  </button>
+                </div>
               </div>
             </div>
             <div class="input-footer">
@@ -395,15 +450,17 @@
           <div id="group-chat-input-area" class="chat-input-area">
             <div class="input-container">
               <textarea id="group-chat-input" class="message-input" placeholder="Message the group..." rows="1"></textarea>
-              <div class="input-actions">
-                <button id="btn-group-send" class="btn-send" title="Send">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
-                  </svg>
-                </button>
-                <button id="btn-group-stop" class="btn-stop hidden" title="Stop generation">
-                  <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
-                </button>
+              <div class="input-bottom-row" style="justify-content: flex-end;">
+                <div class="input-actions">
+                  <button id="btn-group-send" class="btn-send" title="Send">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
+                    </svg>
+                  </button>
+                  <button id="btn-group-stop" class="btn-stop hidden" title="Stop generation">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -733,14 +790,27 @@
           <div class="genai-input-row">
             <div class="genai-plus-wrapper" style="position: relative; display: flex; align-items: flex-end;">
               <button id="btn-genai-plus" class="btn-icon" title="More options" style="margin-bottom: 2px; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; background: transparent; transition: all var(--transition-fast);">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;">
+                <svg class="icon-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;">
                   <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                <svg class="icon-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px; color: #a78bfa;">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
                 </svg>
               </button>
               <div id="genai-plus-popover" class="popover hidden" style="bottom: 100%; left: 0; margin-bottom: 8px; width: 220px; padding: 6px;">
                 <button id="btn-genai-create-char" class="dropdown-option" style="display: flex; flex-direction: column; align-items: flex-start; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; width: 100%; text-align: left;">
                   <span style="font-weight: 500; font-size: var(--text-sm); color: var(--text-primary);">Create character</span>
                   <span style="font-size: 11px; color: var(--text-tertiary);">Enhanced</span>
+                </button>
+                <button id="btn-genai-toggle-imagegen" class="dropdown-option" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; width: 100%; text-align: left;">
+                  <span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
+                    <span style="font-weight: 500; font-size: var(--text-sm); color: var(--text-primary);">Image Gen</span>
+                    <span style="font-size: 11px; color: var(--text-tertiary);">Anima · ComfyUI</span>
+                  </span>
+                  <label class="toggle-switch small" style="pointer-events: none; flex-shrink: 0;">
+                    <input type="checkbox" id="genai-imagegen-toggle-check" />
+                    <span class="toggle-slider"></span>
+                  </label>
                 </button>
               </div>
             </div>
@@ -810,6 +880,11 @@
             <div class="form-group">
               <label for="char-personality">Personality</label>
               <textarea id="char-personality" rows="2" placeholder="Personality traits..."></textarea>
+            </div>
+            <div class="form-group">
+              <label for="char-image-tags">Image Generation Tags (Optional)</label>
+              <textarea id="char-image-tags" rows="2" placeholder="Mandatory tags for image generation (e.g. 1girl, red hair, outdoors)"></textarea>
+              <small style="color: var(--text-tertiary); font-size: 11px; margin-top: 4px; display: block;">These tags will be appended to the prompt during Image Gen and strictly enforced.</small>
             </div>
             <div class="form-group">
               <label for="char-scenario">Scenario</label>
@@ -1194,6 +1269,33 @@
                   <div class="card-desc">Game Master prompt and settings</div>
                 </div>
               </div>
+              <div class="settings-card" id="card-imagegen">
+                <div class="card-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="18" height="18" rx="2"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21 15 16 10 5 21"/>
+                  </svg>
+                </div>
+                <div class="card-info">
+                  <div class="card-title">Image Gen</div>
+                  <div class="card-desc">ComfyUI · Anima model</div>
+                </div>
+              </div>
+              <div class="settings-card" id="card-storage">
+                <div class="card-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="4" width="20" height="16" rx="2" ry="2"/>
+                    <line x1="6" y1="8" x2="6.01" y2="8"/>
+                    <line x1="6" y1="12" x2="6.01" y2="12"/>
+                    <line x1="6" y1="16" x2="6.01" y2="16"/>
+                  </svg>
+                </div>
+                <div class="card-info">
+                  <div class="card-title">Storage</div>
+                  <div class="card-desc">Data size and cleanup</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1201,6 +1303,81 @@
 
       <!-- ─── Sub-Settings Modals ────────────────────────── -->
       
+      <!-- Storage Settings -->
+      <div id="modal-settings-storage" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content" style="max-width: 500px;">
+          <div class="modal-header">
+            <h2>Storage</h2>
+            <button class="btn-icon btn-close-submodal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          </div>
+          <div class="modal-body" style="display: flex; flex-direction: column; gap: 20px;">
+            <div style="font-size: 0.95rem; font-weight: 500; text-align: center;">Total Storage Used: <span id="storage-total-size" style="color: var(--text-accent);">Calculating...</span></div>
+            
+            <!-- Dynamic Diagram -->
+            <div style="width: 100%; height: 24px; border-radius: 12px; background: var(--bg-tertiary); overflow: hidden; display: flex; cursor: pointer;" id="storage-chart-bar">
+              <div id="storage-bar-chars" style="width: 0%; background: #4caf50; transition: width 0.5s ease; position: relative;" title="Characters" data-category="chars"></div>
+              <div id="storage-bar-chats" style="width: 0%; background: #2196f3; transition: width 0.5s ease; position: relative;" title="Chat History" data-category="chats"></div>
+              <div id="storage-bar-genai" style="width: 0%; background: #9c27b0; transition: width 0.5s ease; position: relative;" title="GenAI History" data-category="genai"></div>
+              <div id="storage-bar-images" style="width: 0%; background: #ff9800; transition: width 0.5s ease; position: relative;" title="Images" data-category="images"></div>
+            </div>
+            
+            <!-- Legend -->
+            <div id="storage-legend" style="display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem; cursor: pointer;">
+              <div class="storage-legend-item" data-category="chars" style="display: flex; justify-content: space-between; padding: 4px; border-radius: 4px;">
+                <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; border-radius: 50%; background: #4caf50; display: inline-block;"></span>Characters</span>
+                <span id="storage-val-chars" style="color: var(--text-secondary);">0 MB</span>
+              </div>
+              <div class="storage-legend-item" data-category="chats" style="display: flex; justify-content: space-between; padding: 4px; border-radius: 4px;">
+                <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; border-radius: 50%; background: #2196f3; display: inline-block;"></span>Chat History</span>
+                <span id="storage-val-chats" style="color: var(--text-secondary);">0 MB</span>
+              </div>
+              <div class="storage-legend-item" data-category="genai" style="display: flex; justify-content: space-between; padding: 4px; border-radius: 4px;">
+                <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; border-radius: 50%; background: #9c27b0; display: inline-block;"></span>GenAI History</span>
+                <span id="storage-val-genai" style="color: var(--text-secondary);">0 MB</span>
+              </div>
+              <div class="storage-legend-item" data-category="images" style="display: flex; justify-content: space-between; padding: 4px; border-radius: 4px;">
+                <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 10px; height: 10px; border-radius: 50%; background: #ff9800; display: inline-block;"></span>Generated Images</span>
+                <span id="storage-val-images" style="color: var(--text-secondary);">0 MB</span>
+              </div>
+            </div>
+
+            <!-- Smart Recommendations -->
+            <div style="background: var(--bg-tertiary); border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 16px; display: flex; flex-direction: column; gap: 12px; margin-top: 8px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 8px; font-weight: 600; color: var(--text-primary);">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2" style="width: 18px; height: 18px;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  Smart Recommendations
+                </div>
+                <div id="storage-filter-indicator" style="font-size: 0.75rem; color: var(--text-accent); display: none;">Filtering...</div>
+              </div>
+              <div style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.4;">
+                Review old chats (>3 days) and generated images. Select the items you wish to delete to free up space.
+              </div>
+              
+              <!-- Toolbar -->
+              <div id="storage-toolbar" style="display: none; justify-content: space-between; align-items: center; font-size: 0.8rem; border-bottom: 1px solid var(--border-subtle); padding-bottom: 8px;">
+                <div style="display: flex; gap: 12px; align-items: center;">
+                  <a href="#" id="btn-storage-select-all" style="color: var(--text-accent); text-decoration: none;">Select All</a>
+                  <a href="#" id="btn-storage-deselect-all" style="color: var(--text-secondary); text-decoration: none;">Deselect All</a>
+                  <select id="storage-sort-select" style="background: var(--bg-primary); border: 1px solid var(--border-subtle); color: var(--text-secondary); font-size: 0.75rem; padding: 2px 4px; border-radius: 4px; outline: none; cursor: pointer;">
+                    <option value="size">Sort by Size</option>
+                    <option value="date">Sort by Date</option>
+                  </select>
+                </div>
+                <div id="storage-selected-stats" style="color: var(--text-tertiary);">0 items selected</div>
+              </div>
+
+              <!-- Interactive List -->
+              <div id="storage-cleanup-list" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
+                <div id="storage-cleanup-stats" style="font-size: 0.85rem; font-weight: 500; color: var(--text-tertiary); text-align: center; padding: 20px 0;">Scanning...</div>
+              </div>
+
+              <button id="btn-storage-cleanup" class="btn-primary" style="width: 100%; display: none; background: var(--warning); color: #000; border: none;">Delete Selected</button>
+            </div>
+          </div>
+        </div>
+      </div>
       <!-- Connection Settings -->
       <div id="modal-settings-connection" class="modal hidden">
         <div class="modal-backdrop"></div>
@@ -1558,6 +1735,140 @@
           </div>
           <div class="modal-footer">
             <button class="btn-primary btn-full btn-save-settings">Save Changes</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── Image Gen Settings Modal ─────────────────── -->
+      <div id="modal-settings-imagegen" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content" style="max-width: 500px;">
+          <div class="modal-header">
+            <h2 style="display:flex;align-items:center;gap:10px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:22px;height:22px;color:var(--text-accent)"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              Image Gen
+            </h2>
+            <button class="btn-icon btn-close-submodal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          </div>
+          <div class="modal-body">
+
+            <!-- Enable toggle -->
+            <div class="form-group-row" style="margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border-subtle);">
+              <div>
+                <label style="font-size: var(--text-sm); font-weight: 600; color: var(--text-primary);">Enable Image Gen</label>
+                <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px;">Generate images via ComfyUI Anima</div>
+              </div>
+              <label class="toggle-switch small">
+                <input type="checkbox" id="setting-comfyui-enabled" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <!-- Auto-chat toggle -->
+            <div class="form-group-row" style="margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border-subtle);">
+              <div>
+                <label style="font-size: var(--text-sm); font-weight: 600; color: var(--text-primary);">Auto-generate in Chat</label>
+                <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px;">Automatically generate an image after each AI response</div>
+              </div>
+              <label class="toggle-switch small">
+                <input type="checkbox" id="setting-comfyui-auto-chat" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <!-- ComfyUI URL -->
+            <div class="form-group">
+              <label for="setting-comfyui-url">ComfyUI Server URL</label>
+              <div style="display:flex;gap:8px;">
+                <input type="text" id="setting-comfyui-url" placeholder="http://localhost:8188" style="flex:1;" />
+                <button id="btn-test-comfyui" class="btn-secondary" style="white-space:nowrap;padding:0 14px;">Test</button>
+              </div>
+              <div id="comfyui-connection-result" style="font-size:12px;margin-top:4px;"></div>
+            </div>
+
+            <!-- Steps + CFG in one row -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+              <div class="form-group">
+                <label for="setting-comfyui-steps">Steps <span id="comfyui-steps-val" style="color:var(--text-accent);font-weight:600;"></span></label>
+                <input type="range" id="setting-comfyui-steps" min="10" max="60" step="1" style="width:100%;accent-color:var(--accent-primary);margin-top:6px;" />
+              </div>
+              <div class="form-group">
+                <label for="setting-comfyui-cfg">CFG Scale <span id="comfyui-cfg-val" style="color:var(--text-accent);font-weight:600;"></span></label>
+                <input type="range" id="setting-comfyui-cfg" min="1" max="10" step="0.5" style="width:100%;accent-color:var(--accent-primary);margin-top:6px;" />
+              </div>
+            </div>
+
+            <!-- Resolution -->
+            <div class="form-group">
+              <label>Resolution</label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+                <button class="imagegen-res-btn btn-secondary small" data-w="832" data-h="1216" style="flex:1;">Portrait<br><span style="font-size:10px;opacity:0.6;">832×1216</span></button>
+                <button class="imagegen-res-btn btn-secondary small" data-w="1024" data-h="1024" style="flex:1;">Square<br><span style="font-size:10px;opacity:0.6;">1024×1024</span></button>
+                <button class="imagegen-res-btn btn-secondary small" data-w="1216" data-h="832" style="flex:1;">Landscape<br><span style="font-size:10px;opacity:0.6;">1216×832</span></button>
+              </div>
+              <div style="display:flex;gap:8px;margin-top:8px;">
+                <div style="flex:1;">
+                  <label style="font-size:11px;color:var(--text-tertiary);">Width</label>
+                  <input type="number" id="setting-comfyui-width" min="512" max="2048" step="64" style="width:100%;padding:6px 10px;background:var(--bg-primary);border:1px solid var(--border-light);border-radius:var(--radius-sm);color:var(--text-primary);font-size:var(--text-sm);" />
+                </div>
+                <div style="flex:1;">
+                  <label style="font-size:11px;color:var(--text-tertiary);">Height</label>
+                  <input type="number" id="setting-comfyui-height" min="512" max="2048" step="64" style="width:100%;padding:6px 10px;background:var(--bg-primary);border:1px solid var(--border-light);border-radius:var(--radius-sm);color:var(--text-primary);font-size:var(--text-sm);" />
+                </div>
+              </div>
+            </div>
+
+            <!-- Negative prompt -->
+            <div class="form-group">
+              <label for="setting-comfyui-neg-prompt">Negative Prompt</label>
+              <textarea id="setting-comfyui-neg-prompt" rows="2" placeholder="lowres, bad anatomy, worst quality, blurry..." style="width:100%;resize:vertical;"></textarea>
+            </div>
+
+            <!-- Advanced (collapsed) -->
+            <details style="margin-top:4px;">
+              <summary style="cursor:pointer;font-size:var(--text-sm);color:var(--text-tertiary);padding:6px 0;user-select:none;">▸ Advanced (Sampler &amp; Model Files)</summary>
+              <div style="margin-top:12px;display:flex;flex-direction:column;gap:12px;">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                  <div class="form-group" style="margin:0;">
+                    <label>Sampler</label>
+                    <select id="setting-comfyui-sampler" style="width:100%;padding:8px;background:var(--bg-primary);border:1px solid var(--border-light);border-radius:var(--radius-sm);color:var(--text-primary);font-size:var(--text-sm);">
+                      <option value="euler">euler</option>
+                      <option value="euler_ancestral">euler_ancestral</option>
+                      <option value="dpm_2">dpm_2</option>
+                      <option value="dpm_2_ancestral">dpm_2_ancestral</option>
+                      <option value="dpmpp_2m">dpmpp_2m</option>
+                      <option value="dpmpp_sde">dpmpp_sde</option>
+                    </select>
+                  </div>
+                  <div class="form-group" style="margin:0;">
+                    <label>Scheduler</label>
+                    <select id="setting-comfyui-scheduler" style="width:100%;padding:8px;background:var(--bg-primary);border:1px solid var(--border-light);border-radius:var(--radius-sm);color:var(--text-primary);font-size:var(--text-sm);">
+                      <option value="normal">normal</option>
+                      <option value="simple">simple</option>
+                      <option value="karras">karras</option>
+                      <option value="exponential">exponential</option>
+                      <option value="sgm_uniform">sgm_uniform</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="form-group" style="margin:0;">
+                  <label for="setting-comfyui-unet">UNET filename</label>
+                  <input type="text" id="setting-comfyui-unet" placeholder="anima-base-v1.0.safetensors" />
+                </div>
+                <div class="form-group" style="margin:0;">
+                  <label for="setting-comfyui-clip">CLIP / Text Encoder filename</label>
+                  <input type="text" id="setting-comfyui-clip" placeholder="qwen_3_06b_base.safetensors" />
+                </div>
+                <div class="form-group" style="margin:0;">
+                  <label for="setting-comfyui-vae">VAE filename</label>
+                  <input type="text" id="setting-comfyui-vae" placeholder="qwen_image_vae.safetensors" />
+                </div>
+              </div>
+            </details>
+
+          </div>
+          <div class="modal-footer">
+            <button class="btn-primary btn-full" id="btn-save-imagegen-settings">Save Changes</button>
           </div>
         </div>
       </div>
@@ -1943,8 +2254,24 @@
             <div style="flex: 1;"></div>
             <button id="btn-copy-ai-comment" class="btn-secondary hidden">Copy</button>
             <button id="btn-ok-ai-comment" class="btn-primary">Hide</button>
-          </div>
         </div>
+      </div>
+    </div>
+
+    <!-- Fullscreen Image Lightbox Overlay -->
+    <div id="image-lightbox" class="image-lightbox hidden">
+      <button class="lightbox-close" id="lightbox-close">&times;</button>
+      <div class="lightbox-content" id="lightbox-content">
+        <img id="lightbox-img" src="" alt="Lightbox Image">
+      </div>
+      <div class="lightbox-controls">
+        <button id="btn-lightbox-zoom-out" class="lightbox-btn" title="Zoom Out">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+        <button id="btn-lightbox-zoom-reset" class="lightbox-btn reset" title="Reset Zoom">100%</button>
+        <button id="btn-lightbox-zoom-in" class="lightbox-btn" title="Zoom In">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
       </div>
     </div>
   </body>

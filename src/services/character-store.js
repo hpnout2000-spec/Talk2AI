@@ -83,6 +83,7 @@ export const characterStore = {
       avatar: characterData.avatar || '',
       description: characterData.description || '',
       personality: characterData.personality || '',
+      image_tags: characterData.image_tags || '',
       scenario: characterData.scenario || '',
       system_prompt: characterData.system_prompt || '',
       first_message: characterData.first_message || '',
