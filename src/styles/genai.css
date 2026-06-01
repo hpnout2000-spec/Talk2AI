@@ -1157,3 +1157,25 @@ body.genai-fullscreen .genai-fullscreen-placeholder {
   border-radius: var(--radius-md);
   border: 1px dashed var(--border-light);
 }
+
+/* ─── Premium Inline Suggestion Buttons Entrance Animation ────────── */
+.genai-inline-suggest-btn {
+  opacity: 0;
+  transform: translateY(25px) scale(0.9) translateZ(0);
+  filter: blur(12px);
+  animation: genaiPopInBlur 0.75s cubic-bezier(0.19, 1, 0.22, 1) forwards;
+  will-change: transform, opacity, filter;
+}
+
+@keyframes genaiPopInBlur {
+  0% {
+    opacity: 0;
+    transform: translateY(30px) scale(0.88) translateZ(0);
+    filter: blur(16px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1) translateZ(0);
+    filter: blur(0);
+  }
+}
