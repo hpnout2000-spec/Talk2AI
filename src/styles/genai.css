@@ -1284,3 +1284,75 @@ body.genai-fullscreen .genai-msg.genai-assistant .genai-msg-bubble {
   opacity: 1;
   filter: blur(0);
 }
+
+/* Premium Character Hover Glow Detail in GenAI Chat */
+.genai-msg-text-container p,
+.genai-msg-text-container span,
+.genai-msg-text-container li,
+.genai-msg-text-container code {
+  transition: text-shadow 0.35s cubic-bezier(0.25, 0.8, 0.25, 1), color 0.35s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.genai-msg-text-container p:hover,
+.genai-msg-text-container span:hover,
+.genai-msg-text-container li:hover,
+.genai-msg-text-container code:hover {
+  color: #ffffff !important;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.45), 0 0 20px rgba(255, 255, 255, 0.25);
+}
+
+/* Flying Text Clone Animation for Suggestion Continuation Buttons */
+.flying-text-clone {
+  position: fixed;
+  z-index: 999999;
+  background: var(--accent-primary, #a78bfa);
+  color: #ffffff;
+  border-radius: var(--radius-full, 24px);
+  padding: 8px 16px;
+  font-family: var(--font-sans), sans-serif;
+  font-size: var(--text-sm, 13px);
+  font-weight: 600;
+  box-shadow: 0 0 20px rgba(167, 139, 250, 0.8), 0 0 40px rgba(167, 139, 250, 0.4);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: all 0.75s cubic-bezier(0.19, 1, 0.22, 1);
+  will-change: left, top, transform, opacity;
+}
+
+/* Placeholder style for pending flight bubble */
+.genai-msg.pending-flight .genai-msg-bubble {
+  background: rgba(255, 255, 255, 0.02) !important;
+  border: 1px dashed rgba(255, 255, 255, 0.15) !important;
+  box-shadow: none !important;
+  color: transparent !important;
+  text-shadow: none !important;
+}
+
+.genai-msg.pending-flight .genai-msg-bubble * {
+  color: transparent !important;
+  text-shadow: none !important;
+}
+
+/* Left-to-right clip-path reveal animation */
+.reveal-text-anim {
+  display: inline-block;
+  clip-path: inset(0 100% 0 0);
+  animation: revealLeftToRight 0.75s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+@keyframes revealLeftToRight {
+  0% {
+    clip-path: inset(0 100% 0 0);
+    filter: brightness(0.5);
+  }
+  100% {
+    clip-path: inset(0 0 0 0);
+    filter: brightness(1);
+  }
+}

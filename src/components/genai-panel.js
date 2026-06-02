@@ -1714,6 +1714,40 @@ function resultBadgeForAction(action, result) {
   return actionBadgeHtml('result-data', '🔧', 'Action completed');
 }
 
+// ─── Flying Text Animation Helper ────────────────────────────────────
+function animateFlyingText(startEl, text, destEl, callback) {
+  const startRect = startEl.getBoundingClientRect();
+  const destRect = destEl.getBoundingClientRect();
+
+  const clone = document.createElement('div');
+  clone.className = 'flying-text-clone';
+  clone.textContent = text;
+  
+  // Set initial position
+  clone.style.left = `${startRect.left}px`;
+  clone.style.top = `${startRect.top}px`;
+  clone.style.width = `${startRect.width}px`;
+  clone.style.height = `${startRect.height}px`;
+  
+  document.body.appendChild(clone);
+
+  // Force reflow to start transition
+  void clone.offsetWidth;
+
+  // Set target position
+  clone.style.left = `${destRect.left + (destRect.width / 2) - (startRect.width / 2)}px`;
+  clone.style.top = `${destRect.top + (destRect.height / 2) - (startRect.height / 2)}px`;
+  clone.style.transform = 'scale(0.2) rotate(20deg)';
+  clone.style.opacity = '0';
+  clone.style.filter = 'blur(1px)';
+
+  // Cleanup after transition
+  clone.addEventListener('transitionend', () => {
+    clone.remove();
+    callback();
+  }, { once: true });
+}
+
 function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWorking = false } = {}) {
   if (!bubbleEl) return;
 
@@ -1822,11 +1856,53 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
       const target = btn.getAttribute('data-target') || 'character';
       if (msg) {
         if (target === 'genai') {
-          sendProgrammaticUserMessage(msg);
+          // ── GenAI Chat Flow (Dynamic Bubble Creation + Flight) ──
+          btn.style.pointerEvents = 'none';
+          btn.style.opacity = '0.5';
+
+          // 1. Create a user entry with pending flight flag
+          messagesEl.querySelector('.genai-empty-state')?.remove();
+          const userEntry = { 
+            role: 'user', 
+            content: msg, 
+            timestamp: new Date().toISOString(), 
+            isPendingFlight: true 
+          };
+          genaiHistory.push(userEntry);
+          saveHistory();
+
+          // 2. Append empty pending bubble to chat viewport
+          const msgEl = appendMsgEl(userEntry);
+          scrollToBottom();
+          const destBubble = msgEl.querySelector('.genai-msg-bubble');
+
+          // 3. Animate flight from button to destination bubble!
+          animateFlyingText(btn, btn.textContent.trim(), destBubble, () => {
+            // 4. Reveal bubble: remove pending class
+            msgEl.classList.remove('pending-flight');
+            
+            // Apply reveal animation to the text container
+            destBubble.classList.add('reveal-text-anim');
+            
+            // 5. Send message and start streaming GenAI response after transition
+            setTimeout(async () => {
+              destBubble.classList.remove('reveal-text-anim');
+              delete userEntry.isPendingFlight;
+              saveHistory();
+              await streamGenAI();
+            }, 750);
+          });
         } else {
-          window.dispatchEvent(new CustomEvent('genai-send-chat-message', {
-            detail: { content: msg }
-          }));
+          // ── Main Chat Flow: Fly to main chat input area ──
+          const destEl = document.querySelector('#chat-input') || document.getElementById('btn-send') || document.body;
+          btn.style.pointerEvents = 'none';
+          btn.style.opacity = '0.5';
+
+          animateFlyingText(btn, btn.textContent.trim(), destEl, () => {
+            window.dispatchEvent(new CustomEvent('genai-send-chat-message', {
+              detail: { content: msg }
+            }));
+          });
         }
       }
     });
@@ -1910,6 +1986,10 @@ function appendMsgEl(entry) {
   const isUser = entry.role === 'user';
   const el = document.createElement('div');
   el.className = `genai-msg ${isUser ? 'genai-user' : 'genai-assistant'}`;
+  
+  if (entry.isPendingFlight) {
+    el.classList.add('pending-flight');
+  }
 
   const avatarHtml = isUser
     ? `<div class="genai-msg-avatar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/></svg></div>`
