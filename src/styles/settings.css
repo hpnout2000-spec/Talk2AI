@@ -199,7 +199,11 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  scrollbar-width: thin;
+}
+
+/* Guarantee modal body doesn't overflow or scroll */
+#modal-settings-storage .modal-body {
+  overflow-y: hidden !important;
 }
 
 /* Card Styling */
@@ -349,12 +353,25 @@
 .storage-item-badge.images { color: #ff9800; background: rgba(255,152,0,0.1); }
 
 /* Compact scrollbar specifically for list */
-.storage-list::-webkit-scrollbar {
-  width: 5px;
+.storage-list::-webkit-scrollbar,
+#storage-cleanup-list::-webkit-scrollbar {
+  width: 6px !important;
+  height: 6px !important;
 }
 
-.storage-list::-webkit-scrollbar-thumb {
-  background: var(--border-light);
-  border-radius: 4px;
+.storage-list::-webkit-scrollbar-track,
+#storage-cleanup-list::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+.storage-list::-webkit-scrollbar-thumb,
+#storage-cleanup-list::-webkit-scrollbar-thumb {
+  background: var(--border-light, rgba(255, 255, 255, 0.15)) !important;
+  border-radius: var(--radius-full, 999px) !important;
+}
+
+.storage-list::-webkit-scrollbar-thumb:hover,
+#storage-cleanup-list::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary, rgba(255, 255, 255, 0.3)) !important;
 }
 

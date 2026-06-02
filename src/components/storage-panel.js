@@ -4,7 +4,7 @@
 
 import { chatStore } from '../services/chat-store.js';
 import { characterStore } from '../services/character-store.js';
-import { showToast } from '../main.js';
+import { showToast, showConfirm } from '../main.js';
 
 let cleanupList = [];
 let activeCategory = 'all'; // 'all', 'chars', 'chats', 'genai', 'images'
@@ -46,7 +46,16 @@ export function initStorageSettings() {
     visibleList.forEach(item => {
       item.selected = true;
     });
-    renderCleanupList();
+    
+    // Fast DOM Toggle instead of full list rebuild
+    const listEl = document.getElementById('storage-cleanup-list');
+    const cards = listEl.querySelectorAll('.storage-item-card');
+    cards.forEach(card => {
+      const cb = card.querySelector('input[type="checkbox"]');
+      if (cb) cb.checked = true;
+    });
+    
+    updateSelectedStats();
   });
   
   document.getElementById('btn-storage-deselect-all')?.addEventListener('click', (e) => {
@@ -55,7 +64,16 @@ export function initStorageSettings() {
     visibleList.forEach(item => {
       item.selected = false;
     });
-    renderCleanupList();
+    
+    // Fast DOM Toggle instead of full list rebuild
+    const listEl = document.getElementById('storage-cleanup-list');
+    const cards = listEl.querySelectorAll('.storage-item-card');
+    cards.forEach(card => {
+      const cb = card.querySelector('input[type="checkbox"]');
+      if (cb) cb.checked = false;
+    });
+    
+    updateSelectedStats();
   });
 
   document.getElementById('storage-sort-select')?.addEventListener('change', () => {
@@ -91,6 +109,49 @@ export function initStorageSettings() {
   };
 
   setupTabs();
+
+  // Setup Scroll Listener for Overlays
+  const listEl = document.getElementById('storage-cleanup-list');
+  if (listEl) {
+    listEl.addEventListener('scroll', updateScrollOverlays);
+  }
+
+  // Smart Scroll Delegation: Redirect scroll events from static modal regions to the list
+  const modalBody = modal.querySelector('.modal-body');
+  if (modalBody && listEl) {
+    modalBody.addEventListener('wheel', (e) => {
+      // If the scroll target is already within the scroll container, let the browser handle it natively
+      if (listEl.contains(e.target) || e.target === listEl) return;
+      
+      listEl.scrollTop += e.deltaY;
+      e.preventDefault();
+    }, { passive: false });
+  }
+}
+
+function updateScrollOverlays() {
+  const listEl = document.getElementById('storage-cleanup-list');
+  const overlayTop = document.getElementById('storage-scroll-overlay-top');
+  const overlayBottom = document.getElementById('storage-scroll-overlay-bottom');
+  if (!listEl || !overlayTop || !overlayBottom) return;
+
+  const scrollTop = listEl.scrollTop;
+  const scrollHeight = listEl.scrollHeight;
+  const clientHeight = listEl.clientHeight;
+
+  // Show top overlay if scrolled down
+  if (scrollTop > 2) {
+    overlayTop.style.opacity = '1';
+  } else {
+    overlayTop.style.opacity = '0';
+  }
+
+  // Show bottom overlay if there's more content below
+  if (scrollTop + clientHeight < scrollHeight - 2) {
+    overlayBottom.style.opacity = '1';
+  } else {
+    overlayBottom.style.opacity = '0';
+  }
 }
 
 function updateTabUI() {
@@ -326,6 +387,33 @@ function getFilteredAndSortedList() {
   return displayList;
 }
 
+// Lightweight Stats & UI Update without rebuilding DOM list
+function updateSelectedStats() {
+  const btnCleanup = document.getElementById('btn-storage-cleanup');
+  const statsEl = document.getElementById('storage-selected-stats');
+
+  let selectedCount = 0;
+  let selectedSize = 0;
+
+  cleanupList.forEach(item => {
+    if (item.selected) {
+      selectedCount++;
+      selectedSize += item.size;
+    }
+  });
+
+  statsEl.textContent = `${selectedCount} items selected (${formatBytes(selectedSize)})`;
+  btnCleanup.disabled = selectedCount === 0;
+  
+  if (selectedCount > 0) {
+    btnCleanup.textContent = `Clean Selected (${formatBytes(selectedSize)})`;
+    btnCleanup.style.background = 'var(--error)';
+  } else {
+    btnCleanup.textContent = 'Select items to delete';
+    btnCleanup.style.background = 'var(--bg-primary)';
+  }
+}
+
 function renderCleanupList() {
   const listEl = document.getElementById('storage-cleanup-list');
   const btnCleanup = document.getElementById('btn-storage-cleanup');
@@ -341,19 +429,11 @@ function renderCleanupList() {
     btnCleanup.disabled = true;
     btnCleanup.textContent = 'Select items to delete';
     btnCleanup.style.background = 'var(--bg-primary)';
+    
+    // Reset overlays
+    setTimeout(updateScrollOverlays, 10);
     return;
   }
-
-  let selectedCount = 0;
-  let selectedSize = 0;
-
-  // Track global selection totals for selected state
-  cleanupList.forEach(item => {
-    if (item.selected) {
-      selectedCount++;
-      selectedSize += item.size;
-    }
-  });
 
   displayList.forEach((item) => {
     const itemEl = document.createElement('div');
@@ -423,29 +503,27 @@ function renderCleanupList() {
         cb.checked = !cb.checked;
       }
       item.selected = cb.checked;
-      renderCleanupList();
+      updateSelectedStats(); // Update only selected counts and footer (zero lag!)
     });
 
     listEl.appendChild(itemEl);
   });
 
-  statsEl.textContent = `${selectedCount} items selected (${formatBytes(selectedSize)})`;
-  btnCleanup.disabled = selectedCount === 0;
-  
-  if (selectedCount > 0) {
-    btnCleanup.textContent = `Clean Selected (${formatBytes(selectedSize)})`;
-    btnCleanup.style.background = 'var(--error)';
-  } else {
-    btnCleanup.textContent = 'Select items to delete';
-    btnCleanup.style.background = 'var(--bg-primary)';
-  }
+  updateSelectedStats();
+
+  // Trigger overlays check after layout is completed and settled
+  setTimeout(updateScrollOverlays, 10);
 }
 
 async function applySmartCleanup() {
   const toDelete = cleanupList.filter(item => item.selected);
   if (toDelete.length === 0) return;
   
-  const confirmDel = confirm(`Permanently delete ${toDelete.length} selected items? This action is irreversible.`);
+  // Custom Confirmation Dialog using VibeChat generic-dialog
+  const confirmDel = await showConfirm(
+    'Delete Selected Items',
+    `Permanently delete ${toDelete.length} selected items? This action is irreversible.`
+  );
   if (!confirmDel) return;
 
   const btn = document.getElementById('btn-storage-cleanup');
