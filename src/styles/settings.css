@@ -154,3 +154,207 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ─── Redesigned Storage Panel Styles ────────────────────────────── */
+
+/* Segmented Pill Tabs */
+.storage-tabs {
+  display: flex;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  padding: 4px;
+  gap: 4px;
+  user-select: none;
+}
+
+.storage-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.storage-tab:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.storage-tab.active {
+  background: var(--accent-primary-glow);
+  color: var(--text-accent);
+  border: 1px solid rgba(196, 181, 253, 0.2);
+}
+
+/* Checklist Cards Grid */
+.storage-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  scrollbar-width: thin;
+}
+
+/* Card Styling */
+.storage-item-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: 10px 14px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all var(--transition-base);
+  animation: fadeIn 0.25s ease;
+  position: relative;
+}
+
+.storage-item-card:hover {
+  background: var(--bg-hover);
+  border-color: var(--text-accent);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Checkbox alignment & style */
+.storage-item-checkbox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.storage-item-checkbox input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--text-tertiary);
+  border-radius: 4px;
+  background: transparent;
+  outline: none;
+  cursor: pointer;
+  position: relative;
+  transition: all var(--transition-fast);
+}
+
+.storage-item-checkbox input[type="checkbox"]:checked {
+  background: var(--text-accent);
+  border-color: var(--text-accent);
+}
+
+.storage-item-checkbox input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 1px;
+  width: 4px;
+  height: 9px;
+  border: solid #212121;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+/* Avatar / Thumbnail Container */
+.storage-item-thumb {
+  width: 46px;
+  height: 46px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-light);
+  flex-shrink: 0;
+  position: relative;
+}
+
+.storage-item-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--transition-base);
+}
+
+/* Hover-zoom Preview Effect for Images */
+.storage-item-card:hover .storage-item-thumb img {
+  transform: scale(1.08);
+}
+
+.storage-item-thumb .image-zoom-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  opacity: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  transition: opacity var(--transition-fast);
+}
+
+.storage-item-thumb:hover .image-zoom-overlay {
+  opacity: 1;
+}
+
+/* Meta Data Information */
+.storage-item-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.storage-item-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.storage-item-meta {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.storage-item-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+}
+
+.storage-item-badge.chars { color: #4caf50; background: rgba(76,175,80,0.1); }
+.storage-item-badge.chats { color: #2196f3; background: rgba(33,150,243,0.1); }
+.storage-item-badge.genai { color: #9c27b0; background: rgba(156,39,176,0.1); }
+.storage-item-badge.images { color: #ff9800; background: rgba(255,152,0,0.1); }
+
+/* Compact scrollbar specifically for list */
+.storage-list::-webkit-scrollbar {
+  width: 5px;
+}
+
+.storage-list::-webkit-scrollbar-thumb {
+  background: var(--border-light);
+  border-radius: 4px;
+}
+

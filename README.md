@@ -9,6 +9,7 @@ VibeChatting is a modern AI chat application focused on aesthetics, performance,
 - **Core Chat:** Advanced interface with real-time streaming and a dedicated "Thinking" mode visualization (thinking doesn't work for now).
 - **Interactive Game Mode:** A choices-driven interactive text-adventure game engine where the AI guides the scene dynamically in real-time, showing streamed stats, choices, extra actions, and game session history.
 - **GenAI Panel & Active Skills:** A universal in-app assistant with deep tool access that manages settings, writes messages (vibe mode), manipulates characters and groups, queries your memories, and executes game actions. Supports modular **GenAI Skills** (custom tools in `.json` or `.txt` formats) with a customizable active skills menu and library.
+- **Web Search & Browsing:** GenAI has full internet access (Web Search function), enabling it to search the web in real time and browse websites to retrieve up-to-date information.
 - **Smart Image Generation with Anima:** Advanced integration with Anima for smart, context-aware image generation. Dynamically generates high-quality characters, locations, and scene illustrations directly aligned with the current chat context.
 - **Character Creation:** Highly flexible system for defining personalities, scenarios, and greetings (including Alternate Greetings support and basically all cards compatible with SillyTavern format).
 - **Message Translation:** Seamless bidirectional real-time translation:
