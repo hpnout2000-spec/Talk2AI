@@ -74,6 +74,8 @@ export function initBookPanel() {
   initialPromptInput = document.getElementById('book-initial-prompt');
 
   tabCharacters.addEventListener('click', () => {
+    const isAlreadyActive = tabCharacters.classList.contains('active');
+
     setTabActive(tabCharacters, [tabBooks, tabGroups, document.getElementById('tab-game'), document.getElementById('tab-album')]);
     charactersSection.classList.remove('hidden'); charactersSection.style.display = 'flex';
     booksSection.classList.add('hidden'); booksSection.style.display = 'none';
@@ -92,6 +94,21 @@ export function initBookPanel() {
     chatViewContainer.style.display = 'flex';
     bookViewContainer.classList.add('hidden');
     bookViewContainer.style.display = 'none';
+
+    if (isAlreadyActive) {
+      // Expand GenAI to fullscreen and open it if closed
+      import('./genai-panel.js').then(m => {
+        m.openGenAIPanel();
+        document.body.classList.add('genai-fullscreen');
+        const fullscreenBtn = document.getElementById('btn-genai-fullscreen');
+        if (fullscreenBtn) fullscreenBtn.title = 'Collapse from fullscreen';
+      });
+
+      // Pass nothing instead of character (deselect)
+      import('./chat.js').then(m => {
+        m.selectCharacter(null);
+      });
+    }
   });
 
   // ─── Tab: Books ───────────────────────────────────────────────

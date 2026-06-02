@@ -1356,3 +1356,31 @@ body.genai-fullscreen .genai-msg.genai-assistant .genai-msg-bubble {
     filter: brightness(1);
   }
 }
+
+/* Show GenAI Fetched Data button ONLY in fullscreen mode */
+body.genai-fullscreen .btn-fetched-data {
+  display: inline-flex !important;
+}
+
+.btn-fetched-data {
+  display: none !important; /* hidden by default */
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-light) !important;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast) ease;
+  margin-left: 8px;
+}
+
+.btn-fetched-data:hover {
+  color: var(--text-accent) !important;
+  border-color: var(--text-accent) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}

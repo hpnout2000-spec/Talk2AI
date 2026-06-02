@@ -636,6 +636,7 @@ body {
   padding: var(--space-6);
 }
 
+.empty-state svg,
 .empty-state-icon svg {
   width: 64px;
   height: 64px;

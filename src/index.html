@@ -827,6 +827,14 @@
                 <polyline points="15 18 9 12 15 6"/>
               </svg>
             </button>
+            <button id="btn-genai-fetched-data" class="genai-header-btn btn-fetched-data" title="Manage fetched data from websites" style="display: none;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; margin-right: 4px;">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                <line x1="12" y1="22.08" x2="12" y2="12"/>
+              </svg>
+              <span>Fetched Data</span>
+            </button>
             <h2 style="display: flex; align-items: center; gap: 8px; font-size: var(--text-base); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;">
               <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 18px; height: 18px; flex-shrink: 0; transform: scale(1.2); filter: drop-shadow(0 0 2px rgba(255,255,255,0.25));">
                 <path d="M11.5 12.5 C 14 10, 17.5 5.5, 23 1 C 18.5 6.5, 14 11, 13 14" />
@@ -914,6 +922,16 @@
                       </span>
                       <label class="toggle-switch small" style="pointer-events: none; flex-shrink: 0;">
                         <input type="checkbox" id="genai-imagegen-toggle-check" />
+                        <span class="toggle-slider"></span>
+                      </label>
+                    </button>
+                    <button id="btn-genai-toggle-websearch" class="dropdown-option" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; width: 100%; text-align: left;">
+                      <span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
+                        <span style="font-weight: 500; font-size: var(--text-sm); color: var(--text-primary);">Web Search</span>
+                        <span style="font-size: 11px; color: var(--text-tertiary);">Internet Browser</span>
+                      </span>
+                      <label class="toggle-switch small" style="pointer-events: none; flex-shrink: 0;">
+                        <input type="checkbox" id="genai-websearch-toggle-check" />
                         <span class="toggle-slider"></span>
                       </label>
                     </button>
@@ -1853,6 +1871,43 @@
               </div>
               <div id="genai-memories-list-container" style="display: flex; flex-direction: column; gap: 10px;">
                 <!-- Memories list will be dynamically injected here -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- GenAI Fetched Data Modal -->
+      <div id="modal-genai-fetched-data" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content" style="max-width: 600px; width: 90vw;">
+          <div class="modal-header">
+            <h2 style="display: flex; align-items: center; gap: 12px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 22px; height: 22px; color: var(--text-accent);">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                <line x1="12" y1="22.08" x2="12" y2="12"/>
+              </svg>
+              Fetched Web Data
+            </h2>
+            <button class="btn-icon btn-close-submodal" id="btn-close-genai-fetched-data" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px; max-height: 60vh; overflow-y: auto;">
+            <p style="font-size: var(--text-xs); color: var(--text-secondary); margin: 0; line-height: 1.4;">
+              Here are the data blocks gathered by web search and web fetch commands in the current session. Removing them will clear their massive text from subsequent prompts, freeing up valuable LLM context space.
+            </p>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <h3 style="font-size: var(--text-sm); font-weight: 600; color: var(--text-secondary); margin: 0;">Captured Data (<span id="genai-fetched-data-count">0</span>)</h3>
+                <button id="btn-clear-all-genai-fetched-data" class="btn-secondary small" type="button" style="color: var(--error); border-color: rgba(239, 68, 68, 0.2); font-size: 11px; padding: 2px 8px; border-radius: var(--radius-sm);">Clear All</button>
+              </div>
+              <div id="genai-fetched-data-list-container" style="display: flex; flex-direction: column; gap: 10px;">
+                <!-- Fetched data items will be dynamically injected here -->
               </div>
             </div>
           </div>

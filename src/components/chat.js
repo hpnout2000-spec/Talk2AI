@@ -705,6 +705,59 @@ export function loadChat(session) {
 // ─── Select Character ───────────────────────────────────────────────
 
 export async function selectCharacter(character, sessionId = null) {
+  if (!character) {
+    appState.currentCharacter = null;
+    appState.currentChat = null;
+    chatStore.setCurrentSession(null);
+
+    // Update header
+    if (headerCharName) headerCharName.textContent = 'Select a character';
+    if (headerCharStatus) {
+      headerCharStatus.textContent = 'Ready';
+      headerCharStatus.classList.remove('generating');
+    }
+    if (headerAvatar) {
+      headerAvatar.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/>
+      </svg>`;
+    }
+
+    // Clear messages
+    if (messagesContainer) {
+      messagesContainer.innerHTML = `
+        <div class="empty-state">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/>
+          </svg>
+          <h3>No character selected</h3>
+          <p>Select a character from the sidebar or create a new one to start chatting.</p>
+        </div>
+      `;
+    }
+
+    // Clear indicators
+    const container = document.getElementById('chat-indicators');
+    if (container) {
+      container.classList.add('hidden');
+    }
+
+    // Clear chat history list
+    const historyList = document.getElementById('chat-history-list');
+    if (historyList) {
+      historyList.innerHTML = '';
+    }
+
+    // Update character list active states
+    const list = document.getElementById('character-list');
+    if (list) {
+      const items = list.querySelectorAll('.character-item');
+      items.forEach(item => item.classList.remove('active'));
+    }
+
+    window.dispatchEvent(new CustomEvent('character-selected', { detail: { id: null } }));
+    return;
+  }
+
   const charId = character.id;
   appState.currentCharacter = character;
 

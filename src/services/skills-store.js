@@ -25,6 +25,15 @@ const DEFAULT_FEATURES_CONTENT = `{
   ]
 }`;
 
+const DEFAULT_INTERNET_CONTENT = `{
+  "name": "Web Search",
+  "capabilities": [
+    "Web Search: Can search the web for real-time information, weather, news, facts, and website details using 'web_search' command.",
+    "Web Page Reader: Can read and fetch the text content of a specific webpage or URL using 'web_fetch' command."
+  ],
+  "instructions": "Whenever the user asks about current events, facts you don't know, or requests web data, use the following tools on a new line and nothing else: \n1. {\"genai_action\":\"web_search\",\"query\":\"your search query\"}\n2. {\"genai_action\":\"web_fetch\",\"url\":\"https://...\"}"
+}`;
+
 let userSkillsLocal = [];
 
 export const skillsStore = {
@@ -64,6 +73,12 @@ export const skillsStore = {
         filename: 'GenAI Features.json',
         is_default: true,
         content: DEFAULT_FEATURES_CONTENT
+      },
+      {
+        name: 'Web Search',
+        filename: 'Internet Browser.json',
+        is_default: true,
+        content: DEFAULT_INTERNET_CONTENT
       }
     ];
 
@@ -88,7 +103,7 @@ export const skillsStore = {
     const name = filename.replace(/\.(txt|json)$/i, '');
     
     // Check if default
-    if (filename === 'VibeChatting Guide.txt' || filename === 'GenAI Features.json') {
+    if (filename === 'VibeChatting Guide.txt' || filename === 'GenAI Features.json' || filename === 'Internet Browser.json') {
       throw new Error('Cannot overwrite default skills');
     }
 
@@ -126,7 +141,7 @@ export const skillsStore = {
   },
 
   async deleteSkill(filename) {
-    if (filename === 'VibeChatting Guide.txt' || filename === 'GenAI Features.json') {
+    if (filename === 'VibeChatting Guide.txt' || filename === 'GenAI Features.json' || filename === 'Internet Browser.json') {
       throw new Error('Cannot delete default skills');
     }
 

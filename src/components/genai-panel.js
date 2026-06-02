@@ -19,6 +19,13 @@ import { nhentaiApi } from '../services/nhentai-api.js';
 import { gelbooruApi } from '../services/gelbooru-api.js';
 import { openWindow, closeWindow, showToast } from '../main.js';
 
+async function invokeTauri(cmd, args = {}) {
+  if (window.__TAURI_INTERNALS__) {
+    return await window.__TAURI_INTERNALS__.invoke(cmd, args);
+  }
+  throw new Error('Not running in Tauri environment');
+}
+
 // ─── State ──────────────────────────────────────────────────────────
 const STORAGE_KEY = 'vibechat_genai_history';
 const SESSIONS_STORAGE_KEY = 'vibechat_genai_sessions';
@@ -595,32 +602,34 @@ function buildDynamicContext(maxMessages = 15) {
     parts.push('\n## Active View — BOOK MODE: A book is currently open, but no active chat context is visible.');
   } else if ((isChatViewOpen || (!isGroupViewOpen && !isGameViewOpen && !isBookViewOpen)) && session && appState.currentCharacter) {
     // ── Individual character chat is the active view ───────────────
-    parts.push(`\n## Active Chat — Character: ${appState.currentCharacter.name} (id: ${appState.currentCharacter.id}), Session ID: ${session.id}`);
-    
     const isFullscreen = document.body.classList.contains('genai-fullscreen');
     if (isFullscreen) {
-      parts.push(`  (Chat history is omitted because the GenAI panel is currently expanded to fullscreen.)`);
-    } else if (maxMessages === 0) {
-      parts.push(`  (Chat history omitted due to token limit)`);
+      parts.push(`\n## Active Chat — Character: ${appState.currentCharacter.name}`);
     } else {
-      const recent = session.messages.slice(-maxMessages);
-      recent.forEach(m => {
-        const who = m.role === 'user' ? 'User' : appState.currentCharacter.name;
-        // User messages are user-facing as is. Assistant messages are user-facing after translation.
-        const userFacingContent = m.role === 'user' ? m.content : (m.translated_content || m.content);
-        const text = (userFacingContent || '').substring(0, 300).replace(/\n/g, ' ');
-        parts.push(`  ${who}: ${text}`);
-      });
-    }
+      parts.push(`\n## Active Chat — Character: ${appState.currentCharacter.name} (id: ${appState.currentCharacter.id}), Session ID: ${session.id}`);
+      
+      if (maxMessages === 0) {
+        parts.push(`  (Chat history omitted due to token limit)`);
+      } else {
+        const recent = session.messages.slice(-maxMessages);
+        recent.forEach(m => {
+          const who = m.role === 'user' ? 'User' : appState.currentCharacter.name;
+          // User messages are user-facing as is. Assistant messages are user-facing after translation.
+          const userFacingContent = m.role === 'user' ? m.content : (m.translated_content || m.content);
+          const text = (userFacingContent || '').substring(0, 300).replace(/\n/g, ' ');
+          parts.push(`  ${who}: ${text}`);
+        });
+      }
 
-    const char = appState.currentCharacter;
-    parts.push(`\n## Character Card: ${char.name}`);
-    if (char.description) parts.push(`Description: ${char.description}`);
-    if (char.personality) parts.push(`Personality: ${char.personality}`);
-    if (char.scenario) parts.push(`Scenario: ${char.scenario}`);
+      const char = appState.currentCharacter;
+      parts.push(`\n## Character Card: ${char.name}`);
+      if (char.description) parts.push(`Description: ${char.description}`);
+      if (char.personality) parts.push(`Personality: ${char.personality}`);
+      if (char.scenario) parts.push(`Scenario: ${char.scenario}`);
 
-    if (!isFullscreen && session.ai_comments?.length) {
-      parts.push(`  (${session.ai_comments.length} AI comments in this session)`);
+      if (session.ai_comments?.length) {
+        parts.push(`  (${session.ai_comments.length} AI comments in this session)`);
+      }
     }
   } else {
     parts.push('\n## Active View: none');
@@ -847,16 +856,7 @@ ${skill.content}
     }
   }
 
-  // Calculate dynamic character limit by subtracting the static system prompt, tools instructions,
-  // active skills blocks, and 1024 (GenAI response tokens) from the total backend token capacity.
-  // Use Math.max with 4096 so we always guarantee at least a safe minimal history fits.
-  const staticLen = staticBase.length + staticContext.length + activeSkillsBlock.length;
-  const charLimit = Math.max((tokenLimit - 1024) * 4 - staticLen, 4096);
-
-  // Build dynamic context (character chat/game details — this is what we prune first)
-  let activeChatMsgCount = 15;
-  let dynamicContext = buildDynamicContext(activeChatMsgCount);
-
+  // Build history messages first so we have the array of text to count tokens
   let historyMsgs = [];
   for (const e of genaiHistory) {
     if (e.role === 'tool') {
@@ -886,55 +886,105 @@ ${skill.content}
     historyMsgs.push({ role: 'user', content: extraUserInstruction });
   }
 
-  // Only count the truly DYNAMIC parts (dynamic chat context + genai conversation) against the charLimit.
-  const dynamicLen = () =>
-    dynamicContext.length + historyMsgs.reduce((sum, m) => sum + (m.content || '').length, 0);
-
-  // 1. Progressively reduce the number of character chat messages shown in dynamic context FIRST
-  if (dynamicLen() > charLimit) {
-    activeChatMsgCount = 10;
-    dynamicContext = buildDynamicContext(activeChatMsgCount);
+  // ─── Build dynamic notice for disabled system skills ─────────────────
+  let disabledSkillsList = [];
+  if (!settings.comfyui_enabled_genai) {
+    disabledSkillsList.push("Image Gen (using generate_image)");
   }
-  if (dynamicLen() > charLimit) {
-    activeChatMsgCount = 5;
-    dynamicContext = buildDynamicContext(activeChatMsgCount);
+  if (!activeSkills.includes('Internet Browser.json')) {
+    disabledSkillsList.push("Web Search (using web_search, web_fetch)");
   }
-  if (dynamicLen() > charLimit) {
-    activeChatMsgCount = 2;
-    dynamicContext = buildDynamicContext(activeChatMsgCount);
+  if (!activeSkills.includes('gelbooru')) {
+    disabledSkillsList.push("gelbooru (using gelbooru_search_posts, gelbooru_get_image, gelbooru_get_random_post, etc.)");
   }
-  if (dynamicLen() > charLimit) {
-    activeChatMsgCount = 1;
-    dynamicContext = buildDynamicContext(activeChatMsgCount);
-  }
-  if (dynamicLen() > charLimit) {
-    activeChatMsgCount = 0; // Omit chat history completely if dynamic length is still too large
-    dynamicContext = buildDynamicContext(activeChatMsgCount);
+  if (!activeSkills.includes('nhentai')) {
+    disabledSkillsList.push("nhentai (using nhentai_search_galleries, nhentai_get_gallery, nhentai_get_page, etc.)");
   }
 
-  // 2. Truncate the GenAI conversation history LAST (keep at least the last 2 messages as fallback)
-  if (dynamicLen() > charLimit) {
-    while (dynamicLen() > charLimit && historyMsgs.length > 2) {
-      historyMsgs.shift();
+  let disabledSkillsNotice = "";
+  if (disabledSkillsList.length > 0) {
+    disabledSkillsNotice = `\n\n[DISABLED SYSTEM SKILLS & TOOLS NOTICE]
+IMPORTANT: You have special built-in capabilities and tools for the following features, but they are currently DISABLED by the user:
+${disabledSkillsList.map(item => `- ${item}`).join('\n')}
+Do NOT attempt to run any of the corresponding JSON commands for these features, and do not pretend you can call them, because they are currently turned off. If the user asks for these features, politely let them know that these features are currently disabled in their GenAI settings and they can enable them in the GenAI plus menu (at the bottom left of the panel).`;
+  }
+
+  // Initial state: maximum context
+  let activeChatMsgCount = 15;
+  let dynamicContext = buildDynamicContext(activeChatMsgCount);
+  let systemContent = staticBase + staticContext + '\n\n' + dynamicContext + activeSkillsBlock + disabledSkillsNotice;
+
+  // Count exact tokens in parallel for all components
+  const textsToCount = [systemContent, ...historyMsgs.map(m => m.content || '')];
+  const tokenCounts = await Promise.all(textsToCount.map(t => api.countTokens(t)));
+
+  let systemTokens = tokenCounts[0];
+  let historyTokens = tokenCounts.slice(1);
+  let totalTokens = systemTokens + historyTokens.reduce((sum, t) => sum + t, 0);
+
+  const targetLimit = tokenLimit - 1024; // reserve space for assistant output
+
+  // Pruning Stage A: Progressively reduce dynamic character chat context FIRST
+  if (totalTokens > targetLimit) {
+    const msgCounts = [10, 5, 2, 1, 0];
+    for (const count of msgCounts) {
+      activeChatMsgCount = count;
+      dynamicContext = buildDynamicContext(activeChatMsgCount);
+      systemContent = staticBase + staticContext + '\n\n' + dynamicContext + activeSkillsBlock + disabledSkillsNotice;
+      
+      // Get the exact new system prompt token count
+      systemTokens = await api.countTokens(systemContent);
+      totalTokens = systemTokens + historyTokens.reduce((sum, t) => sum + t, 0);
+      
+      if (totalTokens <= targetLimit) {
+        break;
+      }
     }
   }
 
-  const systemContent = staticBase + staticContext + '\n\n' + dynamicContext + activeSkillsBlock;
+  // Pruning Stage B: Truncate history messages LAST (keep at least the last 2 messages as fallback)
+  if (totalTokens > targetLimit) {
+    while (totalTokens > targetLimit && historyMsgs.length > 2) {
+      historyMsgs.shift();
+      historyTokens.shift();
+      totalTokens = systemTokens + historyTokens.reduce((sum, t) => sum + t, 0);
+    }
+  }
 
   const finalMessages = [{ role: 'system', content: systemContent }, ...historyMsgs];
+
+  // Inject Skills, JSON Tool calling rules, and Memories directly into the last user message to guarantee it is NEVER truncated
+  let skillsInjection = '';
+  if (activeSkills && activeSkills.length > 0) {
+    skillsInjection += `\n\n========================================================================
+[MANDATORY SYSTEM DIRECTIVE: ACTIVE SKILLS & TOOL EXECUTION RULES]
+========================================================================
+You have active skills enabled: ${activeSkills.join(', ')}.
+To execute any command, you MUST output a single JSON block on its own line in your reply. Do NOT just write text claiming you did it. The JSON command must be in the exact same response!
+
+Active Skills Detailed Rules and Available JSON Commands:
+${activeSkillsBlock.trim()}
+`;
+  }
+  
+  // General JSON tool reminder
+  skillsInjection += `\n\n[MANDATORY SYSTEM REMINDER FOR TOOL CALLS]
+To call a tool/command, you MUST output the JSON block on its own line in your response. For example:
+{"genai_action":"nhentai_search_galleries","query":"parody"}
+Always output the JSON action block on its own line. Stop generating immediately after outputting the JSON block. Do not write text promising to call a tool without actually outputting it.`;
 
   // Inject GenAI Memories into the last user message of the payload to ensure they are present in every prompt
   const memories = genaiMemoryStore.getAll();
   if (memories.length > 0) {
     const memoriesStr = memories.map(m => `- ${m.content}`).join('\n');
-    const memoryInjection = `\n\n[GenAI Memories (Facts to consider for your response — You MUST take these into account and not contradict them):]\n${memoriesStr}`;
+    skillsInjection += `\n\n[GenAI Memories (Facts to consider for your response — You MUST take these into account and not contradict them):]\n${memoriesStr}`;
+  }
 
-    // Find the last user message in finalMessages and append the memories to it
-    for (let i = finalMessages.length - 1; i >= 0; i--) {
-      if (finalMessages[i].role === 'user') {
-        finalMessages[i].content += memoryInjection;
-        break;
-      }
+  // Find the last user message in finalMessages and append our complete injection payload to it
+  for (let i = finalMessages.length - 1; i >= 0; i--) {
+    if (finalMessages[i].role === 'user') {
+      finalMessages[i].content += skillsInjection;
+      break;
     }
   }
 
@@ -1655,8 +1705,10 @@ async function executeTool(action) {
   }
 
   if (name === 'generate_image') {
-    const session = chatStore.getCurrentSession();
-    if (!session) return { error: 'No active session found to generate image.' };
+    let session = chatStore.getCurrentSession();
+    if (!session) {
+      session = ensureGenaiSession();
+    }
 
     isGenerating = true;
     appState.isGenerating = true;
@@ -1736,6 +1788,30 @@ async function executeTool(action) {
     return { success: true, filename: id, active: isCurrentlyActive, info: `Skill "${id}" was already in requested state.` };
   }
 
+  if (name === 'web_search') {
+    const { query } = action;
+    if (!query) return { error: 'Search query is empty.' };
+    try {
+      const results = await invokeTauri('web_search', { query });
+      return { success: true, query, results };
+    } catch (err) {
+      console.error('Tauri web search failed:', err);
+      return { error: err.message || err };
+    }
+  }
+
+  if (name === 'web_fetch') {
+    const { url } = action;
+    if (!url) return { error: 'URL is empty.' };
+    try {
+      const content = await invokeTauri('web_fetch', { url });
+      return { success: true, url, content };
+    } catch (err) {
+      console.error('Tauri web fetch failed:', err);
+      return { error: err.message || err };
+    }
+  }
+
 
   if (name === 'silent') {
     return { silent: true };
@@ -1790,6 +1866,10 @@ function resultBadgeForAction(action, result) {
     if (result.mode === 'list') return actionBadgeHtml('result-data', '📂', `Found ${result.sessions.length} group sessions`);
     return actionBadgeHtml('result-data', '💬', `Loaded ${result.message_count} group messages`);
   }
+
+  // Web Browser tool badges
+  if (name === 'web_search') return actionBadgeHtml('result-data', '🌐', `Web Search completed for "${action.query}"`);
+  if (name === 'web_fetch') return actionBadgeHtml('result-data', '🌐', `Web Fetch completed for "${action.url}"`);
 
   // nhentai tool badges
   if (name === 'nhentai_search_galleries') return actionBadgeHtml('result-data', '🔍', `nhentai: Searched galleries for "${action.query}"`);
@@ -1937,7 +2017,36 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
       const marker = `[[GENAI_TOOL_${idx}]]`;
       let badgeHtml = '';
 
-      if (tool.state === 'working') {
+      if (tool.state === 'awaiting_approval') {
+        const actionName = tool.action.genai_action;
+        const detailHtml = actionName === 'web_search'
+          ? `выполнить поиск по запросу: <strong style="color:var(--primary)">"${escapeHtml(tool.action.query)}"</strong>`
+          : `загрузить страницу: <a href="${escapeHtml(tool.action.url)}" target="_blank" style="color:var(--primary); word-break:break-all;">${escapeHtml(tool.action.url)}</a>`;
+
+        badgeHtml = `
+          <div class="genai-inline-tool genai-tool-pending" id="genai-tool-${idx}" style="width: 100%; display: grid; margin-top: 10px;">
+            <!-- Inner wrapper to isolate grid layout and allow normal flow inside -->
+            <div style="grid-area: 1 / 1; width: 100%; border: 1px solid var(--primary); padding: 12px; border-radius: var(--radius-md); background: rgba(var(--primary-rgb), 0.05); animation: fadeIn 0.3s ease; box-sizing: border-box;">
+              <div style="font-weight: bold; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 1.2em;">🌐</span> Запрос доступа к интернету
+              </div>
+              <div style="font-size: 0.9em; margin-bottom: 10px; opacity: 0.9; line-height: 1.5;">
+                GenAI хочет ${detailHtml}. Разрешить?
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button id="approve-tool-${idx}" class="continuation-option-btn" 
+                        style="padding: 6px 14px; background: var(--primary); border: none; color: white; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85em; font-weight: 500; transition: transform 0.1s ease;">
+                  Разрешить
+                </button>
+                <button id="deny-tool-${idx}" class="continuation-option-btn" 
+                        style="padding: 6px 14px; background: transparent; border: 1px solid var(--border-light); color: var(--text-muted); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85em; transition: all 0.2s ease;">
+                  Отклонить
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+      } else if (tool.state === 'working') {
         badgeHtml = `<div class="genai-inline-tool genai-tool-working" id="genai-tool-${idx}"><span class="genai-working-text">Working...</span></div>`;
       } else if (tool.action.genai_action === 'silent') {
         badgeHtml = `<div id="genai-tool-${idx}"></div>`;
@@ -2563,6 +2672,45 @@ async function handleActionDetected(assistantEntry, bubbleEl) {
     const toolIdx = assistantEntry.tools.length - 1;
     const tool = assistantEntry.tools[toolIdx];
     if (!tool) return;
+
+    // Check if the action requires user approval before execution
+    const name = tool.action.genai_action;
+    if (name === 'web_search' || name === 'web_fetch') {
+      tool.state = 'awaiting_approval';
+      renderAssistantBubble(assistantEntry, bubbleEl);
+      scrollToBottom();
+
+      const approved = await new Promise((resolve) => {
+        const checkInterval = setInterval(() => {
+          const approveBtn = bubbleEl.querySelector(`#approve-tool-${toolIdx}`);
+          const denyBtn = bubbleEl.querySelector(`#deny-tool-${toolIdx}`);
+          if (approveBtn && denyBtn && !approveBtn._hasListener) {
+            approveBtn._hasListener = true;
+            approveBtn.addEventListener('click', () => {
+              clearInterval(checkInterval);
+              resolve(true);
+            });
+            denyBtn.addEventListener('click', () => {
+              clearInterval(checkInterval);
+              resolve(false);
+            });
+          }
+        }, 100);
+      });
+
+      if (!approved) {
+        tool.state = 'done';
+        tool.result = { error: "User denied internet access for this request." };
+        renderAssistantBubble(assistantEntry, bubbleEl);
+        saveHistory();
+        isGenerating = false;
+        continueAfterTool(tool.action, tool.result, assistantEntry, bubbleEl);
+        return;
+      }
+
+      tool.state = 'working';
+      renderAssistantBubble(assistantEntry, bubbleEl);
+    }
 
     // Execute tool
     const result = await executeTool(tool.action);
@@ -3605,6 +3753,44 @@ export function initGenAIPanel() {
   // Run once on init to restore saved state
   syncImageGenIndicators();
 
+  // ─── Web Search toggle in GenAI plus popover ────────────────────────
+  const btnGenaiToggleWebSearch = document.getElementById('btn-genai-toggle-websearch');
+  const genaiWebSearchCheck = document.getElementById('genai-websearch-toggle-check');
+
+  function syncWebSearchIndicator() {
+    const activeSkills = getActiveSkillsForCurrentSession();
+    const isAct = activeSkills.includes('Internet Browser.json');
+    if (genaiWebSearchCheck) genaiWebSearchCheck.checked = !!isAct;
+  }
+
+  if (btnGenaiToggleWebSearch) {
+    btnGenaiToggleWebSearch.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const activeSkills = getActiveSkillsForCurrentSession();
+      const isAct = activeSkills.includes('Internet Browser.json');
+      let updated;
+      if (isAct) {
+        updated = activeSkills.filter(id => id !== 'Internet Browser.json');
+        showToast('Web Search deactivated for this chat');
+      } else {
+        updated = [...activeSkills, 'Internet Browser.json'];
+        showToast('Web Search activated for this chat');
+      }
+      await setActiveSkillsForCurrentSession(updated);
+      syncWebSearchIndicator();
+      updateGenaiPlusButtonState();
+      // Dispatch custom event to notify prompt builder / UI
+      window.dispatchEvent(new CustomEvent('genai-active-skills-changed'));
+      setTimeout(() => plusPopover.classList.add('hidden'), 350);
+    });
+  }
+
+  // Hook into active skills change event to sync the toggle switch!
+  window.addEventListener('genai-active-skills-changed', syncWebSearchIndicator);
+
+  // Run once on init to restore saved state
+  syncWebSearchIndicator();
+
   const fullscreenRequiredModal = document.getElementById('genai-fullscreen-required-modal');
   const btnFullscreenExpand = document.getElementById('btn-fullscreen-required-expand');
   const btnFullscreenOk = document.getElementById('btn-fullscreen-required-ok');
@@ -4194,8 +4380,8 @@ export async function renderAllSkillsList() {
     console.error('Failed to get all skills for Page 3:', e);
   }
 
-  // Фильтруем список, чтобы nhentai НЕ попадал в Show All (Page 3)
-  list = list.filter(s => s.filename !== 'nhentai' && s.name !== 'nhentai' && s.filename !== 'gelbooru' && s.name !== 'gelbooru');
+  // Фильтруем список, чтобы nhentai, gelbooru и Web Search (Internet Browser.json) НЕ попадали в Show All (Page 3)
+  list = list.filter(s => s.filename !== 'nhentai' && s.name !== 'nhentai' && s.filename !== 'gelbooru' && s.name !== 'gelbooru' && s.filename !== 'Internet Browser.json');
 
   container.innerHTML = list.map(s => {
     const isAct = activeSkills.includes(s.filename);
@@ -4307,3 +4493,8 @@ window.toggleGenAiSkill = async (skillId, el) => {
     await handleCustomSkillToggle(skillId, el);
   }
 };
+
+export function getGenaiHistory() {
+  return genaiHistory;
+}
+export { saveHistory, renderMessages };

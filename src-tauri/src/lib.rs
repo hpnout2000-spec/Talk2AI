@@ -324,6 +324,20 @@ fn ensure_default_skills() {
 }"#;
         fs::write(&features_path, content).ok();
     }
+
+    // Skill 3: Internet Browser
+    let internet_path = dir.join("Internet Browser.json");
+    if !internet_path.exists() {
+        let content = r#"{
+  "name": "Internet Browser",
+  "capabilities": [
+    "Web Search: Can search the web for real-time information, weather, news, facts, and website details using 'web_search' command.",
+    "Web Page Reader: Can read and fetch the text content of a specific webpage or URL using 'web_fetch' command."
+  ],
+  "instructions": "Whenever the user asks about current events, facts you don't know, or requests web data, use the following tools on a new line and nothing else: \n1. {\"genai_action\":\"web_search\",\"query\":\"your search query\"}\n2. {\"genai_action\":\"web_fetch\",\"url\":\"https://...\"}"
+}"#;
+        fs::write(&internet_path, content).ok();
+    }
 }
 
 #[tauri::command]
@@ -340,7 +354,7 @@ fn load_skills() -> Result<String, String> {
                 if ext == "txt" || ext == "json" {
                     let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string();
                     let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
-                    let is_default = filename == "VibeChatting Guide.txt" || filename == "GenAI Features.json";
+                    let is_default = filename == "VibeChatting Guide.txt" || filename == "GenAI Features.json" || filename == "Internet Browser.json";
                     
                     if let Ok(content) = fs::read_to_string(&path) {
                         skills.push(SkillInfo {
@@ -363,7 +377,7 @@ fn save_skill(filename: String, content: String) -> Result<(), String> {
     let dir = get_app_dir().join("skills");
     ensure_dir(&dir);
     
-    let is_default = filename == "VibeChatting Guide.txt" || filename == "GenAI Features.json";
+    let is_default = filename == "VibeChatting Guide.txt" || filename == "GenAI Features.json" || filename == "Internet Browser.json";
     if is_default {
         return Err("Cannot overwrite default skills".to_string());
     }
@@ -379,7 +393,7 @@ fn save_skill(filename: String, content: String) -> Result<(), String> {
 
 #[tauri::command]
 fn delete_skill(filename: String) -> Result<(), String> {
-    let is_default = filename == "VibeChatting Guide.txt" || filename == "GenAI Features.json";
+    let is_default = filename == "VibeChatting Guide.txt" || filename == "GenAI Features.json" || filename == "Internet Browser.json";
     if is_default {
         return Err("Cannot delete default skills".to_string());
     }
@@ -647,6 +661,258 @@ async fn gelbooru_fetch_image_base64(
     Ok(format!("data:{};base64,{}", content_type, b64))
 }
 
+// ─── Web Search / Fetch Commands ────────────────────────────────────
+
+fn strip_html_tags(html: &str) -> String {
+    let mut result = String::new();
+    let mut in_tag = false;
+    let mut in_script_or_style = false;
+    let mut tag_buffer = String::new();
+    let mut body_chars = html.chars().peekable();
+    
+    while let Some(c) = body_chars.next() {
+        if c == '<' {
+            in_tag = true;
+            tag_buffer.clear();
+        } else if c == '>' {
+            in_tag = false;
+            let tag_lower = tag_buffer.to_lowercase();
+            if tag_lower.starts_with("script") || tag_lower.starts_with("style") {
+                in_script_or_style = true;
+            } else if tag_lower.starts_with("/script") || tag_lower.starts_with("/style") {
+                in_script_or_style = false;
+            }
+        } else if in_tag {
+            tag_buffer.push(c);
+        } else if !in_script_or_style {
+            result.push(c);
+        }
+    }
+    
+    let cleaned = result
+        .replace("&nbsp;", " ")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&amp;", "&")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'");
+        
+    let mut collapsed = String::new();
+    let mut last_was_whitespace = false;
+    for c in cleaned.chars() {
+        if c.is_whitespace() {
+            if !last_was_whitespace {
+                collapsed.push(' ');
+                last_was_whitespace = true;
+            }
+        } else {
+            collapsed.push(c);
+            last_was_whitespace = false;
+        }
+    }
+    
+    collapsed.trim().to_string()
+}
+
+fn percent_decode(s: &str) -> String {
+    let mut decoded = String::new();
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '%' {
+            let mut hex = String::new();
+            if let Some(h1) = chars.next() { hex.push(h1); }
+            if let Some(h2) = chars.next() { hex.push(h2); }
+            if let Ok(val) = u8::from_str_radix(&hex, 16) {
+                decoded.push(val as char);
+            } else {
+                decoded.push('%');
+                decoded.push_str(&hex);
+            }
+        } else if c == '+' {
+            decoded.push(' ');
+        } else {
+            decoded.push(c);
+        }
+    }
+    decoded
+}
+
+fn parse_ddg_html(html: &str) -> String {
+    let mut results = Vec::new();
+    let parts: Vec<&str> = html.split("result__body").collect();
+    
+    for part in parts.iter().skip(1).take(5) {
+        let url = if let Some(href_idx) = part.find("href=\"") {
+            let start = href_idx + 6;
+            if let Some(end) = part[start..].find('"') {
+                let raw_url = &part[start..start + end];
+                if raw_url.contains("uddg=") {
+                    if let Some(uddg_idx) = raw_url.find("uddg=") {
+                        let enc_url = &raw_url[uddg_idx + 5..];
+                        percent_decode(enc_url)
+                    } else {
+                        raw_url.to_string()
+                    }
+                } else {
+                    raw_url.to_string()
+                }
+            } else {
+                "".to_string()
+            }
+        } else {
+            "".to_string()
+        };
+        
+        if url.is_empty() {
+            continue;
+        }
+
+        let title = if let Some(title_idx) = part.find("class=\"result__a\"") {
+            let start = title_idx;
+            if let Some(tag_end) = part[start..].find('>') {
+                let content_start = start + tag_end + 1;
+                if let Some(close_tag) = part[content_start..].find("</a>") {
+                    strip_html_tags(&part[content_start..content_start + close_tag])
+                } else {
+                    "Untitled".to_string()
+                }
+            } else {
+                "Untitled".to_string()
+            }
+        } else {
+            "Untitled".to_string()
+        };
+
+        let snippet = if let Some(snippet_idx) = part.find("class=\"result__snippet\"") {
+            let start = snippet_idx;
+            if let Some(tag_end) = part[start..].find('>') {
+                let content_start = start + tag_end + 1;
+                if let Some(close_span) = part[content_start..].find("</span>") {
+                    strip_html_tags(&part[content_start..content_start + close_span])
+                } else if let Some(close_tag) = part[content_start..].find("</") {
+                    strip_html_tags(&part[content_start..content_start + close_tag])
+                } else {
+                    "".to_string()
+                }
+            } else {
+                "".to_string()
+            }
+        } else {
+            "".to_string()
+        };
+
+        results.push(format!("### [{}]({})\n{}\n", title, url, snippet));
+    }
+
+    if results.is_empty() {
+        "No results found.".to_string()
+    } else {
+        results.join("\n")
+    }
+}
+
+#[tauri::command]
+async fn web_search(query: String) -> Result<String, String> {
+    use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
+    
+    let client = reqwest::Client::new();
+    let url = "https://html.duckduckgo.com/html/";
+    
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        USER_AGENT,
+        HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"),
+    );
+
+    let resp = client.get(url)
+        .headers(headers)
+        .query(&[("q", &query)])
+        .send()
+        .await
+        .map_err(|e| format!("Web search failed to connect: {}", e))?;
+
+    let html = resp.text()
+        .await
+        .map_err(|e| format!("Failed to read search response body: {}", e))?;
+
+    Ok(parse_ddg_html(&html))
+}
+
+#[tauri::command]
+async fn web_fetch(url: String) -> Result<String, String> {
+    use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT, ACCEPT, ACCEPT_LANGUAGE, CONNECTION};
+    
+    let client = reqwest::Client::new();
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        USER_AGENT,
+        HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"),
+    );
+    headers.insert(
+        ACCEPT,
+        HeaderValue::from_static("text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"),
+    );
+    headers.insert(
+        ACCEPT_LANGUAGE,
+        HeaderValue::from_static("en-US,en;q=0.9,ru;q=0.8"),
+    );
+    headers.insert(
+        CONNECTION,
+        HeaderValue::from_static("keep-alive"),
+    );
+    
+    if let Ok(val) = HeaderValue::from_str("\"Google Chrome\";v=\"125\", \"Chromium\";v=\"125\", \"Not.A/Brand\";v=\"24\"") {
+        headers.insert(reqwest::header::HeaderName::from_static("sec-ch-ua"), val);
+    }
+    headers.insert(
+        reqwest::header::HeaderName::from_static("sec-ch-ua-mobile"),
+        HeaderValue::from_static("?0"),
+    );
+    if let Ok(val) = HeaderValue::from_str("\"Windows\"") {
+        headers.insert(reqwest::header::HeaderName::from_static("sec-ch-ua-platform"), val);
+    }
+    headers.insert(
+        reqwest::header::HeaderName::from_static("upgrade-insecure-requests"),
+        HeaderValue::from_static("1"),
+    );
+    headers.insert(
+        reqwest::header::HeaderName::from_static("sec-fetch-dest"),
+        HeaderValue::from_static("document"),
+    );
+    headers.insert(
+        reqwest::header::HeaderName::from_static("sec-fetch-mode"),
+        HeaderValue::from_static("navigate"),
+    );
+    headers.insert(
+        reqwest::header::HeaderName::from_static("sec-fetch-site"),
+        HeaderValue::from_static("none"),
+    );
+    headers.insert(
+        reqwest::header::HeaderName::from_static("sec-fetch-user"),
+        HeaderValue::from_static("?1"),
+    );
+
+    let resp = client.get(&url)
+        .headers(headers)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to connect to page: {}", e))?;
+
+    let html = resp.text()
+        .await
+        .map_err(|e| format!("Failed to read page content: {}", e))?;
+
+    let text = strip_html_tags(&html);
+    
+    let char_count = text.chars().count();
+    if char_count > 4000 {
+        let truncated: String = text.chars().take(4000).collect();
+        Ok(format!("{}... [TRUNCATED]", truncated))
+    } else {
+        Ok(text)
+    }
+}
+
 // ─── App Entry ──────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -672,7 +938,9 @@ pub fn run() {
             nhentai_request,
             nhentai_fetch_image_base64,
             gelbooru_request,
-            gelbooru_fetch_image_base64
+            gelbooru_fetch_image_base64,
+            web_search,
+            web_fetch
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

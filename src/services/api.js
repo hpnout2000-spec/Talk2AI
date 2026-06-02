@@ -599,5 +599,29 @@ Focus ONLY on what is known or can be directly inferred from the history. Keep t
       console.error('Failed to generate character details:', err);
       throw err;
     }
+  },
+
+  /**
+   * Count tokens for a given text using KoboldCpp's native token counter
+   * @param {string} text
+   * @returns {Promise<number>}
+   */
+  async countTokens(text) {
+    const settings = settingsStore.get();
+    try {
+      const resp = await fetch(`${settings.api_url}/api/extra/tokencount`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: text }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        return data.value;
+      }
+    } catch (e) {
+      console.warn('Failed to count tokens via KoboldCpp:', e);
+    }
+    // Fallback to Cyrillic-aware character-based token estimation
+    return Math.ceil(text.length / (/[а-яА-ЯёЁ]/.test(text) ? 1.8 : 3.5));
   }
 };
