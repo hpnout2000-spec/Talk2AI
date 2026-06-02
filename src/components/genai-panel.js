@@ -16,6 +16,8 @@ import morphdom from '../vendor/morphdom.js';
 import { generateImageComfyUI, checkComfyUIConnection, buildAutoPromptFromContext } from '../services/comfyui-service.js';
 import { loadChat } from './chat.js';
 import { nhentaiApi } from '../services/nhentai-api.js';
+import { gelbooruApi } from '../services/gelbooru-api.js';
+import { openWindow, closeWindow, showToast } from '../main.js';
 
 // ─── State ──────────────────────────────────────────────────────────
 const STORAGE_KEY = 'vibechat_genai_history';
@@ -100,7 +102,8 @@ SPECIAL Directives:
 - Group Chats: You can manage groups and response modes. Do not switch to group chats unless explicitly asked.
 - Game GM Mode: You can interact with games and actions.
 - Skills System: CRITICAL RULE: BEFORE you perform ANY action, activation, toggling, or reading of background skills, you MUST call {"genai_action":"get_skills"} to inspect the exact current list of available skills! You are strictly prohibited from guessing skill names or toggling skills without checking the list first. Once checked, you can call {"genai_action":"get_skills"} to retrieve all available custom background information/guides, and {"genai_action":"read_skill","filename":"..."} to read their full contents. Use them when the user asks for details or background help (like how the app works, etc.).
-- Image Generation (CRITICAL DIRECTIVE): If the user requests to create, generate, draw, paint, or illustrate any image, illustration, character, scene, background, avatar, or custom object, you MUST execute the image generation tool. It is strictly forbidden to just write a text description or ignore the generation request. You MUST output the JSON tool call: {"genai_action":"generate_image","prompt":"...","loading_message":"..."} on its own line.
+- Image Generation (CRITICAL DIRECTIVE): If the user requests to create, generate, draw, paint, or illustrate any image, illustration, character, scene, background, avatar, or custom object, you MUST execute the image generation tool. It is strictly forbidden to just write a text description or ignore the generation request.
+  * MANDATORY ORDER RULE: You MUST output the JSON tool call \`{"genai_action":"generate_image","prompt":"...","loading_message":"..."}\` at the VERY BEGINNING of your response on the first line, BEFORE writing any text description, intro, or conversational chatter! Only after emitting the JSON command on its own line are you allowed to write follow-up descriptions.
   * The prompt parameter MUST be a detailed, rich description in English (with all character details, context, and aesthetic tags) to ensure premium illustration quality.
   * The loading_message parameter MUST be a creative, highly contextual status message in Russian that is displayed in the UI while the image is generating.
 
@@ -685,6 +688,57 @@ async function buildApiMessages(extraUserInstruction = null) {
     }
 
     for (const skillId of activeSkills) {
+      if (skillId === 'gelbooru') {
+        activeSkillsBlock += `You have active skill: gelbooru / Image Search Assistant.
+- Purpose: Helping user search and browse posts (images), tags, and related comments from the Gelbooru API.
+- Absolute Mandatory Directives (CRITICAL - YOU MUST FOLLOW THESE RULES WITHOUT EXCEPTION):
+  1. OBLIGATORY SEARCH EXECUTION: Whenever the user asks to search, find, lookup, or browse posts/images (e.g., "search cat_ears", "find solo", "show some pictures"), you MUST ABSOLUTELY AND OBLIGATORILY execute the \`gelbooru_search_posts\` JSON command on its own line in your very first response! Do NOT ask for permission or write text promising to search later. Execute the tool IMMEDIATELY!
+  2. OBLIGATORY IMAGE EXECUTION: Whenever the user asks to see, open, view, or read a specific post/image (e.g., "show post 123", "show image", "view image"), or when you tell the user you are showing or delivering an image/post, you MUST ABSOLUTELY AND OBLIGATORILY execute the \`gelbooru_get_image\` JSON command on its own line in your response!
+  3. OBLIGATORY RANDOM EXECUTION: Whenever the user asks for a random image, post, or picture (e.g., "show a random post", "give me a random pic with solo"), you MUST ABSOLUTELY AND OBLIGATORILY execute the \`gelbooru_get_random_post\` JSON command on its own line in your response!
+  4. NO TEXT-ONLY HOAXING: It is STRICTLY FORBIDDEN to write text promising, claiming, or pretending to show or search without actually emitting the corresponding JSON tool call block in the exact same response! If you tell the user "Looking for..." or "Here is the image:", the JSON command block MUST be included on its own line!
+  5. Search by tags first when user uses a tag-like query. Translate user queries into English booru-style tags if necessary (e.g. "кошачьи ушки" -> "cat_ears").
+  6. Show compact search results (e.g. Post ID, tags snippet, rating, and owner) and explain them to the user.
+  7. NEVER invent search results or fake API responses. If the search returns nothing, state that clearly.
+  8. NEVER expose the secret API Key or User ID in your conversation text, suggestions, or tool parameters.
+  9. NEVER put raw external website URLs or image file URLs in your text replies.
+  10. Keep helping in the same chat until this skill is disabled or the chat ends. Act as a helpful search assistant.
+
+- Allowed Skill Function Calls (ONLY available when gelbooru active skill is ON):
+  1. gelbooru_search_posts: Search posts matching tags.
+     - Parameters:
+       - "tags": string (optional, tags space-separated, e.g. "1girl solo cat_ears")
+       - "page": number (optional, 0-based page index, default 0)
+       - "limit": number (optional, default 20)
+     - Example: {"genai_action":"gelbooru_search_posts","tags":"highres solo"}
+
+  2. gelbooru_get_post: Retrieve a single post's details by its ID.
+     - Parameters:
+       - "post_id": string or number (required)
+     - Example: {"genai_action":"gelbooru_get_post","post_id":"123456"}
+
+  3. gelbooru_get_image: Fetch and display a post's image directly in chat.
+     - Parameters:
+       - "post_id": string or number (required)
+     - Example: {"genai_action":"gelbooru_get_image","post_id":"123456"}
+
+  4. gelbooru_search_tags: Search tags matching pattern query.
+     - Parameters:
+       - "query": string (required, can use % wildcard e.g. "hat%")
+       - "limit": number (optional, default 10)
+     - Example: {"genai_action":"gelbooru_search_tags","query":"maid"}
+
+  5. gelbooru_get_comments: Retrieve comments for a given post.
+     - Parameters:
+       - "post_id": string or number (required)
+     - Example: {"genai_action":"gelbooru_get_comments","post_id":"123456"}
+
+  6. gelbooru_get_random_post: Fetch a random post matching tag query.
+     - Parameters:
+       - "tags": string (optional, tags space-separated)
+     - Example: {"genai_action":"gelbooru_get_random_post","tags":"cat_ears"}
+`;
+        continue;
+      }
       if (skillId === 'nhentai') {
         activeSkillsBlock += `You have active skill: nhentai / Tag Search Assistant.
 - Purpose: Helping user search and browse galleries, tags, and related content from the nhentai API v2.
@@ -803,15 +857,30 @@ ${skill.content}
   let activeChatMsgCount = 15;
   let dynamicContext = buildDynamicContext(activeChatMsgCount);
 
-  let historyMsgs = genaiHistory.map(e => {
-    // Convert tool results to user messages to prevent Jinja system message errors
+  let historyMsgs = [];
+  for (const e of genaiHistory) {
     if (e.role === 'tool') {
-      return { role: 'user', content: `[TOOL RESULT]\n${e.content}` };
+      historyMsgs.push({ role: 'user', content: `[TOOL RESULT]\n${e.content}` });
+      continue;
     }
-    // Strip internal tool markers before sending to API
     const cleanContent = (e.content || '').replace(/\[\[GENAI_TOOL_\d+\]\]/g, '').trim();
-    return { role: e.role, content: cleanContent };
-  });
+    historyMsgs.push({ role: e.role, content: cleanContent });
+
+    // Inject executed tool results back into history so the AI has context of successful runs!
+    if (e.role === 'assistant' && Array.isArray(e.tools) && e.tools.length > 0) {
+      for (const t of e.tools) {
+        if (t.state === 'done' && t.result) {
+          let resultDesc = '';
+          if (t.result._type === 'image') {
+            resultDesc = `[SYSTEM NOTE: The tool command "${t.action?.genai_action}" executed successfully. The requested image "${t.result.label || 'Image'}" has been loaded and displayed directly in the user's chat window. The user is now looking at it.]`;
+          } else {
+            resultDesc = `[SYSTEM NOTE: The tool command "${t.action?.genai_action}" executed successfully. Result details:\n${JSON.stringify(t.result)}`;
+          }
+          historyMsgs.push({ role: 'user', content: resultDesc });
+        }
+      }
+    }
+  }
 
   if (extraUserInstruction) {
     historyMsgs.push({ role: 'user', content: extraUserInstruction });
@@ -1457,6 +1526,59 @@ async function executeTool(action) {
     };
   }
 
+  if (name.startsWith('gelbooru_')) {
+    const cleanGelbooruPost = (post) => {
+      if (!post) return null;
+      return {
+        id: post.id,
+        tags: post.tags,
+        rating: post.rating,
+        score: post.score,
+        owner: post.owner,
+        width: post.width,
+        height: post.height
+      };
+    };
+
+    try {
+      if (name === 'gelbooru_search_posts') {
+        const { tags, page, limit } = action;
+        const res = await gelbooruApi.searchPosts(tags, page, limit);
+        if (res && Array.isArray(res.posts)) {
+          res.posts = res.posts.map(cleanGelbooruPost);
+        }
+        return res;
+      }
+      if (name === 'gelbooru_get_post') {
+        const { post_id } = action;
+        const post = await gelbooruApi.getPost(post_id);
+        return cleanGelbooruPost(post);
+      }
+      if (name === 'gelbooru_search_tags') {
+        const { query, limit } = action;
+        return await gelbooruApi.searchTags(query, limit);
+      }
+      if (name === 'gelbooru_get_comments') {
+        const { post_id } = action;
+        return await gelbooruApi.getComments(post_id);
+      }
+      if (name === 'gelbooru_get_random_post') {
+        const { tags } = action;
+        const post = await gelbooruApi.getRandomPost(tags);
+        return cleanGelbooruPost(post);
+      }
+      if (name === 'gelbooru_get_image') {
+        const { post_id } = action;
+        const base64DataUrl = await gelbooruApi.getPostImageBase64(post_id);
+        return { _type: 'image', base64: base64DataUrl?.replace(/^data:image\/\w+;base64,/, ''), label: `Gelbooru — Post #${post_id}` };
+      }
+      return { error: `Unsupported gelbooru action: "${name}"` };
+    } catch (err) {
+      console.error(`gelbooru tool execution failed for "${name}":`, err);
+      return { error: err.message || err };
+    }
+  }
+
   if (name.startsWith('nhentai_')) {
     try {
       if (name === 'nhentai_search_galleries') {
@@ -1576,8 +1698,10 @@ async function executeTool(action) {
     if (!filename) return { error: 'Missing filename parameter.' };
 
     const activeSkills = getActiveSkillsForCurrentSession();
-    // Map filename to id 'nhentai' when applicable
-    const id = filename === 'nhentai' || filename === 'nhentai.txt' ? 'nhentai' : filename;
+    // Map filename to id 'nhentai' / 'gelbooru' with case-insensitivity when applicable
+    const lowerFilename = filename.toLowerCase().trim();
+    const id = (lowerFilename === 'nhentai' || lowerFilename === 'nhentai.txt') ? 'nhentai' :
+               (lowerFilename === 'gelbooru' || lowerFilename === 'gelbooru.txt') ? 'gelbooru' : filename;
 
     const isCurrentlyActive = activeSkills.includes(id);
 
@@ -1679,12 +1803,21 @@ function resultBadgeForAction(action, result) {
   if (name === 'nhentai_get_random_gallery') return actionBadgeHtml('result-data', '🏒', `nhentai: Loaded random gallery`);
   if (name === 'nhentai_get_related_galleries') return actionBadgeHtml('result-data', '🔗', `nhentai: Loaded related galleries for ID ${action.gallery_id}`);
   if (name === 'nhentai_get_download_link') return actionBadgeHtml('result-setting', '📥', `nhentai: Generated download link for ID ${action.gallery_id}`);
-  if (name === 'nhentai_get_cover' || name === 'nhentai_get_page') {
-    const badge = actionBadgeHtml('result-data', '🖼️', result._type === 'image' ? (result.label || 'Gallery image loaded') : (result.error ? `Error: ${result.error}` : 'Image unavailable'));
+
+  // gelbooru tool badges
+  if (name === 'gelbooru_search_posts') return actionBadgeHtml('result-data', '🔍', `Gelbooru: Searched posts matching "${action.tags || ''}"`);
+  if (name === 'gelbooru_get_post') return actionBadgeHtml('result-data', '📖', `Gelbooru: Loaded post details for ID ${action.post_id}`);
+  if (name === 'gelbooru_search_tags') return actionBadgeHtml('result-data', '🏷️', `Gelbooru: Searched tags matching "${action.query}"`);
+  if (name === 'gelbooru_get_comments') return actionBadgeHtml('result-data', '💬', `Gelbooru: Loaded comments for ID ${action.post_id}`);
+  if (name === 'gelbooru_get_random_post') return actionBadgeHtml('result-data', '🏒', `Gelbooru: Loaded random post`);
+
+  if (name === 'nhentai_get_cover' || name === 'nhentai_get_page' || name === 'gelbooru_get_image') {
+    const defaultLabel = name === 'gelbooru_get_image' ? 'Post image loaded' : 'Gallery image loaded';
+    const badge = actionBadgeHtml('result-data', '🖼️', result._type === 'image' ? (result.label || defaultLabel) : (result.error ? `Error: ${result.error}` : 'Image unavailable'));
     if (result._type === 'image' && result.base64) {
       const src = result.base64.startsWith('data:') ? result.base64 : `data:image/jpeg;base64,${result.base64}`;
       const imgHtml = `<div class="generated-image-container" style="margin-top:10px;animation:fadeIn 0.4s ease">
-        <img src="${src}" alt="${result.label || 'Gallery image'}" style="max-width:360px;width:100%;height:auto;border-radius:var(--radius-md);box-shadow:var(--shadow-md);display:block;border:1px solid var(--border-light);cursor:pointer;" onclick="if(window.openLightbox){window.openLightbox(this.src)}else{window.open(this.src,'_blank')}">
+        <img src="${src}" alt="${result.label || 'Fetched image'}" style="max-width:360px;width:100%;height:auto;border-radius:var(--radius-md);box-shadow:var(--shadow-md);display:block;border:1px solid var(--border-light);cursor:pointer;" onclick="if(window.openLightbox){window.openLightbox(this.src)}else{window.open(this.src,'_blank')}">
       </div>`;
       return badge + imgHtml;
     }
@@ -3245,6 +3378,127 @@ export function initGenAIPanel() {
   });
 
 
+  // ─── nhentai API Configuration Modal Event Listeners ───
+  const nhentaiModal = document.getElementById('modal-nhentai-config');
+  const btnCloseNhentai = document.getElementById('btn-close-nhentai-config');
+  const btnCancelNhentai = document.getElementById('btn-cancel-nhentai-config');
+  const btnSaveNhentai = document.getElementById('btn-save-nhentai-config');
+
+  if (nhentaiModal) {
+    const closeNhentai = () => closeWindow(nhentaiModal);
+    btnCloseNhentai?.addEventListener('click', closeNhentai);
+    btnCancelNhentai?.addEventListener('click', closeNhentai);
+
+    btnSaveNhentai?.addEventListener('click', async () => {
+      const keyVal = document.getElementById('nhentai-api-key').value.trim();
+      const urlVal = document.getElementById('nhentai-api-url').value.trim();
+
+      try {
+        if (window.__TAURI_INTERNALS__) {
+          try {
+            await window.__TAURI_INTERNALS__.invoke('save_credential', { provider: 'nhentai', key: keyVal });
+          } catch (e) {
+            console.error('Tauri save_credential failed:', e);
+          }
+        }
+        
+        // Always write to localStorage fallback too!
+        localStorage.setItem('nhentai_api_key_fallback', keyVal);
+
+        // Save URL override in settings
+        const current = settingsStore.get();
+        await settingsStore.save({ ...current, nhentai_api_url: urlVal || 'https://nhentai.net' });
+
+        localStorage.setItem('nhentai_configured', 'true');
+        closeWindow(nhentaiModal);
+        
+        if (keyVal) {
+          showToast('nhentai API Key saved!');
+        } else {
+          showToast('nhentai activated anonymously!');
+        }
+
+        // Activate the skill now
+        const activeSkills = getActiveSkillsForCurrentSession();
+        if (!activeSkills.includes('nhentai')) {
+          const updated = [...activeSkills, 'nhentai'];
+          await setActiveSkillsForCurrentSession(updated);
+          updateGenaiPlusButtonState();
+          renderSkillsList();
+          renderAllSkillsList();
+          if (window.renderSkills) {
+            try { window.renderSkills(); } catch (e) {}
+          }
+          showToast('nhentai skill activated for this chat');
+        }
+      } catch (err) {
+        showToast(`Failed to save credential: ${err.message || err}`, 'error');
+      }
+    });
+  }
+
+  // ─── Gelbooru API Configuration Modal Event Listeners ───
+  const gelbooruModal = document.getElementById('modal-gelbooru-config');
+  const btnCloseGelbooru = document.getElementById('btn-close-gelbooru-config');
+  const btnCancelGelbooru = document.getElementById('btn-cancel-gelbooru-config');
+  const btnSaveGelbooru = document.getElementById('btn-save-gelbooru-config');
+
+  if (gelbooruModal) {
+    const closeGelbooru = () => closeWindow(gelbooruModal);
+    btnCloseGelbooru?.addEventListener('click', closeGelbooru);
+    btnCancelGelbooru?.addEventListener('click', closeGelbooru);
+
+    btnSaveGelbooru?.addEventListener('click', async () => {
+      const keyVal = document.getElementById('gelbooru-api-key').value.trim();
+      const uidVal = document.getElementById('gelbooru-user-id').value.trim();
+      const urlVal = document.getElementById('gelbooru-api-url').value.trim();
+
+      try {
+        if (window.__TAURI_INTERNALS__) {
+          try {
+            await window.__TAURI_INTERNALS__.invoke('save_credential', { provider: 'gelbooru_api_key', key: keyVal });
+            await window.__TAURI_INTERNALS__.invoke('save_credential', { provider: 'gelbooru_user_id', key: uidVal });
+          } catch (e) {
+            console.error('Tauri save_credential failed:', e);
+          }
+        }
+        
+        // Always write to localStorage fallback too!
+        localStorage.setItem('gelbooru_api_key_fallback', keyVal);
+        localStorage.setItem('gelbooru_user_id_fallback', uidVal);
+
+        // Save URL override in settings
+        const current = settingsStore.get();
+        await settingsStore.save({ ...current, gelbooru_api_url: urlVal || 'https://gelbooru.com' });
+
+        localStorage.setItem('gelbooru_configured', 'true');
+        closeWindow(gelbooruModal);
+        
+        if (keyVal && uidVal) {
+          showToast('Gelbooru API credentials saved!');
+        } else {
+          showToast('Gelbooru activated anonymously!');
+        }
+
+        // Activate the skill now
+        const activeSkills = getActiveSkillsForCurrentSession();
+        if (!activeSkills.includes('gelbooru')) {
+          const updated = [...activeSkills, 'gelbooru'];
+          await setActiveSkillsForCurrentSession(updated);
+          updateGenaiPlusButtonState();
+          renderSkillsList();
+          renderAllSkillsList();
+          if (window.renderSkills) {
+            try { window.renderSkills(); } catch (e) {}
+          }
+          showToast('Gelbooru skill activated for this chat');
+        }
+      } catch (err) {
+        showToast(`Failed to save credential: ${err.message || err}`, 'error');
+      }
+    });
+  }
+
   // Listen for chat message responses (from send_chat_message tool)
   window.addEventListener('genai-chat-response-ready', async (e) => {
     if (!vibeMode || vibeMode.aborted) return;
@@ -3695,6 +3949,55 @@ export function updateGenaiPlusButtonState() {
   }
 }
 
+export async function openNhentaiConfigModal() {
+  const modal = document.getElementById('modal-nhentai-config');
+  if (modal) {
+    let key = '';
+    try {
+      key = await invokeTauri('load_credential', { provider: 'nhentai' });
+    } catch (e) {
+      console.warn(e);
+    }
+    if (!key) {
+      key = localStorage.getItem('nhentai_api_key_fallback') || '';
+    }
+    const urlInput = document.getElementById('nhentai-api-url');
+    const keyInput = document.getElementById('nhentai-api-key');
+    const settings = settingsStore.get();
+    if (urlInput) urlInput.value = settings.nhentai_api_url || '';
+    if (keyInput) keyInput.value = key || '';
+    openWindow(modal);
+  }
+}
+
+export async function openGelbooruConfigModal() {
+  const modal = document.getElementById('modal-gelbooru-config');
+  if (modal) {
+    let key = '';
+    let uid = '';
+    try {
+      key = await invokeTauri('load_credential', { provider: 'gelbooru_api_key' });
+      uid = await invokeTauri('load_credential', { provider: 'gelbooru_user_id' });
+    } catch (e) {
+      console.warn(e);
+    }
+    if (!key) {
+      key = localStorage.getItem('gelbooru_api_key_fallback') || '';
+    }
+    if (!uid) {
+      uid = localStorage.getItem('gelbooru_user_id_fallback') || '';
+    }
+    const urlInput = document.getElementById('gelbooru-api-url');
+    const keyInput = document.getElementById('gelbooru-api-key');
+    const uidInput = document.getElementById('gelbooru-user-id');
+    const settings = settingsStore.get();
+    if (urlInput) urlInput.value = settings.gelbooru_api_url || '';
+    if (keyInput) keyInput.value = key || '';
+    if (uidInput) uidInput.value = uid || '';
+    openWindow(modal);
+  }
+}
+
 export async function renderSkillsList() {
   const container = document.getElementById('genai-skills-list');
   if (!container) return;
@@ -3702,7 +4005,8 @@ export async function renderSkillsList() {
   const activeSkills = getActiveSkillsForCurrentSession();
 
   const skills = [
-    { id: 'nhentai', name: 'nhentai / Tag Search', description: 'API v2 galleries & tag assistant' }
+    { id: 'nhentai', name: 'nhentai / Tag Search', description: 'API v2 galleries & tag assistant' },
+    { id: 'gelbooru', name: 'Gelbooru / Image Search', description: 'Booru post & tag search assistant' }
   ];
 
   container.innerHTML = skills.map(s => {
@@ -3713,10 +4017,18 @@ export async function renderSkillsList() {
           <span style="font-weight: 500; font-size: var(--text-sm); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${s.name}</span>
           <span style="font-size: 11px; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${s.description}</span>
         </div>
-        <label class="toggle-switch small" style="pointer-events: none; flex-shrink: 0;">
-          <input type="checkbox" ${isActive ? 'checked' : ''} />
-          <span class="toggle-slider"></span>
-        </label>
+        <div style="display: flex; align-items: center; gap: 8px; pointer-events: auto;" class="skill-controls">
+          <button class="btn-icon skill-config-btn" data-id="${s.id}" title="Configure credentials and settings" style="padding: 4px; display: flex; align-items: center; justify-content: center; background: transparent; border: none; color: var(--text-tertiary); cursor: pointer; transition: color var(--transition-fast); border-radius: var(--radius-sm);">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 14px; height: 14px;">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </button>
+          <label class="toggle-switch small" style="pointer-events: none; flex-shrink: 0;">
+            <input type="checkbox" ${isActive ? 'checked' : ''} />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
       </div>
     `;
   }).join('');
@@ -3724,12 +4036,30 @@ export async function renderSkillsList() {
   // Bind click handlers to list items
   container.querySelectorAll('.skill-list-item').forEach(el => {
     el.addEventListener('click', async (e) => {
+      if (e.target.closest('.skill-config-btn')) {
+        return; // Handled by separate listener
+      }
       e.stopPropagation();
       const skillId = el.dataset.id;
       if (skillId === 'nhentai') {
         await handleNhentaiToggle(el);
+      } else if (skillId === 'gelbooru') {
+        await handleGelbooruToggle(el);
       } else {
         await handleCustomSkillToggle(skillId, el);
+      }
+    });
+  });
+
+  // Bind click handlers to configuration gear buttons
+  container.querySelectorAll('.skill-config-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const skillId = btn.dataset.id;
+      if (skillId === 'nhentai') {
+        await openNhentaiConfigModal();
+      } else if (skillId === 'gelbooru') {
+        await openGelbooruConfigModal();
       }
     });
   });
@@ -3740,7 +4070,6 @@ export async function handleNhentaiToggle(el) {
   const isCurrentlyActive = activeSkills.includes('nhentai');
 
   if (isCurrentlyActive) {
-    // Visually toggle immediately to preserve CSS transition
     if (el) {
       el.classList.remove('active');
       const input = el.querySelector('input[type="checkbox"]');
@@ -3750,30 +4079,16 @@ export async function handleNhentaiToggle(el) {
     const updated = activeSkills.filter(id => id !== 'nhentai');
     await setActiveSkillsForCurrentSession(updated);
     updateGenaiPlusButtonState();
-    await renderAllSkillsList(); // Также обновляем Page 3
+    await renderAllSkillsList();
     if (window.renderSkills) {
       try { window.renderSkills(); } catch (e) {}
     }
     showToast('nhentai skill deactivated for this chat');
   } else {
-    let key = '';
-    try {
-      key = await invokeTauri('load_credential', { provider: 'nhentai' });
-    } catch (e) {
-      key = localStorage.getItem('nhentai_api_key_fallback') || '';
-    }
-
-    if (!key) {
-      // Open modal configuration
-      const modal = document.getElementById('modal-nhentai-config');
-      if (modal) {
-        const urlInput = document.getElementById('nhentai-api-url');
-        const settings = settingsStore.get();
-        if (urlInput) urlInput.value = settings.nhentai_api_url || '';
-        openWindow(modal);
-      }
+    const configured = localStorage.getItem('nhentai_configured') === 'true';
+    if (!configured) {
+      await openNhentaiConfigModal();
     } else {
-      // Visually toggle immediately to preserve CSS transition
       if (el) {
         el.classList.add('active');
         const input = el.querySelector('input[type="checkbox"]');
@@ -3783,11 +4098,53 @@ export async function handleNhentaiToggle(el) {
       const updated = [...activeSkills, 'nhentai'];
       await setActiveSkillsForCurrentSession(updated);
       updateGenaiPlusButtonState();
-      await renderAllSkillsList(); // Также обновляем Page 3
+      await renderAllSkillsList();
       if (window.renderSkills) {
         try { window.renderSkills(); } catch (e) {}
       }
       showToast('nhentai skill activated for this chat');
+    }
+  }
+}
+
+export async function handleGelbooruToggle(el) {
+  const activeSkills = getActiveSkillsForCurrentSession();
+  const isCurrentlyActive = activeSkills.includes('gelbooru');
+
+  if (isCurrentlyActive) {
+    if (el) {
+      el.classList.remove('active');
+      const input = el.querySelector('input[type="checkbox"]');
+      if (input) input.checked = false;
+    }
+
+    const updated = activeSkills.filter(id => id !== 'gelbooru');
+    await setActiveSkillsForCurrentSession(updated);
+    updateGenaiPlusButtonState();
+    await renderAllSkillsList();
+    if (window.renderSkills) {
+      try { window.renderSkills(); } catch (e) {}
+    }
+    showToast('Gelbooru skill deactivated for this chat');
+  } else {
+    const configured = localStorage.getItem('gelbooru_configured') === 'true';
+    if (!configured) {
+      await openGelbooruConfigModal();
+    } else {
+      if (el) {
+        el.classList.add('active');
+        const input = el.querySelector('input[type="checkbox"]');
+        if (input) input.checked = true;
+      }
+
+      const updated = [...activeSkills, 'gelbooru'];
+      await setActiveSkillsForCurrentSession(updated);
+      updateGenaiPlusButtonState();
+      await renderAllSkillsList();
+      if (window.renderSkills) {
+        try { window.renderSkills(); } catch (e) {}
+      }
+      showToast('Gelbooru skill activated for this chat');
     }
   }
 }
@@ -3838,7 +4195,7 @@ export async function renderAllSkillsList() {
   }
 
   // Фильтруем список, чтобы nhentai НЕ попадал в Show All (Page 3)
-  list = list.filter(s => s.filename !== 'nhentai' && s.name !== 'nhentai');
+  list = list.filter(s => s.filename !== 'nhentai' && s.name !== 'nhentai' && s.filename !== 'gelbooru' && s.name !== 'gelbooru');
 
   container.innerHTML = list.map(s => {
     const isAct = activeSkills.includes(s.filename);
@@ -3944,6 +4301,8 @@ window.getGenAiActiveSkills = () => {
 window.toggleGenAiSkill = async (skillId, el) => {
   if (skillId === 'nhentai') {
     await handleNhentaiToggle(el);
+  } else if (skillId === 'gelbooru') {
+    await handleGelbooruToggle(el);
   } else {
     await handleCustomSkillToggle(skillId, el);
   }

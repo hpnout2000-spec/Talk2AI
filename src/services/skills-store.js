@@ -54,6 +54,12 @@ export const skillsStore = {
         content: `nhentai Skill: Tag Search Assistant\nPurpose: Help user search and browse galleries, tags, and related content from the nhentai API v2.\nUsage: Activate this skill for the current chat to enable nhentai-specific tool calls (search_galleries, get_gallery, get_cover, get_page, search_tags, etc.). Do NOT expose API keys in chat text.`
       },
       {
+        name: 'Gelbooru',
+        filename: 'gelbooru',
+        is_default: true,
+        content: `Gelbooru Skill: Image Search Assistant\nPurpose: Help user search and browse posts, tags, and related comments from the Gelbooru API.\nUsage: Activate this skill for the current chat to enable Gelbooru-specific tool calls (gelbooru_search_posts, gelbooru_get_post, gelbooru_get_image, gelbooru_search_tags, gelbooru_get_comments, etc.). Do NOT expose API keys in chat text.`
+      },
+      {
         name: 'GenAI Features',
         filename: 'GenAI Features.json',
         is_default: true,

@@ -932,7 +932,7 @@ export async function initGameView() {
   if (tabGame) {
     tabGame.addEventListener('click', async () => {
       // Deactivate other tabs
-      const otherTabs = ['tab-characters', 'tab-books', 'tab-groups'].map(id => document.getElementById(id));
+      const otherTabs = ['tab-characters', 'tab-books', 'tab-groups', 'tab-album'].map(id => document.getElementById(id));
       tabGame.classList.add('active');
       tabGame.style.background = 'var(--bg-tertiary)';
       tabGame.style.color = 'var(--text-primary)';
@@ -947,7 +947,7 @@ export async function initGameView() {
       });
 
       // Hide other sidebars, but SHOW games-section
-      const sections = ['characters-section', 'books-section', 'groups-section'].map(id => document.getElementById(id));
+      const sections = ['characters-section', 'books-section', 'groups-section', 'album-section'].map(id => document.getElementById(id));
       sections.forEach(s => {
         if (s) {
           s.classList.add('hidden');
@@ -961,7 +961,7 @@ export async function initGameView() {
       }
 
       // Hide other views
-      const views = ['chat-view-container', 'book-view-container', 'group-chat-view-container'].map(id => document.getElementById(id));
+      const views = ['chat-view-container', 'book-view-container', 'group-chat-view-container', 'album-view-container'].map(id => document.getElementById(id));
       views.forEach(v => {
         if (v) {
           v.classList.add('hidden');

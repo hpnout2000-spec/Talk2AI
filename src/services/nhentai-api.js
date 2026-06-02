@@ -70,6 +70,11 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
   try {
     key = await invokeTauri('load_credential', { provider: 'nhentai' });
   } catch (e) {
+    console.warn(e);
+  }
+
+  // Dual-load fallback
+  if (!key) {
     key = localStorage.getItem('nhentai_api_key_fallback') || '';
   }
 
@@ -138,7 +143,14 @@ export const nhentaiApi = {
     console.log('[nhentai] getCoverImageBase64: fetching URL:', imageUrl);
 
     let key = '';
-    try { key = await invokeTauri('load_credential', { provider: 'nhentai' }); } catch (e) { key = ''; }
+    try { 
+      key = await invokeTauri('load_credential', { provider: 'nhentai' }); 
+    } catch (e) { 
+      console.warn(e); 
+    }
+    if (!key) {
+      key = localStorage.getItem('nhentai_api_key_fallback') || '';
+    }
     return await invokeTauri('nhentai_fetch_image_base64', { url: imageUrl, apiKey: key || null });
   },
 
@@ -179,7 +191,14 @@ export const nhentaiApi = {
     console.log('[nhentai] getPageImageBase64: fetching URL:', imageUrl);
 
     let key = '';
-    try { key = await invokeTauri('load_credential', { provider: 'nhentai' }); } catch (e) { key = ''; }
+    try { 
+      key = await invokeTauri('load_credential', { provider: 'nhentai' }); 
+    } catch (e) { 
+      console.warn(e); 
+    }
+    if (!key) {
+      key = localStorage.getItem('nhentai_api_key_fallback') || '';
+    }
     return await invokeTauri('nhentai_fetch_image_base64', { url: imageUrl, apiKey: key || null });
   },
 

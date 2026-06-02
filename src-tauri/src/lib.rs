@@ -543,6 +543,110 @@ async fn nhentai_fetch_image_base64(
     Ok(format!("data:{};base64,{}", content_type, b64))
 }
 
+// ─── Gelbooru Commands ──────────────────────────────────────────────
+
+#[tauri::command]
+async fn gelbooru_request(
+    url: String,
+    api_key: Option<String>,
+    user_id: Option<String>,
+) -> Result<String, String> {
+    use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
+
+    let client = reqwest::Client::new();
+    let mut headers = HeaderMap::new();
+    
+    headers.insert(
+        USER_AGENT,
+        HeaderValue::from_static("VibeChatting/1.0.0 (contact@vibechatting.org)"),
+    );
+
+    // Build URL with auth params
+    let mut final_url = url.clone();
+    if let (Some(ref key), Some(ref uid)) = (&api_key, &user_id) {
+        if !key.trim().is_empty() && !uid.trim().is_empty() {
+            let separator = if url.contains('?') { "&" } else { "?" };
+            final_url = format!("{}{}api_key={}&user_id={}", url, separator, key.trim(), uid.trim());
+            
+            let masked = if key.len() > 4 { format!("{}...", &key[..4]) } else { "...".to_string() };
+            println!("[Rust Gelbooru API] Appending credentials. User ID: {}, Key: {}", uid.trim(), masked);
+        } else {
+            println!("[Rust Gelbooru API] Credentials exist but are empty strings.");
+        }
+    } else {
+        println!("[Rust Gelbooru API] No credentials provided: api_key={:?}, user_id={:?}", api_key, user_id);
+    }
+
+    let resp = client.get(&final_url)
+        .headers(headers)
+        .send()
+        .await
+        .map_err(|e| format!("Gelbooru network request failed: {}", e))?;
+
+    let status = resp.status();
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read Gelbooru response body: {}", e))?;
+
+    if !status.is_success() {
+        return Err(format!("Gelbooru API Error ({}): {}", status.as_u16(), text));
+    }
+
+    Ok(text)
+}
+
+#[tauri::command]
+async fn gelbooru_fetch_image_base64(
+    url: String,
+) -> Result<String, String> {
+    use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT, REFERER};
+    use base64::{Engine as _, engine::general_purpose};
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap_or_default();
+    let mut headers = HeaderMap::new();
+    
+    headers.insert(
+        USER_AGENT,
+        HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"),
+    );
+
+    headers.insert(
+        REFERER,
+        HeaderValue::from_static("https://gelbooru.com/"),
+    );
+
+    let resp = client.get(&url)
+        .headers(headers)
+        .send()
+        .await
+        .map_err(|e| format!("Gelbooru CDN request failed: {}", e))?;
+
+    let status = resp.status();
+    let content_type = resp.headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("image/jpeg")
+        .to_string();
+
+    let bytes = resp.bytes().await.map_err(|e| format!("Failed to read Gelbooru image bytes: {}", e))?;
+
+    if !status.is_success() {
+        return Err(format!("CDN returned HTTP {} for Gelbooru image URL", status.as_u16()));
+    }
+
+    if !content_type.starts_with("image/") {
+        return Err(format!("CDN returned non-image content-type '{}'", content_type));
+    }
+
+    let b64 = general_purpose::STANDARD.encode(&bytes);
+
+    Ok(format!("data:{};base64,{}", content_type, b64))
+}
+
 // ─── App Entry ──────────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -566,7 +670,9 @@ pub fn run() {
             save_credential,
             load_credential,
             nhentai_request,
-            nhentai_fetch_image_base64
+            nhentai_fetch_image_base64,
+            gelbooru_request,
+            gelbooru_fetch_image_base64
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

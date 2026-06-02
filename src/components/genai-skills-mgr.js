@@ -203,8 +203,10 @@ export async function renderSkills() {
       const filename = btn.dataset.filename;
       try {
         if (window.toggleGenAiSkill) {
-          // Map filename to id 'nhentai' when applicable
-          const id = filename === 'nhentai' || filename === 'nhentai.txt' ? 'nhentai' : filename;
+          // Map filename to id 'nhentai' / 'gelbooru' with case-insensitivity when applicable
+          const lowerFname = filename.toLowerCase().trim();
+          const id = (lowerFname === 'nhentai' || lowerFname === 'nhentai.txt') ? 'nhentai' :
+                     (lowerFname === 'gelbooru' || lowerFname === 'gelbooru.txt') ? 'gelbooru' : filename;
           await window.toggleGenAiSkill(id, btn);
           await renderSkills();
         } else {

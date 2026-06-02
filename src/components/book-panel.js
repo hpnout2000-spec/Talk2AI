@@ -74,11 +74,17 @@ export function initBookPanel() {
   initialPromptInput = document.getElementById('book-initial-prompt');
 
   tabCharacters.addEventListener('click', () => {
-    setTabActive(tabCharacters, [tabBooks, tabGroups, document.getElementById('tab-game')]);
+    setTabActive(tabCharacters, [tabBooks, tabGroups, document.getElementById('tab-game'), document.getElementById('tab-album')]);
     charactersSection.classList.remove('hidden'); charactersSection.style.display = 'flex';
     booksSection.classList.add('hidden'); booksSection.style.display = 'none';
     if (groupsSection) { groupsSection.classList.add('hidden'); groupsSection.style.display = 'none'; }
     if (gamesSection) { gamesSection.classList.add('hidden'); gamesSection.style.display = 'none'; }
+    
+    // Hide Album section and view
+    const albumSec = document.getElementById('album-section');
+    if (albumSec) { albumSec.classList.add('hidden'); albumSec.style.display = 'none'; }
+    const albumView = document.getElementById('album-view-container');
+    if (albumView) { albumView.classList.add('hidden'); albumView.style.display = 'none'; }
     
     if (groupViewContainer) { groupViewContainer.classList.add('hidden'); groupViewContainer.style.display = 'none'; }
     if (gameViewContainer) { gameViewContainer.classList.add('hidden'); gameViewContainer.style.display = 'none'; }
@@ -90,11 +96,17 @@ export function initBookPanel() {
 
   // ─── Tab: Books ───────────────────────────────────────────────
   tabBooks.addEventListener('click', () => {
-    setTabActive(tabBooks, [tabCharacters, tabGroups, document.getElementById('tab-game')]);
+    setTabActive(tabBooks, [tabCharacters, tabGroups, document.getElementById('tab-game'), document.getElementById('tab-album')]);
     booksSection.classList.remove('hidden'); booksSection.style.display = 'flex';
     charactersSection.classList.add('hidden'); charactersSection.style.display = 'none';
     if (groupsSection) { groupsSection.classList.add('hidden'); groupsSection.style.display = 'none'; }
     if (gamesSection) { gamesSection.classList.add('hidden'); gamesSection.style.display = 'none'; }
+    
+    // Hide Album section and view
+    const albumSec = document.getElementById('album-section');
+    if (albumSec) { albumSec.classList.add('hidden'); albumSec.style.display = 'none'; }
+    const albumView = document.getElementById('album-view-container');
+    if (albumView) { albumView.classList.add('hidden'); albumView.style.display = 'none'; }
     
     if (groupViewContainer) { groupViewContainer.classList.add('hidden'); groupViewContainer.style.display = 'none'; }
     if (gameViewContainer) { gameViewContainer.classList.add('hidden'); gameViewContainer.style.display = 'none'; }
@@ -108,11 +120,17 @@ export function initBookPanel() {
   // ─── Tab: Groups ──────────────────────────────────────────────
   if (tabGroups) {
     tabGroups.addEventListener('click', () => {
-      setTabActive(tabGroups, [tabCharacters, tabBooks, document.getElementById('tab-game')]);
+      setTabActive(tabGroups, [tabCharacters, tabBooks, document.getElementById('tab-game'), document.getElementById('tab-album')]);
       if (groupsSection) { groupsSection.classList.remove('hidden'); groupsSection.style.display = 'flex'; }
       charactersSection.classList.add('hidden'); charactersSection.style.display = 'none';
       booksSection.classList.add('hidden'); booksSection.style.display = 'none';
       if (gamesSection) { gamesSection.classList.add('hidden'); gamesSection.style.display = 'none'; }
+      
+      // Hide Album section and view
+      const albumSec = document.getElementById('album-section');
+      if (albumSec) { albumSec.classList.add('hidden'); albumSec.style.display = 'none'; }
+      const albumView = document.getElementById('album-view-container');
+      if (albumView) { albumView.classList.add('hidden'); albumView.style.display = 'none'; }
       
       chatViewContainer.classList.add('hidden');
       chatViewContainer.style.display = 'none';

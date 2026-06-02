@@ -26,6 +26,7 @@ import { initGameView } from './components/game-view.js';
 import { initGenAIMemoriesMgr } from './components/genai-memories-mgr.js';
 import { initGenAISkillsMgr } from './components/genai-skills-mgr.js';
 import { initLightbox } from './utils/lightbox.js';
+import { initAlbumView } from './components/album-view.js';
 
 // ─── Initialize App ─────────────────────────────────────────────────
 
@@ -310,6 +311,7 @@ async function init() {
   initGroupChatPanel();
   initGroupChatView();
   initGameView();
+  initAlbumView();
   initLightbox();
   applyGlobalSettingsStyles();
 
@@ -594,5 +596,10 @@ export function showPrompt(title, message, defaultValue = '') {
 }
 
 // ─── Start App ──────────────────────────────────────────────────────
+
+// Expose helpers globally to prevent circular dependencies in components
+window.showToast = showToast;
+window.showConfirm = showConfirm;
+window.showPrompt = showPrompt;
 
 document.addEventListener('DOMContentLoaded', init);
