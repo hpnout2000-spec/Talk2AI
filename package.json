@@ -10,6 +10,7 @@
     "@tauri-apps/cli": "^2"
   },
   "dependencies": {
+    "@imgly/background-removal": "^1.7.0",
     "exifreader": "^4.38.1"
   }
 }

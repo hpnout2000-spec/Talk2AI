@@ -190,7 +190,7 @@ function loadSettingsToUI() {
   setField('setting-comfyui-neg-prompt', settings.comfyui_negative_prompt || '');
   setField('setting-comfyui-sampler', settings.comfyui_sampler || 'euler');
   setField('setting-comfyui-scheduler', settings.comfyui_scheduler || 'normal');
-  setField('setting-comfyui-unet', settings.comfyui_unet_name || 'anima-base-v1.0.safetensors');
+  setField('setting-comfyui-unet', settings.comfyui_unet_name || 'anima_baseV10.safetensors');
   setField('setting-comfyui-clip', settings.comfyui_clip_name || 'qwen_3_06b_base.safetensors');
   setField('setting-comfyui-vae', settings.comfyui_vae_name || 'qwen_image_vae.safetensors');
   const stepsEl = document.getElementById('setting-comfyui-steps');
@@ -632,6 +632,64 @@ function initImageGenSettings() {
       } finally {
         btnTestComfy.textContent = 'Test';
         btnTestComfy.disabled = false;
+      }
+    });
+  }
+
+  // ComfyUI Nodes Install handler — WAS Node Suite (Revised) by ltdrdata
+  const btnInstallNodes = document.getElementById('btn-install-comfyui-nodes');
+  const installResult = document.getElementById('comfyui-install-result');
+
+  if (btnInstallNodes) {
+    btnInstallNodes.addEventListener('click', async () => {
+      const urlEl = document.getElementById('setting-comfyui-url');
+      const url = urlEl ? urlEl.value.trim() : 'http://localhost:8188';
+      const baseUrl = url.replace(/\/$/, '');
+
+      btnInstallNodes.disabled = true;
+      btnInstallNodes.textContent = 'Installing...';
+      if (installResult) {
+        installResult.className = '';
+        installResult.style.color = 'var(--text-secondary)';
+        installResult.textContent = 'Sending install request to ComfyUI Manager...';
+      }
+
+      // WAS Node Suite (Revised) — maintained fork by ltdrdata
+      const WAS_REVISED_URL = 'https://github.com/ltdrdata/was-node-suite-comfyui';
+
+      try {
+        let response = await fetch(`${baseUrl}/customnode/install`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: WAS_REVISED_URL })
+        }).catch(() => null);
+
+        if (!response || !response.ok) {
+          response = await fetch(`${baseUrl}/customnode/install`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ customnode_url: WAS_REVISED_URL })
+          }).catch(() => null);
+        }
+
+        if (response && response.ok) {
+          if (installResult) {
+            installResult.style.color = 'var(--success)';
+            installResult.innerHTML = '✓ Install command sent! Check your ComfyUI console. <b>Restart ComfyUI</b> when finished.';
+          }
+          showToast('WAS Node Suite (Revised) install sent!');
+        } else {
+          throw new Error('ComfyUI Manager API not found or failed');
+        }
+      } catch (err) {
+        console.error(err);
+        if (installResult) {
+          installResult.style.color = 'var(--error)';
+          installResult.innerHTML = `✗ Automatic install failed. Install <b>WAS Node Suite (Revised)</b> manually via ComfyUI Manager (<a href="https://github.com/ltdrdata/was-node-suite-comfyui" target="_blank" style="color:var(--accent-primary)">ltdrdata/was-node-suite-comfyui</a>).`;
+        }
+      } finally {
+        btnInstallNodes.textContent = 'Install Nodes';
+        btnInstallNodes.disabled = false;
       }
     });
   }

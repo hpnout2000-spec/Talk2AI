@@ -15,6 +15,8 @@ import { renderMarkdown, autoResizeTextarea, formatTime, injectCursor, escapeHtm
 import morphdom from '../vendor/morphdom.js';
 import { generateImageComfyUI, checkComfyUIConnection, buildAutoPromptFromContext } from '../services/comfyui-service.js';
 import { loadChat } from './chat.js';
+import { runImageEditorAgent } from './genai-image-editor.js';
+import { imageSessionStore } from '../services/image-session-store.js';
 import { nhentaiApi } from '../services/nhentai-api.js';
 import { gelbooruApi } from '../services/gelbooru-api.js';
 import { openWindow, closeWindow, showToast } from '../main.js';
@@ -34,6 +36,7 @@ const CREATOR_STATE_STORAGE_KEY = 'vibechat_genai_creator_state';
 let genaiHistory = [];
 let genaiSessions = [];
 let currentGenaiSessionId = null;
+let isHistoryLoaded = false;
 
 let isGenerating = false;
 let abortController = null;
@@ -463,7 +466,14 @@ ${settings.comfyui_enabled_genai ? `
         - 768x1344 [9:16]
         - 640x1536 [9:21]
         Do not use any other resolutions.` : ''}
-    - Example: {"genai_action":"generate_image","prompt":"highly detailed scenery of a fantasy lake, twilight lighting, masterpieces","loading_message":"Рисую волшебное озеро..."${settings.comfyui_auto_scale ? `,"width":832,"height":1216` : ''}}` : ''}
+    - Example: {"genai_action":"generate_image","prompt":"highly detailed scenery of a fantasy lake, twilight lighting, masterpieces","loading_message":"Рисую волшебное озеро..."${settings.comfyui_auto_scale ? `,"width":832,"height":1216` : ''}}
+
+32. ImageRed: Advanced Image Editor Agent.
+    - When to use: When the user asks for complex image editing: adding text to images, removing backgrounds, compositing/layering characters on backgrounds, or applying filters. You delegate the entire task to the Sub-AI agent.
+    - Parameters:
+      - "task": string (required) - Detailed instruction for the Image Editor Agent (e.g., "Сгенерируй девушку на фоне пляжа и добавь текст Summer").
+    - Example: {"genai_action":"ImageRed","task":"Сгенерируй девушку на фоне гор и добавь текст 'hello world'"}
+` : ''}
 
 
 44. add_char_fact: Add a numbered fact to a specific character creation tab.
@@ -1904,6 +1914,21 @@ function resultBadgeForAction(action, result) {
   if (name === 'web_search') return actionBadgeHtml('result-data', '🌐', `Web Search completed for "${action.query}"`);
   if (name === 'web_fetch') return actionBadgeHtml('result-data', '🌐', `Web Fetch completed for "${action.url}"`);
 
+  if (name === 'ImageRed') {
+    const badge = actionBadgeHtml('result-data', '🎨', 'Image Editor Session Completed');
+    let content = badge;
+    if (result && result.messages && result.messages.length > 0) {
+      content += `<div style="font-size: 0.85em; color: var(--text-muted); margin-top: 8px;">${result.messages.map(m => `<div>- ${escapeHtml(m)}</div>`).join('')}</div>`;
+    }
+    if (result && result.base64) {
+      const src = result.base64.startsWith('data:') ? result.base64 : `data:image/jpeg;base64,${result.base64}`;
+      content += `<div class="generated-image-container" style="margin-top:10px;animation:fadeIn 0.4s ease">
+        <img src="${src}" style="max-width:360px;width:100%;height:auto;border-radius:var(--radius-md);box-shadow:var(--shadow-md);display:block;border:1px solid var(--border-light);cursor:pointer;" onclick="if(window.openLightbox){window.openLightbox(this.src)}else{window.open(this.src,'_blank')}">
+      </div>`;
+    }
+    return content;
+  }
+
   // nhentai tool badges
   if (name === 'nhentai_search_galleries') return actionBadgeHtml('result-data', '🔍', `nhentai: Searched galleries for "${action.query}"`);
   if (name === 'nhentai_get_gallery') return actionBadgeHtml('result-data', '📖', `nhentai: Loaded gallery details for ID ${action.gallery_id}`);
@@ -2708,6 +2733,33 @@ async function handleActionDetected(assistantEntry, bubbleEl) {
 
     // Check if the action requires user approval before execution
     const name = tool.action.genai_action;
+
+    if (name === 'ImageRed') {
+      tool.state = 'working';
+      renderAssistantBubble(assistantEntry, bubbleEl);
+      scrollToBottom();
+
+      try {
+        const { finalImageUrl, accumulatedMessages } = await handleImageRedAction(tool.action.task, bubbleEl);
+        tool.state = 'done';
+        tool.result = { 
+          _type: 'image',
+          success: true, 
+          base64: finalImageUrl, 
+          messages: accumulatedMessages 
+        };
+      } catch (err) {
+        tool.state = 'done';
+        tool.result = { error: err.message };
+      }
+
+      renderAssistantBubble(assistantEntry, bubbleEl);
+      saveHistory();
+      isGenerating = false;
+      continueAfterTool(tool.action, tool.result, assistantEntry, bubbleEl);
+      return;
+    }
+
     if (name === 'web_search' || name === 'web_fetch') {
       tool.state = 'awaiting_approval';
       renderAssistantBubble(assistantEntry, bubbleEl);
@@ -2809,6 +2861,88 @@ async function handleActionDetected(assistantEntry, bubbleEl) {
     if (bubbleEl) {
       bubbleEl.innerHTML += `<div style="color:var(--error); font-size:0.8em; margin-top:8px;">⚠️ Action Error: ${err.message}</div>`;
     }
+  }
+}
+
+async function handleImageRedAction(task, messageEl) {
+  const container = messageEl.querySelector('.genai-msg-text-container');
+  if (!container) return;
+
+  const workingBlock = document.createElement('div');
+  workingBlock.className = 'image-editor-working-block';
+  workingBlock.style = 'background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-lg); padding: 16px; margin: 8px 0;';
+  
+  const statusEl = document.createElement('div');
+  statusEl.className = 'working-status';
+  statusEl.innerHTML = `<span style="animation: spin 1.5s linear infinite; display: inline-block; margin-right: 8px;">⚙️</span> <span class="text-content">Starting Image Editor...</span>`;
+  workingBlock.appendChild(statusEl);
+  
+  const msgContainer = document.createElement('div');
+  workingBlock.appendChild(msgContainer);
+
+  const imgContainer = document.createElement('div');
+  workingBlock.appendChild(imgContainer);
+
+  container.appendChild(workingBlock);
+  scrollToBottom();
+
+  imageSessionStore.clear();
+  const abortCtrl = new AbortController();
+
+  let accumulatedMessages = [];
+  let finalImageUrl = null;
+
+  const setStatus = (text) => {
+    const textEl = statusEl.querySelector('.text-content');
+    if (textEl) textEl.textContent = text;
+  };
+
+  const appendUserMessage = (msg) => {
+    const msgEl = document.createElement('div');
+    msgEl.className = 'imagered-milestone-msg';
+    msgEl.style = 'color: var(--text-secondary); font-size: 14px; padding: 8px 12px; background: var(--bg-primary); border-radius: var(--radius-md); border-left: 3px solid var(--accent-primary); margin: 8px 0; opacity: 1; transition: opacity 0.4s;';
+    msgEl.textContent = msg;
+    msgContainer.appendChild(msgEl);
+    scrollToBottom();
+    accumulatedMessages.push(msg);
+  };
+
+  const setDone = () => {
+    statusEl.innerHTML = `<span style="color: #4ade80; font-weight: bold;">✓ Done</span>`;
+  };
+
+  const showImage = (dataUrl, imageId) => {
+    setDone();
+    // Fade out and remove milestone messages — they were for "Working..." context only
+    msgContainer.querySelectorAll('.imagered-milestone-msg').forEach(el => {
+      el.style.opacity = '0';
+      setTimeout(() => el.remove(), 400);
+    });
+    const img = document.createElement('img');
+    img.src = dataUrl;
+    img.style = 'max-width: 100%; border-radius: var(--radius-md); border: 1px solid var(--border-light); cursor: pointer; margin-top: 12px; display: block;';
+    img.onclick = () => {
+      if(window.openLightbox) window.openLightbox(img.src);
+      else window.open(img.src, '_blank');
+    };
+    imgContainer.appendChild(img);
+    scrollToBottom();
+    finalImageUrl = dataUrl;
+  };
+
+  try {
+    await runImageEditorAgent(
+      task,
+      setStatus,
+      appendUserMessage,
+      showImage,
+      abortCtrl.signal
+    );
+    return { finalImageUrl, accumulatedMessages };
+  } catch (err) {
+    appendUserMessage(`Error: ${err.message}`);
+    setDone();
+    throw err;
   }
 }
 
@@ -2929,6 +3063,10 @@ function loadCreatorState() {
 
 // ─── History persistence ─────────────────────────────────────────────
 function saveHistory() {
+  if (!isHistoryLoaded) {
+    console.warn('saveHistory called before history was loaded; ignoring to prevent data overwrite.');
+    return;
+  }
   try {
     const toSave = genaiHistory.filter(e => e.role !== 'system');
 
@@ -2999,11 +3137,16 @@ async function loadHistory() {
       }
     }
 
-    if (!sessionsData) {
+    if (!sessionsData || sessionsData.length === 0) {
       const savedSessions = localStorage.getItem(SESSIONS_STORAGE_KEY);
       if (savedSessions) {
-        sessionsData = JSON.parse(savedSessions);
-        activeSessionId = localStorage.getItem('vibechat_genai_active_session_id');
+        try {
+          const parsed = JSON.parse(savedSessions);
+          if (parsed && parsed.length > 0) {
+            sessionsData = parsed;
+            activeSessionId = localStorage.getItem('vibechat_genai_active_session_id');
+          }
+        } catch (e) {}
       }
     }
 
@@ -3073,6 +3216,8 @@ async function loadHistory() {
     creatorState = {};
     creatorTabsList.forEach(tab => { creatorState[tab] = { facts: [], text: '' }; });
     currentCreatorTab = 'Name';
+  } finally {
+    isHistoryLoaded = true;
   }
 }
 
@@ -3826,9 +3971,11 @@ export function initGenAIPanel() {
     const chatPlusCheck = document.getElementById('chat-imagegen-toggle-check');
     if (chatPlusCheck) chatPlusCheck.checked = !!chatEnabled;
     
-    // Sync Main Chat indicator pill
+    // Sync Main Chat indicator pill and gear
     const chatInd = document.getElementById('chat-imagegen-indicator');
+    const chatGear = document.getElementById('btn-imagegen-gear');
     if (chatInd) chatInd.classList.toggle('hidden', !chatEnabled);
+    if (chatGear) chatGear.classList.toggle('hidden', !chatEnabled);
 
     // Sync GenAI checkbox in plus popover
     if (genaiImageGenCheck) genaiImageGenCheck.checked = !!genaiEnabled;
@@ -4185,6 +4332,20 @@ export function getCurrentGenaiSession() {
 }
 
 export function ensureGenaiSession() {
+  if (!isHistoryLoaded) {
+    return {
+      id: 'temp_init_session',
+      updated_at: new Date().toISOString(),
+      messages: [],
+      pinned: false,
+      title: 'New Chat',
+      isCharacterCreationMode: false,
+      creatorPanelClosedByUser: false,
+      currentCreatorTab: 'Name',
+      creatorState: {},
+      activeSkills: []
+    };
+  }
   let session = getCurrentGenaiSession();
   if (!session) {
     currentGenaiSessionId = Date.now().toString();

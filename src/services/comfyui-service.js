@@ -15,7 +15,7 @@ function buildAnimaWorkflow(prompt, negPrompt, settings) {
   const height = settings.comfyui_height ?? 1216;
   const sampler = settings.comfyui_sampler ?? 'euler';
   const scheduler = settings.comfyui_scheduler ?? 'normal';
-  const unetName = settings.comfyui_unet_name ?? 'anima-base-v1.0.safetensors';
+  const unetName = settings.comfyui_unet_name ?? 'anima_baseV10.safetensors';
   const clipName = settings.comfyui_clip_name ?? 'qwen_3_06b_base.safetensors';
   const vaeName = settings.comfyui_vae_name ?? 'qwen_image_vae.safetensors';
 
@@ -216,4 +216,172 @@ export function buildAutoPromptFromContext(context) {
 
   parts.push('best quality, masterpiece, 8k');
   return parts.join(', ');
+}
+
+/**
+ * Upload a base64 data URL image to ComfyUI's /upload/image endpoint.
+ * @param {string} baseUrl - ComfyUI server base URL
+ * @param {string} dataUrl - base64 data URL of the image
+ * @returns {Promise<string>} - filename returned by ComfyUI
+ */
+async function uploadImageToComfyUI(baseUrl, dataUrl) {
+  // Convert data URL to Blob
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+
+  const formData = new FormData();
+  const filename = `vibechat_rembg_${Date.now()}.png`;
+  formData.append('image', blob, filename);
+  formData.append('overwrite', 'true');
+  formData.append('type', 'input');
+
+  const resp = await fetch(`${baseUrl}/upload/image`, {
+    method: 'POST',
+    body: formData
+  });
+
+  if (!resp.ok) {
+    const errText = await resp.text();
+    throw new Error(`ComfyUI upload error: ${resp.status} — ${errText}`);
+  }
+
+  const json = await resp.json();
+  // ComfyUI returns { name, subfolder, type }
+  return json.name;
+}
+
+/**
+ * Remove the background of an image using ComfyUI + WAS Node Suite rembg node.
+ * @param {string} dataUrl - base64 image data URL
+ * @param {object} [overrideSettings] - optional settings override
+ * @param {AbortSignal} [signal] - optional abort signal
+ * @returns {Promise<string>} - base64 data URL of the result image (transparent PNG)
+ */
+export async function removeBackgroundComfyUI(dataUrl, overrideSettings = null, signal = null) {
+  const settings = overrideSettings || settingsStore.get();
+  const baseUrl = (settings.comfyui_url || 'http://localhost:8188').replace(/\/$/, '');
+  const clientId = `vibechat_rembg_${Date.now()}`;
+
+  if (signal?.aborted) throw new Error('Background removal stopped by user');
+
+  // 1. Upload image to ComfyUI
+  const uploadedFilename = await uploadImageToComfyUI(baseUrl, dataUrl);
+
+  // 2. Build workflow using WAS Node Suite (Revised):
+  //    LoadImage → Image Rembg (Remove Background) → Image Save
+  const workflow = {
+    "1": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": uploadedFilename,
+        "upload": "image"
+      }
+    },
+    "2": {
+      "class_type": "Image Rembg (Remove Background)",
+      "inputs": {
+        "images": ["1", 0],
+        "transparency": true,
+        "model": "isnet-anime",
+        "post_processing": false,
+        "only_mask": false,
+        "alpha_matting": false,
+        "alpha_matting_foreground_threshold": 240,
+        "alpha_matting_background_threshold": 10,
+        "alpha_matting_erode_size": 10,
+        "background_color": "none"
+      }
+    },
+    "3": {
+      "class_type": "Image Save",
+      "inputs": {
+        "images": ["2", 0],
+        "output_path": "",
+        "filename_prefix": "vibechat_rembg_out",
+        "filename_delimiter": "_",
+        "filename_number_padding": 4,
+        "filename_number_start": "false",
+        "extension": "png",
+        "dpi": 96,
+        "quality": 100,
+        "optimize_image": "false",
+        "lossless_webp": "false",
+        "overwrite_mode": "false",
+        "show_history": "false",
+        "show_history_by_prefix": "false",
+        "embed_workflow": "false",
+        "show_previews": "true"
+      }
+    }
+  };
+
+  // 3. Queue the prompt
+  const queueResp = await fetch(`${baseUrl}/prompt`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ client_id: clientId, prompt: workflow }),
+    signal
+  });
+
+  if (!queueResp.ok) {
+    const errText = await queueResp.text();
+    throw new Error(`ComfyUI rembg queue error: ${queueResp.status} — ${errText}`);
+  }
+
+  const { prompt_id: promptId } = await queueResp.json();
+  if (!promptId) throw new Error('No prompt_id returned from ComfyUI for rembg');
+
+  // 4. Poll /history until done (max 3 minutes)
+  const maxWaitMs = 3 * 60 * 1000;
+  const pollIntervalMs = 1000;
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < maxWaitMs) {
+    if (signal?.aborted) throw new Error('Background removal stopped by user');
+
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(resolve, pollIntervalMs);
+      if (signal) {
+        signal.addEventListener('abort', () => {
+          clearTimeout(timer);
+          reject(new Error('Background removal stopped by user'));
+        });
+      }
+    });
+
+    if (signal?.aborted) throw new Error('Background removal stopped by user');
+
+    const histResp = await fetch(`${baseUrl}/history/${promptId}`, { signal });
+    if (!histResp.ok) continue;
+
+    const hist = await histResp.json();
+    const entry = hist[promptId];
+    if (!entry) continue;
+
+    if (entry.status?.status_str === 'error') {
+      const errMsg = entry.status?.messages?.find(m => m[0] === 'error')?.[1]?.exception_message || 'Unknown ComfyUI rembg error';
+      throw new Error(`ComfyUI rembg error: ${errMsg}`);
+    }
+
+    if (entry.outputs) {
+      const saveNode = entry.outputs['3'];
+      if (saveNode?.images?.length > 0) {
+        const img = saveNode.images[0];
+        const imageUrl = `${baseUrl}/view?filename=${encodeURIComponent(img.filename)}&subfolder=${encodeURIComponent(img.subfolder || '')}&type=${encodeURIComponent(img.type || 'output')}`;
+
+        // Fetch and return as base64
+        const imgResp = await fetch(imageUrl, { signal });
+        if (!imgResp.ok) throw new Error(`Failed to fetch rembg result: ${imgResp.status}`);
+        const blob = await imgResp.blob();
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      }
+    }
+  }
+
+  throw new Error('ComfyUI background removal timed out after 3 minutes');
 }

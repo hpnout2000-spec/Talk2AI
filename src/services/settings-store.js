@@ -72,7 +72,7 @@ const DEFAULTS = {
   comfyui_negative_prompt: 'lowres, bad anatomy, worst quality, blurry, watermark',
   comfyui_sampler: 'euler',
   comfyui_scheduler: 'simple',
-  comfyui_unet_name: 'anima-base-v1.0.safetensors',
+  comfyui_unet_name: 'anima_baseV10.safetensors',
   comfyui_clip_name: 'qwen_3_06b_base.safetensors',
   comfyui_vae_name: 'qwen_image_vae.safetensors',
   custom_indicator_presets: [],

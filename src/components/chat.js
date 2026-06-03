@@ -258,7 +258,6 @@ export function initChat() {
     });
   }
 
-  if (btnChatToggleImagegen) {
     btnChatToggleImagegen.addEventListener('click', (e) => {
       e.stopPropagation();
       const current = settingsStore.get();
@@ -268,12 +267,13 @@ export function initChat() {
         window.syncImageGenIndicators();
       } else {
         const chatInd = document.getElementById('chat-imagegen-indicator');
+        const chatGear = document.getElementById('btn-imagegen-gear');
         if (chatInd) chatInd.classList.toggle('hidden', !newVal);
+        if (chatGear) chatGear.classList.toggle('hidden', !newVal);
         if (chatImagegenToggleCheck) chatImagegenToggleCheck.checked = newVal;
       }
       setTimeout(() => chatPlusPopover.classList.add('hidden'), 350);
     });
-  }
 
   document.addEventListener('click', (e) => {
     if (inputSettingsPopover && !inputSettingsPopover.contains(e.target) && (!btnInputSettings || !btnInputSettings.contains(e.target))) {
@@ -284,14 +284,23 @@ export function initChat() {
 
   // Init Image Gen indicator based on saved settings and add click handler to open settings modal
   const _chatInd = document.getElementById('chat-imagegen-indicator');
+  const _chatGear = document.getElementById('btn-imagegen-gear');
   if (_chatInd) {
     const _igEnabled = settingsStore.get().comfyui_enabled;
     _chatInd.classList.toggle('hidden', !_igEnabled);
+    if (_chatGear) _chatGear.classList.toggle('hidden', !_igEnabled);
     
     _chatInd.addEventListener('click', (e) => {
       e.stopPropagation();
       openWindow('modal-settings-imagegen');
     });
+
+    if (_chatGear) {
+      _chatGear.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openWindow('modal-settings-imagegen');
+      });
+    }
   }
 
   // Listen for GenAI programmatic message sends
@@ -585,7 +594,6 @@ function renderInputSettings() {
     window.dispatchEvent(new CustomEvent('open-advanced-settings'));
   });
 
-  // Image Gen toggle handler
   const imageGenToggle = inputSettingsPopover.querySelector('#input-imagegen-toggle-check');
   imageGenToggle?.addEventListener('change', () => {
     const newVal = imageGenToggle.checked;
@@ -594,7 +602,9 @@ function renderInputSettings() {
     if (window.syncImageGenIndicators) window.syncImageGenIndicators();
     else {
       const chatInd = document.getElementById('chat-imagegen-indicator');
+      const chatGear = document.getElementById('btn-imagegen-gear');
       if (chatInd) chatInd.classList.toggle('hidden', !newVal);
+      if (chatGear) chatGear.classList.toggle('hidden', !newVal);
     }
   });
 }
