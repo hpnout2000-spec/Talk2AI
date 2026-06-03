@@ -63,6 +63,7 @@ const DEFAULTS = {
   comfyui_enabled: false,
   comfyui_enabled_genai: false,
   comfyui_auto_chat: false,
+  comfyui_auto_scale: false,
   comfyui_url: 'http://localhost:8188',
   comfyui_steps: 30,
   comfyui_cfg: 4.5,

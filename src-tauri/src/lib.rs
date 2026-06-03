@@ -285,6 +285,25 @@ fn load_settings() -> Result<String, String> {
     }
 }
 
+#[tauri::command]
+fn save_genai_history(data: String) -> Result<(), String> {
+    let dir = get_app_dir();
+    ensure_dir(&dir);
+    let path = dir.join("genai_history.json");
+    fs::write(&path, &data).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn load_genai_history() -> Result<String, String> {
+    let path = get_app_dir().join("genai_history.json");
+    if path.exists() {
+        fs::read_to_string(&path).map_err(|e| e.to_string())
+    } else {
+        Ok("".to_string())
+    }
+}
+
 // ─── Skills Commands ────────────────────────────────────────────────
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -930,6 +949,8 @@ pub fn run() {
             delete_chat,
             save_settings,
             load_settings,
+            save_genai_history,
+            load_genai_history,
             load_skills,
             save_skill,
             delete_skill,

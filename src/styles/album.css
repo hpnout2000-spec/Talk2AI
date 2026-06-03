@@ -221,6 +221,58 @@
   50% { opacity: 1; }
 }
 
+/* State 0: Bubble loading spinner — appears before suggestion text is streamed in */
+.album-node-bubble.loading {
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  border-radius: 50%;
+  border-style: solid;
+  border-color: rgba(6, 182, 212, 0.4);
+  background: rgba(6, 182, 212, 0.06);
+  cursor: not-allowed;
+  padding: 0;
+  overflow: visible;
+  animation: none;
+}
+
+.album-node-bubble.loading::after {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border: 2px solid transparent;
+  border-top-color: var(--accent-secondary, #06b6d4);
+  border-right-color: rgba(6, 182, 212, 0.3);
+  border-radius: 50%;
+  animation: album-bubble-spin 0.9s linear infinite;
+}
+
+@keyframes album-bubble-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Pop-in animation when a suggestion arrives */
+@keyframes bubble-reveal {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+    filter: blur(4px);
+  }
+  60% {
+    opacity: 1;
+    filter: blur(0);
+  }
+  100% {
+    transform: scale(1);
+    filter: blur(0);
+  }
+}
+
+.album-node-bubble.bubble-pop-in {
+  animation: bubble-reveal 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
 /* Bubble Nodes (Suggestions & Inputs) */
 .album-node-bubble {
   background: rgba(47, 47, 47, 0.85);
@@ -246,16 +298,16 @@
   min-height: 36px;
   
   transition: 
-    width var(--transition-slow, 400ms) cubic-bezier(0.34, 1.56, 0.64, 1),
-    height var(--transition-slow, 400ms) cubic-bezier(0.34, 1.56, 0.64, 1),
-    left var(--transition-slow, 400ms) cubic-bezier(0.34, 1.56, 0.64, 1),
-    top var(--transition-slow, 400ms) cubic-bezier(0.34, 1.56, 0.64, 1),
-    border-radius var(--transition-slow, 400ms) cubic-bezier(0.34, 1.56, 0.64, 1),
-    border-color var(--transition-base, 250ms),
-    background var(--transition-base, 250ms),
-    box-shadow var(--transition-base, 250ms),
-    color var(--transition-fast, 150ms),
-    transform var(--transition-fast, 150ms);
+    width var(--transition-spring),
+    height var(--transition-spring),
+    left var(--transition-spring),
+    top var(--transition-spring),
+    border-radius var(--transition-spring),
+    border-color var(--transition-base),
+    background var(--transition-base),
+    box-shadow var(--transition-base),
+    color var(--transition-fast),
+    transform var(--transition-fast);
 }
 
 .album-node-bubble:hover {
@@ -496,87 +548,190 @@
   flex-direction: column;
   align-items: center;
   pointer-events: none;
+  padding-bottom: 20px;
 }
 
-/* The wide action trigger button */
-.album-options-trigger {
+
+/* ─── REVEAL OPTIONS — Floating Morph Card ───────────────────────── */
+
+/* Backdrop (subtle — since dialog is floating, not full-screen overlay) */
+.album-settings-backdrop {
+  position: fixed;
+  inset: 0;
+  background: transparent;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  z-index: 1100;
+}
+
+.album-settings-backdrop.open {
+  opacity: 1;
   pointer-events: auto;
-  background: var(--bg-secondary, #171717);
+}
+
+/* Floating dialog card — morphs directly from the trigger button state */
+.album-settings-drawer {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  
+  /* COLLAPSED STATE: Looks & acts exactly like the pill trigger button */
+  bottom: 20px;
+  width: 154px;
+  height: 38px;
+  border-radius: 19px;
+  background: rgba(23, 23, 23, 0.7);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--border-light, rgba(148, 163, 184, 0.15));
-  border-bottom: none;
-  border-radius: var(--radius-md, 10px) var(--radius-md, 10px) 0 0;
-  padding: 10px 32px;
-  color: var(--text-secondary, #94a3b8);
-  font-size: var(--text-xs, 12px);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  transition: all var(--transition-fast, 150ms);
-  box-shadow: 0 -4px 15px rgba(0, 0, 0, 0.25);
-}
-
-.album-options-trigger:hover {
-  color: var(--text-primary, #e2e8f0);
-  background: var(--bg-hover, #383838);
-  border-color: var(--accent-secondary, #06b6d4);
-}
-
-.album-options-trigger svg {
-  width: 14px;
-  height: 14px;
-  transition: transform 0.3s;
-}
-
-.album-options-trigger.active svg {
-  transform: rotate(180deg);
-}
-
-/* The actual collapsible options drawer content */
-.album-settings-drawer {
+  border: 1px solid var(--border-light);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  
+  overflow: hidden;
+  z-index: 1200;
   pointer-events: auto;
-  width: 100%;
-  max-width: 800px;
-  background: rgba(33, 33, 33, 0.98);
+  opacity: 1;
+  display: flex;
+  flex-direction: column;
+
+  /* Collapsing transition — decelerating, fluid, no overshoot to prevent dipping too low */
+  transition:
+    width 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+    height 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+    bottom 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+    border-radius 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+    background var(--transition-base),
+    border-color var(--transition-base),
+    box-shadow var(--transition-base);
+}
+
+/* Hover style in collapsed state */
+.album-settings-drawer:not(.open):hover {
+  cursor: pointer;
+  border-color: var(--border-accent);
+  background: rgba(47, 47, 47, 0.85);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
+}
+
+.album-settings-drawer:not(.open):hover .album-settings-trigger-content {
+  color: var(--text-primary);
+}
+
+/* OPEN STATE: Expands into the floating options dialog */
+.album-settings-drawer.open {
+  bottom: 68px; /* floats slightly above bottom */
+  width: min(500px, 92vw);
+  height: min(460px, 85vh); /* slightly more breathing room */
+  border-radius: var(--radius-xl);
+  background: rgba(33, 33, 33, 0.85);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--border-light, rgba(148, 163, 184, 0.15));
-  border-bottom: none;
-  border-radius: var(--radius-xl, 20px) var(--radius-xl, 20px) 0 0;
-  padding: 20px 24px;
-  display: none;
-  flex-direction: column;
-  gap: 16px;
-  box-shadow: var(--shadow-lg, 0 8px 32px rgba(0,0,0,0.5));
+  cursor: default;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  
+  /* Opening transition — spring physical ease with mild snap-in overshoot */
+  transition:
+    width 0.46s cubic-bezier(0.2, 1.08, 0.4, 1),
+    height 0.46s cubic-bezier(0.2, 1.08, 0.4, 1),
+    bottom 0.46s cubic-bezier(0.2, 1.08, 0.4, 1),
+    border-radius 0.46s cubic-bezier(0.2, 1.08, 0.4, 1),
+    background var(--transition-base),
+    border-color var(--transition-base),
+    box-shadow var(--transition-base);
 }
 
-.album-settings-drawer.open {
+/* Trigger Button Content (only visible when collapsed) */
+.album-settings-trigger-content {
+  position: absolute;
+  inset: 0;
   display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.15s ease, color var(--transition-fast);
+}
+
+.album-settings-trigger-content svg {
+  width: 13px;
+  height: 13px;
+  transition: transform var(--transition-spring);
+}
+
+/* When drawer is open, rotate trigger svg and hide trigger content */
+.album-settings-drawer.open .album-settings-trigger-content {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s ease;
+}
+
+/* Actual Settings Content (fades in when drawer expands) */
+.album-settings-main-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s ease;
+}
+
+.album-settings-drawer.open .album-settings-main-content {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 0.35s ease 0.15s; /* delay until drawer has partially expanded */
 }
 
 .album-settings-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.08));
-  padding-bottom: 10px;
+  padding: 18px 22px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
 }
 
 .album-settings-title {
-  font-size: var(--text-sm, 13px);
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: var(--text-primary, #e2e8f0);
+  color: var(--text-primary);
+}
+
+/* Close button inside header */
+.album-settings-close {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.album-settings-close:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+.album-settings-close svg {
+  width: 16px;
+  height: 16px;
 }
 
 .album-settings-body {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 18px;
+  padding: 18px 22px;
 }
 
 .album-settings-group {
@@ -586,55 +741,125 @@
 }
 
 .album-settings-label {
-  font-size: var(--text-xs, 12px);
-  font-weight: 500;
-  color: var(--text-secondary, #94a3b8);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
 .album-settings-textarea {
-  background: var(--bg-primary, #212121);
-  border: 1px solid var(--border-light, rgba(148, 163, 184, 0.15));
-  border-radius: var(--radius-md, 10px);
-  padding: 10px;
-  color: var(--text-primary, #e2e8f0);
-  font-size: var(--text-xs, 12px);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
   resize: vertical;
   outline: none;
   font-family: inherit;
-  min-height: 70px;
-  transition: border-color var(--transition-fast, 150ms);
+  min-height: 72px;
+  transition: border-color var(--transition-fast);
+  line-height: 1.5;
 }
 
 .album-settings-textarea:focus {
-  border-color: var(--accent-secondary, #06b6d4);
+  border-color: var(--accent-primary);
 }
 
 .album-settings-desc {
   font-size: 11px;
-  color: var(--text-tertiary, #64748b);
-  line-height: 1.4;
+  color: var(--text-tertiary);
+  line-height: 1.5;
+}
+
+/* Custom Row for switch settings */
+.album-settings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.album-settings-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+/* iOS Style Switch Slider Toggle */
+.album-switch {
+  position: relative;
+  display: inline-block;
+  width: 42px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.album-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.album-slider {
+  position: absolute;
+  cursor: pointer;
+  inset: 0;
+  background-color: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-light);
+  border-radius: 24px;
+  transition: background-color var(--transition-base), border-color var(--transition-base);
+}
+
+.album-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 2px;
+  bottom: 2px;
+  background-color: var(--text-secondary);
+  border-radius: 50%;
+  transition: transform 0.4s cubic-bezier(0.2, 1.08, 0.4, 1), background-color var(--transition-base);
+}
+
+.album-switch input:checked + .album-slider {
+  background-color: var(--accent-secondary, #06b6d4);
+  border-color: var(--accent-secondary, #06b6d4);
+}
+
+.album-switch input:checked + .album-slider:before {
+  transform: translateX(18px);
+  background-color: #ffffff;
 }
 
 .album-settings-footer {
   display: flex;
   justify-content: flex-end;
+  padding: 14px 22px 20px;
+  border-top: 1px solid var(--border-subtle);
+  flex-shrink: 0;
 }
 
+/* Save button — matches app's btn-primary (white/light, dark text) */
 .btn-album-save {
-  background: var(--accent-primary, #ececec);
-  color: var(--bg-primary, #212121);
+  background: var(--accent-gradient);
+  color: #212121;
   border: none;
-  border-radius: var(--radius-md, 10px);
-  padding: var(--space-3, 10px) var(--space-5, 20px);
-  font-size: var(--text-sm, 13px);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-6);
+  font-size: var(--text-sm);
   font-weight: 600;
   cursor: pointer;
-  transition: all var(--transition-base, 250ms);
+  transition: background var(--transition-base), box-shadow var(--transition-base), transform var(--transition-base);
 }
 
 .btn-album-save:hover {
-  background: var(--accent-primary-hover, #ffffff);
-  box-shadow: var(--shadow-glow, 0 0 20px rgba(255,255,255,0.15));
+  background: var(--accent-gradient-hover);
+  box-shadow: var(--shadow-glow);
   transform: translateY(-1px);
 }
 
@@ -675,4 +900,416 @@
   max-width: 320px;
   line-height: 1.5;
   margin: 0;
+}
+
+/* ─── CARD SORTING OPTIONS — Floating Morph Card ─────────────────── */
+
+/* Backdrop (subtle — since dialog is floating, not full-screen overlay) */
+.album-sort-backdrop {
+  position: fixed;
+  inset: 0;
+  background: transparent;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  z-index: 1100;
+}
+
+.album-sort-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Floating sort dialog card — morphs directly from the circular trigger button state */
+.album-sort-drawer {
+  position: fixed;
+  left: calc(50% + 108px);
+  transform: translateX(-50%);
+  
+  /* COLLAPSED STATE: Looks & acts exactly like a small round pill trigger button */
+  bottom: 20px;
+  width: 38px;
+  height: 38px;
+  border-radius: 19px;
+  background: rgba(23, 23, 23, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-light);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  
+  overflow: hidden;
+  z-index: 1200;
+  pointer-events: auto;
+  opacity: 1;
+  display: flex;
+  flex-direction: column;
+
+  /* Collapsing transition — decelerating, fluid, matches settings drawer */
+  transition:
+    width 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+    height 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+    bottom 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+    left 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+    border-radius 0.38s cubic-bezier(0.16, 1, 0.3, 1),
+    background var(--transition-base),
+    border-color var(--transition-base),
+    box-shadow var(--transition-base);
+}
+
+/* Hover style in collapsed state */
+.album-sort-drawer:not(.open):hover {
+  cursor: pointer;
+  border-color: var(--border-accent);
+  background: rgba(47, 47, 47, 0.85);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
+}
+
+.album-sort-drawer:not(.open):hover .album-sort-trigger-content {
+  color: var(--text-primary);
+}
+
+/* OPEN STATE: Expands into the floating options dialog */
+.album-sort-drawer.open {
+  bottom: 68px; /* floats slightly above bottom */
+  left: 50%;
+  width: min(300px, 90vw);
+  height: min(230px, 80vh);
+  border-radius: var(--radius-xl);
+  background: rgba(33, 33, 33, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  cursor: default;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  
+  /* Opening transition — spring physical ease with mild snap-in overshoot */
+  transition:
+    width 0.46s cubic-bezier(0.2, 1.08, 0.4, 1),
+    height 0.46s cubic-bezier(0.2, 1.08, 0.4, 1),
+    bottom 0.46s cubic-bezier(0.2, 1.08, 0.4, 1),
+    left 0.46s cubic-bezier(0.2, 1.08, 0.4, 1),
+    border-radius 0.46s cubic-bezier(0.2, 1.08, 0.4, 1),
+    background var(--transition-base),
+    border-color var(--transition-base),
+    box-shadow var(--transition-base);
+}
+
+/* Trigger Button Content (only visible when collapsed) */
+.album-sort-trigger-content {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 0.15s ease, color var(--transition-fast);
+}
+
+.album-sort-trigger-content svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* When drawer is open, hide trigger content */
+.album-sort-drawer.open .album-sort-trigger-content {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s ease;
+}
+
+/* Actual Settings Content (fades in when drawer expands) */
+.album-sort-main-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s ease;
+}
+
+.album-sort-drawer.open .album-sort-main-content {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 0.35s ease 0.15s; /* delay until drawer has partially expanded */
+}
+
+/* Option container */
+.album-sort-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 18px;
+}
+
+/* Sort button item styles */
+.album-sort-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast) ease;
+  text-align: left;
+}
+
+.album-sort-option:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  border-color: var(--border-accent);
+}
+
+.album-sort-option.active {
+  background: rgba(6, 182, 212, 0.08);
+  border-color: var(--accent-secondary, #06b6d4);
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.1);
+}
+
+.album-sort-option .sort-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--text-tertiary);
+  transition: color var(--transition-fast);
+}
+
+.album-sort-option.active .sort-icon {
+  color: var(--accent-secondary, #06b6d4);
+}
+
+/* Context Menu with frosted glass blur */
+.album-context-menu {
+  position: absolute;
+  z-index: 10000;
+  width: 180px;
+  background: rgba(23, 23, 23, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-light, rgba(148, 163, 184, 0.15));
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  pointer-events: auto;
+}
+.album-context-menu.hidden {
+  display: none !important;
+}
+.album-ctx-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary, #94a3b8);
+  font-size: var(--text-xs, 12px);
+  font-weight: 500;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: left;
+}
+.album-ctx-option:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #ffffff;
+}
+
+.btn-delete-standalone:hover {
+  background: rgba(239, 68, 68, 0.25) !important;
+  color: #fecaca !important;
+}
+.btn-standalone-refine:hover {
+  background: #0891b2 !important;
+  transform: scale(1.05);
+}
+
+
+/* Card checkboxes for selection mode */
+.album-card-checkbox-wrapper {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(17, 17, 17, 0.8);
+  border: 2px solid var(--border-light, rgba(148, 163, 184, 0.15));
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.album-card-checkbox-wrapper.checked {
+  background: var(--accent-secondary, #06b6d4);
+  border-color: var(--accent-secondary, #06b6d4);
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.4);
+}
+.album-card-checkbox {
+  opacity: 0;
+  position: absolute;
+  cursor: pointer;
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+}
+
+/* Selection Mode Action Bar */
+.album-selection-bar {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 10px 24px;
+  background: rgba(23, 23, 23, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-light, rgba(148, 163, 184, 0.15));
+  border-radius: 30px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+  pointer-events: auto;
+  width: fit-content;
+  max-width: 90%;
+  animation: selection-bar-fade-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes selection-bar-fade-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 15px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.album-selection-bar.hidden {
+  display: none !important;
+}
+
+#album-selection-text {
+  color: var(--text-primary, #e2e8f0);
+  font-size: var(--text-xs, 12px);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.album-selection-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.btn-album-selection-cancel {
+  background: transparent;
+  border: 1px solid var(--border-light, rgba(148, 163, 184, 0.15));
+  color: var(--text-secondary, #94a3b8);
+  border-radius: 20px;
+  padding: 6px 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: var(--text-xs, 12px);
+  font-weight: 500;
+}
+
+.btn-album-selection-cancel:hover {
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444;
+}
+
+.btn-album-selection-done {
+  background: var(--accent-gradient, linear-gradient(135deg, #06b6d4, #3b82f6));
+  color: #171717;
+  border: none;
+  border-radius: 20px;
+  padding: 6px 20px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  font-size: var(--text-xs, 12px);
+  box-shadow: var(--shadow-glow, 0 0 15px rgba(6, 182, 212, 0.35));
+}
+
+.btn-album-selection-done:hover {
+  background: var(--accent-gradient-hover, linear-gradient(135deg, #0891b2, #2563eb));
+  transform: translateY(-1px);
+}
+
+.btn-album-selection-done:active {
+  transform: translateY(0);
+}
+
+/* Hide drawers when selection is active */
+.album-bottom-panel.selection-active .album-settings-drawer,
+.album-bottom-panel.selection-active .album-sort-drawer {
+  display: none !important;
+}
+
+/* Standalone inputs & Comments Nodes Styles */
+.standalone-input-node {
+  border-style: dashed !important;
+}
+.standalone-input-node.working {
+  border-color: var(--warning, #f59e0b) !important;
+}
+.standalone-input-node.generating {
+  border-style: solid !important;
+}
+
+/* Comment Node details */
+.album-comment-node {
+  transition: all 0.2s ease;
+  word-wrap: break-word;
+}
+.album-comment-node:hover {
+  border-color: var(--accent-secondary, #06b6d4);
+  box-shadow: var(--shadow-lg, 0 8px 32px rgba(0,0,0,0.5)), 0 0 10px rgba(6, 182, 212, 0.2);
+}
+
+.album-comment-body-text::-webkit-scrollbar {
+  width: 4px;
+}
+.album-comment-body-text::-webkit-scrollbar-track {
+  background: rgba(0,0,0,0.1);
+}
+.album-comment-body-text::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.15);
+  border-radius: 2px;
+}
+.album-comment-body-text::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.3);
+}
+
+.streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 15px;
+  background-color: var(--accent-secondary, #06b6d4);
+  margin-left: 2px;
+  vertical-align: middle;
+  animation: cursor-blink 0.8s infinite;
+}
+
+@keyframes cursor-blink {
+  50% { opacity: 0; }
 }

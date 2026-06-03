@@ -185,6 +185,7 @@ function loadSettingsToUI() {
   // Image Gen settings
   checkField('setting-comfyui-enabled', settings.comfyui_enabled);
   checkField('setting-comfyui-auto-chat', settings.comfyui_auto_chat);
+  checkField('setting-comfyui-auto-scale', settings.comfyui_auto_scale);
   setField('setting-comfyui-url', settings.comfyui_url || 'http://localhost:8188');
   setField('setting-comfyui-neg-prompt', settings.comfyui_negative_prompt || '');
   setField('setting-comfyui-sampler', settings.comfyui_sampler || 'euler');
@@ -286,6 +287,7 @@ async function saveSettings() {
     font_size: parseInt(document.getElementById('setting-font-size')?.value || current.font_size),
     comfyui_enabled: getChecked('setting-comfyui-enabled'),
     comfyui_auto_chat: getChecked('setting-comfyui-auto-chat'),
+    comfyui_auto_scale: getChecked('setting-comfyui-auto-scale'),
     comfyui_url: getVal('setting-comfyui-url') || current.comfyui_url,
     comfyui_steps: parseInt(document.getElementById('setting-comfyui-steps')?.value || current.comfyui_steps),
     comfyui_cfg: parseFloat(document.getElementById('setting-comfyui-cfg')?.value || current.comfyui_cfg),

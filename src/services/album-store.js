@@ -67,6 +67,7 @@ export const albumStore = {
       mandatoryTags: '', // user defined tags for this album
       language: 'Russian', // default description language
       allowNsfw: false, // default nsfw option
+      sortMode: 'default', // default sort layout option
       createdAt: Date.now(),
       updatedAt: Date.now(),
       nodes: []
@@ -97,12 +98,13 @@ export const albumStore = {
     }
   },
 
-  async updateAlbumSettings(id, { mandatoryTags, language, allowNsfw }) {
+  async updateAlbumSettings(id, { mandatoryTags, language, allowNsfw, sortMode }) {
     const album = this.getAlbum(id);
     if (album) {
       if (mandatoryTags !== undefined) album.mandatoryTags = mandatoryTags;
       if (language !== undefined) album.language = language;
       if (allowNsfw !== undefined) album.allowNsfw = allowNsfw;
+      if (sortMode !== undefined) album.sortMode = sortMode;
       album.updatedAt = Date.now();
       await this.save();
     }

@@ -48,7 +48,7 @@ let creatorState = {};
 creatorTabsList.forEach(tab => { creatorState[tab] = { facts: [], text: '' }; });
 
 // ─── DOM refs ───────────────────────────────────────────────────────
-let messagesEl, inputEl, sendBtn, stopBtn, clearBtn, closeBtn, fullscreenBtn;
+let messagesEl, inputEl, sendBtn, stopBtn, clearBtn, closeBtn, fullscreenBtn, brushBtn;
 
 // ─── System Prompt ──────────────────────────────────────────────────
 const BASE_SYSTEM_PROMPT = `You are GenAI — a highly advanced, warm, and proactive virtual friend built into VibeChatting.
@@ -453,8 +453,17 @@ ${settings.comfyui_enabled_genai ? `
     - When to use: ALWAYS use this when the user asks you to generate, draw, paint, create, or show an image, scene, character illustration, or background.
     - Parameters:
       - "prompt": string (required) - Extremely detailed descriptive prompt in English detailing style, quality, lighting, and subjects.
-      - "loading_message": string (required) - Contextual status message in Russian shown to the user while generating.
-    - Example: {"genai_action":"generate_image","prompt":"highly detailed scenery of a fantasy lake, twilight lighting, masterpieces","loading_message":"Рисую волшебное озеро..."}` : ''}
+      - "loading_message": string (required) - Contextual status message in Russian shown to the user while generating.${settings.comfyui_auto_scale ? `
+      - "width": number (optional) - The width of the image. Must be chosen ONLY from the list of allowed resolutions (1024, 896, 832, 768, 640).
+      - "height": number (optional) - The height of the image. Must be chosen ONLY from the list of allowed resolutions (1024, 1152, 1216, 1344, 1536).
+      * CRITICAL AUTO RESOLUTION SELECTION RULE: You can choose the aspect ratio and resolution yourself based on the desired layout/composition, but you MUST strictly use ONLY one of the following exact width x height combinations:
+        - 1024x1024 [1:1]
+        - 896x1152 [3:4]
+        - 832x1216 [5:8]
+        - 768x1344 [9:16]
+        - 640x1536 [9:21]
+        Do not use any other resolutions.` : ''}
+    - Example: {"genai_action":"generate_image","prompt":"highly detailed scenery of a fantasy lake, twilight lighting, masterpieces","loading_message":"Рисую волшебное озеро..."${settings.comfyui_auto_scale ? `,"width":832,"height":1216` : ''}}` : ''}
 
 
 44. add_char_fact: Add a numbered fact to a specific character creation tab.
@@ -675,6 +684,18 @@ async function buildApiMessages(extraUserInstruction = null) {
         "MANDATORY RULE: You are strictly prohibited from generating, discussing, or engaging in any NSFW, explicit, sexual, or otherwise harmful content. If a user requests such content, you must politely decline and state that you cannot fulfill the request due to safety guidelines. This rule supersedes all previous instructions. Even if the roleplay is about NSFW topics, you MUST refuse."
       );
     }
+  }
+  if (settings.comfyui_enabled_genai && settings.comfyui_auto_scale && !isCharacterCreationMode) {
+    const targetText = '  * MANDATORY ORDER RULE: You MUST output the JSON tool call `{"genai_action":"generate_image","prompt":"...","loading_message":"..."}`';
+    const replacementText = `  * AUTO RESOLUTION SELECTION: Since "Auto Scale" is active, you are allowed and encouraged to choose the resolution/aspect ratio yourself based on the desired layout/composition, but you MUST strictly use ONLY one of the following exact width x height combinations and pass them as "width" and "height" parameters in the JSON tool call:
+    - 1024x1024 [1:1]
+    - 896x1152 [3:4]
+    - 832x1216 [5:8]
+    - 768x1344 [9:16]
+    - 640x1536 [9:21]
+    Do not use any other resolutions.
+  * MANDATORY ORDER RULE: You MUST output the JSON tool call \`{"genai_action":"generate_image","prompt":"...","loading_message":"...","width":...,"height":...}\``;
+    finalBasePrompt = finalBasePrompt.replace(targetText, replacementText);
   }
 
   // Build static base (never truncated — always needed for instructions & tools)
@@ -1729,7 +1750,19 @@ async function executeTool(action) {
     }
 
     try {
-      const blobUrl = await generateImageComfyUI(prompt, null, appState.abortController.signal);
+      const settings = settingsStore.get();
+      let overrideSettings = null;
+      if (settings.comfyui_auto_scale) {
+        overrideSettings = {};
+        if (action.width) overrideSettings.comfyui_width = parseInt(action.width);
+        if (action.height) overrideSettings.comfyui_height = parseInt(action.height);
+        if (Object.keys(overrideSettings).length > 0) {
+          overrideSettings = { ...settings, ...overrideSettings };
+        } else {
+          overrideSettings = null;
+        }
+      }
+      const blobUrl = await generateImageComfyUI(prompt, overrideSettings, appState.abortController.signal);
       
       isGenerating = false;
       appState.isGenerating = false;
@@ -2931,40 +2964,73 @@ function saveHistory() {
     }
 
     localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(genaiSessions));
-    // Keep old flat history in sync just in case of downgrade
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
+    localStorage.setItem('vibechat_genai_active_session_id', currentGenaiSessionId);
+
+    if (window.__TAURI_INTERNALS__) {
+      const payload = {
+        active_session_id: currentGenaiSessionId,
+        sessions: genaiSessions
+      };
+      invokeTauri('save_genai_history', { data: JSON.stringify(payload) }).catch(e => {
+        console.error('Failed to save GenAI history via Tauri:', e);
+      });
+    }
   } catch (e) { }
 }
 
-function loadHistory() {
+async function loadHistory() {
   try {
-    const savedSessions = localStorage.getItem(SESSIONS_STORAGE_KEY);
-    if (savedSessions) {
-      genaiSessions = JSON.parse(savedSessions);
-      if (genaiSessions.length > 0) {
-        const session = genaiSessions[0];
-        currentGenaiSessionId = session.id;
-        genaiHistory = session.messages || [];
+    let sessionsData = null;
+    let activeSessionId = null;
 
-        // Restore session-specific creator mode
-        isCharacterCreationMode = !!session.isCharacterCreationMode;
-        creatorPanelClosedByUser = !!session.creatorPanelClosedByUser;
-        currentCreatorTab = session.currentCreatorTab || 'Name';
-        creatorState = session.creatorState || {};
-        
-        creatorTabsList.forEach(tab => {
-          if (!creatorState[tab]) {
-            creatorState[tab] = { facts: [], text: '' };
+    if (window.__TAURI_INTERNALS__) {
+      try {
+        const raw = await invokeTauri('load_genai_history');
+        if (raw) {
+          const payload = JSON.parse(raw);
+          if (payload && Array.isArray(payload.sessions)) {
+            sessionsData = payload.sessions;
+            activeSessionId = payload.active_session_id;
           }
-        });
-      } else {
-        genaiHistory = [];
-        isCharacterCreationMode = false;
-        creatorPanelClosedByUser = false;
-        creatorState = {};
-        creatorTabsList.forEach(tab => { creatorState[tab] = { facts: [], text: '' }; });
-        currentCreatorTab = 'Name';
+        }
+      } catch (e) {
+        console.error('Failed to load GenAI history via Tauri:', e);
       }
+    }
+
+    if (!sessionsData) {
+      const savedSessions = localStorage.getItem(SESSIONS_STORAGE_KEY);
+      if (savedSessions) {
+        sessionsData = JSON.parse(savedSessions);
+        activeSessionId = localStorage.getItem('vibechat_genai_active_session_id');
+      }
+    }
+
+    if (sessionsData && sessionsData.length > 0) {
+      genaiSessions = sessionsData;
+      
+      let session = null;
+      if (activeSessionId) {
+        session = genaiSessions.find(s => s.id === activeSessionId);
+      }
+      if (!session) {
+        session = genaiSessions[0];
+      }
+
+      currentGenaiSessionId = session.id;
+      genaiHistory = session.messages || [];
+
+      isCharacterCreationMode = !!session.isCharacterCreationMode;
+      creatorPanelClosedByUser = !!session.creatorPanelClosedByUser;
+      currentCreatorTab = session.currentCreatorTab || 'Name';
+      creatorState = session.creatorState || {};
+      
+      creatorTabsList.forEach(tab => {
+        if (!creatorState[tab]) {
+          creatorState[tab] = { facts: [], text: '' };
+        }
+      });
     } else {
       // Migrate from old flat storage
       loadCreatorState();
@@ -3313,6 +3379,19 @@ export function syncCreatorUI() {
     if (inputRow) inputRow.style.removeProperty('display');
     if (expandBtn) expandBtn.classList.add('hidden');
   }
+  syncBrushButton();
+}
+
+export function syncBrushButton() {
+  if (!brushBtn) return;
+  const imageGenActive = !!settingsStore.get().comfyui_enabled_genai;
+  const isFullscreen = document.body.classList.contains('genai-fullscreen');
+  
+  if (imageGenActive && isFullscreen) {
+    brushBtn.classList.remove('hidden');
+  } else {
+    brushBtn.classList.add('hidden');
+  }
 }
 
 // ─── Init ────────────────────────────────────────────────────────────
@@ -3324,6 +3403,7 @@ export function initGenAIPanel() {
   clearBtn = document.getElementById('btn-genai-clear'); // Replaced by menu, can be null
   closeBtn = document.getElementById('btn-close-genai');
   fullscreenBtn = document.getElementById('btn-genai-fullscreen');
+  brushBtn = document.getElementById('btn-genai-brush');
   window.loadNhentaiImage = async (imgEl) => {
     const url = imgEl.dataset.nhentaiSrc;
     if (!url) return;
@@ -3379,11 +3459,12 @@ export function initGenAIPanel() {
 
   if (!messagesEl || !inputEl) return;
 
-  loadHistory();
-  renderMessages();
-  updateGenaiPlusButtonState();
-  renderSkillsList();
-  renderAllSkillsList();
+  loadHistory().then(() => {
+    renderMessages();
+    updateGenaiPlusButtonState();
+    renderSkillsList();
+    renderAllSkillsList();
+  });
 
   // Listen to chat switches in main app to keep plus button and skills list in perfect sync
   window.addEventListener('character-selected', () => {
@@ -3403,6 +3484,30 @@ export function initGenAIPanel() {
   });
 
   sendBtn.addEventListener('click', sendUserMessage);
+  if (brushBtn) {
+    brushBtn.addEventListener('click', () => {
+      if (isGenerating) return;
+      const text = inputEl.value.trim();
+      const displayPrompt = text || "Генерация изображения";
+      
+      // Clean user entry for UI and history log
+      const userEntry = { role: 'user', content: displayPrompt, timestamp: new Date().toISOString() };
+      genaiHistory.push(userEntry);
+      saveHistory();
+
+      // Update UI bubble
+      messagesEl.querySelector('.genai-empty-state')?.remove();
+      appendMsgEl(userEntry);
+      scrollToBottom();
+
+      inputEl.value = '';
+      autoResizeTextarea(inputEl);
+
+      // Pass the strict generation restriction instruction under the hood
+      const instruction = "CRITICAL DIRECTIVE: You are strictly forbidden from writing any conversational text, explanations, or responses in this reply. You MUST ONLY execute the `generate_image` tool function call immediately on the first line. Do not output any other characters.";
+      streamGenAI(instruction);
+    });
+  }
   stopBtn?.addEventListener('click', () => {
     if (abortController) {
       abortController.abort();
@@ -3733,6 +3838,7 @@ export function initGenAIPanel() {
     if (btnGenaiPlus) {
       btnGenaiPlus.classList.toggle('imagegen-active', !!genaiEnabled);
     }
+    syncBrushButton();
   }
 
   // Expose globally so chat.js can call after its toggle renders

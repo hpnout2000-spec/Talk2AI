@@ -934,6 +934,40 @@ body.genai-fullscreen .genai-msg.genai-assistant .genai-msg-bubble {
   z-index: 10;
 }
 
+#btn-genai-brush {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border-light);
+  border-radius: 50%;
+  background: var(--bg-primary);
+  color: var(--text-accent);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+  margin-bottom: 2px;
+}
+
+#btn-genai-brush:hover {
+  background: var(--bg-hover);
+  transform: scale(1.05);
+}
+
+#btn-genai-brush:active {
+  transform: scale(0.95);
+}
+
+#btn-genai-brush svg {
+  width: 14px;
+  height: 14px;
+}
+
+#btn-genai-brush.hidden {
+  display: none !important;
+}
+
 #btn-genai-send {
   display: flex;
   align-items: center;

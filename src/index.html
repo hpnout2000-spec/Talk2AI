@@ -54,8 +54,27 @@
 
       /* Custom styled premium checkbox */
       input[type="checkbox"] {
-        appearance: none;
-        -webkit-appearance: none;
+  function openSettingsDrawer() {
+    if (drawer) drawer.classList.add('open');
+    if (backdrop) backdrop.classList.add('open');
+    // Morph the trigger button away
+    if (triggerBtn) {
+      triggerBtn.style.opacity = '0';
+      triggerBtn.style.transform = 'scale(0.85)';
+      triggerBtn.style.pointerEvents = 'none';
+    }
+  }
+
+  function closeSettingsDrawer() {
+    if (drawer) drawer.classList.remove('open');
+    if (backdrop) backdrop.classList.remove('open');
+    // Restore the trigger button
+    if (triggerBtn) {
+      triggerBtn.style.opacity = '';
+      triggerBtn.style.transform = '';
+      triggerBtn.style.pointerEvents = '';
+    }
+  }   -webkit-appearance: none;
         width: 16px;
         height: 16px;
         border: 1px solid var(--border-light);
@@ -681,6 +700,19 @@
 
         <!-- Album View Container -->
         <div id="album-view-container" class="hidden" style="display: none; height: 100%; width: 100%; position: relative;">
+          <!-- Context Menu -->
+          <div id="album-context-menu" class="album-context-menu hidden">
+            <button class="album-ctx-option" id="ctx-generate-pic">
+              <span>Generate picture</span>
+            </button>
+            <button class="album-ctx-option" id="ctx-similar-to">
+              <span>Similar to...</span>
+            </button>
+            <button class="album-ctx-option" id="ctx-comment">
+              <span>Comment</span>
+            </button>
+          </div>
+
           <!-- Empty View / Welcome State -->
           <div id="album-empty-state-view" class="album-empty-view">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -703,41 +735,120 @@
 
             <!-- Collapsible Settings Panel at the Bottom -->
             <div class="album-bottom-panel">
-              <button id="album-settings-trigger" class="album-options-trigger">
-                <span>Reveal Options</span>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <polyline points="18 15 12 9 6 15"/>
-                </svg>
-              </button>
+              <!-- Backdrop for modal overlay -->
+              <div id="album-settings-backdrop" class="album-settings-backdrop"></div>
+              
+              <!-- Backdrop for sort menu overlay -->
+              <div id="album-sort-backdrop" class="album-sort-backdrop"></div>
+
+              <div id="album-sort-drawer" class="album-sort-drawer">
+                <!-- Trigger Button Content (only visible when closed) -->
+                <div class="album-sort-trigger-content">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="4" y1="6" x2="20" y2="6"/>
+                    <line x1="4" y1="12" x2="20" y2="12"/>
+                    <line x1="4" y1="18" x2="20" y2="18"/>
+                  </svg>
+                </div>
+
+                <!-- Actual Drawer Content (only visible when open) -->
+                <div class="album-sort-main-content">
+                  <div class="album-settings-header">
+                    <span class="album-settings-title">Sort Cards</span>
+                    <button class="album-settings-close" id="btn-album-sort-close" title="Close">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                      </svg>
+                    </button>
+                  </div>
+                  <div class="album-sort-body">
+                    <button class="album-sort-option" data-sort="default">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="sort-icon">
+                        <circle cx="12" cy="5" r="3"/><circle cx="5" cy="19" r="3"/><circle cx="19" cy="19" r="3"/>
+                        <path d="M12 8L7.5 16.5M12 8l4.5 8.5"/>
+                      </svg>
+                      <span>Default Layout</span>
+                    </button>
+                    <button class="album-sort-option" data-sort="date-asc">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="sort-icon">
+                        <line x1="4" y1="6" x2="20" y2="6"/>
+                        <line x1="4" y1="12" x2="14" y2="12"/>
+                        <line x1="4" y1="18" x2="8" y2="18"/>
+                        <polyline points="16 14 20 18 24 14"/>
+                        <line x1="20" y1="8" x2="20" y2="18"/>
+                      </svg>
+                      <span>Date: Oldest First</span>
+                    </button>
+                    <button class="album-sort-option" data-sort="date-desc">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="sort-icon">
+                        <line x1="4" y1="6" x2="20" y2="6"/>
+                        <line x1="4" y1="12" x2="14" y2="12"/>
+                        <line x1="4" y1="18" x2="8" y2="18"/>
+                        <polyline points="16 12 20 8 24 12"/>
+                        <line x1="20" y1="8" x2="20" y2="18"/>
+                      </svg>
+                      <span>Date: Newest First</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
 
               <div id="album-settings-drawer" class="album-settings-drawer">
-                <div class="album-settings-header">
-                  <span class="album-settings-title">Album Generation Options</span>
+                <!-- Trigger Button Content (only visible when closed) -->
+                <div class="album-settings-trigger-content">
+                  <span>Reveal Options</span>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <polyline points="18 15 12 9 6 15"/>
+                  </svg>
                 </div>
-                <div class="album-settings-body">
-                  <div class="album-settings-group">
-                    <label for="album-mandatory-tags-input" class="album-settings-label">Mandatory Prompt Tags</label>
-                    <textarea id="album-mandatory-tags-input" class="album-settings-textarea" placeholder="e.g. masterpiece, highly detailed, oil painting style, hyperrealistic..."></textarea>
-                    <span class="album-settings-desc">These tags/style words will be automatically appended to every generated prompt in this specific album to preserve style consistency.</span>
+
+                <!-- Actual Drawer Content (only visible when open) -->
+                <div class="album-settings-main-content">
+                  <div class="album-settings-header">
+                    <span class="album-settings-title">Album Generation Options</span>
+                    <button class="album-settings-close" id="btn-album-settings-close" title="Close">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                      </svg>
+                    </button>
                   </div>
-                  <div class="album-settings-group" style="margin-top: 8px;">
-                    <label for="album-language-select" class="album-settings-label">Description Language</label>
-                    <select id="album-language-select" class="album-settings-textarea" style="height: 36px; padding: 6px 10px; width: 100%; border: 1px solid var(--border-light); background: var(--bg-primary); color: var(--text-primary);">
-                      <option value="Russian">Russian (Русский)</option>
-                      <option value="English">English</option>
-                    </select>
-                    <span class="album-settings-desc">Choose the language that the AI Director will use to generate short prompt descriptions and brainstorm choices.</span>
-                  </div>
-                  <div class="album-settings-group" style="margin-top: 12px; display: flex; align-items: center; gap: 10px;">
-                    <input type="checkbox" id="album-nsfw-toggle" style="width: 16px; height: 16px; accent-color: var(--accent-secondary, #06b6d4); cursor: pointer;" />
-                    <div style="display: flex; flex-direction: column;">
-                      <label for="album-nsfw-toggle" class="album-settings-label" style="cursor: pointer; font-weight: 600; color: var(--text-primary);">Allow NSFW Suggestions</label>
-                      <span class="album-settings-desc" style="margin-top: 2px;">Enable if the AI Director is allowed to brainstorm mature, spicy, or explicit creative visual directions.</span>
+                  <div class="album-settings-body">
+                    <div class="album-settings-group">
+                      <label for="album-mandatory-tags-input" class="album-settings-label">Mandatory Prompt Tags</label>
+                      <textarea id="album-mandatory-tags-input" class="album-settings-textarea" placeholder="e.g. masterpiece, highly detailed, oil painting style, hyperrealistic..."></textarea>
+                      <span class="album-settings-desc">These tags/style words will be automatically appended to every generated prompt in this specific album to preserve style consistency.</span>
+                    </div>
+                    <div class="album-settings-group" style="margin-top: 8px;">
+                      <label for="album-language-select" class="album-settings-label">Description Language</label>
+                      <select id="album-language-select" class="album-settings-textarea" style="height: 36px; padding: 6px 10px; width: 100%; border: 1px solid var(--border-light); background: var(--bg-primary); color: var(--text-primary);">
+                        <option value="Russian">Russian (Русский)</option>
+                        <option value="English">English</option>
+                      </select>
+                      <span class="album-settings-desc">Choose the language that the AI Director will use to generate short prompt descriptions and brainstorm choices.</span>
+                    </div>
+                    <div class="album-settings-row">
+                      <div class="album-settings-info">
+                        <label for="album-nsfw-toggle" class="album-settings-label" style="cursor: pointer;">Allow NSFW Suggestions</label>
+                        <span class="album-settings-desc">Enable if the AI Director is allowed to brainstorm mature, spicy, or explicit creative visual directions.</span>
+                      </div>
+                      <label class="album-switch">
+                        <input type="checkbox" id="album-nsfw-toggle" />
+                        <span class="album-slider"></span>
+                      </label>
                     </div>
                   </div>
+                  <div class="album-settings-footer">
+                    <button id="btn-album-save-settings" class="btn-album-save">Save Options</button>
+                  </div>
                 </div>
-                <div class="album-settings-footer">
-                  <button id="btn-album-save-settings" class="btn-album-save">Save Options</button>
+              </div>
+
+              <!-- Selection Mode Action Bar -->
+              <div id="album-selection-bar" class="album-selection-bar hidden">
+                <span id="album-selection-text">Select images...</span>
+                <div class="album-selection-actions">
+                  <button id="btn-album-selection-cancel" class="btn-album-selection-cancel">Cancel</button>
+                  <button id="btn-album-selection-done" class="btn-album-selection-done">Done</button>
                 </div>
               </div>
             </div>
@@ -973,6 +1084,13 @@
               </div>
             </div>
             <textarea id="genai-input" placeholder="Ask GenAI anything..." rows="1"></textarea>
+            <button id="btn-genai-brush" class="hidden" title="Generate image only">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m12 22 1-1c1.4-1.4 2.4-3.2 3-5.2L18 9l-5-5-7 2-5 5 5 5z"/>
+                <path d="m19 9 1-1c1.1-1.1 2.9-1.1 4 0s1.1 2.9 0 4l-1 1"/>
+                <path d="M5 16c.2-.4.4-.8.7-1.1l1.1-1.1c.3-.3.7-.5 1.1-.7"/>
+              </svg>
+            </button>
             <button id="btn-genai-send" title="Send">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
@@ -2087,6 +2205,18 @@
               </div>
               <label class="toggle-switch small">
                 <input type="checkbox" id="setting-comfyui-auto-chat" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <!-- Auto Scale toggle -->
+            <div class="form-group-row" style="margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border-subtle);">
+              <div>
+                <label style="font-size: var(--text-sm); font-weight: 600; color: var(--text-primary);">Auto Scale</label>
+                <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px;">Allow model to choose image resolution from available options</div>
+              </div>
+              <label class="toggle-switch small">
+                <input type="checkbox" id="setting-comfyui-auto-scale" />
                 <span class="toggle-slider"></span>
               </label>
             </div>

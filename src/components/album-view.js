@@ -7,6 +7,11 @@ import { api } from '../services/api.js';
 import { settingsStore } from '../services/settings-store.js';
 import { generateImageComfyUI } from '../services/comfyui-service.js';
 import { uiManager } from '../utils/ui-manager.js';
+import { renderMarkdown } from '../utils/helpers.js';
+
+// Selection Mode State
+let selectionMode = null; // null, 'similar', 'comment'
+let selectedNodeIds = new Set();
 
 // Local state for panning and zooming
 let panX = 0;
@@ -150,12 +155,41 @@ export async function initAlbumView() {
   }
 
   // Collapsible Settings Panel Hooks
-  const triggerBtn = document.getElementById('album-settings-trigger');
   const drawer = document.getElementById('album-settings-drawer');
-  if (triggerBtn && drawer) {
-    triggerBtn.addEventListener('click', () => {
-      drawer.classList.toggle('open');
-      triggerBtn.classList.toggle('active');
+  const backdrop = document.getElementById('album-settings-backdrop');
+
+  function openSettingsDrawer() {
+    if (drawer) drawer.classList.add('open');
+    if (backdrop) backdrop.classList.add('open');
+  }
+
+  function closeSettingsDrawer() {
+    if (drawer) drawer.classList.remove('open');
+    if (backdrop) backdrop.classList.remove('open');
+  }
+
+  if (drawer) {
+    drawer.addEventListener('click', () => {
+      if (!drawer.classList.contains('open')) {
+        openSettingsDrawer();
+      }
+    });
+  }
+
+  // Close on backdrop click
+  if (backdrop) {
+    backdrop.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeSettingsDrawer();
+    });
+  }
+
+  // Close on close button click
+  const closeBtn = document.getElementById('btn-album-settings-close');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeSettingsDrawer();
     });
   }
 
@@ -179,10 +213,193 @@ export async function initAlbumView() {
       showToast('Album options saved!');
       
       // Close settings drawer
-      if (drawer) drawer.classList.remove('open');
-      if (triggerBtn) triggerBtn.classList.remove('active');
+      const drawerEl = document.getElementById('album-settings-drawer');
+      const triggerEl = document.getElementById('album-settings-trigger');
+      const backdropEl = document.getElementById('album-settings-backdrop');
+      if (drawerEl) drawerEl.classList.remove('open');
+      if (triggerEl) triggerEl.classList.remove('active');
+      if (backdropEl) backdropEl.classList.remove('open');
     });
   }
+
+  // Sort Drawer Event Listeners
+  const sortDrawer = document.getElementById('album-sort-drawer');
+  const sortBackdrop = document.getElementById('album-sort-backdrop');
+
+  function openSortDrawer() {
+    if (sortDrawer) sortDrawer.classList.add('open');
+    if (sortBackdrop) sortBackdrop.classList.add('open');
+  }
+
+  function closeSortDrawer() {
+    if (sortDrawer) sortDrawer.classList.remove('open');
+    if (sortBackdrop) sortBackdrop.classList.remove('open');
+  }
+
+  if (sortDrawer) {
+    sortDrawer.addEventListener('click', () => {
+      if (!sortDrawer.classList.contains('open')) {
+        openSortDrawer();
+      }
+    });
+  }
+
+  if (sortBackdrop) {
+    sortBackdrop.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeSortDrawer();
+    });
+  }
+
+  const closeSortBtn = document.getElementById('btn-album-sort-close');
+  if (closeSortBtn) {
+    closeSortBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeSortDrawer();
+    });
+  }
+
+  const sortOptions = document.querySelectorAll('.album-sort-option');
+  sortOptions.forEach(opt => {
+    opt.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const activeAlbum = albumStore.getActiveAlbum();
+      if (!activeAlbum) return;
+
+      const sortMode = opt.getAttribute('data-sort');
+      await albumStore.updateAlbumSettings(activeAlbum.id, { sortMode });
+
+      // Update UI active states
+      sortOptions.forEach(o => o.classList.toggle('active', o === opt));
+
+      closeSortDrawer();
+      renderActiveAlbumWorkspace();
+    });
+  });
+
+  // Context Menu Item Listeners
+  const btnCtxGeneratePic = document.getElementById('ctx-generate-pic');
+  const btnCtxSimilarTo = document.getElementById('ctx-similar-to');
+  const btnCtxComment = document.getElementById('ctx-comment');
+
+  if (btnCtxGeneratePic) {
+    btnCtxGeneratePic.addEventListener('click', async () => {
+      const activeAlbum = albumStore.getActiveAlbum();
+      if (!activeAlbum) return;
+
+      const menu = document.getElementById('album-context-menu');
+      if (menu) menu.classList.add('hidden');
+
+      const canvasX = parseFloat(menu.dataset.canvasX || '2500');
+      const canvasY = parseFloat(menu.dataset.canvasY || '2500');
+
+      await albumStore.addNode(activeAlbum.id, {
+        type: 'standalone-input',
+        x: canvasX - 140, // Center input node (280px wide)
+        y: canvasY - 40,
+        prompt: '',
+        description: '',
+        parentId: null,
+        status: 'idle'
+      });
+      renderActiveAlbumWorkspace();
+    });
+  }
+
+  if (btnCtxSimilarTo) {
+    btnCtxSimilarTo.addEventListener('click', () => {
+      const menu = document.getElementById('album-context-menu');
+      if (menu) menu.classList.add('hidden');
+
+      selectionMode = 'similar';
+      selectedNodeIds.clear();
+
+      const textEl = document.getElementById('album-selection-text');
+      if (textEl) textEl.textContent = 'Select images to generate a similar picture';
+
+      const bar = document.getElementById('album-selection-bar');
+      if (bar) bar.classList.remove('hidden');
+
+      const panel = document.querySelector('.album-bottom-panel');
+      if (panel) panel.classList.add('selection-active');
+
+      renderActiveAlbumWorkspace();
+    });
+  }
+
+  if (btnCtxComment) {
+    btnCtxComment.addEventListener('click', () => {
+      const menu = document.getElementById('album-context-menu');
+      if (menu) menu.classList.add('hidden');
+
+      selectionMode = 'comment';
+      selectedNodeIds.clear();
+
+      const textEl = document.getElementById('album-selection-text');
+      if (textEl) textEl.textContent = 'Select images for AI storytelling & critique';
+
+      const bar = document.getElementById('album-selection-bar');
+      if (bar) bar.classList.remove('hidden');
+
+      const panel = document.querySelector('.album-bottom-panel');
+      if (panel) panel.classList.add('selection-active');
+
+      renderActiveAlbumWorkspace();
+    });
+  }
+
+  // Selection Action Bar Cancel / Done Listeners
+  const btnSelectionCancel = document.getElementById('btn-album-selection-cancel');
+  const btnSelectionDone = document.getElementById('btn-album-selection-done');
+
+  if (btnSelectionCancel) {
+    btnSelectionCancel.addEventListener('click', () => {
+      cancelSelectionMode();
+    });
+  }
+
+  if (btnSelectionDone) {
+    btnSelectionDone.addEventListener('click', async () => {
+      const activeAlbum = albumStore.getActiveAlbum();
+      if (!activeAlbum) return;
+
+      if (selectedNodeIds.size === 0) {
+        showToast('Please select at least one image first!', 'error');
+        return;
+      }
+
+      const selectedNodes = (activeAlbum.nodes || []).filter(n => selectedNodeIds.has(n.id) && n.type === 'image');
+      const mode = selectionMode;
+
+      // Exit selection mode first
+      cancelSelectionMode();
+
+      if (mode === 'similar') {
+        await triggerSimilarGeneration(activeAlbum, selectedNodes);
+      } else if (mode === 'comment') {
+        await triggerCommentGeneration(activeAlbum, selectedNodes);
+      }
+    });
+  }
+
+  // Document click-away context menu listener
+  document.addEventListener('click', (e) => {
+    const menu = document.getElementById('album-context-menu');
+    if (menu && !menu.classList.contains('hidden') && !e.target.closest('#album-context-menu')) {
+      menu.classList.add('hidden');
+    }
+  });
+
+  // ESC key listener for context menu & selection mode cancel
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      const menu = document.getElementById('album-context-menu');
+      if (menu) menu.classList.add('hidden');
+      if (selectionMode) {
+        cancelSelectionMode();
+      }
+    }
+  });
 }
 
 // ─── Workspace Panning & Zooming Physics ────────────────────────────
@@ -204,6 +421,8 @@ function initWorkspacePanning() {
 
   // Mousedown
   container.onmousedown = (e) => {
+    // Only pan on left click
+    if (e.button !== 0) return;
     // Only pan if clicking grid background or empty space (not interactive elements)
     if (e.target.closest('.album-node') || e.target.closest('button') || e.target.closest('input') || e.target.closest('textarea') || e.target.closest('.album-bottom-panel')) return;
 
@@ -212,6 +431,35 @@ function initWorkspacePanning() {
     startX = e.clientX - panX;
     startY = e.clientY - panY;
     e.preventDefault();
+  };
+
+  // Right-click context menu
+  container.oncontextmenu = (e) => {
+    // Only show if clicking grid background or empty space (not interactive elements)
+    if (e.target.closest('.album-node') || e.target.closest('button') || e.target.closest('input') || e.target.closest('textarea') || e.target.closest('.album-bottom-panel') || e.target.closest('#album-context-menu')) return;
+
+    e.preventDefault();
+    const activeAlbum = albumStore.getActiveAlbum();
+    if (!activeAlbum) return;
+
+    const menu = document.getElementById('album-context-menu');
+    if (!menu) return;
+
+    menu.classList.remove('hidden');
+    const viewContainer = document.getElementById('album-view-container');
+    if (viewContainer) {
+      const viewRect = viewContainer.getBoundingClientRect();
+      menu.style.left = `${e.clientX - viewRect.left}px`;
+      menu.style.top = `${e.clientY - viewRect.top}px`;
+    } else {
+      menu.style.left = `${e.clientX}px`;
+      menu.style.top = `${e.clientY}px`;
+    }
+
+    // Save click coordinates relative to canvas zoom & pan
+    const rect = container.getBoundingClientRect();
+    menu.dataset.canvasX = (e.clientX - rect.left - panX) / zoom;
+    menu.dataset.canvasY = (e.clientY - rect.top - panY) / zoom;
   };
 
   // Mousemove
@@ -417,6 +665,14 @@ export function renderActiveAlbumWorkspace() {
   if (nsfwToggle) {
     nsfwToggle.checked = !!activeAlbum.allowNsfw;
   }
+
+  // Highlight active sort option
+  const sortMode = activeAlbum.sortMode || 'default';
+  const sortOptions = document.querySelectorAll('.album-sort-option');
+  sortOptions.forEach(opt => {
+    const optMode = opt.getAttribute('data-sort');
+    opt.classList.toggle('active', optMode === sortMode);
+  });
 
   const nodes = activeAlbum.nodes || [];
 
@@ -628,12 +884,17 @@ async function startFirstAlbumImage(album, promptText, descriptionText) {
     if (bubbleEl) {
       bubbleEl.style.setProperty('--card-w', `${cardW}px`);
       bubbleEl.style.setProperty('--card-h', `${cardH}px`);
+      bubbleEl.style.width = `${cardW}px`;
+      bubbleEl.style.height = `${cardH}px`;
       bubbleEl.classList.remove('working');
       bubbleEl.classList.add('generating');
-      bubbleEl.innerHTML = `<span class="album-placeholder-text">Generating...</span>`;
+      requestAnimationFrame(() => {
+        if (bubbleEl.isConnected) bubbleEl.innerHTML = `<span class="album-placeholder-text">Generating...</span>`;
+      });
     }
 
-    renderActiveAlbumWorkspace();
+    // NOTE: renderActiveAlbumWorkspace() intentionally NOT called here — 
+    // calling it would reset el.className and cancel the generating CSS transition.
 
     // 3. Queue the generation in ComfyUI
     const finalPrompt = album.mandatoryTags 
@@ -642,9 +903,10 @@ async function startFirstAlbumImage(album, promptText, descriptionText) {
 
     const imageUrl = await generateImageComfyUI(finalPrompt, null, abortController.signal);
     
-    // 4. Morphs to Completed Image node
+    // 4. Morphs to Completed Image node (use classList, not className=, to keep transition alive)
     if (bubbleEl) {
-      bubbleEl.className = 'album-node album-node-image morphing';
+      bubbleEl.classList.remove('generating', 'idle', 'working');
+      bubbleEl.classList.add('album-node', 'album-node-bubble', 'morphing');
       bubbleEl.style.width = `${cardW}px`;
       bubbleEl.style.height = `${cardH}px`;
       bubbleEl.innerHTML = `<div class="album-spinner" style="margin: auto;"></div>`;
@@ -717,53 +979,15 @@ async function generateBranchSuggestions(album, parentImageNodeId, parentPrompt)
     Do not include any introductory remarks, greetings, or markdown code blocks. Just return the clean JSON array.`;
 
     const userPrompt = `Album Theme: ${album.theme}\nPrevious Image Prompt: ${parentPrompt}`;
-
     const messages = [
       { role: 'system', content: promptInstructions },
       { role: 'user', content: userPrompt }
     ];
 
-    const response = await api.chatCompletion(messages, { temperature: 0.6, max_tokens: 1024 });
-    let cleanText = response.trim();
-
-    if (cleanText.startsWith('```json')) {
-      cleanText = cleanText.replace(/^```json/m, '').replace(/```$/m, '').trim();
-    } else if (cleanText.startsWith('```')) {
-      cleanText = cleanText.replace(/^```/m, '').replace(/```$/m, '').trim();
-    }
-
-    let suggestions = [];
-    try {
-      suggestions = JSON.parse(cleanText);
-    } catch {
-      suggestions = descLanguage === 'Russian' ? [
-        { prompt: `Dynamic close up of the previous scene`, description: `Крупный план сцены` },
-        { prompt: `A scenic landscape view continuing the story`, description: `Панорамный пейзаж` },
-        { prompt: `The same subject under cinematic night lighting`, description: `Кинематографичный ночной вид` }
-      ] : [
-        { prompt: `Dynamic close up of the previous scene`, description: `Close-up of the scene` },
-        { prompt: `A scenic landscape view continuing the story`, description: `Panoramic landscape` },
-        { prompt: `The same subject under cinematic night lighting`, description: `Cinematic night view` }
-      ];
-    }
-
-    if (!Array.isArray(suggestions) || suggestions.length < 3) {
-      suggestions = descLanguage === 'Russian' ? [
-        { prompt: 'Visual expansion', description: 'Крупный план' },
-        { prompt: 'Alternative angle', description: 'Другой ракурс' },
-        { prompt: 'Close up detail', description: 'Детали объекта' }
-      ] : [
-        { prompt: 'Visual expansion', description: 'Close up view' },
-        { prompt: 'Alternative angle', description: 'Alternative angle' },
-        { prompt: 'Close up detail', description: 'Object details' }
-      ];
-    }
-
-    // Position of parent image node
+    // ─── Pre-calculate positions for all 4 bubbles ───
     const parentNode = album.nodes.find(n => n.id === parentImageNodeId);
     if (!parentNode) return;
 
-    // Get width of parent image card from ComfyUI settings
     const settings = settingsStore.get();
     const w = settings.comfyui_width ?? 832;
     const h = settings.comfyui_height ?? 1216;
@@ -773,10 +997,8 @@ async function generateBranchSuggestions(album, parentImageNodeId, parentPrompt)
 
     const pxCenter = parentNode.x + cardW / 2;
     const pyCenter = parentNode.y + cardH / 2;
-    const R = 420; // Spread radius in pixels
+    const R = 420;
 
-    // Generate 4 randomized, evenly distributed angles covering all 360 degrees (in radians)
-    // to scatter the suggestion bubbles and input bubble in all radial directions (up, down, diagonals, left, right)
     const startAngle = Math.random() * 2 * Math.PI;
     const baseAngles = [
       startAngle,
@@ -784,39 +1006,38 @@ async function generateBranchSuggestions(album, parentImageNodeId, parentPrompt)
       startAngle + 1.0 * Math.PI,
       startAngle + 1.5 * Math.PI
     ];
-
-    // Add organic jitter to make the node canvas layout feel asymmetrical and hand-drawn
-    const jitterMax = 20 * Math.PI / 180; // +/- 10 degrees jitter
+    const jitterMax = 20 * Math.PI / 180;
     const angles = baseAngles.map(angle => angle + (Math.random() - 0.5) * jitterMax);
-
-    // Shuffle the angles array so the three suggestions and the custom input bubble land in randomized directions
     for (let i = angles.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [angles[i], angles[j]] = [angles[j], angles[i]];
     }
 
-    // Spawn 3 suggestion bubble nodes
+    // ─── Spawn 3 loading-spinner placeholders immediately (don't wait for LLM) ───
+    const placeholderIds = [];
+    const finalPositions = []; // store final suggestion positions for when we reveal them
     for (let i = 0; i < 3; i++) {
       const angle = angles[i];
-      const bx = pxCenter + R * Math.cos(angle) - 100; // center bubble horizontally (approx 200px width)
-      const by = pyCenter + R * Math.sin(angle) - 18;  // center bubble vertically (approx 36px height)
-
-      await albumStore.addNode(album.id, {
+      const finalX = pxCenter + R * Math.cos(angle) - 100; // final pill center offset (~200px wide)
+      const finalY = pyCenter + R * Math.sin(angle) - 18;
+      finalPositions.push({ x: finalX, y: finalY });
+      const spinnerX = pxCenter + R * Math.cos(angle) - 18; // 36px spinner center offset
+      const node = await albumStore.addNode(album.id, {
         type: 'suggestion',
-        x: bx,
-        y: by,
-        prompt: suggestions[i].prompt,
-        description: suggestions[i].description,
+        x: spinnerX,
+        y: finalY,
+        prompt: '',
+        description: '',
         parentId: parentImageNodeId,
-        status: 'idle'
+        status: 'loading'
       });
+      placeholderIds.push(node.id);
     }
 
-    // Spawn 1 custom input bubble node
+    // Spawn input bubble immediately (it's always "your prompt", no LLM needed)
     const inputAngle = angles[3];
-    const ix = pxCenter + R * Math.cos(inputAngle) - 125; // center input bubble (approx 250px width)
-    const iy = pyCenter + R * Math.sin(inputAngle) - 18;  // center bubble vertically (approx 36px height)
-
+    const ix = pxCenter + R * Math.cos(inputAngle) - 125;
+    const iy = pyCenter + R * Math.sin(inputAngle) - 18;
     await albumStore.addNode(album.id, {
       type: 'input',
       x: ix,
@@ -827,8 +1048,105 @@ async function generateBranchSuggestions(album, parentImageNodeId, parentPrompt)
       status: 'idle'
     });
 
-    // Resolve any overlaps/collisions using physics-based pushes before rendering!
+    // Stagger loading spinner appearances (render each bubble with small delay)
+    renderActiveAlbumWorkspace();
+
+    // ─── Stream LLM response and fill in suggestions one-by-one as they complete ───
+    let streamBuffer = '';
+    let lastFoundCount = 0;
+    const fallbackSuggestions = descLanguage === 'Russian' ? [
+      { prompt: `Dynamic close up of the previous scene`, description: `Крупный план сцены` },
+      { prompt: `A scenic landscape view continuing the story`, description: `Панорамный пейзаж` },
+      { prompt: `The same subject under cinematic night lighting`, description: `Кинематографичный ночной вид` }
+    ] : [
+      { prompt: `Dynamic close up of the previous scene`, description: `Close-up of the scene` },
+      { prompt: `A scenic landscape view continuing the story`, description: `Panoramic landscape` },
+      { prompt: `The same subject under cinematic night lighting`, description: `Cinematic night view` }
+    ];
+
+    // Parse complete JSON objects from the streaming buffer using brace counting
+    function extractJsonObjects(text) {
+      const objects = [];
+      let depth = 0;
+      let start = -1;
+      for (let i = 0; i < text.length; i++) {
+        if (text[i] === '{') {
+          if (depth === 0) start = i;
+          depth++;
+        } else if (text[i] === '}') {
+          depth--;
+          if (depth === 0 && start !== -1) {
+            try {
+              const obj = JSON.parse(text.slice(start, i + 1));
+              if (obj.prompt && obj.description) objects.push(obj);
+            } catch { /* skip malformed partial objects */ }
+            start = -1;
+          }
+        }
+      }
+      return objects;
+    }
+
+    // Stream the suggestions and reveal each bubble as its JSON object completes
+    await new Promise((resolve, reject) => {
+      api.streamChat(
+        messages,
+        null,
+        (chunk) => {
+          streamBuffer += chunk;
+          const found = extractJsonObjects(streamBuffer);
+          // Reveal each newly completed suggestion bubble
+          for (let i = lastFoundCount; i < found.length && i < 3; i++) {
+            const suggestion = found[i];
+            const nodeId = placeholderIds[i];
+            // Update store node from loading -> idle with text + correct position
+            albumStore.updateNode(album.id, nodeId, {
+              prompt: suggestion.prompt,
+              description: suggestion.description,
+              status: 'idle',
+              x: finalPositions[i].x,
+              y: finalPositions[i].y,
+            }).then(() => renderActiveAlbumWorkspace());
+          }
+          lastFoundCount = Math.max(lastFoundCount, Math.min(found.length, 3));
+        },
+        () => {
+          // Stream done — fill in any missing suggestions with fallbacks
+          for (let i = lastFoundCount; i < 3; i++) {
+            const suggestion = fallbackSuggestions[i];
+            const nodeId = placeholderIds[i];
+            albumStore.updateNode(album.id, nodeId, {
+              prompt: suggestion.prompt,
+              description: suggestion.description,
+              status: 'idle',
+              x: finalPositions[i].x,
+              y: finalPositions[i].y,
+            }).then(() => renderActiveAlbumWorkspace());
+          }
+          resolve();
+        },
+        (err) => {
+          console.error('Suggestion stream error:', err);
+          // Fill all remaining with fallbacks on error
+          for (let i = lastFoundCount; i < 3; i++) {
+            const suggestion = fallbackSuggestions[i];
+            albumStore.updateNode(album.id, placeholderIds[i], {
+              prompt: suggestion.prompt,
+              description: suggestion.description,
+              status: 'idle',
+              x: finalPositions[i].x,
+              y: finalPositions[i].y,
+            }).then(() => renderActiveAlbumWorkspace());
+          }
+          resolve();
+        },
+        { temperature: 0.6, max_tokens: 1024 }
+      );
+    });
+
+    // Resolve any overlaps/collisions after all suggestions are placed
     await resolveNodeCollisions(album);
+    renderActiveAlbumWorkspace();
 
   } catch (err) {
     console.error("Branch brainstorming failed:", err);
@@ -838,31 +1156,33 @@ async function generateBranchSuggestions(album, parentImageNodeId, parentPrompt)
 
 // Helper to get center coordinate of any node type at any state
 function getNodeCenter(node, cardW, cardH) {
+  const x = node.visualX !== undefined ? node.visualX : node.x;
+  const y = node.visualY !== undefined ? node.visualY : node.y;
   if (node.type === 'image') {
     return {
-      x: node.x + cardW / 2,
-      y: node.y + cardH / 2
+      x: x + cardW / 2,
+      y: y + cardH / 2
     };
   } else if (node.status === 'generating') {
     return {
-      x: node.x + cardW / 2,
-      y: node.y + cardH / 2
+      x: x + cardW / 2,
+      y: y + cardH / 2
     };
   } else if (node.status === 'working') {
     return {
-      x: node.x + 60,
-      y: node.y + 18
+      x: x + 60,
+      y: y + 18
     };
   } else if (node.type === 'input') {
     return {
-      x: node.x + 125,
-      y: node.y + 18
+      x: x + 125,
+      y: y + 18
     };
   } else {
     // Standard suggestion bubble
     return {
-      x: node.x + 100,
-      y: node.y + 18
+      x: x + 100,
+      y: y + 18
     };
   }
 }
@@ -921,6 +1241,43 @@ function renderCanvasNodes(album) {
   if (comW === comH) { cardW = 300; cardH = 300; }
   else if (comW > comH) { cardW = 380; cardH = 260; }
 
+  // Dynamic sorting layout calculations
+  const sortMode = album.sortMode || 'default';
+  if (sortMode === 'date-asc' || sortMode === 'date-desc') {
+    const sortedImages = [...imageNodes].sort((a, b) => {
+      return sortMode === 'date-asc' ? a.createdAt - b.createdAt : b.createdAt - a.createdAt;
+    });
+
+    const N = sortedImages.length;
+    const gap = 60;
+    const totalWidth = N * cardW + (N - 1) * gap;
+    const startX = 2500 - totalWidth / 2;
+
+    sortedImages.forEach((node, i) => {
+      node.visualX = startX + i * (cardW + gap);
+      node.visualY = 2500 - cardH / 2;
+    });
+  } else {
+    imageNodes.forEach(node => {
+      node.visualX = undefined;
+      node.visualY = undefined;
+    });
+  }
+
+  // Calculate bubble positions based on parent offsets
+  bubbles.forEach(bubble => {
+    const parentNode = imageNodes.find(p => p.id === bubble.parentId);
+    if (parentNode && parentNode.visualX !== undefined) {
+      const dx = parentNode.visualX - parentNode.x;
+      const dy = parentNode.visualY - parentNode.y;
+      bubble.visualX = bubble.x + dx;
+      bubble.visualY = bubble.y + dy;
+    } else {
+      bubble.visualX = undefined;
+      bubble.visualY = undefined;
+    }
+  });
+
   const existingNodeIds = new Set();
 
   // Draw/update image nodes
@@ -935,15 +1292,31 @@ function renderCanvasNodes(album) {
     
     // Set classes and positions
     el.className = `album-node album-node-image ${activeImageNodeId === node.id ? 'active-branch' : ''}`;
-    el.style.left = `${node.x}px`;
-    el.style.top = `${node.y}px`;
+    el.style.left = `${node.visualX !== undefined ? node.visualX : node.x}px`;
+    el.style.top = `${node.visualY !== undefined ? node.visualY : node.y}px`;
     el.style.width = `${cardW}px`;
     el.style.height = `${cardH}px`;
 
-    // Only set innerHTML if the content has changed or is new
+    // Reconcile checkbox markup
+    const hasCheckbox = !!el.querySelector('.album-card-checkbox-wrapper');
+    const needsCheckbox = !!selectionMode;
+    const isSelected = selectedNodeIds.has(node.id);
+    const checkboxClassMatch = hasCheckbox ? (el.querySelector('.album-card-checkbox-wrapper').classList.contains('checked') === isSelected) : true;
+
+    // Only set innerHTML if the content has changed or selection state changed or is new
     const imgEl = el.querySelector('.album-photo-img');
-    if (!imgEl || imgEl.getAttribute('src') !== node.imageUrl) {
+    if (!imgEl || imgEl.getAttribute('src') !== node.imageUrl || hasCheckbox !== needsCheckbox || !checkboxClassMatch) {
+      const checkboxHtml = selectionMode ? `
+        <div class="album-card-checkbox-wrapper ${isSelected ? 'checked' : ''}">
+          <input type="checkbox" class="album-card-checkbox" ${isSelected ? 'checked' : ''} data-node-id="${node.id}" />
+          <svg viewBox="0 0 24 24" fill="none" stroke="${isSelected ? '#171717' : 'transparent'}" stroke-width="3" style="width: 14px; height: 14px; pointer-events: none; display: block;">
+            <polyline points="6 12 10 16 18 8" />
+          </svg>
+        </div>
+      ` : '';
+
       el.innerHTML = `
+        ${checkboxHtml}
         <div class="album-image-wrapper">
           <img src="${node.imageUrl}" class="album-photo-img" alt="AI Generation" />
           <div class="album-image-overlay">
@@ -976,6 +1349,11 @@ function renderCanvasNodes(album) {
       // Direct click on the photo opens it fullscreen in Lightbox
       const photoWrapper = el.querySelector('.album-image-wrapper');
       photoWrapper.onclick = (e) => {
+        if (selectionMode) {
+          e.stopPropagation();
+          toggleCardSelection(node.id);
+          return;
+        }
         if (e.target.closest('button')) return;
         if (window.openLightbox) {
           window.openLightbox(node.imageUrl, node.description || node.prompt);
@@ -1006,6 +1384,11 @@ function renderCanvasNodes(album) {
 
     // Bind focus branch event using onclick to prevent duplication
     el.onclick = async (e) => {
+      if (selectionMode) {
+        e.stopPropagation();
+        toggleCardSelection(node.id);
+        return;
+      }
       if (e.target.closest('button')) return;
       if (activeImageNodeId === node.id) return; // already active
       
@@ -1056,8 +1439,8 @@ function renderCanvasNodes(album) {
     }
 
     // Position
-    el.style.left = `${bubble.x}px`;
-    el.style.top = `${bubble.y}px`;
+    el.style.left = `${bubble.visualX !== undefined ? bubble.visualX : bubble.x}px`;
+    el.style.top = `${bubble.visualY !== undefined ? bubble.visualY : bubble.y}px`;
 
     const parentNode = imageNodes.find(p => p.id === bubble.parentId);
     
@@ -1069,27 +1452,54 @@ function renderCanvasNodes(album) {
       el.setAttribute('data-status', bubble.status);
       el.setAttribute('data-type', bubble.type);
       
-      if (bubble.status === 'working') {
-        el.className = `album-node album-node-bubble working`;
+      if (bubble.status === 'loading') {
+        // Loading spinner circle — appears while AI streams the suggestion
+        el.classList.remove('working', 'generating', 'idle', 'morphing', 'input-bubble');
+        el.classList.add('album-node', 'album-node-bubble', 'loading');
+        el.style.width = '36px';
+        el.style.height = '36px';
+        el.style.borderRadius = '50%';
+        el.innerHTML = '';
+        el.onclick = null;
+      } else if (bubble.status === 'working') {
+        // Use classList to preserve CSS transitions (className= cancels them)
+        el.classList.remove('generating', 'idle', 'morphing', 'input-bubble');
+        el.classList.add('album-node', 'album-node-bubble', 'working');
         el.style.width = '120px';
         el.style.height = '36px';
         el.style.borderRadius = '18px';
-        el.innerHTML = `<span>Working...</span>`;
+        requestAnimationFrame(() => {
+          if (el.isConnected) el.innerHTML = `<span>Working...</span>`;
+        });
         el.onclick = null;
       } else if (bubble.status === 'generating') {
-        el.className = `album-node album-node-bubble generating`;
+        // Use classList to preserve CSS transitions (className= cancels them)
+        el.classList.remove('working', 'idle', 'morphing', 'input-bubble');
+        el.classList.add('album-node', 'album-node-bubble', 'generating');
         el.style.width = `${cardW}px`;
         el.style.height = `${cardH}px`;
+        el.style.setProperty('--card-w', `${cardW}px`);
+        el.style.setProperty('--card-h', `${cardH}px`);
         el.style.borderRadius = '14px';
-        el.innerHTML = `<span class="album-placeholder-text">Generating...</span>`;
+        requestAnimationFrame(() => {
+          if (el.isConnected) el.innerHTML = `<span class="album-placeholder-text">Generating...</span>`;
+        });
         el.onclick = null;
       } else {
         // Idle state
         if (bubble.type === 'suggestion') {
-          el.className = `album-node album-node-bubble idle`;
+          el.classList.remove('working', 'generating', 'loading', 'morphing', 'input-bubble');
+          el.classList.add('album-node', 'album-node-bubble', 'idle');
           el.style.width = '';
           el.style.height = '';
           el.style.borderRadius = '30px';
+          // Trigger pop-in animation when first revealed from loading spinner state
+          if (lastStatus === 'loading') {
+            el.classList.remove('bubble-pop-in');
+            void el.offsetWidth; // force reflow to restart animation
+            el.classList.add('bubble-pop-in');
+            setTimeout(() => el.classList.remove('bubble-pop-in'), 500);
+          }
           el.innerHTML = `<span>${bubble.description || bubble.prompt}</span>`;
           
           el.onclick = () => {
@@ -1138,7 +1548,7 @@ function renderCanvasNodes(album) {
     }
 
     // Draw curved connection line
-    if (parentNode) {
+    if (parentNode && bubble.status !== 'loading') {
       const parentCenter = getNodeCenter(parentNode, cardW, cardH);
       const bubbleCenter = getNodeCenter(bubble, cardW, cardH);
       drawCurvedConnection(
@@ -1148,6 +1558,186 @@ function renderCanvasNodes(album) {
         svgOverlay
       );
     }
+  });
+
+  // Draw/update standalone input nodes
+  const standaloneInputs = nodes.filter(n => n.type === 'standalone-input');
+  standaloneInputs.forEach(node => {
+    existingNodeIds.add(`node-${node.id}`);
+    let el = document.getElementById(`node-${node.id}`);
+    const isNew = !el;
+    if (isNew) {
+      el = document.createElement('div');
+      el.id = `node-${node.id}`;
+    }
+
+    const lastStatus = el.getAttribute('data-status');
+    const lastType = el.getAttribute('data-type');
+
+    if (lastStatus !== node.status || lastType !== node.type) {
+      el.setAttribute('data-status', node.status);
+      el.setAttribute('data-type', node.type);
+
+      if (node.status === 'working') {
+        el.className = 'album-node album-node-bubble working';
+        el.style.width = '120px';
+        el.style.height = '36px';
+        el.style.borderRadius = '18px';
+        el.style.padding = '0';
+        el.style.background = '';
+        el.style.border = '';
+        el.style.boxShadow = '';
+        el.innerHTML = `<span>Working...</span>`;
+      } else if (node.status === 'generating') {
+        el.className = 'album-node album-node-bubble generating';
+        el.style.width = `${cardW}px`;
+        el.style.height = `${cardH}px`;
+        el.style.borderRadius = '14px';
+        el.style.padding = '10px';
+        el.style.background = '';
+        el.style.border = '';
+        el.style.boxShadow = '';
+        el.innerHTML = `<span class="album-placeholder-text">Generating...</span>`;
+      } else {
+        // Idle status: Capsule input matching app theme
+        el.className = `album-node album-node-bubble idle input-bubble standalone-input-capsule`;
+        el.style.width = '320px';
+        el.style.height = '36px';
+        el.style.borderRadius = '30px';
+        el.style.padding = '4px 6px 4px 12px';
+        el.style.background = '';
+        el.style.border = '';
+        el.style.boxShadow = '';
+        el.innerHTML = `
+          <button class="btn-delete-standalone" title="Delete Node" style="width: 26px; height: 26px; border-radius: 50%; background: rgba(239, 68, 68, 0.15); color: #f87171; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; margin-right: 8px; transition: all 0.2s;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 12px; height: 12px;">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+          </button>
+          <input type="text" class="album-bubble-input album-standalone-input" placeholder="Type prompt for standalone image..." style="width: 180px; flex: 1; min-width: 0;" />
+          <button class="btn-standalone-refine" title="Refine prompt and generate" style="width: 32px; height: 32px; border-radius: 50%; background: var(--accent-secondary, #06b6d4); color: #171717; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-left: 8px; box-shadow: 0 2px 6px rgba(6, 182, 212, 0.3); transition: all 0.2s;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width: 14px; height: 14px;">
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+              <polyline points="12 5 19 12 12 19"></polyline>
+            </svg>
+          </button>
+        `;
+
+        const textarea = el.querySelector('.album-standalone-input');
+        textarea.value = node.prompt || '';
+
+        textarea.addEventListener('input', () => {
+          node.prompt = textarea.value;
+          albumStore.updateNode(album.id, node.id, { prompt: textarea.value });
+        });
+
+        const refineBtn = el.querySelector('.btn-standalone-refine');
+        refineBtn.onclick = () => {
+          const text = textarea.value.trim();
+          if (!text) {
+            showToast('Please type a prompt first!', 'error');
+            return;
+          }
+          triggerStandaloneGeneration(album, node);
+        };
+
+        textarea.onkeydown = (e) => {
+          if (e.key === 'Enter') {
+            const text = textarea.value.trim();
+            if (!text) return;
+            triggerStandaloneGeneration(album, node);
+          }
+        };
+
+        const deleteBtn = el.querySelector('.btn-delete-standalone');
+        deleteBtn.onclick = () => {
+          albumStore.deleteNode(album.id, node.id).then(() => renderActiveAlbumWorkspace());
+        };
+      }
+    }
+
+    // Positions must be set on every render pass so pan/zoom works
+    el.style.left = `${node.x}px`;
+    el.style.top = `${node.y}px`;
+
+    if (isNew) canvas.appendChild(el);
+  });
+
+  // Draw/update comment nodes
+  const commentNodes = nodes.filter(n => n.type === 'comment');
+  commentNodes.forEach(node => {
+    existingNodeIds.add(`node-${node.id}`);
+    let el = document.getElementById(`node-${node.id}`);
+    const isNew = !el;
+    if (isNew) {
+      el = document.createElement('div');
+      el.id = `node-${node.id}`;
+    }
+
+    el.className = `album-node album-comment-node ${node.status}`;
+    el.style.left = `${node.x}px`;
+    el.style.top = `${node.y}px`;
+    el.style.width = '320px';
+    el.style.minHeight = '150px';
+    el.style.borderRadius = '16px';
+    el.style.padding = '16px';
+    el.style.display = 'flex';
+    el.style.flexDirection = 'column';
+    el.style.gap = '10px';
+    el.style.background = 'rgba(23, 23, 23, 0.85)';
+    el.style.backdropFilter = 'blur(12px)';
+    el.style.webkitBackdropFilter = 'blur(12px)';
+    el.style.border = '1px solid var(--border-light, rgba(148, 163, 184, 0.15))';
+    el.style.boxShadow = 'var(--shadow-lg)';
+
+    // Header
+    const titleHtml = `
+      <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.06)); padding-bottom: 8px;">
+        <span style="font-size: var(--text-xs); font-weight: 600; color: var(--accent-secondary, #06b6d4); display: flex; align-items: center; gap: 6px;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;">
+            <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
+          </svg>
+          AI Critique
+        </span>
+        ${node.status !== 'generating' ? `
+          <button class="btn-icon small btn-delete-comment" title="Delete Comment" style="color: var(--text-tertiary); background: transparent; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        ` : ''}
+      </div>
+    `;
+
+    // Content body
+    let bodyHtml = '';
+    if (node.status === 'generating' && !node.prompt) {
+      bodyHtml = `
+        <div style="display: flex; align-items: center; justify-content: center; height: 80px; color: var(--accent-secondary, #06b6d4);">
+          <div class="album-spinner" style="width: 16px; height: 16px; border-width: 2px; margin-right: 8px;"></div>
+          <span>Writing critique...</span>
+        </div>
+      `;
+    } else {
+      bodyHtml = `
+        <div style="font-size: 12.5px; line-height: 1.5; color: var(--text-primary); max-height: 250px; overflow-y: auto; padding-right: 4px;" class="album-comment-body-text">
+          ${renderMarkdown(node.prompt || '')}
+          ${node.status === 'generating' ? '<span class="streaming-cursor"></span>' : ''}
+        </div>
+      `;
+    }
+
+    el.innerHTML = titleHtml + bodyHtml;
+
+    const deleteBtn = el.querySelector('.btn-delete-comment');
+    if (deleteBtn) {
+      deleteBtn.onclick = () => {
+        albumStore.deleteNode(album.id, node.id).then(() => renderActiveAlbumWorkspace());
+      };
+    }
+
+    if (isNew) canvas.appendChild(el);
   });
 
   // Remove obsolete dynamic node elements from the canvas
@@ -1239,6 +1829,7 @@ function getNodeBox(node, cardW, cardH) {
 
 // Physics-based node overlap resolution with force pushes and smooth canvas transitions
 async function resolveNodeCollisions(album) {
+  if (album.sortMode && album.sortMode !== 'default') return;
   const nodes = album.nodes || [];
   if (nodes.length <= 1) return;
 
@@ -1392,12 +1983,12 @@ async function triggerBranchGeneration(album, bubbleNode) {
     const imageUrl = await generateImageComfyUI(finalPrompt, null, abortController.signal);
 
     // Phase 3: Transition Generating Card outline into the morphing image loader
-    const bubbleEl = document.getElementById(`node-${bubbleNode.id}`);
-    if (bubbleEl) {
-      bubbleEl.className = 'album-node album-node-image morphing';
-      bubbleEl.style.width = `${cardW}px`;
-      bubbleEl.style.height = `${cardH}px`;
-      bubbleEl.innerHTML = `<div class="album-spinner" style="margin: auto;"></div>`;
+    const bubbleElMorph = document.getElementById(`node-${bubbleNode.id}`);
+    if (bubbleElMorph) {
+      bubbleElMorph.className = 'album-node album-node-bubble morphing';
+      bubbleElMorph.style.width = `${cardW}px`;
+      bubbleElMorph.style.height = `${cardH}px`;
+      bubbleElMorph.innerHTML = `<div class="album-spinner" style="margin: auto;"></div>`;
     }
 
     await new Promise(r => setTimeout(r, 450)); // let card morph complete
@@ -1431,6 +2022,362 @@ async function triggerBranchGeneration(album, bubbleNode) {
     await albumStore.updateNode(album.id, bubbleNode.id, {
       status: 'idle'
     });
+  } finally {
+    isAlbumGenerating = false;
+    abortController = null;
+    renderActiveAlbumWorkspace();
+  }
+}
+
+// Helper to toggle card selection in selection mode
+function toggleCardSelection(nodeId) {
+  if (selectedNodeIds.has(nodeId)) {
+    selectedNodeIds.delete(nodeId);
+  } else {
+    selectedNodeIds.add(nodeId);
+  }
+  renderActiveAlbumWorkspace();
+}
+
+// Helper to cancel selection mode
+function cancelSelectionMode() {
+  selectionMode = null;
+  selectedNodeIds.clear();
+  const bar = document.getElementById('album-selection-bar');
+  if (bar) bar.classList.add('hidden');
+  const panel = document.querySelector('.album-bottom-panel');
+  if (panel) panel.classList.remove('selection-active');
+  renderActiveAlbumWorkspace();
+}
+
+// Spawns standalone card and runs generation
+async function triggerStandaloneGeneration(album, node) {
+  isAlbumGenerating = true;
+  abortController = new AbortController();
+
+  const settings = settingsStore.get();
+  const comW = settings.comfyui_width ?? 832;
+  const comH = settings.comfyui_height ?? 1216;
+  let cardW = 280, cardH = 380;
+  if (comW === comH) { cardW = 300; cardH = 300; }
+  else if (comW > comH) { cardW = 380; cardH = 260; }
+
+  showToast("AI Director is translating and expanding your prompt...");
+
+  // Phase 1: Set to working
+  await albumStore.updateNode(album.id, node.id, {
+    status: 'working'
+  });
+  renderActiveAlbumWorkspace();
+
+  try {
+    const processed = await processCustomUserPrompt(album, node.prompt);
+    node.prompt = processed.prompt;
+    node.description = processed.description;
+
+    const targetX = node.x - cardW / 4;
+    const targetY = node.y - cardH / 2 + 30;
+
+    // Phase 2: Expand to generating dimensions
+    await albumStore.updateNode(album.id, node.id, {
+      prompt: processed.prompt,
+      description: processed.description,
+      x: targetX,
+      y: targetY,
+      status: 'generating'
+    });
+
+    await resolveNodeCollisions(album);
+    renderActiveAlbumWorkspace();
+
+    // 3. Generate image via ComfyUI service
+    const finalPrompt = album.mandatoryTags 
+      ? `${album.mandatoryTags.trim()}, ${node.prompt.trim()}` 
+      : node.prompt.trim();
+
+    const imageUrl = await generateImageComfyUI(finalPrompt, null, abortController.signal);
+
+    // Phase 3: Transition to completed image node
+    const bubbleElMorph = document.getElementById(`node-${node.id}`);
+    if (bubbleElMorph) {
+      bubbleElMorph.className = 'album-node album-node-bubble morphing';
+      bubbleElMorph.style.width = `${cardW}px`;
+      bubbleElMorph.style.height = `${cardH}px`;
+      bubbleElMorph.innerHTML = `<div class="album-spinner" style="margin: auto;"></div>`;
+    }
+
+    await new Promise(r => setTimeout(r, 450)); // let card morph complete
+
+    // 4. Update node in store
+    await albumStore.updateNode(album.id, node.id, {
+      type: 'image',
+      x: targetX,
+      y: targetY,
+      imageUrl,
+      status: 'completed'
+    });
+
+    activeImageNodeId = node.id;
+
+    // Delete other non-image suggestions/bubbles to keep canvas clean
+    const activeAlbum = albumStore.getAlbum(album.id);
+    const obsoleteBubbles = activeAlbum.nodes.filter(n => n.type !== 'image');
+    for (const ob of obsoleteBubbles) {
+      await albumStore.deleteNode(album.id, ob.id);
+    }
+
+    // 5. Generate new suggestions branching from the newly generated standalone card!
+    await generateBranchSuggestions(album, node.id, node.prompt);
+
+  } catch (err) {
+    console.error("Standalone image generation failed:", err);
+    showToast("Generation failed. Click again to retry.", "error");
+
+    // Revert to idle standalone-input on failure
+    await albumStore.updateNode(album.id, node.id, {
+      status: 'idle'
+    });
+  } finally {
+    isAlbumGenerating = false;
+    abortController = null;
+    renderActiveAlbumWorkspace();
+  }
+}
+
+// Combined concept image generation
+async function triggerSimilarGeneration(album, selectedNodes) {
+  if (selectedNodes.length === 0) return;
+  const lastSelected = selectedNodes[selectedNodes.length - 1];
+
+  // Set activeImageNodeId to the correct parent card to clear and render suggestions on this card
+  activeImageNodeId = lastSelected.id;
+
+  // Clear out other temporary suggestion/input bubbles from the database
+  const obsoleteBubblesAtStart = (album.nodes || []).filter(n => n.type !== 'image' && n.type !== 'standalone-input' && n.type !== 'comment');
+  for (const ob of obsoleteBubblesAtStart) {
+    await albumStore.deleteNode(album.id, ob.id);
+  }
+
+  isAlbumGenerating = true;
+  abortController = new AbortController();
+
+  const settings = settingsStore.get();
+  const comW = settings.comfyui_width ?? 832;
+  const comH = settings.comfyui_height ?? 1216;
+  let cardW = 280, cardH = 380;
+  if (comW === comH) { cardW = 300; cardH = 300; }
+  else if (comW > comH) { cardW = 380; cardH = 260; }
+
+  // 1. Spawn bubble in working state
+  const nodeId = crypto.randomUUID();
+  const targetX = lastSelected.x + cardW + 80;
+  const targetY = lastSelected.y;
+
+  await albumStore.addNode(album.id, {
+    id: nodeId,
+    type: 'suggestion',
+    x: lastSelected.x + cardW / 2,
+    y: lastSelected.y + cardH / 2,
+    prompt: '',
+    description: 'Combining concepts...',
+    parentId: lastSelected.id,
+    status: 'working'
+  });
+  renderActiveAlbumWorkspace();
+  smoothPanTo(lastSelected.x + cardW / 2, lastSelected.y + cardH / 2);
+
+  try {
+    showToast("AI Director is blending the selected image styles...");
+
+    // 2. Fetch combined prompt from LLM
+    const descLanguage = album.language || 'Russian';
+    const systemInstructions = `You are a visual art director combining multiple visual concepts into a new coherent scene.
+Given the Album Theme, Album Description, and the detailed prompts of the selected images, combine their aesthetic, subject matter, style, and lighting into a single, unified, new creative image prompt.
+
+Album Theme: ${album.theme}
+Album Description: ${album.description}
+
+Selected Image Prompts:
+${selectedNodes.map((n, i) => `- Image ${i + 1}: ${n.prompt} (Description: ${n.description})`).join('\n')}
+
+You MUST return your response ONLY as a valid JSON object:
+{
+  "prompt": "Highly detailed expanded technical prompt in English combining the selected images...",
+  "description": "Short summary description in ${descLanguage} (under 8 words)."
+}
+Do not include any introductory remarks, greetings, or markdown code blocks. Just return the clean JSON object.`;
+
+    const messages = [
+      { role: 'system', content: systemInstructions },
+      { role: 'user', content: `Combine these ${selectedNodes.length} selected images.` }
+    ];
+
+    const response = await api.chatCompletion(messages, { temperature: 0.7, max_tokens: 512 });
+    let cleanText = response.trim();
+    if (cleanText.startsWith('```json')) {
+      cleanText = cleanText.replace(/^```json/m, '').replace(/```$/m, '').trim();
+    } else if (cleanText.startsWith('```')) {
+      cleanText = cleanText.replace(/^```/m, '').replace(/```$/m, '').trim();
+    }
+
+    const parsed = JSON.parse(cleanText);
+    const combinedPrompt = parsed.prompt;
+    const combinedDescription = parsed.description;
+
+    // 3. Move to target position and show as generating
+    await albumStore.updateNode(album.id, nodeId, {
+      prompt: combinedPrompt,
+      description: combinedDescription,
+      x: targetX,
+      y: targetY,
+      status: 'generating'
+    });
+    await resolveNodeCollisions(album);
+    renderActiveAlbumWorkspace();
+
+    // 4. Generate image via ComfyUI
+    const finalPrompt = album.mandatoryTags 
+      ? `${album.mandatoryTags.trim()}, ${combinedPrompt.trim()}` 
+      : combinedPrompt.trim();
+
+    const imageUrl = await generateImageComfyUI(finalPrompt, null, abortController.signal);
+
+    // 5. Morph transition
+    const bubbleEl = document.getElementById(`node-${nodeId}`);
+    if (bubbleEl) {
+      bubbleEl.className = 'album-node album-node-bubble morphing';
+      bubbleEl.style.width = `${cardW}px`;
+      bubbleEl.style.height = `${cardH}px`;
+      bubbleEl.innerHTML = `<div class="album-spinner" style="margin: auto;"></div>`;
+    }
+    await new Promise(r => setTimeout(r, 450));
+
+    // 6. Complete node
+    await albumStore.updateNode(album.id, nodeId, {
+      type: 'image',
+      x: targetX,
+      y: targetY,
+      imageUrl,
+      status: 'completed'
+    });
+
+    activeImageNodeId = nodeId;
+
+    // Delete obsolete non-image suggestions/bubbles
+    const activeAlbum = albumStore.getAlbum(album.id);
+    const obsoleteBubbles = activeAlbum.nodes.filter(n => n.type !== 'image');
+    for (const ob of obsoleteBubbles) {
+      await albumStore.deleteNode(album.id, ob.id);
+    }
+
+    // 7. Brainstorm follow-up visual ideas
+    await generateBranchSuggestions(album, nodeId, combinedPrompt);
+
+  } catch (err) {
+    console.error("Combined image generation failed:", err);
+    showToast("Generation failed.", "error");
+    await albumStore.deleteNode(album.id, nodeId);
+  } finally {
+    isAlbumGenerating = false;
+    abortController = null;
+    renderActiveAlbumWorkspace();
+  }
+}
+
+// Generate critique and storytelling note/comment card on the canvas
+async function triggerCommentGeneration(album, selectedNodes) {
+  if (selectedNodes.length === 0) return;
+  const lastSelected = selectedNodes[selectedNodes.length - 1];
+
+  // Set activeImageNodeId to the correct parent card to clear and render suggestions on this card
+  activeImageNodeId = lastSelected.id;
+
+  // Clear out other temporary suggestion/input bubbles from the database
+  const obsoleteBubblesAtStart = (album.nodes || []).filter(n => n.type !== 'image' && n.type !== 'standalone-input' && n.type !== 'comment');
+  for (const ob of obsoleteBubblesAtStart) {
+    await albumStore.deleteNode(album.id, ob.id);
+  }
+
+  isAlbumGenerating = true;
+  abortController = new AbortController();
+
+  const settings = settingsStore.get();
+  const comW = settings.comfyui_width ?? 832;
+  const comH = settings.comfyui_height ?? 1216;
+  let cardW = 280, cardH = 380;
+  if (comW === comH) { cardW = 300; cardH = 300; }
+  else if (comW > comH) { cardW = 380; cardH = 260; }
+
+  // 1. Spawn comment node on the canvas next to the last selected card
+  const commentNodeId = crypto.randomUUID();
+  const targetX = lastSelected.x + cardW + 80;
+  const targetY = lastSelected.y;
+
+  await albumStore.addNode(album.id, {
+    id: commentNodeId,
+    type: 'comment',
+    x: targetX,
+    y: targetY,
+    prompt: '', // This will hold the streamed markdown comment text
+    description: 'AI Comment',
+    parentId: lastSelected.id,
+    status: 'generating'
+  });
+  await resolveNodeCollisions(album);
+  renderActiveAlbumWorkspace();
+  smoothPanTo(targetX + 160, targetY + 100);
+
+  try {
+    showToast("AI critic is reviewing selected images...");
+
+    const descLanguage = album.language || 'Russian';
+    const systemInstructions = `You are a professional visual art critic, curator, and storyteller.
+Analyze the selection of images generated in this album and write an insightful, structured, and engaging critique/evaluation.
+Describe the prompts and subjects depicted, analyze how they connect to each other and to the overall album theme, and comment on their aesthetic quality, mood, and composition.
+
+Album Theme: ${album.theme}
+Album Description/Context: ${album.description}
+
+Selected Image Prompts and details:
+${selectedNodes.map((n, i) => `- Image ${i + 1}: ${n.prompt} (Description: ${n.description})`).join('\n')}
+
+Format your review with clear markdown headings and styling if appropriate. Use bullet points or short paragraphs for readability.
+Your critique must be written strictly in ${descLanguage}.
+Keep your review engaging, professional, and detailed.`;
+
+    const messages = [
+      { role: 'system', content: systemInstructions },
+      { role: 'user', content: `Please review these ${selectedNodes.length} selected images.` }
+    ];
+
+    let commentContent = '';
+    await api.streamChat(
+      messages,
+      abortController.signal,
+      (chunk) => {
+        commentContent += chunk;
+        albumStore.updateNode(album.id, commentNodeId, { prompt: commentContent });
+        renderActiveAlbumWorkspace();
+      },
+      async () => {
+        // Complete comment streaming
+        await albumStore.updateNode(album.id, commentNodeId, {
+          status: 'completed',
+          prompt: commentContent
+        });
+        renderActiveAlbumWorkspace();
+      },
+      (err) => {
+        console.error("Comment critique streaming error:", err);
+        showToast("Critique streaming failed.", "error");
+      },
+      { temperature: 0.7, max_tokens: 1024 }
+    );
+
+  } catch (err) {
+    console.error("Critique commentary generation failed:", err);
+    showToast("Failed to write critique.", "error");
+    await albumStore.deleteNode(album.id, commentNodeId);
   } finally {
     isAlbumGenerating = false;
     abortController = null;
