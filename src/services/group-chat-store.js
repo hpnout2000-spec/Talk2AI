@@ -24,10 +24,28 @@ export const groupChatStore = {
   // ─── Groups ──────────────────────────────────────────────────────
 
   async loadGroups() {
+    let parsedTauri = null;
+    let parsedLocal = null;
+
+    try {
+      const result = await invokeTauri('load_group_state');
+      if (result) parsedTauri = JSON.parse(result);
+    } catch (e) {
+      // Ignore
+    }
+
     try {
       const saved = localStorage.getItem(GROUPS_KEY);
-      if (saved) groups = JSON.parse(saved);
+      if (saved) parsedLocal = JSON.parse(saved);
     } catch (e) {
+      // Ignore
+    }
+
+    if (parsedTauri) {
+      groups = parsedTauri;
+    } else if (parsedLocal) {
+      groups = parsedLocal;
+    } else {
       groups = [];
     }
     return groups;
@@ -68,6 +86,12 @@ export const groupChatStore = {
       console.warn('Failed to save groups to localStorage', e);
     }
 
+    try {
+      await invokeTauri('save_group_state', { data: JSON.stringify(groups) });
+    } catch (e) {
+      // Ignore
+    }
+
     return groups.find(g => g.id === groupData.id);
   },
 
@@ -78,6 +102,13 @@ export const groupChatStore = {
       localStorage.setItem(GROUPS_KEY, JSON.stringify(groups));
       localStorage.removeItem(SESSIONS_KEY_PREFIX + id);
     } catch (e) {}
+
+    try {
+      await invokeTauri('save_group_state', { data: JSON.stringify(groups) });
+      await invokeTauri('delete_group_sessions', { groupId: id });
+    } catch (e) {
+      // Ignore
+    }
 
     if (activeGroupId === id) activeGroupId = null;
     if (currentGroupSession?.group_id === id) currentGroupSession = null;
@@ -106,11 +137,28 @@ export const groupChatStore = {
   async loadSessionsForGroup(groupId) {
     if (sessions.hasOwnProperty(groupId)) return sessions[groupId];
 
+    let parsedTauri = null;
+    let parsedLocal = null;
+
+    try {
+      const result = await invokeTauri('load_group_sessions', { groupId });
+      if (result) parsedTauri = JSON.parse(result);
+    } catch (e) {
+      // Ignore
+    }
+
     try {
       const saved = localStorage.getItem(SESSIONS_KEY_PREFIX + groupId);
-      if (saved) sessions[groupId] = JSON.parse(saved);
-      else sessions[groupId] = [];
+      if (saved) parsedLocal = JSON.parse(saved);
     } catch (e) {
+      // Ignore
+    }
+
+    if (parsedTauri) {
+      sessions[groupId] = parsedTauri;
+    } else if (parsedLocal) {
+      sessions[groupId] = parsedLocal;
+    } else {
       sessions[groupId] = [];
     }
 
@@ -221,12 +269,18 @@ export const groupChatStore = {
     if (!targetSession) return;
     const groupId = targetSession.group_id;
     const allSessions = sessions[groupId] || [];
+    const dataStr = JSON.stringify(allSessions);
 
     try {
-      const dataStr = JSON.stringify(allSessions);
       localStorage.setItem(SESSIONS_KEY_PREFIX + groupId, dataStr);
     } catch (e) {
-      console.warn('Failed to save group session', e);
+      console.warn('Failed to save group session to localStorage', e);
+    }
+
+    try {
+      await invokeTauri('save_group_sessions', { groupId, data: dataStr });
+    } catch (e) {
+      console.error('Failed to save group session via Tauri', e);
     }
   },
 
@@ -241,8 +295,14 @@ export const groupChatStore = {
     if (currentGroupSession?.id === sessionId) {
       currentGroupSession = null;
     }
+    const dataStr = JSON.stringify(sessions[groupId] || []);
+
     try {
-      localStorage.setItem(SESSIONS_KEY_PREFIX + groupId, JSON.stringify(sessions[groupId] || []));
+      localStorage.setItem(SESSIONS_KEY_PREFIX + groupId, dataStr);
+    } catch (e) {}
+
+    try {
+      await invokeTauri('save_group_sessions', { groupId, data: dataStr });
     } catch (e) {}
   },
 };

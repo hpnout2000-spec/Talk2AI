@@ -115,84 +115,158 @@ export async function checkComfyUIConnection(url) {
  * @param {object} [overrideSettings] - Optional settings override
  * @returns {Promise<string>} - Object URL of the generated image blob
  */
-export async function generateImageComfyUI(prompt, overrideSettings = null, signal = null) {
-  const settings = overrideSettings || settingsStore.get();
+export async function generateImageComfyUI(prompt, arg2 = null, arg3 = null, arg4 = null, arg5 = null) {
+  let overrideSettings = null;
+  let signal = null;
+  let onStatus = null;
+  let onPreview = null;
+
+  if (typeof arg2 === 'function') {
+    onStatus = arg2;
+    signal = arg3;
+    onPreview = arg4;
+  } else {
+    overrideSettings = arg2;
+    signal = arg3;
+    onStatus = arg4;
+    onPreview = arg5;
+  }
+
+  const settings = { ...settingsStore.get(), ...(overrideSettings || {}) };
   const baseUrl = (settings.comfyui_url || 'http://localhost:8188').replace(/\/$/, '');
   const negPrompt = settings.comfyui_negative_prompt || 'lowres, bad anatomy, worst quality, blurry';
   const clientId = `vibechat_${Date.now()}`;
 
   if (signal?.aborted) throw new Error('Image generation stopped by user');
 
-  // 1. Build workflow
-  const workflow = buildAnimaWorkflow(prompt, negPrompt, settings);
+  let ws = null;
+  try {
+    const wsUrl = baseUrl.replace(/^http/, 'ws') + `/ws?clientId=${clientId}`;
+    ws = new WebSocket(wsUrl);
+    ws.binaryType = "blob";
+    
+    ws.onmessage = async (event) => {
+      if (event.data instanceof Blob) {
+        if (onPreview) {
+          try {
+            const arrayBuffer = await event.data.arrayBuffer();
+            const imageBlob = new Blob([arrayBuffer.slice(8)], { type: 'image/jpeg' });
+            const imageUrl = URL.createObjectURL(imageBlob);
+            onPreview(imageUrl);
+          } catch (e) {
+            console.warn('Failed to parse binary preview:', e);
+          }
+        }
+      } else {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === 'executing') {
+            if (msg.data.node === '7') {
+              if (onStatus) onStatus('Running KSampler...');
+            } else if (msg.data.node === null) {
+              // Finished
+            } else {
+              if (onStatus) onStatus(`Running node ${msg.data.node}...`);
+            }
+          } else if (msg.type === 'progress') {
+            const { value, max } = msg.data;
+            if (onStatus) {
+              onStatus(`Generating: Step ${value}/${max}`);
+            }
+          }
+        } catch (e) {
+          // Ignore
+        }
+      }
+    };
 
-  // 2. Queue the prompt
-  const queueResp = await fetch(`${baseUrl}/prompt`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      client_id: clientId,
-      prompt: workflow
-    }),
-    signal
-  });
-
-  if (!queueResp.ok) {
-    const errText = await queueResp.text();
-    throw new Error(`ComfyUI queue error: ${queueResp.status} — ${errText}`);
+    if (signal) {
+      signal.addEventListener('abort', () => {
+        if (ws) {
+          try { ws.close(); } catch (e) {}
+        }
+      });
+    }
+  } catch (e) {
+    console.warn('Failed to establish ComfyUI WebSocket connection:', e);
   }
 
-  const { prompt_id: promptId } = await queueResp.json();
-  if (!promptId) throw new Error('No prompt_id returned from ComfyUI');
+  try {
+    // 1. Build workflow
+    const workflow = buildAnimaWorkflow(prompt, negPrompt, settings);
 
-  // 3. Poll /history until the image is ready (max 5 minutes)
-  const maxWaitMs = 5 * 60 * 1000;
-  const pollIntervalMs = 1000;
-  const startTime = Date.now();
-
-  while (Date.now() - startTime < maxWaitMs) {
-    if (signal?.aborted) throw new Error('Image generation stopped by user');
-
-    await new Promise((resolve, reject) => {
-      const timer = setTimeout(resolve, pollIntervalMs);
-      if (signal) {
-        signal.addEventListener('abort', () => {
-          clearTimeout(timer);
-          reject(new Error('Image generation stopped by user'));
-        });
-      }
+    // 2. Queue the prompt
+    const queueResp = await fetch(`${baseUrl}/prompt`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        client_id: clientId,
+        prompt: workflow
+      }),
+      signal
     });
 
-    if (signal?.aborted) throw new Error('Image generation stopped by user');
-
-    const histResp = await fetch(`${baseUrl}/history/${promptId}`, { signal });
-    if (!histResp.ok) continue;
-
-    const hist = await histResp.json();
-    const entry = hist[promptId];
-    if (!entry) continue;
-
-    // Check for error state
-    if (entry.status?.status_str === 'error') {
-      const errMsg = entry.status?.messages?.find(m => m[0] === 'error')?.[1]?.exception_message || 'Unknown ComfyUI error';
-      throw new Error(`ComfyUI generation error: ${errMsg}`);
+    if (!queueResp.ok) {
+      const errText = await queueResp.text();
+      throw new Error(`ComfyUI queue error: ${queueResp.status} — ${errText}`);
     }
 
-    // Check if outputs exist
-    if (entry.outputs) {
-      // Find the SaveImage node output (node "9")
-      const saveNode = entry.outputs['9'];
-      if (saveNode && saveNode.images && saveNode.images.length > 0) {
-        const img = saveNode.images[0];
-        const imageUrl = `${baseUrl}/view?filename=${encodeURIComponent(img.filename)}&subfolder=${encodeURIComponent(img.subfolder || '')}&type=${encodeURIComponent(img.type || 'output')}`;
+    const { prompt_id: promptId } = await queueResp.json();
+    if (!promptId) throw new Error('No prompt_id returned from ComfyUI');
 
-        // 4. Return the ComfyUI hosted image URL directly
-        return imageUrl;
+    // 3. Poll /history until the image is ready (max 5 minutes)
+    const maxWaitMs = 5 * 60 * 1000;
+    const pollIntervalMs = 1000;
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWaitMs) {
+      if (signal?.aborted) throw new Error('Image generation stopped by user');
+
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(resolve, pollIntervalMs);
+        if (signal) {
+          signal.addEventListener('abort', () => {
+            clearTimeout(timer);
+            reject(new Error('Image generation stopped by user'));
+          });
+        }
+      });
+
+      if (signal?.aborted) throw new Error('Image generation stopped by user');
+
+      const histResp = await fetch(`${baseUrl}/history/${promptId}`, { signal });
+      if (!histResp.ok) continue;
+
+      const hist = await histResp.json();
+      const entry = hist[promptId];
+      if (!entry) continue;
+
+      // Check for error state
+      if (entry.status?.status_str === 'error') {
+        const errMsg = entry.status?.messages?.find(m => m[0] === 'error')?.[1]?.exception_message || 'Unknown ComfyUI error';
+        throw new Error(`ComfyUI generation error: ${errMsg}`);
+      }
+
+      // Check if outputs exist
+      if (entry.outputs) {
+        // Find the SaveImage node output (node "9")
+        const saveNode = entry.outputs['9'];
+        if (saveNode && saveNode.images && saveNode.images.length > 0) {
+          const img = saveNode.images[0];
+          const imageUrl = `${baseUrl}/view?filename=${encodeURIComponent(img.filename)}&subfolder=${encodeURIComponent(img.subfolder || '')}&type=${encodeURIComponent(img.type || 'output')}`;
+
+          // 4. Return the ComfyUI hosted image URL directly
+          return imageUrl;
+        }
       }
     }
-  }
 
-  throw new Error('ComfyUI generation timed out after 5 minutes');
+    throw new Error('ComfyUI generation timed out after 5 minutes');
+  } finally {
+    if (ws) {
+      try { ws.close(); } catch (e) {}
+    }
+  }
 }
 
 /**
@@ -257,8 +331,8 @@ async function uploadImageToComfyUI(baseUrl, dataUrl) {
  * @param {AbortSignal} [signal] - optional abort signal
  * @returns {Promise<string>} - base64 data URL of the result image (transparent PNG)
  */
-export async function removeBackgroundComfyUI(dataUrl, overrideSettings = null, signal = null) {
-  const settings = overrideSettings || settingsStore.get();
+export async function removeBackgroundComfyUI(dataUrl, useAlphaFallback = false, overrideSettings = null, signal = null) {
+  const settings = { ...settingsStore.get(), ...(overrideSettings || {}) };
   const baseUrl = (settings.comfyui_url || 'http://localhost:8188').replace(/\/$/, '');
   const clientId = `vibechat_rembg_${Date.now()}`;
 
@@ -267,8 +341,7 @@ export async function removeBackgroundComfyUI(dataUrl, overrideSettings = null, 
   // 1. Upload image to ComfyUI
   const uploadedFilename = await uploadImageToComfyUI(baseUrl, dataUrl);
 
-  // 2. Build workflow using WAS Node Suite (Revised):
-  //    LoadImage → Image Rembg (Remove Background) → Image Save
+  // 2. Build workflow dynamically
   const workflow = {
     "1": {
       "class_type": "LoadImage",
@@ -276,8 +349,11 @@ export async function removeBackgroundComfyUI(dataUrl, overrideSettings = null, 
         "image": uploadedFilename,
         "upload": "image"
       }
-    },
-    "2": {
+    }
+  };
+
+  if (!useAlphaFallback) {
+    workflow["2"] = {
       "class_type": "Image Rembg (Remove Background)",
       "inputs": {
         "images": ["1", 0],
@@ -291,27 +367,38 @@ export async function removeBackgroundComfyUI(dataUrl, overrideSettings = null, 
         "alpha_matting_erode_size": 10,
         "background_color": "none"
       }
-    },
-    "3": {
-      "class_type": "Image Save",
+    };
+  } else {
+    workflow["2"] = {
+      "class_type": "Image Remove Background (Alpha)",
       "inputs": {
-        "images": ["2", 0],
-        "output_path": "",
-        "filename_prefix": "vibechat_rembg_out",
-        "filename_delimiter": "_",
-        "filename_number_padding": 4,
-        "filename_number_start": "false",
-        "extension": "png",
-        "dpi": 96,
-        "quality": 100,
-        "optimize_image": "false",
-        "lossless_webp": "false",
-        "overwrite_mode": "false",
-        "show_history": "false",
-        "show_history_by_prefix": "false",
-        "embed_workflow": "false",
-        "show_previews": "true"
+        "images": ["1", 0],
+        "mode": "background",
+        "threshold": 127,
+        "threshold_tolerance": 2
       }
+    };
+  }
+
+  workflow["3"] = {
+    "class_type": "Image Save",
+    "inputs": {
+      "images": ["2", 0],
+      "output_path": "",
+      "filename_prefix": "vibechat_rembg_out",
+      "filename_delimiter": "_",
+      "filename_number_padding": 4,
+      "filename_number_start": "false",
+      "extension": "png",
+      "dpi": 96,
+      "quality": 100,
+      "optimize_image": "false",
+      "lossless_webp": "false",
+      "overwrite_mode": "false",
+      "show_history": "false",
+      "show_history_by_prefix": "false",
+      "embed_workflow": "false",
+      "show_previews": "true"
     }
   };
 

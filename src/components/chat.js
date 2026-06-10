@@ -1672,7 +1672,59 @@ async function swipeGreeting(messageId, direction) {
 
 function scrollToBottom() {
   requestAnimationFrame(() => {
-    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    const messages = Array.from(messagesContainer.querySelectorAll('.message'));
+    if (messages.length > 0) {
+      const lastMsg = messages[messages.length - 1];
+      const containerRect = messagesContainer.getBoundingClientRect();
+      const lastRect = lastMsg.getBoundingClientRect();
+      
+      const lastBottom = lastRect.bottom - containerRect.top + messagesContainer.scrollTop;
+      const maxScrollTop = messagesContainer.scrollHeight - containerRect.height;
+      
+      let targetScrollTop = maxScrollTop;
+      
+      let lastUserMsg = null;
+      let lastAssistantMsg = null;
+      
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const msg = messages[i];
+        if (msg.classList.contains('user')) {
+          if (!lastUserMsg) lastUserMsg = msg;
+        } else {
+          if (!lastAssistantMsg) lastAssistantMsg = msg;
+        }
+        if (lastUserMsg && lastAssistantMsg) break;
+      }
+      
+      if (lastUserMsg && lastAssistantMsg) {
+        const userIndex = messages.indexOf(lastUserMsg);
+        const assistantIndex = messages.indexOf(lastAssistantMsg);
+        const firstEl = userIndex < assistantIndex ? lastUserMsg : lastAssistantMsg;
+        const lastEl = lastMsg;
+        
+        const firstRect = firstEl.getBoundingClientRect();
+        const lastRect = lastEl.getBoundingClientRect();
+        
+        const firstTop = firstRect.top - containerRect.top + messagesContainer.scrollTop;
+        const lastBottom = lastRect.bottom - containerRect.top + messagesContainer.scrollTop;
+        const combinedHeight = lastBottom - firstTop;
+        
+        if (combinedHeight < containerRect.height - 40) {
+          targetScrollTop = Math.max(0, firstTop - 20);
+          targetScrollTop = Math.min(targetScrollTop, maxScrollTop);
+        }
+      } else {
+        const lastTop = lastRect.top - containerRect.top + messagesContainer.scrollTop;
+        if (lastBottom - lastTop < containerRect.height - 40) {
+          targetScrollTop = Math.max(0, lastTop - 20);
+          targetScrollTop = Math.min(targetScrollTop, maxScrollTop);
+        }
+      }
+      
+      messagesContainer.scrollTop = targetScrollTop;
+    } else {
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
   });
 }
 window.scrollToBottom = scrollToBottom;
@@ -3109,11 +3161,37 @@ You MUST respond strictly in the following JSON format. Output ONLY raw JSON, do
 
   try {
     // 2. Generate the image via ComfyUI service with Abort Signal
-    const blobUrl = await generateImageComfyUI(parsed.prompt, null, appState.abortController.signal);
+    const blobUrl = await generateImageComfyUI(
+      parsed.prompt, 
+      null, 
+      appState.abortController.signal,
+      (status) => {
+        const activeLoaderText = document.querySelector('.chat-message:last-child .genai-working-text');
+        if (activeLoaderText) {
+          activeLoaderText.textContent = status;
+        }
+      },
+      (previewUrl) => {
+        const container = document.querySelector('.chat-message:last-child .live-preview-container');
+        const img = document.querySelector('.chat-message:last-child .live-preview-img');
+        if (container && img) {
+          container.classList.remove('hidden');
+          img.src = previewUrl;
+        }
+      }
+    );
 
     if (appState.abortController?.signal?.aborted) {
       cleanupState();
       return;
+    }
+
+    // Smooth transition from blur
+    const activePreviewImg = document.querySelector('.chat-message:last-child .live-preview-img');
+    if (activePreviewImg && activePreviewImg.src) {
+      activePreviewImg.style.filter = 'blur(0px)';
+      activePreviewImg.src = blobUrl;
+      await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
     // 3. Replace loading message with the final image markdown
@@ -3238,8 +3316,34 @@ async function triggerAutomaticImageGenerationWithPrompt(character, session, msg
   }
 
   try {
-    const blobUrl = await generateImageComfyUI(prompt, null, appState.abortController.signal);
+    const blobUrl = await generateImageComfyUI(
+      prompt, 
+      null, 
+      appState.abortController.signal,
+      (status) => {
+        const activeLoaderText = document.querySelector('.chat-message:last-child .genai-working-text');
+        if (activeLoaderText) {
+          activeLoaderText.textContent = status;
+        }
+      },
+      (previewUrl) => {
+        const container = document.querySelector('.chat-message:last-child .live-preview-container');
+        const img = document.querySelector('.chat-message:last-child .live-preview-img');
+        if (container && img) {
+          container.classList.remove('hidden');
+          img.src = previewUrl;
+        }
+      }
+    );
     if (appState.abortController?.signal?.aborted) { cleanupState(); return; }
+
+    // Smooth transition from blur
+    const activePreviewImg = document.querySelector('.chat-message:last-child .live-preview-img');
+    if (activePreviewImg && activePreviewImg.src) {
+      activePreviewImg.style.filter = 'blur(0px)';
+      activePreviewImg.src = blobUrl;
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
 
     msg.content = msg.original_text + `\n\n![${prompt}](${blobUrl})`;
     chatStore.saveCurrentSession();

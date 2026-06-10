@@ -304,6 +304,76 @@ fn load_genai_history() -> Result<String, String> {
     }
 }
 
+// ─── Game State Commands ───────────────────────────────────────────
+
+#[tauri::command]
+fn save_game_state(data: String) -> Result<(), String> {
+    let dir = get_app_dir();
+    ensure_dir(&dir);
+    let path = dir.join("games_state.json");
+    fs::write(&path, &data).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn load_game_state() -> Result<String, String> {
+    let path = get_app_dir().join("games_state.json");
+    if path.exists() {
+        fs::read_to_string(&path).map_err(|e| e.to_string())
+    } else {
+        Ok("".to_string())
+    }
+}
+
+// ─── Group Chat Commands ───────────────────────────────────────────
+
+#[tauri::command]
+fn save_group_state(data: String) -> Result<(), String> {
+    let dir = get_app_dir();
+    ensure_dir(&dir);
+    let path = dir.join("groups.json");
+    fs::write(&path, &data).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn load_group_state() -> Result<String, String> {
+    let path = get_app_dir().join("groups.json");
+    if path.exists() {
+        fs::read_to_string(&path).map_err(|e| e.to_string())
+    } else {
+        Ok("".to_string())
+    }
+}
+
+#[tauri::command]
+fn save_group_sessions(group_id: String, data: String) -> Result<(), String> {
+    let dir = get_app_dir().join("group_chats");
+    ensure_dir(&dir);
+    let path = dir.join(format!("{}.json", group_id));
+    fs::write(&path, &data).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn load_group_sessions(group_id: String) -> Result<String, String> {
+    let path = get_app_dir().join("group_chats").join(format!("{}.json", group_id));
+    if path.exists() {
+        fs::read_to_string(&path).map_err(|e| e.to_string())
+    } else {
+        Ok("".to_string())
+    }
+}
+
+#[tauri::command]
+fn delete_group_sessions(group_id: String) -> Result<(), String> {
+    let path = get_app_dir().join("group_chats").join(format!("{}.json", group_id));
+    if path.exists() {
+        fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 // ─── Skills Commands ────────────────────────────────────────────────
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -357,6 +427,17 @@ fn ensure_default_skills() {
 }"#;
         fs::write(&internet_path, content).ok();
     }
+
+    // Skill 4: App Settings
+    let app_settings_path = dir.join("App Settings.json");
+    if !app_settings_path.exists() {
+        let content = r#"{
+  "name": "App Settings",
+  "description": "VibeChatting Application Settings Guide and Key-Value Options",
+  "settings": []
+}"#;
+        fs::write(&app_settings_path, content).ok();
+    }
 }
 
 #[tauri::command]
@@ -373,7 +454,7 @@ fn load_skills() -> Result<String, String> {
                 if ext == "txt" || ext == "json" {
                     let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("").to_string();
                     let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("").to_string();
-                    let is_default = filename == "VibeChatting Guide.txt" || filename == "GenAI Features.json" || filename == "Internet Browser.json";
+                    let is_default = filename == "VibeChatting Guide.txt" || filename == "GenAI Features.json" || filename == "Internet Browser.json" || filename == "App Settings.json";
                     
                     if let Ok(content) = fs::read_to_string(&path) {
                         skills.push(SkillInfo {
@@ -396,7 +477,7 @@ fn save_skill(filename: String, content: String) -> Result<(), String> {
     let dir = get_app_dir().join("skills");
     ensure_dir(&dir);
     
-    let is_default = filename == "VibeChatting Guide.txt" || filename == "GenAI Features.json" || filename == "Internet Browser.json";
+    let is_default = filename == "VibeChatting Guide.txt" || filename == "GenAI Features.json" || filename == "Internet Browser.json" || filename == "App Settings.json";
     if is_default {
         return Err("Cannot overwrite default skills".to_string());
     }
@@ -412,7 +493,7 @@ fn save_skill(filename: String, content: String) -> Result<(), String> {
 
 #[tauri::command]
 fn delete_skill(filename: String) -> Result<(), String> {
-    let is_default = filename == "VibeChatting Guide.txt" || filename == "GenAI Features.json" || filename == "Internet Browser.json";
+    let is_default = filename == "VibeChatting Guide.txt" || filename == "GenAI Features.json" || filename == "Internet Browser.json" || filename == "App Settings.json";
     if is_default {
         return Err("Cannot delete default skills".to_string());
     }
@@ -951,6 +1032,13 @@ pub fn run() {
             load_settings,
             save_genai_history,
             load_genai_history,
+            save_game_state,
+            load_game_state,
+            save_group_state,
+            load_group_state,
+            save_group_sessions,
+            load_group_sessions,
+            delete_group_sessions,
             load_skills,
             save_skill,
             delete_skill,

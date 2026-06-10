@@ -67,12 +67,16 @@ export const gameStore = {
   },
 
   async save() {
+    const dataStr = JSON.stringify(gamesState);
     try {
-      const dataStr = JSON.stringify(gamesState);
       localStorage.setItem('llmchat_games_state', dataStr);
+    } catch (e) {
+      console.warn('Failed to save game state to localStorage', e);
+    }
+    try {
       await invokeTauri('save_game_state', { data: dataStr });
     } catch (e) {
-      console.warn('Failed to save game state', e);
+      console.error('Failed to save game state via Tauri', e);
     }
   },
 

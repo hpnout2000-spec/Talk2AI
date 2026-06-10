@@ -62,6 +62,16 @@ export const chatStore = {
       }
     });
 
+    // If running in Tauri and we successfully queried the backend, any session not in parsedTauri was deleted.
+    if (window.__TAURI_INTERNALS__ && Array.isArray(parsedTauri)) {
+      const tauriIds = new Set(parsedTauri.map(s => s.id));
+      for (const id of mergedMap.keys()) {
+        if (!tauriIds.has(id)) {
+          mergedMap.delete(id);
+        }
+      }
+    }
+
     sessions[characterId] = Array.from(mergedMap.values()).sort((a, b) => {
       return new Date(b.updated_at || 0) - new Date(a.updated_at || 0);
     });

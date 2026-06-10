@@ -396,7 +396,64 @@ async function regenerateGroupResponse(oldMsg, el) {
 }
 
 function clearGroupMessages() { messagesContainer.innerHTML = '<div class="empty-state"><h2>Group Chat</h2><p>Send a message!</p></div>'; }
-function scrollGroupToBottom() { requestAnimationFrame(() => { if (messagesContainer) messagesContainer.scrollTop = messagesContainer.scrollHeight; }); }
+function scrollGroupToBottom() {
+  requestAnimationFrame(() => {
+    if (!messagesContainer) return;
+    const messages = Array.from(messagesContainer.querySelectorAll('.group-message'));
+    if (messages.length > 0) {
+      const lastMsg = messages[messages.length - 1];
+      const containerRect = messagesContainer.getBoundingClientRect();
+      const lastRect = lastMsg.getBoundingClientRect();
+      
+      const lastBottom = lastRect.bottom - containerRect.top + messagesContainer.scrollTop;
+      const maxScrollTop = messagesContainer.scrollHeight - containerRect.height;
+      
+      let targetScrollTop = maxScrollTop;
+      
+      let lastUserMsg = null;
+      let lastAssistantMsg = null;
+      
+      for (let i = messages.length - 1; i >= 0; i--) {
+        const msg = messages[i];
+        if (msg.classList.contains('user')) {
+          if (!lastUserMsg) lastUserMsg = msg;
+        } else {
+          if (!lastAssistantMsg) lastAssistantMsg = msg;
+        }
+        if (lastUserMsg && lastAssistantMsg) break;
+      }
+      
+      if (lastUserMsg && lastAssistantMsg) {
+        const userIndex = messages.indexOf(lastUserMsg);
+        const assistantIndex = messages.indexOf(lastAssistantMsg);
+        const firstEl = userIndex < assistantIndex ? lastUserMsg : lastAssistantMsg;
+        const lastEl = lastMsg;
+        
+        const firstRect = firstEl.getBoundingClientRect();
+        const lastRect = lastEl.getBoundingClientRect();
+        
+        const firstTop = firstRect.top - containerRect.top + messagesContainer.scrollTop;
+        const lastBottom = lastRect.bottom - containerRect.top + messagesContainer.scrollTop;
+        const combinedHeight = lastBottom - firstTop;
+        
+        if (combinedHeight < containerRect.height - 40) {
+          targetScrollTop = Math.max(0, firstTop - 20);
+          targetScrollTop = Math.min(targetScrollTop, maxScrollTop);
+        }
+      } else {
+        const lastTop = lastRect.top - containerRect.top + messagesContainer.scrollTop;
+        if (lastBottom - lastTop < containerRect.height - 40) {
+          targetScrollTop = Math.max(0, lastTop - 20);
+          targetScrollTop = Math.min(targetScrollTop, maxScrollTop);
+        }
+      }
+      
+      messagesContainer.scrollTop = targetScrollTop;
+    } else {
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+  });
+}
 
 export function renderGroupHeader(group) {
   if (!group) return;

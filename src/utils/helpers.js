@@ -61,18 +61,30 @@ export function renderMarkdown(text) {
   // Custom Image Loader syntax: [[loader:status1|status2|...]]
   html = html.replace(/\[\[loader:(.*?)\]\]/g, (match, statusStr) => {
     const statuses = statusStr.split('|').map(s => s.trim()).filter(Boolean);
-    if (statuses.length === 1) {
-      return `<div class="chat-image-loader" style="margin-top: 12px; display: flex; align-items: center; gap: 8px; animation: fadeIn 0.3s ease;"><div class="genai-working-dots" style="display:flex; gap:3px;"><span></span><span></span><span></span></div><span class="genai-working-text" style="font-size: var(--text-xs); font-style: italic; margin-left: 4px;">${statuses[0]}</span></div>`;
-    }
+    let loaderHeaderHtml = '';
     
-    // Multi-status loader
-    const spans = statuses.map((s, i) => `<span class="chat-image-loader-status ${i === 0 ? 'active' : ''}">${s}</span>`).join('');
-    return `<div class="chat-image-loader multi-status-loader" data-statuses-count="${statuses.length}" style="margin-top: 12px; display: flex; align-items: center; gap: 8px; animation: fadeIn 0.3s ease;">
-      <div class="genai-working-dots" style="display:flex; gap:3px;"><span></span><span></span><span></span></div>
-      <div class="chat-image-loader-statuses" style="margin-left: 4px;">
-        ${spans}
+    if (statuses.length === 1) {
+      loaderHeaderHtml = `<div style="display: flex; align-items: center; gap: 8px;">
+        <div class="genai-working-dots" style="display:flex; gap:3px;"><span></span><span></span><span></span></div>
+        <span class="genai-working-text" style="font-size: var(--text-xs); font-style: italic; margin-left: 4px;">${statuses[0]}</span>
+      </div>`;
+    } else {
+      // Multi-status loader
+      const spans = statuses.map((s, i) => `<span class="chat-image-loader-status ${i === 0 ? 'active' : ''}">${s}</span>`).join('');
+      loaderHeaderHtml = `<div class="multi-status-loader" data-statuses-count="${statuses.length}" style="display: flex; align-items: center; gap: 8px;">
+        <div class="genai-working-dots" style="display:flex; gap:3px;"><span></span><span></span><span></span></div>
+        <div class="chat-image-loader-statuses" style="margin-left: 4px;">
+          ${spans}
+        </div>
+        <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onload="if(!this.dataset.inited && window.initStatusRotation){this.dataset.inited='1'; window.initStatusRotation(this.parentElement);}" style="display:none;">
+      </div>`;
+    }
+
+    return `<div class="chat-image-loader" style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px; animation: fadeIn 0.3s ease;">
+      ${loaderHeaderHtml}
+      <div class="live-preview-container hidden" style="position: relative; max-width: 360px; width: 100%; border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border-light); background: rgba(0,0,0,0.15);">
+        <img class="live-preview-img" style="width: 100%; height: auto; filter: blur(8px); transition: filter 1s ease, transform 0.5s ease; display: block;">
       </div>
-      <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" onload="if(!this.dataset.inited && window.initStatusRotation){this.dataset.inited='1'; window.initStatusRotation(this.parentElement);}" style="display:none;">
     </div>`;
   });
 

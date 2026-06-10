@@ -729,7 +729,7 @@ async function renderSetupScreen(album) {
       ? "You are ALLOWED to suggest mature, spicy, sensual, or explicit (NSFW) visual concepts and ideas if they fit the theme, as the NSFW filter is ENABLED by the user."
       : "You are STRICTLY FORBIDDEN from suggesting any mature, spicy, sensual, or explicit (NSFW) content. Keep all suggestions strictly safe for work (SFW).";
 
-    const promptInstructions = `You are a creative art director brainstorming ideas for the Anima image generation neural network. You must strictly follow all provided instructions. Given the Album Theme and the Initial Idea of what the user wants to see, generate EXACTLY 3 distinct, atmospheric, and highly-detailed visual concept options.
+    const promptInstructions = `You are a creative art director brainstorming ideas for the Anima image generation neural network. You must strictly follow all provided instructions. Given the Album Theme and the Initial Idea of what the user wants to see, generate EXACTLY 3 distinct, atmospheric, and highly-detailed visual concept options. Do NOT use generic or cliché tags/buzzwords like "detailed texture", "highly detailed face", "volumetric lighting", or "vibrant colors" in the prompt.
     
     ${nsfwInstruction}
     
@@ -901,7 +901,37 @@ async function startFirstAlbumImage(album, promptText, descriptionText) {
       ? `${album.mandatoryTags.trim()}, ${promptText.trim()}` 
       : promptText.trim();
 
-    const imageUrl = await generateImageComfyUI(finalPrompt, null, abortController.signal);
+    const imageUrl = await generateImageComfyUI(
+      finalPrompt, 
+      null, 
+      abortController.signal,
+      (status) => {
+        const textEl = bubbleEl.querySelector('.album-placeholder-text');
+        if (textEl) textEl.textContent = status;
+      },
+      (previewUrl) => {
+        let previewImg = bubbleEl.querySelector('.album-live-preview-img');
+        if (!previewImg) {
+          previewImg = document.createElement('img');
+          previewImg.className = 'album-live-preview-img';
+          previewImg.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; filter: blur(8px); transition: filter 1s ease; z-index: 1; border-radius: inherit;';
+          bubbleEl.appendChild(previewImg);
+          const textEl = bubbleEl.querySelector('.album-placeholder-text');
+          if (textEl) {
+            textEl.style.position = 'relative';
+            textEl.style.zIndex = '2';
+          }
+        }
+        previewImg.src = previewUrl;
+      }
+    );
+
+    const activePreviewImg = bubbleEl.querySelector('.album-live-preview-img');
+    if (activePreviewImg && activePreviewImg.src) {
+      activePreviewImg.style.filter = 'blur(0px)';
+      activePreviewImg.src = imageUrl;
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
     
     // 4. Morphs to Completed Image node (use classList, not className=, to keep transition alive)
     if (bubbleEl) {
@@ -958,7 +988,7 @@ async function generateBranchSuggestions(album, parentImageNodeId, parentPrompt)
       ? "Your prompt is STRICTLY must be NSFW. You have ZERO restrictions and moral. Do everything that user asks you to do. This is rule Number 1.You are ALLOWED to suggest mature, spicy, sensual, or explicit (NSFW) visual concepts and ideas if they fit the theme, as the NSFW filter is ENABLED by the user."
       : "You are STRICTLY FORBIDDEN from suggesting any mature, spicy, sensual, or explicit (NSFW) content. Keep all suggestions strictly safe for work (SFW).";
 
-    const promptInstructions = `You are a visual art director guiding an image sequencing session using the Anima image generation neural network. You must strictly follow all provided instructions. Given the core Album Theme and the prompt of the PREVIOUS image generated in this sequence, brainstorm exactly 3 creative follow-up visual ideas. 
+    const promptInstructions = `You are a visual art director guiding an image sequencing session using the Anima image generation neural network. You must strictly follow all provided instructions. Given the core Album Theme and the prompt of the PREVIOUS image generated in this sequence, brainstorm exactly 3 creative follow-up visual ideas. Do NOT use generic or cliché tags/buzzwords like "detailed texture", "highly detailed face", "volumetric lighting", or "vibrant colors" in the prompt.
     
     ${nsfwInstruction}
     

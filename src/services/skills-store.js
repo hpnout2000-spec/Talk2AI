@@ -1,6 +1,24 @@
-/* ════════════════════════════════════════════════════════════════════
-   Skills Store — Service to manage GenAI Skills
-   ════════════════════════════════════════════════════════════════════ */
+import { settingsStore, SETTING_META } from './settings-store.js';
+
+function getAppSettingsContent() {
+  const settings = settingsStore.get();
+  const settingsList = Object.entries(SETTING_META).map(([key, meta]) => {
+    const val = settings[key];
+    return {
+      key,
+      label: meta.label,
+      type: meta.type,
+      values: meta.values || undefined,
+      value: val
+    };
+  });
+  return JSON.stringify({
+    name: "App Settings",
+    description: "VibeChatting Application Settings Guide and Key-Value Options",
+    settings: settingsList
+  }, null, 2);
+}
+
 
 async function invokeTauri(cmd, args = {}) {
   if (window.__TAURI_INTERNALS__) {
@@ -42,7 +60,14 @@ export const skillsStore = {
     try {
       const result = await invokeTauri('load_skills');
       if (result) {
-        return JSON.parse(result);
+        let skills = JSON.parse(result);
+        skills = skills.map(s => {
+          if (s.filename === 'App Settings.json') {
+            s.content = getAppSettingsContent();
+          }
+          return s;
+        });
+        return skills;
       }
     } catch (e) {
       console.warn('Tauri load skills failed, using fallback:', e);
@@ -79,6 +104,12 @@ export const skillsStore = {
         filename: 'Internet Browser.json',
         is_default: true,
         content: DEFAULT_INTERNET_CONTENT
+      },
+      {
+        name: 'App Settings',
+        filename: 'App Settings.json',
+        is_default: true,
+        content: getAppSettingsContent()
       }
     ];
 
@@ -103,7 +134,7 @@ export const skillsStore = {
     const name = filename.replace(/\.(txt|json)$/i, '');
     
     // Check if default
-    if (filename === 'VibeChatting Guide.txt' || filename === 'GenAI Features.json' || filename === 'Internet Browser.json') {
+    if (filename === 'VibeChatting Guide.txt' || filename === 'GenAI Features.json' || filename === 'Internet Browser.json' || filename === 'App Settings.json') {
       throw new Error('Cannot overwrite default skills');
     }
 
@@ -141,7 +172,7 @@ export const skillsStore = {
   },
 
   async deleteSkill(filename) {
-    if (filename === 'VibeChatting Guide.txt' || filename === 'GenAI Features.json' || filename === 'Internet Browser.json') {
+    if (filename === 'VibeChatting Guide.txt' || filename === 'GenAI Features.json' || filename === 'Internet Browser.json' || filename === 'App Settings.json') {
       throw new Error('Cannot delete default skills');
     }
 

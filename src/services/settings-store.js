@@ -138,3 +138,26 @@ export const settingsStore = {
     settings[key] = value;
   },
 };
+
+export const SETTING_META = {
+  ai_comments_enabled: { label: 'AI Comments', type: 'bool' },
+  suggestions_enabled: { label: 'AI Suggestions', type: 'bool' },
+  auto_translate: { label: 'Auto Translation', type: 'bool' },
+  translate_user_messages: { label: 'Translate User Input', type: 'bool' },
+  memory_enabled: { label: 'Auto Memory', type: 'bool' },
+  italic_asterisks: { label: 'Italicize Actions (*)', type: 'bool' },
+  target_language: { label: 'AI Output Language', type: 'string' },
+  outgoing_target_language: { label: 'User Input Target Lang', type: 'string' },
+  suggestions_language: { label: 'Suggestions Language', type: 'string' },
+  ai_comments_language: { label: 'AI Comment Language', type: 'string' },
+  user_name: { label: "User's Name", type: 'string' },
+  font_size: { label: 'Font Size (px)', type: 'number' },
+  genai_response_length: { label: 'GenAI Response Length', type: 'enum', values: ['short', 'default', 'long'] },
+  genai_speech_style: { label: 'GenAI Speech Style', type: 'enum', values: ['default', 'official'] },
+  genai_safe_mode: { label: 'GenAI Safe Mode', type: 'bool' },
+  game_system_prompt: { label: 'Game Master Prompt', type: 'string' },
+  game_response_length: { label: 'Game Response Length', type: 'enum', values: ['short', 'default', 'long'] },
+  max_tokens: { label: 'Max Tokens', type: 'number' },
+  temperature: { label: 'Temperature', type: 'number' },
+};
+

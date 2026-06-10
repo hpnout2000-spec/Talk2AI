@@ -41,21 +41,39 @@ Send message to user (shown briefly while working, auto-removed when done):
 Show final result to user (ends the session):
 {"tool":"show_img","imageId":"img_007"}
 
+Pass text result or analysis to the main GenAI without showing an image (ends the session):
+{"tool":"exitred","message":"The character is wearing a red hat."}
+
 RULES:
 - Always generate_image before any editing operation if you need a base image.
+- When calling generate_image, you MUST strictly avoid using generic quality tags or buzzwords in the prompt, such as "detailed texture", "highly detailed face", "volumetric lighting", or "vibrant colors".
 - When compositing people on a background: 1) generate person WITH "pure white background" in prompt, 2) remove_background, 3) generate background, 4) composite person onto background.
 - IMPORTANT: When generating a character for background removal, always add "white background, pure white background, simple white background" to the prompt and "complex background, detailed background" to neg_prompt. This ensures the canvas fallback works correctly if the AI rembg node is unavailable.
 - remove_background always works: it uses AI rembg if available, or canvas-based white-bg removal as fallback. Never skip it.
 - Use show_msg_to_user for significant milestones only (messages auto-disappear when done).
-- End ALWAYS with show_img
+- End ALWAYS with either show_img or exitred
 - Image IDs come from tool results, not invented.
 - Current available images are provided after each tool result.`;
 }
 
-export async function runImageEditorAgent(task, onStatus, onMessage, onImage, signal) {
+export async function runImageEditorAgent(task, onStatus, onMessage, onImage, signal, onExitRed) {
+  const sentImageIds = new Set();
+
+  function buildVisionContent(text) {
+    const newImages = imageSessionStore.getAll().filter(entry => !sentImageIds.has(entry.id));
+    if (newImages.length === 0) return text;
+
+    const content = [{ type: 'text', text }];
+    for (const img of newImages) {
+      content.push({ type: 'image_url', image_url: { url: img.dataUrl } });
+      sentImageIds.add(img.id);
+    }
+    return content;
+  }
+
   const history = [
     { role: 'system', content: buildImageEditorSystemPrompt() },
-    { role: 'user', content: `Task: ${task}` }
+    { role: 'user', content: buildVisionContent(`Task: ${task}\n\n${imageSessionStore.toContextString()}`) }
   ];
   
   let iterations = 0;
@@ -94,7 +112,7 @@ export async function runImageEditorAgent(task, onStatus, onMessage, onImage, si
       
       action = JSON.parse(jsonStr);
     } catch (e) {
-      history.push({ role: 'user', content: `Error parsing JSON tool call. Please respond ONLY with a valid JSON object matching the requested tool formats. Error: ${e.message}`});
+      history.push({ role: 'user', content: buildVisionContent(`Error parsing JSON tool call. Please respond ONLY with a valid JSON object matching the requested tool formats. Error: ${e.message}`)});
       continue;
     }
 
@@ -104,13 +122,18 @@ export async function runImageEditorAgent(task, onStatus, onMessage, onImage, si
 
     if (action.tool === 'show_msg_to_user') {
       onMessage(action.message);
-      history.push({ role: 'user', content: `[User acknowledged message]\n\n${imageSessionStore.toContextString()}` });
+      history.push({ role: 'user', content: buildVisionContent(`[User acknowledged message]\n\n${imageSessionStore.toContextString()}`) });
       continue;
     }
 
     if (action.tool === 'show_img') {
       const entry = imageSessionStore.get(action.imageId);
       if (entry) onImage(entry.dataUrl, action.imageId);
+      break;
+    }
+
+    if (action.tool === 'exitred') {
+      if (onExitRed) onExitRed(action.message);
       break;
     }
 
@@ -149,7 +172,7 @@ export async function runImageEditorAgent(task, onStatus, onMessage, onImage, si
 
     history.push({
       role: 'user',
-      content: `Tool "${action.tool}" result: ${JSON.stringify(result)}\n\n${imageSessionStore.toContextString()}`
+      content: buildVisionContent(`Tool "${action.tool}" result: ${JSON.stringify(result)}\n\n${imageSessionStore.toContextString()}`)
     });
   }
 }

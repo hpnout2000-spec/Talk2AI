@@ -18,7 +18,7 @@ export function loadImageFromDataUrl(dataUrl) {
 }
 
 // Helper to convert ComfyUI URL to base64 DataUrl to avoid Canvas tainting
-async function fetchAsBase64(url) {
+export async function fetchAsBase64(url) {
   try {
     const response = await fetch(url);
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -60,33 +60,100 @@ export async function generateImageTool(prompt, negPrompt, width, height) {
 }
 
 /**
- * Canvas-based white background removal fallback.
- * Works well for images generated with a white/near-white background.
+ * Canvas-based background removal using BFS flood-fill from image edges.
+ * Based on the Marinara Engine approach: marks background pixels starting from
+ * the borders, then soft-erases them while preserving interior white areas
+ * (teeth, eyes, clothes, etc.).
+ *
  * @param {string} dataUrl - input image data URL
- * @param {number} threshold - 0-255, pixels brighter than this are removed (default 230)
+ * @param {number} strength - 0-100, cleanup aggressiveness (default 50)
  * @returns {Promise<string>} - PNG data URL with transparent background
  */
-async function removeWhiteBackgroundCanvas(dataUrl, threshold = 230) {
+async function removeWhiteBackgroundCanvas(dataUrl, strength = 50) {
   const img = await loadImageFromDataUrl(dataUrl);
+  const w = img.width;
+  const h = img.height;
+
   const canvas = document.createElement('canvas');
-  canvas.width = img.width;
-  canvas.height = img.height;
+  canvas.width = w;
+  canvas.height = h;
   const ctx = canvas.getContext('2d');
   ctx.drawImage(img, 0, 0);
 
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const data = imageData.data;
+  const imageData = ctx.getImageData(0, 0, w, h);
+  const d = imageData.data;
 
-  for (let i = 0; i < data.length; i += 4) {
-    const r = data[i];
-    const g = data[i + 1];
-    const b = data[i + 2];
-    // Remove pixels that are near-white
-    if (r > threshold && g > threshold && b > threshold) {
-      // Soft edge: partially transparent for pixels in the 200-threshold range
-      const brightness = (r + g + b) / 3;
-      const alpha = Math.round(((255 - brightness) / (255 - threshold)) * 255 * 3);
-      data[i + 3] = Math.max(0, Math.min(255, alpha));
+  // Thresholds based on strength
+  const hardCutoff = 14 + (strength / 100) * 32;  // 14..46
+  const softCutoff = hardCutoff + 30 + (strength / 100) * 42; // 44..118
+
+  // Helper: is pixel near-white/matte?
+  function isMattePixel(idx) {
+    const r = d[idx], g = d[idx + 1], b = d[idx + 2];
+    const brightness = (r + g + b) / 3;
+    const spread = Math.max(r, g, b) - Math.min(r, g, b);
+    return brightness > (255 - softCutoff) && spread < 40;
+  }
+
+  // --- Phase 1: BFS flood-fill from edges to mark background ---
+  const bgMask = new Uint8Array(w * h); // 0 = foreground, 1 = background
+  const queue = new Int32Array(w * h);
+  let qStart = 0, qEnd = 0;
+
+  const enqueue = (px) => {
+    if (bgMask[px] === 0 && isMattePixel(px * 4)) {
+      bgMask[px] = 1;
+      queue[qEnd++] = px;
+    }
+  };
+
+  // Seed from all 4 edges
+  for (let x = 0; x < w; x++) {
+    enqueue(x);             // top row
+    enqueue((h - 1) * w + x); // bottom row
+  }
+  for (let y = 0; y < h; y++) {
+    enqueue(y * w);         // left col
+    enqueue(y * w + w - 1); // right col
+  }
+
+  // BFS expand
+  while (qStart < qEnd) {
+    const px = queue[qStart++];
+    const x = px % w;
+    const y = Math.floor(px / w);
+    if (x > 0)     enqueue(px - 1);
+    if (x < w - 1) enqueue(px + 1);
+    if (y > 0)     enqueue(px - w);
+    if (y < h - 1) enqueue(px + w);
+  }
+
+  // --- Phase 2: Apply transparency + edge decontamination ---
+  const edgeRestoreWeight = Math.max(0, (62 - strength) / 85) * 0.55;
+
+  for (let py = 0; py < h; py++) {
+    for (let px = 0; px < w; px++) {
+      const idx = (py * w + px) * 4;
+      const pxIndex = py * w + px;
+
+      if (bgMask[pxIndex] === 1) {
+        // Background pixel: make transparent, softness based on distance from hard cutoff
+        const brightness = (d[idx] + d[idx + 1] + d[idx + 2]) / 3;
+        const t = Math.max(0, Math.min(1, (brightness - (255 - softCutoff)) / (softCutoff - hardCutoff)));
+        d[idx + 3] = Math.round(d[idx + 3] * (1 - t));
+      } else if (edgeRestoreWeight > 0) {
+        // Foreground pixel near edge: slightly desaturate contamination from matte
+        let hasBgNeighbor = false;
+        if (px > 0 && bgMask[pxIndex - 1]) hasBgNeighbor = true;
+        else if (px < w - 1 && bgMask[pxIndex + 1]) hasBgNeighbor = true;
+        else if (py > 0 && bgMask[pxIndex - w]) hasBgNeighbor = true;
+        else if (py < h - 1 && bgMask[pxIndex + w]) hasBgNeighbor = true;
+
+        if (hasBgNeighbor) {
+          // Slightly reduce alpha of edge pixels to remove matte halo
+          d[idx + 3] = Math.max(0, Math.round(d[idx + 3] * (1 - edgeRestoreWeight * 0.4)));
+        }
+      }
     }
   }
 
@@ -96,7 +163,7 @@ async function removeWhiteBackgroundCanvas(dataUrl, threshold = 230) {
 
 /**
  * Removes background using ComfyUI + WAS Node Suite (Revised) rembg node.
- * Falls back to canvas-based white background removal if the ComfyUI node is not installed.
+ * Falls back to BFS canvas-based white background removal if the node is not installed.
  */
 export async function removeBackgroundTool(imageId) {
   const entry = imageSessionStore.get(imageId);
@@ -104,27 +171,46 @@ export async function removeBackgroundTool(imageId) {
 
   try {
     const { removeBackgroundComfyUI } = await import('./comfyui-service.js');
-    const resultDataUrl = await removeBackgroundComfyUI(entry.dataUrl);
-    const newEntry = imageSessionStore.add(resultDataUrl, "bg_removed", `Transparent version of ${imageId}`, entry.width, entry.height);
+    const resultDataUrl = await removeBackgroundComfyUI(entry.dataUrl, false);
+    if (!resultDataUrl || !resultDataUrl.startsWith('data:image')) {
+      throw new Error('Invalid result: not a valid data URL');
+    }
+    const imgEl = await loadImageFromDataUrl(resultDataUrl);
+    const newEntry = imageSessionStore.add(resultDataUrl, 'bg_removed', `Transparent version of ${imageId}`, imgEl.width, imgEl.height);
     return { success: true, imageId: newEntry.id };
   } catch (err) {
-    // Fallback: canvas-based white background removal
     const isNodeMissing = err.message && (
       err.message.includes('missing_node_type') ||
       err.message.includes('not found') ||
-      err.message.includes('not installed')
+      err.message.includes('not installed') ||
+      err.message.includes('class_type') ||
+      err.message.includes('Image Rembg')
     );
+
     if (isNodeMissing) {
-      console.warn('[removeBackgroundTool] ComfyUI rembg node not installed, using canvas fallback...');
+      console.warn('[removeBackgroundTool] ComfyUI AI rembg node failed, trying Alpha node fallback...');
       try {
-        const resultDataUrl = await removeWhiteBackgroundCanvas(entry.dataUrl);
-        const newEntry = imageSessionStore.add(resultDataUrl, "bg_removed_canvas", `Transparent version of ${imageId} (canvas)`, entry.width, entry.height);
-        return { success: true, imageId: newEntry.id, note: 'Used canvas fallback (WAS node not installed)' };
-      } catch (fallbackErr) {
-        return { error: `Background removal failed (canvas fallback): ${fallbackErr.message}` };
+        const { removeBackgroundComfyUI } = await import('./comfyui-service.js');
+        const alphaDataUrl = await removeBackgroundComfyUI(entry.dataUrl, true);
+        if (!alphaDataUrl || !alphaDataUrl.startsWith('data:image')) {
+          throw new Error('Invalid result from Alpha node');
+        }
+        const imgEl = await loadImageFromDataUrl(alphaDataUrl);
+        const newEntry = imageSessionStore.add(alphaDataUrl, 'bg_removed_alpha', `Transparent version of ${imageId} (Alpha node)`, imgEl.width, imgEl.height);
+        return { success: true, imageId: newEntry.id, note: 'Used ComfyUI Alpha fallback' };
+      } catch (alphaErr) {
+        console.warn('[removeBackgroundTool] ComfyUI Alpha node also failed, using BFS canvas fallback...');
+        try {
+          const resultDataUrl = await removeWhiteBackgroundCanvas(entry.dataUrl, 50);
+          const imgEl = await loadImageFromDataUrl(resultDataUrl);
+          const newEntry = imageSessionStore.add(resultDataUrl, 'bg_removed_canvas', `Transparent version of ${imageId} (canvas)`, imgEl.width, imgEl.height);
+          return { success: true, imageId: newEntry.id, note: 'Used canvas BFS fallback (WAS nodes failed)' };
+        } catch (fallbackErr) {
+          return { error: `Background removal failed (canvas fallback): ${fallbackErr.message}` };
+        }
       }
     }
-    return { error: err.message || 'Background removal failed' };
+    return { error: `Background removal failed: ${err.message}` };
   }
 }
 
@@ -302,3 +388,88 @@ export async function adjustImageTool(imageId, brightness = 100, contrast = 100,
     return { error: err.message };
   }
 }
+
+/**
+ * Crops an image
+ */
+export async function cropImageTool(imageId, x, y, width, height) {
+  const entry = imageSessionStore.get(imageId);
+  if (!entry) return { error: `Image "${imageId}" not found.` };
+
+  try {
+    const img = await loadImageFromDataUrl(entry.dataUrl);
+    const canvas = document.createElement('canvas');
+    canvas.width = Number(width);
+    canvas.height = Number(height);
+    const ctx = canvas.getContext('2d');
+
+    ctx.drawImage(img, Number(x), Number(y), Number(width), Number(height), 0, 0, Number(width), Number(height));
+
+    const newDataUrl = canvas.toDataURL('image/png');
+    const newEntry = imageSessionStore.add(newDataUrl, "cropped", `Cropped to ${width}x${height}`, canvas.width, canvas.height);
+    return { success: true, imageId: newEntry.id };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
+/**
+ * Flips an image horizontally or vertically
+ */
+export async function flipImageTool(imageId, direction) {
+  const entry = imageSessionStore.get(imageId);
+  if (!entry) return { error: `Image "${imageId}" not found.` };
+
+  try {
+    const img = await loadImageFromDataUrl(entry.dataUrl);
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d');
+
+    ctx.save();
+    if (direction === 'horizontal' || direction === 'both') {
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+    }
+    if (direction === 'vertical' || direction === 'both') {
+      ctx.translate(0, canvas.height);
+      ctx.scale(1, -1);
+    }
+    ctx.drawImage(img, 0, 0);
+    ctx.restore();
+
+    const newDataUrl = canvas.toDataURL('image/png');
+    const newEntry = imageSessionStore.add(newDataUrl, "flipped", `Flipped ${direction}`, canvas.width, canvas.height);
+    return { success: true, imageId: newEntry.id };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
+/**
+ * Fills the background of a transparent image with a color
+ */
+export async function fillBackgroundTool(imageId, color) {
+  const entry = imageSessionStore.get(imageId);
+  if (!entry) return { error: `Image "${imageId}" not found.` };
+
+  try {
+    const img = await loadImageFromDataUrl(entry.dataUrl);
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = color;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0);
+
+    const newDataUrl = canvas.toDataURL('image/png');
+    const newEntry = imageSessionStore.add(newDataUrl, "bg_filled", `Filled background with ${color}`, canvas.width, canvas.height);
+    return { success: true, imageId: newEntry.id };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
