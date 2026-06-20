@@ -39,9 +39,70 @@ let emptyState;
 let headerCharName;
 let headerCharStatus;
 let headerAvatar;
-let thinkingToggle;
 let btnInputSettings;
 let inputSettingsPopover;
+
+
+// ─── Context Indicator & Breakdown Modal DOM Elements ───────────────
+let contextIndicator;
+let donutSegment;
+let contextDetailsModal;
+let contextModalBackdrop;
+let btnCloseContextDetails;
+let btnCloseContextModalFooter;
+let contextTotalInfo;
+let contextFreeInfo;
+let barCharCard;
+let barSystemPrompt;
+let barMemoryContext;
+let barChatHistory;
+let legendCharCard;
+let legendSystemPrompt;
+let legendMemoryContext;
+let legendAutoSummary;
+let legendChatHistory;
+let badgeDetailsChar;
+let badgeDetailsSystem;
+let badgeDetailsMemory;
+let badgeDetailsSummary;
+let badgeDetailsHistory;
+let contentDetailsChar;
+let contentDetailsSystem;
+let contentDetailsMemory;
+let contentDetailsSummary;
+let contentDetailsHistory;
+let barAutoSummary;
+let btnMakeAutoSummary;
+let btnRevertAutoSummary;
+let autoSummaryRecommendation;
+let btnRecHide;
+let btnRecEnable;
+
+// In-memory caches for context calculation
+const sessionBaseTokensCache = new Map();      // session.id -> { baseTokens, maxContext }
+const sessionHistoryTokensCache = new Map();   // session.id::signature -> totalHistoryTokens
+const sessionHistoryItemsCache = new Map();    // session.id::signature -> historyItemsArray
+let currentIndicatorCalcId = 0; // Tracks active token calculation sequence ID to prevent overlapping API calls
+
+function getHistorySignature(session) {
+  if (!session || !session.messages) return '';
+  
+  let messagesToCount = session.messages;
+  if (session.autoSummary && session.autoSummary.lastSummarizedMsgId) {
+    const idx = session.messages.findIndex(m => m.id === session.autoSummary.lastSummarizedMsgId);
+    if (idx !== -1) {
+      messagesToCount = session.messages.slice(idx + 1);
+    }
+  }
+
+  return messagesToCount
+    .filter(m => m.role !== 'system' && (m.role !== 'assistant' || m.content))
+    .map(m => `${m.id}:${(m.role === 'user' ? (m.translated_content || m.content) : (m.original_text || m.content))?.length || 0}`)
+    .join('|');
+}
+
+const tokenCountCache = new Map();
+let contextDebounceTimer = null;
 
 // ─── Suggestions Explorer State ──────────────────────────────────────
 let moreSuggestionsAbortController = null;
@@ -107,9 +168,262 @@ export function initChat() {
   headerCharName = document.getElementById('header-char-name');
   headerCharStatus = document.getElementById('header-char-status');
   headerAvatar = document.getElementById('header-avatar');
-  thinkingToggle = document.getElementById('thinking-toggle');
   btnInputSettings = document.getElementById('btn-input-settings');
   inputSettingsPopover = document.getElementById('input-settings-popover');
+
+
+  // Bind Context Indicator and Breakdown Modal Elements
+  contextIndicator = document.getElementById('context-indicator');
+  donutSegment = document.getElementById('donut-segment');
+  contextDetailsModal = document.getElementById('context-details-modal');
+  contextModalBackdrop = document.getElementById('context-modal-backdrop');
+  btnCloseContextDetails = document.getElementById('btn-close-context-details');
+  btnCloseContextModalFooter = document.getElementById('btn-close-context-modal-footer');
+  contextTotalInfo = document.getElementById('context-total-info');
+  contextFreeInfo = document.getElementById('context-free-info');
+  barCharCard = document.getElementById('bar-char-card');
+  barSystemPrompt = document.getElementById('bar-system-prompt');
+  barMemoryContext = document.getElementById('bar-memory-context');
+  barAutoSummary = document.getElementById('bar-auto-summary');
+  barChatHistory = document.getElementById('bar-chat-history');
+  legendCharCard = document.getElementById('legend-char-card');
+  legendSystemPrompt = document.getElementById('legend-system-prompt');
+  legendMemoryContext = document.getElementById('legend-memory-context');
+  legendAutoSummary = document.getElementById('legend-auto-summary');
+  legendChatHistory = document.getElementById('legend-chat-history');
+  badgeDetailsChar = document.getElementById('badge-details-char');
+  badgeDetailsSystem = document.getElementById('badge-details-system');
+  badgeDetailsMemory = document.getElementById('badge-details-memory');
+  badgeDetailsSummary = document.getElementById('badge-details-summary');
+  badgeDetailsHistory = document.getElementById('badge-details-history');
+  contentDetailsChar = document.getElementById('content-details-char');
+  contentDetailsSystem = document.getElementById('content-details-system');
+  contentDetailsMemory = document.getElementById('content-details-memory');
+  contentDetailsSummary = document.getElementById('content-details-summary');
+  contentDetailsHistory = document.getElementById('content-details-history');
+
+  btnMakeAutoSummary = document.getElementById('btn-make-auto-summary');
+  btnRevertAutoSummary = document.getElementById('btn-revert-auto-summary');
+  autoSummaryRecommendation = document.getElementById('auto-summary-recommendation');
+  btnRecHide = document.getElementById('btn-rec-hide');
+  btnRecEnable = document.getElementById('btn-rec-enable');
+
+  // Context indicator click -> open modal
+  if (contextIndicator) {
+    contextIndicator.addEventListener('click', () => {
+      const session = appState.currentChat;
+      if (!session) return;
+      populateContextDetailsModal(session);
+      openWindow(contextDetailsModal);
+    });
+  }
+
+  // Refresh context breakdown click -> force recalculate via API
+  const btnRefreshContext = document.getElementById('btn-refresh-context');
+  if (btnRefreshContext) {
+    btnRefreshContext.addEventListener('click', async () => {
+      const session = appState.currentChat;
+      if (!session) return;
+
+      const refreshIcon = btnRefreshContext.querySelector('svg');
+      if (refreshIcon) refreshIcon.classList.add('spin-animation');
+      btnRefreshContext.setAttribute('disabled', 'true');
+
+      try {
+        // Clear caches for this session
+        sessionBaseTokensCache.delete(session.id);
+        for (const key of sessionHistoryTokensCache.keys()) {
+          if (key.startsWith(session.id + '::')) {
+            sessionHistoryTokensCache.delete(key);
+            sessionHistoryItemsCache.delete(key);
+          }
+        }
+
+        // Force full recalculation
+        await updateContextIndicator(false, true);
+
+        // Re-populate modal contents
+        populateContextDetailsModal(session);
+      } catch (err) {
+        console.error('Failed to refresh context breakdown:', err);
+      } finally {
+        if (refreshIcon) refreshIcon.classList.remove('spin-animation');
+        btnRefreshContext.removeAttribute('disabled');
+      }
+    });
+  }
+
+  // Modal close handlers
+  const closeContextModal = () => closeWindow(contextDetailsModal);
+  if (btnCloseContextDetails) btnCloseContextDetails.addEventListener('click', closeContextModal);
+  if (btnCloseContextModalFooter) btnCloseContextModalFooter.addEventListener('click', closeContextModal);
+  if (contextModalBackdrop) contextModalBackdrop.addEventListener('click', closeContextModal);
+
+  // Accordion Expand/Collapse logic
+  const setupAccordion = (headerId, contentId) => {
+    const header = document.getElementById(headerId);
+    const content = document.getElementById(contentId);
+    if (header && content) {
+      header.addEventListener('click', () => {
+        content.classList.toggle('hidden');
+      });
+    }
+  };
+  setupAccordion('header-details-char', 'content-details-char');
+  setupAccordion('header-details-system', 'content-details-system');
+  setupAccordion('header-details-memory', 'content-details-memory');
+  setupAccordion('header-details-summary', 'content-details-summary');
+  setupAccordion('header-details-history', 'content-details-history');
+
+  // Auto Summary Actions
+  if (btnMakeAutoSummary) {
+    btnMakeAutoSummary.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const session = appState.currentChat;
+      const character = appState.currentCharacter;
+      if (!session || !character) return;
+
+      if (session.messages.length === 0) {
+        showToast("No messages to summarize.", "info");
+        return;
+      }
+
+      let previousSummary = "";
+      let newMessages = [];
+      if (session.autoSummary && session.autoSummary.text && session.autoSummary.lastSummarizedMsgId) {
+        previousSummary = session.autoSummary.text;
+        const idx = session.messages.findIndex(m => m.id === session.autoSummary.lastSummarizedMsgId);
+        if (idx !== -1) {
+          newMessages = session.messages.slice(idx + 1);
+        } else {
+          newMessages = session.messages;
+        }
+      } else {
+        newMessages = session.messages;
+      }
+
+      if (newMessages.length === 0) {
+        showToast("History is already summarized.", "info");
+        return;
+      }
+
+      const originalBtnText = btnMakeAutoSummary.textContent;
+      btnMakeAutoSummary.disabled = true;
+      btnMakeAutoSummary.textContent = "Summarizing...";
+
+      try {
+        const settings = settingsStore.get();
+        const userName = session.user_name || settings.user_name || 'User';
+        const characterName = character.name;
+        const language = settings.target_language || 'Russian';
+
+        const summaryText = await api.generateChatSummary(previousSummary, newMessages, userName, characterName, language);
+
+        session.autoSummary = {
+          text: summaryText.trim(),
+          lastSummarizedMsgId: session.messages[session.messages.length - 1].id
+        };
+
+        await chatStore.saveSession(session);
+        showToast("Auto Summary updated!", "success");
+
+        await updateContextIndicator(false, true);
+        populateContextDetailsModal(session);
+      } catch (err) {
+        console.error("Failed to generate auto summary:", err);
+        showToast("Summarization failed: " + err.message, "error");
+      } finally {
+        btnMakeAutoSummary.disabled = false;
+        btnMakeAutoSummary.textContent = originalBtnText;
+      }
+    });
+  }
+
+  if (btnRevertAutoSummary) {
+    btnRevertAutoSummary.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const session = appState.currentChat;
+      if (!session) return;
+
+      const confirmed = await showConfirm('Revert Auto Summary', 'Are you sure you want to delete the summary and restore the full message history in context?');
+      if (!confirmed) return;
+
+      session.autoSummary = null;
+      await chatStore.saveSession(session);
+      showToast("Auto Summary reverted.", "info");
+
+      await updateContextIndicator(false, true);
+      populateContextDetailsModal(session);
+    });
+  }
+
+  // Recommendation Popover Actions
+  if (btnRecHide) {
+    btnRecHide.addEventListener('click', () => {
+      const session = appState.currentChat;
+      if (session) {
+        session._autoSummaryDismissed = true;
+      }
+      if (autoSummaryRecommendation) {
+        autoSummaryRecommendation.classList.add('hidden');
+      }
+    });
+  }
+
+  if (btnRecEnable) {
+    btnRecEnable.addEventListener('click', async () => {
+      const session = appState.currentChat;
+      const character = appState.currentCharacter;
+      if (!session || !character) return;
+
+      if (session.messages.length === 0) {
+        showToast("No messages to summarize.", "info");
+        return;
+      }
+
+      if (autoSummaryRecommendation) {
+        autoSummaryRecommendation.classList.add('hidden');
+      }
+
+      showToast("Summarizing chat history...", "info");
+
+      try {
+        const settings = settingsStore.get();
+        const userName = session.user_name || settings.user_name || 'User';
+        const characterName = character.name;
+        const language = settings.target_language || 'Russian';
+
+        let previousSummary = "";
+        let newMessages = [];
+        if (session.autoSummary && session.autoSummary.text && session.autoSummary.lastSummarizedMsgId) {
+          previousSummary = session.autoSummary.text;
+          const idx = session.messages.findIndex(m => m.id === session.autoSummary.lastSummarizedMsgId);
+          if (idx !== -1) {
+            newMessages = session.messages.slice(idx + 1);
+          } else {
+            newMessages = session.messages;
+          }
+        } else {
+          newMessages = session.messages;
+        }
+
+        const summaryText = await api.generateChatSummary(previousSummary, newMessages, userName, characterName, language);
+
+        session.autoSummary = {
+          text: summaryText.trim(),
+          lastSummarizedMsgId: session.messages[session.messages.length - 1].id
+        };
+
+        await chatStore.saveSession(session);
+        showToast("Auto Summary enabled!", "success");
+
+        await updateContextIndicator(false, true);
+      } catch (err) {
+        console.error("Failed to enable auto summary:", err);
+        showToast("Failed to generate summary: " + err.message, "error");
+      }
+    });
+  }
 
   // Send message
   btnSend.addEventListener('click', sendMessage);
@@ -123,6 +437,9 @@ export function initChat() {
   // Auto-resize input
   messageInput.addEventListener('input', () => {
     autoResizeTextarea(messageInput);
+    
+    // Recount context tokens debounced on typing
+    updateContextIndicator(true);
 
     // Abort pending suggestions generation if any
     if (appState.suggestionsAbortController) {
@@ -182,18 +499,6 @@ export function initChat() {
       }
     }
   });
-
-  // Thinking toggle (element may not exist if removed from header)
-  if (thinkingToggle) {
-    thinkingToggle.addEventListener('change', () => {
-      const settings = settingsStore.get();
-      settingsStore.save({ ...settings, thinking_enabled: thinkingToggle.checked });
-
-      // Sync settings panel toggle
-      const settingsThinking = document.getElementById('setting-thinking');
-      if (settingsThinking) settingsThinking.checked = thinkingToggle.checked;
-    });
-  }
 
   // New chat button
   document.getElementById('btn-new-chat').addEventListener('click', () => {
@@ -280,7 +585,64 @@ export function initChat() {
       inputSettingsPopover.classList.add('hidden');
     }
   });
+
+  // ─── Thinking Effort Button ──────────────────────────────────────────
+  (function initThinkingEffortBtn() {
+    const wrapper = document.getElementById('thinking-effort-wrapper');
+    const btnMain = document.getElementById('btn-thinking-effort-main');
+    const btnArrow = document.getElementById('btn-thinking-effort-arrow');
+    const dropdown = document.getElementById('thinking-effort-dropdown');
+    if (!wrapper || !btnArrow || !dropdown) return;
+
+    function refreshThinkingEffortUI() {
+      const effort = settingsStore.get().reasoning_effort || 'none';
+      const levelSpan = btnMain?.querySelector('.effort-level-label');
+      if (effort === 'none') {
+        wrapper.classList.remove('active');
+        if (levelSpan) levelSpan.textContent = '';
+      } else {
+        wrapper.classList.add('active');
+        if (levelSpan) levelSpan.textContent = effort;
+      }
+      // Mark active option
+      dropdown.querySelectorAll('.effort-option').forEach(opt => {
+        opt.classList.toggle('selected', opt.dataset.value === effort);
+      });
+    }
+
+    btnArrow.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isHidden = dropdown.classList.contains('hidden');
+      // Close other popovers
+      if (inputSettingsPopover) inputSettingsPopover.classList.add('hidden');
+      const chatPlusPopover = document.getElementById('chat-plus-popover');
+      if (chatPlusPopover) chatPlusPopover.classList.add('hidden');
+      dropdown.classList.toggle('hidden', !isHidden);
+    });
+
+    dropdown.querySelectorAll('.effort-option').forEach(opt => {
+      opt.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const value = opt.dataset.value;
+        settingsStore.save({ ...settingsStore.get(), reasoning_effort: value });
+        dropdown.classList.add('hidden');
+        refreshThinkingEffortUI();
+      });
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!wrapper.contains(e.target)) {
+        dropdown.classList.add('hidden');
+      }
+    });
+
+    refreshThinkingEffortUI();
+    window.refreshThinkingEffortUI = refreshThinkingEffortUI;
+  })();
+  // ─────────────────────────────────────────────────────────────────────
+
   setupRightSidebarToggle();
+
 
   // Init Image Gen indicator based on saved settings and add click handler to open settings modal
   const _chatInd = document.getElementById('chat-imagegen-indicator');
@@ -392,7 +754,7 @@ function renderInputSettings() {
   const settings = settingsStore.get();
   const length = settings.response_length || 'auto';
   const depth = settings.description_depth || 0;
-  const thinkingEnabled = settings.thinking_enabled || false;
+
 
   inputSettingsPopover.innerHTML = `
     <div class="settings-group">
@@ -416,26 +778,6 @@ function renderInputSettings() {
           <span>3</span>
           <span>Max</span>
         </div>
-      </div>
-    </div>
-
-    <div class="settings-group" style="border-top: 1px solid var(--border-subtle); padding-top: 12px; margin-top: 4px;">
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <span style="font-size: 15px;">🧠</span>
-          <h4 style="margin: 0;">Think Mode</h4>
-        </div>
-        <label class="toggle-switch small">
-          <input type="checkbox" id="input-thinking-toggle" ${thinkingEnabled ? 'checked' : ''}>
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-left: 4px;">
-        <span style="font-size: var(--text-xs); color: var(--text-tertiary);">&#x21b3; Show snippets</span>
-        <label class="toggle-switch small">
-          <input type="checkbox" id="input-snippets-toggle" ${settingsStore.get().thinking_snippets ? 'checked' : ''}>
-          <span class="toggle-slider"></span>
-        </label>
       </div>
     </div>
 
@@ -500,24 +842,6 @@ function renderInputSettings() {
   slider.addEventListener('input', () => {
     const newDepth = parseInt(slider.value);
     settingsStore.save({ ...settingsStore.get(), description_depth: newDepth });
-  });
-
-  // Think Mode toggle handler
-  const thinkingToggleEl = inputSettingsPopover.querySelector('#input-thinking-toggle');
-  thinkingToggleEl?.addEventListener('change', () => {
-    const newVal = thinkingToggleEl.checked;
-    settingsStore.save({ ...settingsStore.get(), thinking_enabled: newVal });
-    const settingsThinking = document.getElementById('setting-thinking');
-    if (settingsThinking) settingsThinking.checked = newVal;
-  });
-
-  // Snippets toggle handler
-  const snippetsToggleEl = inputSettingsPopover.querySelector('#input-snippets-toggle');
-  snippetsToggleEl?.addEventListener('change', () => {
-    const newVal = snippetsToggleEl.checked;
-    settingsStore.save({ ...settingsStore.get(), thinking_snippets: newVal });
-    const settingsSnippets = document.getElementById('setting-thinking-snippets');
-    if (settingsSnippets) settingsSnippets.checked = newVal;
   });
 
   // Toggle indicators
@@ -675,6 +999,7 @@ export function startNewChat(character = null) {
   chatStore.saveSession(session);
   if (appState.currentCharacter?.id === char.id) {
     updateChatHistory();
+    updateContextIndicator();
     if (window.updateUserNameDisplay) {
       window.updateUserNameDisplay();
     }
@@ -708,6 +1033,7 @@ export function loadChat(session) {
     renderAiCommentsHistory();
   }
   renderIndicators();
+  updateContextIndicator();
   scrollToBottom();
   updateChatHistory();
 }
@@ -824,6 +1150,7 @@ export async function selectCharacter(character, sessionId = null) {
     // 4. ENSURE UI updates even if something failed
     updateChatHistory(charId);
     renderIndicators();
+    updateContextIndicator();
     window.dispatchEvent(new CustomEvent('character-selected', { detail: { id: charId } }));
   }
 }
@@ -938,6 +1265,7 @@ async function sendMessage() {
   // Clear input
   messageInput.value = '';
   autoResizeTextarea(messageInput);
+  updateContextIndicator();
 
   // If outgoing translation is enabled, translate first
   if (settings.translate_user_messages) {
@@ -962,7 +1290,7 @@ async function sendMessage() {
   headerCharStatus.classList.add('generating');
 
   // Build messages array for API (will use translated_content for user messages if available)
-  const apiMessages = buildApiMessages(character, session);
+  const apiMessages = await buildApiMessages(character, session);
 
   // Add placeholder assistant message
   const assistantMsg = chatStore.addMessage('assistant', '', null, session);
@@ -1081,6 +1409,7 @@ async function sendMessage() {
 
         chatStore.updateLastAssistantMessage(originalContent, parsed.thinking, session, translatedContent);
         await chatStore.saveSession(session);
+        updateContextIndicator();
 
         if (appState.currentCharacter?.id === character.id) {
           appState.isGenerating = false;
@@ -1151,6 +1480,7 @@ async function sendMessage() {
           btnStop.classList.add('hidden');
           headerCharStatus.textContent = 'Error';
           headerCharStatus.classList.remove('generating');
+          updateContextIndicator();
         }
         window.dispatchEvent(new CustomEvent('genai-chat-response-finished', { detail: { error: err.message } }));
       },
@@ -1161,6 +1491,7 @@ async function sendMessage() {
     showToast('Failed to send message', 'error');
     if (appState.currentCharacter?.id === character.id) {
       appState.isGenerating = false;
+      updateContextIndicator();
     }
     window.dispatchEvent(new CustomEvent('genai-chat-response-finished', { detail: { error: err.message } }));
   }
@@ -1204,21 +1535,215 @@ async function extractAndShowMemory(character, session, userMessage, assistantRe
 
 // ─── Build API Messages ─────────────────────────────────────────────
 
-function buildApiMessages(character, session) {
-  if (!character || !session) return [];
+// ─── Compute Context And Trim History (Sliding Window) ──────────────
 
+async function computeContextAndTrimHistory(character, session) {
   const settings = settingsStore.get();
   const userName = session.user_name || settings.user_name || 'User';
-  
   const personaId = session.persona_id || settings.active_persona_id || 'default';
-  const personas = settings.personas || [];
-  const activePersona = personas.find(p => p.id === personaId);
-  
+  const activePersona = (settings.personas || []).find(p => p.id === personaId);
+
+  // 1. Get max context length
+  const maxContext = await api.getMaxContextLength();
+
+  // 2. Count tokens for Character Card (description + personality + scenario)
+  const charData = {
+    description: character.description || '',
+    personality: character.personality ? `Personality: ${character.personality}` : '',
+    scenario: character.scenario ? `Scenario: ${character.scenario}` : ''
+  };
+  const charText = [charData.description, charData.personality, charData.scenario].filter(Boolean).join('\n\n') || `You are ${character.name}.`;
+
+  const charKey = `char_${character.id}_${charText.length}`;
+  let charTokens = tokenCountCache.get(charKey);
+  if (charTokens === undefined) {
+    charTokens = await api.countTokens(charText);
+    tokenCountCache.set(charKey, charTokens);
+  }
+
+  // 3. Count tokens for Memory Context
+  const memoryText = memoryService.getMemoryContext(character.id) || '';
+  const memoryKey = `mem_${character.id}_${memoryText.length}`;
+  let memoryTokens = tokenCountCache.get(memoryKey);
+  if (memoryTokens === undefined) {
+    memoryTokens = memoryText ? await api.countTokens(memoryText) : 0;
+    tokenCountCache.set(memoryKey, memoryTokens);
+  }
+
+  // 4. Count tokens for System Prompt (Preset instructions, replaced placeholders, user persona, formatting, indicators)
+  let systemBasePure = '';
+  if (character.system_prompt) {
+    systemBasePure = character.system_prompt;
+    // Replace placeholders with empty string to avoid double counting with Character Card tokens
+    systemBasePure = systemBasePure.replace(/\{\{description\}\}/gi, '');
+    systemBasePure = systemBasePure.replace(/\{\{personality\}\}/gi, '');
+    systemBasePure = systemBasePure.replace(/\{\{scenario\}\}/gi, '');
+  } else {
+    const activePresetId = settings.active_system_prompt_preset_id;
+    const presets = settings.system_prompt_presets || [];
+    const activePreset = presets.find(p => p.id === activePresetId);
+
+    if (activePreset) {
+      systemBasePure = activePreset.content;
+      systemBasePure = systemBasePure.replace(/\{\{description\}\}/gi, '');
+      systemBasePure = systemBasePure.replace(/\{\{personality\}\}/gi, '');
+      systemBasePure = systemBasePure.replace(/\{\{scenario\}\}/gi, '');
+    }
+  }
+
+  systemBasePure = systemBasePure.replace(/\{\{user\}\}/gi, userName);
+  systemBasePure = systemBasePure.replace(/\{\{char\}\}/gi, character.name);
+
+  if (character.message_examples && character.message_examples.trim()) {
+    systemBasePure += `\n\nCharacter must talk in this style: ${character.message_examples.trim()}`;
+  }
+
+  let systemContentPure = systemBasePure;
+  if (activePersona && activePersona.description) {
+    let personaStr = activePersona.description.replace(/\{\{user\}\}/gi, userName).replace(/\{\{char\}\}/gi, character.name);
+    systemContentPure += `\n\n[USER PERSONA]\nThe user's persona is as follows. Treat the user as this persona:\n${personaStr}`;
+  }
+
+  const formattingInstructions = [];
+  if (settings.response_length === 'short') {
+    formattingInstructions.push("Write extremely short, brief, and concise responses. Limit yourself to 1-2 sentences maximum. No fluff.");
+  } else if (settings.response_length === 'medium') {
+    formattingInstructions.push("Write balanced, moderately detailed responses. Strictly limit your response to about 650 characters (letters and spaces) maximum.");
+  } else if (settings.response_length === 'long') {
+    formattingInstructions.push("Write very long, detailed, and expansive responses. Elaborate on everything and be as verbose as possible.");
+  }
+
+  if (settings.description_depth > 0) {
+    const depthPrompts = [
+      "",
+      "Add brief descriptions of the scene.",
+      "Include vivid and clear descriptions of the environment and atmosphere.",
+      "Provide highly detailed and immersive scene descriptions with sensory details.",
+      "Describe every scene with extreme detail and atmosphere, focusing on deep sensory information, textures, sounds, and intense character introspection. Be extremely descriptive."
+    ];
+    formattingInstructions.push(depthPrompts[settings.description_depth]);
+  }
+
+  if (formattingInstructions.length > 0) {
+    systemContentPure += `\n\n[MANDATORY FORMATTING RULES]\n${formattingInstructions.join("\n")}`;
+  }
+
+  if (session.indicators?.enabled && session.indicators.list?.length > 0) {
+    const statusStr = session.indicators.list.map(ind => `${ind.name}: ${ind.value}%`).join('\n');
+    systemContentPure += `\n\n[CURRENT MOOD STATUS]\n${statusStr}`;
+  }
+
+  const systemKey = `sys_${character.id}_${session.id}_${systemContentPure.length}`;
+  let systemTokens = tokenCountCache.get(systemKey);
+  if (systemTokens === undefined) {
+    systemTokens = await api.countTokens(systemContentPure);
+    tokenCountCache.set(systemKey, systemTokens);
+  }
+
+  // 5. Count tokens for Auto Summary
+  let summaryTokens = 0;
+  let summaryText = "";
+  if (session.autoSummary && session.autoSummary.text) {
+    summaryText = session.autoSummary.text;
+    const summaryKey = `sum_${session.id}_${summaryText.length}`;
+    summaryTokens = tokenCountCache.get(summaryKey);
+    if (summaryTokens === undefined) {
+      summaryTokens = await api.countTokens(`[Auto Summary of previous conversation:\n${summaryText}]`);
+      tokenCountCache.set(summaryKey, summaryTokens);
+    }
+  }
+
+  // 6. Sliding Window Calculation
+  const maxTokensSetting = settings.max_tokens || 2048;
+  const safetyBuffer = 100;
+  const basePromptTokens = charTokens + systemTokens + memoryTokens + summaryTokens;
+  const totalPromptBudget = maxContext - maxTokensSetting - safetyBuffer;
+  const historyBudget = Math.max(0, totalPromptBudget - basePromptTokens);
+
+  // Filter messages to count (from session.messages)
+  let messagesToCount = session.messages;
+  let startIdx = 0;
+  if (session.autoSummary && session.autoSummary.text && session.autoSummary.lastSummarizedMsgId) {
+    const idx = session.messages.findIndex(m => m.id === session.autoSummary.lastSummarizedMsgId);
+    if (idx !== -1) {
+      startIdx = idx + 1;
+      messagesToCount = session.messages.slice(startIdx);
+    }
+  }
+
+  const messagesMeta = [];
+  for (const msg of messagesToCount) {
+    if (msg.role === 'system') continue;
+    if (msg.role === 'assistant' && !msg.content) continue;
+
+    const contentText = msg.role === 'user' ? (msg.translated_content || msg.content) : (msg.original_text || msg.content);
+    const msgKey = `msg_${msg.id}_${contentText.length}`;
+    messagesMeta.push({ msg, contentText, msgKey });
+  }
+
+  // Count uncached messages (concurrency limit = 4)
+  const uncachedList = messagesMeta.filter(item => tokenCountCache.get(item.msgKey) === undefined);
+  const batchSize = 4;
+  for (let i = 0; i < uncachedList.length; i += batchSize) {
+    const batch = uncachedList.slice(i, i + batchSize);
+    await Promise.all(batch.map(async (item) => {
+      const tokens = await api.countTokens(item.contentText);
+      tokenCountCache.set(item.msgKey, tokens);
+    }));
+  }
+
+  // Go backward to fit within budget
+  let historyTokens = 0;
+  const historyItems = [];
+  const trimmedMessages = [];
+
+  for (let i = messagesMeta.length - 1; i >= 0; i--) {
+    const item = messagesMeta[i];
+    const tokens = tokenCountCache.get(item.msgKey) || 0;
+
+    if (historyTokens + tokens <= historyBudget) {
+      historyTokens += tokens;
+      historyItems.unshift({
+        role: item.msg.role,
+        text: item.contentText,
+        tokens: tokens
+      });
+      trimmedMessages.unshift(item.msg);
+    } else {
+      break;
+    }
+  }
+
+  return {
+    maxContext,
+    charTokens,
+    charText,
+    systemTokens,
+    systemText: systemContentPure,
+    memoryTokens,
+    memoryText,
+    summaryTokens,
+    summaryText,
+    historyTokens,
+    historyItems,
+    trimmedMessages,
+    baseTokens: charTokens + systemTokens + memoryTokens + summaryTokens + historyTokens
+  };
+}
+
+// ─── Build API Messages ─────────────────────────────────────────────
+
+async function buildApiMessages(character, session) {
+  if (!character || !session) return [];
+
+  const result = await computeContextAndTrimHistory(character, session);
+  const settings = settingsStore.get();
+  const userName = session.user_name || settings.user_name || 'User';
+
   const messages = [];
 
-  // System prompt with character info and memory
+  // Re-build systemContent with appropriate replacements and memory injection
   let systemContent = '';
-
   const charData = {
     description: character.description || '',
     personality: character.personality ? `Personality: ${character.personality}` : '',
@@ -1282,16 +1807,20 @@ function buildApiMessages(character, session) {
   systemContent = systemContent.replace(/\{\{user\}\}/gi, userName);
   systemContent = systemContent.replace(/\{\{char\}\}/gi, character.name);
 
+  // Inject style examples
+  if (character.message_examples && character.message_examples.trim()) {
+    systemContent += `\n\nCharacter must talk in this style: ${character.message_examples.trim()}`;
+  }
+
   // Inject memory context
   const memoryContext = memoryService.getMemoryContext(character.id);
   if (memoryContext) {
     systemContent += memoryContext;
   }
 
-  // Inject <|think|> token at the very start to activate Thinking Mode
-  if (settings.thinking_enabled) {
-    systemContent = '<|think|>\n' + systemContent;
-  }
+  const personaId = session.persona_id || settings.active_persona_id || 'default';
+  const personas = settings.personas || [];
+  const activePersona = personas.find(p => p.id === personaId);
 
   // Inject persona description if active
   if (activePersona && activePersona.description) {
@@ -1335,13 +1864,19 @@ function buildApiMessages(character, session) {
 
   messages.push({ role: 'system', content: systemContent });
 
-  // Chat messages (skip empty assistant messages)
-  for (const msg of session.messages) {
-    if (msg.role === 'system') continue;
-    if (msg.role === 'assistant' && !msg.content) continue;
+  // Inject Auto Summary as system message if active
+  if (session.autoSummary && session.autoSummary.text && session.autoSummary.lastSummarizedMsgId) {
+    const idx = session.messages.findIndex(m => m.id === session.autoSummary.lastSummarizedMsgId);
+    if (idx !== -1) {
+      messages.push({
+        role: 'system',
+        content: `[Auto Summary of previous conversation:\n${session.autoSummary.text}]`
+      });
+    }
+  }
 
-    // For user messages, use translation (English) if available
-    // For assistant messages, we stored original English in content
+  // Append trimmed messages
+  for (const msg of result.trimmedMessages) {
     let content = msg.role === 'user' ? (msg.translated_content || msg.content) : (msg.original_text || msg.content);
     messages.push({ role: msg.role, content: content });
   }
@@ -1384,27 +1919,7 @@ function parseStreamThinking(text) {
 
 function createThinkingBlockHTML(thinkingText, isActive) {
   if (isActive) {
-    const s = settingsStore.get();
-    let label = 'Thinking...';
-    let isSnippet = false;
-
-    if (s.thinking_snippets && thinkingText) {
-      const paras = thinkingText.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
-      const lastPara = paras[paras.length - 1] || '';
-      const firstLine = lastPara.split('\n')[0].trim();
-      let snippet = firstLine.replace(/<|>\/?[a-z]*/gi, '').trim();
-      if (snippet) {
-        if (snippet.length > 80) {
-          snippet = snippet.substring(0, 80) + '\u2026';
-        }
-        label = snippet;
-        isSnippet = true;
-      }
-    }
-
-    const cursor = ' <span class="streaming-cursor"></span>';
-    const labelClass = isSnippet ? 'thinking-text-animated thinking-snippet-active' : 'thinking-text-animated';
-    return '<div class="thinking-inline thinking-inline-active"><div class="thinking-inline-header"><span class="brain-icon">\u{1F9E0}</span><span class="' + labelClass + '">' + escapeHtml(label) + '</span>' + cursor + '</div></div>';
+    return '<div class="thinking-inline thinking-inline-active"><div class="thinking-inline-header"><span class="brain-icon">\u{1F9E0}</span><span class="thinking-text-animated">Thinking...</span> <span class="streaming-cursor"></span></div></div>';
   }
   return '<div class="thinking-inline"><div class="thinking-inline-header thinking-toggle-header" style="cursor:pointer;" onclick="this.closest(\'.thinking-inline\').classList.toggle(\'thinking-expanded\')"><span>\u{1F9E0}</span><span style="color:var(--text-tertiary);">Thought for a moment</span><span class="thinking-chevron"> ▸</span></div><div class="thinking-inline-content">' + escapeHtml(thinkingText) + '</div></div>';
 }
@@ -1598,6 +2113,7 @@ function appendMessage(msg, isStreaming = false, character = null) {
     setTimeout(() => el.remove(), 300);
     chatStore.saveCurrentSession();
     updateRegenerateVisibility();
+    updateContextIndicator();
 
     // Abort suggestions generation if any
     if (appState.suggestionsAbortController) {
@@ -1786,6 +2302,7 @@ function enterEditMode(msg, msgEl) {
       let formatted = renderMarkdown(cleaned);
       formatted = processCharacterMentions(formatted);
       contentEl.innerHTML = formatted;
+      updateContextIndicator();
     }
     editor.remove();
     contentEl.style.display = 'block';
@@ -1833,7 +2350,7 @@ async function triggerAssistantGeneration() {
   headerCharStatus.classList.add('generating');
 
   // Build messages
-  const apiMessages = buildApiMessages(character, session);
+  const apiMessages = await buildApiMessages(character, session);
 
   // Add placeholder
   const assistantMsg = chatStore.addMessage('assistant', '', null, session);
@@ -2070,7 +2587,7 @@ export function updateChatHistory() {
 
 async function generateContinuationOptions(character, session, msgElement) {
   try {
-    const messages = buildApiMessages(character, session);
+    const messages = await buildApiMessages(character, session);
     if (messages.length === 0) return;
 
     const settings = settingsStore.get();
@@ -2250,9 +2767,9 @@ async function requestAiComment(msg, character) {
   if (msgIndex !== -1) {
     const relevantMsgs = session.messages.slice(0, msgIndex + 1);
     const tempSession = { ...session, messages: relevantMsgs };
-    contextMessages = builder(character, tempSession);
+    contextMessages = await builder(character, tempSession);
   } else {
-    contextMessages = builder(character, session);
+    contextMessages = await builder(character, session);
   }
 
   // Append the comment prompt
@@ -2774,7 +3291,7 @@ async function generateMoreSuggestions(customTopic = null) {
   moreSuggestionsAbortController = controller;
   
   try {
-    const messages = buildApiMessages(character, session);
+    const messages = await buildApiMessages(character, session);
     if (messages.length === 0) return;
     
     const settings = settingsStore.get();
@@ -3394,4 +3911,214 @@ window.initStatusRotation = function(container) {
 
   setTimeout(rotate, getRandomInterval());
 };
+
+// ─── Update Context Indicator ────────────────────────────────────────
+
+export async function updateContextIndicator(debounce = false, forceRecalculate = false) {
+  const character = appState.currentCharacter;
+  const session = appState.currentChat;
+
+  if (!character || !session) {
+    if (contextIndicator) contextIndicator.classList.add('hidden');
+    return;
+  }
+
+  if (contextIndicator) contextIndicator.classList.remove('hidden');
+
+  currentIndicatorCalcId++;
+  const myCalcId = currentIndicatorCalcId;
+
+  // Handle typing mode (instantly update donut based on cached base context tokens)
+  if (debounce) {
+    const cached = sessionBaseTokensCache.get(session.id);
+    if (cached) {
+      const currentInputText = messageInput ? messageInput.value.trim() : '';
+      let inputTokens = 0;
+      if (currentInputText) {
+        inputTokens = Math.ceil(currentInputText.length / (/[а-яА-ЯёЁ]/.test(currentInputText) ? 3.0 : 3.7));
+      }
+
+      const totalUsed = cached.baseTokens + inputTokens;
+      const usedPercent = Math.min(100, Math.max(0, (totalUsed / cached.maxContext) * 100));
+      const freePercent = Math.max(0, 100 - usedPercent);
+      const freePercentRounded = Math.round(freePercent);
+
+      if (donutSegment) {
+        donutSegment.setAttribute('stroke-dasharray', `${usedPercent} 100`);
+      }
+      if (contextIndicator) {
+        contextIndicator.setAttribute('data-tooltip', `${freePercentRounded}% free context`);
+
+        contextIndicator.classList.remove('state-normal', 'state-warning', 'state-danger');
+        if (freePercent < 5) {
+          contextIndicator.classList.add('state-danger');
+        } else if (freePercent < 20) {
+          contextIndicator.classList.add('state-warning');
+        } else {
+          contextIndicator.classList.add('state-normal');
+        }
+      }
+
+      if (session._contextBreakdown) {
+        session._contextBreakdown.inputTokens = inputTokens;
+        session._contextBreakdown.inputText = currentInputText;
+        session._contextBreakdown.totalUsed = totalUsed;
+      }
+      return;
+    }
+    // If no cache is found, fall through to full recalculation
+  }
+
+  if (forceRecalculate) {
+    sessionBaseTokensCache.delete(session.id);
+  }
+
+  // Call the helper to do sliding window calculation and get accurate tokens
+  const result = await computeContextAndTrimHistory(character, session);
+  if (myCalcId !== currentIndicatorCalcId) return;
+
+  // Live input tokens
+  const currentInputText = messageInput ? messageInput.value.trim() : '';
+  let inputTokens = 0;
+  if (currentInputText) {
+    inputTokens = Math.ceil(currentInputText.length / (/[а-яА-ЯёЁ]/.test(currentInputText) ? 3.0 : 3.7));
+  }
+
+  // Save base tokens in memory cache
+  sessionBaseTokensCache.set(session.id, {
+    baseTokens: result.baseTokens,
+    maxContext: result.maxContext
+  });
+
+  // Total Used and Free percentage
+  const totalUsed = result.baseTokens + inputTokens;
+  const usedPercent = Math.min(100, Math.max(0, (totalUsed / result.maxContext) * 100));
+  const freePercent = Math.max(0, 100 - usedPercent);
+  const freePercentRounded = Math.round(freePercent);
+
+  // Update UI Elements
+  if (donutSegment) {
+    donutSegment.setAttribute('stroke-dasharray', `${usedPercent} 100`);
+  }
+  if (contextIndicator) {
+    contextIndicator.setAttribute('data-tooltip', `${freePercentRounded}% free context`);
+
+    contextIndicator.classList.remove('state-normal', 'state-warning', 'state-danger');
+    if (freePercent < 5) {
+      contextIndicator.classList.add('state-danger');
+    } else if (freePercent < 20) {
+      contextIndicator.classList.add('state-warning');
+    } else {
+      contextIndicator.classList.add('state-normal');
+    }
+  }
+
+  // Update Recommendation Banner Visibility
+  const recBanner = document.getElementById('auto-summary-recommendation');
+  if (recBanner) {
+    const hasSummary = session.autoSummary && session.autoSummary.text;
+    if (freePercent < 10 && !hasSummary && !session._autoSummaryDismissed && session.messages.length > 0) {
+      recBanner.classList.remove('hidden');
+    } else {
+      recBanner.classList.add('hidden');
+    }
+  }
+
+  // Cache breakdown details for the popup modal
+  session._contextBreakdown = {
+    maxContext: result.maxContext,
+    charTokens: result.charTokens,
+    charText: result.charText,
+    systemTokens: result.systemTokens,
+    systemText: result.systemText,
+    memoryTokens: result.memoryTokens,
+    memoryText: result.memoryText,
+    summaryTokens: result.summaryTokens,
+    summaryText: result.summaryText,
+    historyTokens: result.historyTokens,
+    historyItems: result.historyItems,
+    inputTokens,
+    inputText: currentInputText,
+    totalUsed
+  };
+}
+
+export function populateContextDetailsModal(session) {
+  if (!session || !session._contextBreakdown) return;
+
+  const breakdown = session._contextBreakdown;
+
+  // 1. Populate summary totals
+  if (contextTotalInfo) {
+    contextTotalInfo.textContent = `${breakdown.totalUsed.toLocaleString()} / ${breakdown.maxContext.toLocaleString()} tokens used`;
+  }
+  const freePercent = Math.max(0, 100 - (breakdown.totalUsed / breakdown.maxContext) * 100);
+  if (contextFreeInfo) {
+    contextFreeInfo.textContent = `${Math.round(freePercent)}% free`;
+    contextFreeInfo.style.color = freePercent < 5 ? 'var(--error)' : (freePercent < 20 ? 'var(--warning)' : 'var(--success)');
+  }
+
+  // 2. Set bar widths
+  const getPercent = (val) => `${(val / breakdown.maxContext) * 100}%`;
+  if (barCharCard) barCharCard.style.width = getPercent(breakdown.charTokens);
+  if (barSystemPrompt) barSystemPrompt.style.width = getPercent(breakdown.systemTokens);
+  if (barMemoryContext) barMemoryContext.style.width = getPercent(breakdown.memoryTokens);
+  if (barAutoSummary) barAutoSummary.style.width = getPercent(breakdown.summaryTokens || 0);
+  if (barChatHistory) barChatHistory.style.width = getPercent(breakdown.historyTokens);
+
+  // 3. Update legend values
+  if (legendCharCard) legendCharCard.textContent = `${breakdown.charTokens}t`;
+  if (legendSystemPrompt) legendSystemPrompt.textContent = `${breakdown.systemTokens}t`;
+  if (legendMemoryContext) legendMemoryContext.textContent = `${breakdown.memoryTokens}t`;
+  if (legendAutoSummary) legendAutoSummary.textContent = `${breakdown.summaryTokens || 0}t`;
+  if (legendChatHistory) legendChatHistory.textContent = `${breakdown.historyTokens}t`;
+
+  // 4. Update accordion badges
+  if (badgeDetailsChar) badgeDetailsChar.textContent = `${breakdown.charTokens} tokens`;
+  if (badgeDetailsSystem) badgeDetailsSystem.textContent = `${breakdown.systemTokens} tokens`;
+  if (badgeDetailsMemory) badgeDetailsMemory.textContent = `${breakdown.memoryTokens} tokens`;
+  if (badgeDetailsSummary) badgeDetailsSummary.textContent = `${breakdown.summaryTokens || 0} tokens`;
+  if (badgeDetailsHistory) badgeDetailsHistory.textContent = `${breakdown.historyTokens} tokens`;
+
+  // Update Revert button visibility
+  if (btnRevertAutoSummary) {
+    if (session.autoSummary && session.autoSummary.text) {
+      btnRevertAutoSummary.style.display = 'inline-block';
+    } else {
+      btnRevertAutoSummary.style.display = 'none';
+    }
+  }
+
+  // 5. Update content texts
+  if (contentDetailsChar) contentDetailsChar.textContent = breakdown.charText || '(No character description fields configured)';
+  if (contentDetailsSystem) contentDetailsSystem.textContent = breakdown.systemText || '(No system prompt or rules configured)';
+  if (contentDetailsMemory) contentDetailsMemory.textContent = breakdown.memoryText || '(No memory context active)';
+  if (contentDetailsSummary) contentDetailsSummary.textContent = breakdown.summaryText || '(No auto summary generated)';
+
+  // 6. Populate history messages list
+  if (contentDetailsHistory) {
+    contentDetailsHistory.innerHTML = '';
+    if (breakdown.historyItems.length === 0) {
+      contentDetailsHistory.innerHTML = '<div style="padding:12px; color:var(--text-tertiary); font-size:var(--text-xs); text-align:center;">No chat messages yet</div>';
+    } else {
+      breakdown.historyItems.forEach((item, index) => {
+        const itemEl = document.createElement('div');
+        itemEl.className = `context-history-item role-${item.role}`;
+        let displayVal = item.text;
+
+        itemEl.innerHTML = `
+          <div class="context-history-item-header">
+            <span>#${index + 1} · ${item.role}</span>
+            <span>${item.tokens} tokens</span>
+          </div>
+          <div class="context-history-item-body">${escapeHtml(displayVal)}</div>
+        `;
+        contentDetailsHistory.appendChild(itemEl);
+      });
+    }
+  }
+}
+
+window.updateContextIndicator = updateContextIndicator;
+
 

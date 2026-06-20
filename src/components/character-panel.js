@@ -106,7 +106,8 @@ export function initCharacterPanel() {
             system_prompt: parsedChar.system_prompt || '',
             first_message: parsedChar.first_mes || parsedChar.first_message || '',
             alternate_greetings: parsedChar.alternate_greetings || [],
-            avatar: await readFileAsDataURL(file)
+            avatar: await readFileAsDataURL(file),
+            message_examples: parsedChar.message_examples || parsedChar.mes_example || '',
           });
           showToast('Character loaded from card');
         } else {
@@ -124,6 +125,7 @@ export function initCharacterPanel() {
           system_prompt: parsedChar.system_prompt || '',
           first_message: parsedChar.first_mes || parsedChar.first_message || '',
           alternate_greetings: parsedChar.alternate_greetings || [],
+          message_examples: parsedChar.message_examples || parsedChar.mes_example || '',
         });
         showToast('Character loaded from JSON');
       }
@@ -187,6 +189,7 @@ Do not include any Markdown formatting like \`\`\`json or any other text. Return
         document.getElementById('char-scenario').value = charData.scenario || '';
         document.getElementById('char-system-prompt').value = charData.system_prompt || '';
         document.getElementById('char-first-message').value = charData.first_message || '';
+        document.getElementById('char-message-examples').value = charData.message_examples || charData.mes_example || '';
         showToast('Character generated successfully!');
       } else {
         throw new Error('No valid JSON found in response');
@@ -353,6 +356,7 @@ function openCharacterEditor(character = null) {
   document.getElementById('char-image-tags').value = character?.image_tags || '';
   document.getElementById('char-scenario').value = character?.scenario || '';
   document.getElementById('char-system-prompt').value = character?.system_prompt || '';
+  document.getElementById('char-message-examples').value = character?.message_examples || '';
   document.getElementById('char-first-message').value = character?.first_message || '';
 
   const preview = document.getElementById('avatar-preview');
@@ -426,6 +430,7 @@ async function saveCharacter() {
     image_tags: document.getElementById('char-image-tags').value,
     scenario: document.getElementById('char-scenario').value,
     system_prompt: document.getElementById('char-system-prompt').value,
+    message_examples: document.getElementById('char-message-examples').value,
     first_message: document.getElementById('char-first-message').value,
     alternate_greetings: Array.from(document.querySelectorAll('.alt-greeting-textarea')).map(ta => ta.value.trim()).filter(v => v !== ''),
   };

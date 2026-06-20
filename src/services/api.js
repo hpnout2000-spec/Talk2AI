@@ -156,6 +156,13 @@ export const api = {
         repeat_penalty: options.rep_penalty || settings.rep_penalty,
       };
 
+      // Add reasoning_effort parameter (KoboldCpp parameter for thinking budget)
+      const effort = options.reasoning_effort ?? settings.reasoning_effort ?? 'none';
+      if (effort) {
+        body.reasoning_effort = effort;
+      }
+
+
       // Removed jinja_kwargs override to avoid conflict with manual system prompt token prefill
 
       try {
@@ -524,6 +531,58 @@ Keep the summary under 300 words. Write only the summary itself in ${language}, 
   },
 
   /**
+   * Generates a condensed summary of past chat messages
+   */
+  async generateChatSummary(previousSummary, newMessages, userName, characterName, language = 'Russian') {
+    let newMessagesText = "";
+    newMessages.forEach((msg) => {
+      const name = msg.role === 'user' ? userName : characterName;
+      const content = msg.role === 'user' ? (msg.translated_content || msg.content) : (msg.original_text || msg.content);
+      newMessagesText += `${name}: ${content}\n\n`;
+    });
+
+    let systemPrompt = "";
+    if (previousSummary) {
+      systemPrompt = `You are a professional assistant. You are tasked with UPDATING an existing conversation summary with new messages that occurred after it.
+Here is the EXISTING SUMMARY of the conversation so far:
+"""
+${previousSummary}
+"""
+
+Here are the NEW MESSAGES:
+"""
+${newMessagesText}
+"""
+
+Please write a new, comprehensive, cohesive, and detailed summary of the entire conversation from the very beginning up to the latest messages.
+Integrate the new events seamlessly with the old summary.
+The summary should be approximately 500 words long. Write only the summary itself in ${language}, without any introductory remarks, greetings, or meta-commentary.`;
+    } else {
+      systemPrompt = `You are a professional assistant. You are tasked with writing a detailed summary of the following conversation.
+Here are the MESSAGES in the conversation:
+"""
+${newMessagesText}
+"""
+
+Please write a cohesive and detailed summary of the entire conversation from the very beginning up to the latest messages.
+Highlight key events, major dialogue points, and critical developments.
+The summary should be approximately 500 words long. Write only the summary itself in ${language}, without any introductory remarks, greetings, or meta-commentary.`;
+    }
+
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `Generate the conversation summary in ${language}.` }
+    ];
+
+    try {
+      return await this.chatCompletion(messages, { temperature: 0.5, max_tokens: 2048 });
+    } catch (err) {
+      console.error('Chat summarization failed:', err);
+      throw err;
+    }
+  },
+
+  /**
    * Generates a list of characters mentioned in the adventure history
    */
   async extractGameCharacters(gameSummary, history) {
@@ -602,26 +661,104 @@ Focus ONLY on what is known or can be directly inferred from the history. Keep t
   },
 
   /**
-   * Count tokens for a given text using KoboldCpp's native token counter
+   * Count tokens for a given text using KoboldCpp's or llama.cpp's native token counter,
+   * falling back to Cyrillic-aware character estimation if both fail.
    * @param {string} text
    * @returns {Promise<number>}
    */
   async countTokens(text) {
+    if (!text) return 0;
     const settings = settingsStore.get();
+    
+    // Extract base URL (remove trailing /v1 or /v1/)
+    let baseUrl = settings.api_url || 'http://localhost:5001';
+    baseUrl = baseUrl.replace(/\/v1\/?$/, '');
+
+    // 1. Try KoboldCpp's native tokencount
     try {
-      const resp = await fetch(`${settings.api_url}/api/extra/tokencount`, {
+      const resp = await fetch(`${baseUrl}/api/extra/tokencount`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: text }),
+        signal: AbortSignal.timeout(2000),
       });
       if (resp.ok) {
         const data = await resp.json();
-        return data.value;
+        if (typeof data.value === 'number') {
+          return data.value;
+        }
       }
     } catch (e) {
-      console.warn('Failed to count tokens via KoboldCpp:', e);
+      // Fail silently and try next endpoint
     }
-    // Fallback to Cyrillic-aware character-based token estimation
-    return Math.ceil(text.length / (/[а-яА-ЯёЁ]/.test(text) ? 1.8 : 3.5));
+
+    // 2. Try llama.cpp's native tokenize
+    try {
+      const resp = await fetch(`${baseUrl}/tokenize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: text }),
+        signal: AbortSignal.timeout(2000),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.tokens && Array.isArray(data.tokens)) {
+          return data.tokens.length;
+        }
+      }
+    } catch (e) {
+      // Fail silently and use fallback
+    }
+
+    // Fallback to modern token characters-per-token ratio (Llama 3, Gemma 2, Qwen 2)
+    // English: ~3.7 chars/token. Cyrillic: ~3.0 chars/token.
+    return Math.ceil(text.length / (/[а-яА-ЯёЁ]/.test(text) ? 3.0 : 3.7));
+  },
+
+  /**
+   * Fetch current max context length configured in KoboldCpp or llama.cpp properties
+   * @returns {Promise<number>}
+   */
+  async getMaxContextLength() {
+    const settings = settingsStore.get();
+    
+    // Extract base URL (remove trailing /v1 or /v1/)
+    let baseUrl = settings.api_url || 'http://localhost:5001';
+    baseUrl = baseUrl.replace(/\/v1\/?$/, '');
+
+    // 1. Try KoboldCpp config endpoint
+    try {
+      const resp = await fetch(`${baseUrl}/api/v1/config/max_context_length`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(3000),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (typeof data.value === 'number') {
+          return data.value;
+        }
+      }
+    } catch (e) {
+      // Fail silently
+    }
+
+    // 2. Try llama.cpp props endpoint
+    try {
+      const resp = await fetch(`${baseUrl}/props`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(3000),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.default_generation_settings && typeof data.default_generation_settings.n_ctx === 'number') {
+          return data.default_generation_settings.n_ctx;
+        }
+      }
+    } catch (e) {
+      // Fail silently
+    }
+
+    return settings.prompt_token_limit || 4096;
   }
 };
+

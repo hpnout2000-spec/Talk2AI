@@ -90,6 +90,7 @@ export const characterStore = {
       alternate_greetings: characterData.alternate_greetings || [],
       created_at: characterData.created_at || new Date().toISOString(),
       last_chat_at: characterData.last_chat_at || characterData.created_at || new Date().toISOString(),
+      message_examples: characterData.message_examples || '',
     };
 
     if (isNew) {

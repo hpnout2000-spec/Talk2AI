@@ -388,6 +388,16 @@
             <div class="input-container">
               <textarea id="message-input" class="message-input" placeholder="Type your message..." rows="1"></textarea>
               
+              <!-- Auto Summary Recommendation Banner -->
+              <div id="auto-summary-recommendation" class="auto-summary-recommendation hidden">
+                <div class="auto-summary-rec-header">Recommendation:</div>
+                <div class="auto-summary-rec-body">You're running low on context. Do you want to use Auto Summary?</div>
+                <div class="auto-summary-rec-footer">
+                  <button id="btn-rec-hide" class="btn-rec-btn btn-secondary small">Hide</button>
+                  <button id="btn-rec-enable" class="btn-rec-btn btn-primary small">Enable</button>
+                </div>
+              </div>
+              
               <div class="input-bottom-row">
                 <div class="input-bottom-left">
                   <!-- Plus Options Button -->
@@ -411,7 +421,6 @@
                     </div>
                   </div>
 
-                  <!-- Input Settings Gear -->
                   <button id="btn-input-settings" class="btn-icon btn-input-settings" title="Input Settings">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <circle cx="12" cy="12" r="3"/>
@@ -422,6 +431,32 @@
                   <div id="input-settings-popover" class="input-settings-popover hidden">
                     <!-- Content will be injected by JS -->
                   </div>
+
+                  <!-- Thinking Effort Button -->
+                  <div id="thinking-effort-wrapper" class="thinking-effort-wrapper">
+                    <button id="btn-thinking-effort-main" class="btn-thinking-effort" title="Reasoning effort">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:14px;height:14px;flex-shrink:0;">
+                        <path d="M9 18h6"/><path d="M10 22h4"/>
+                        <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/>
+                      </svg>
+                      <span class="thinking-btn-label">Thinking</span>
+                      <span class="effort-level-label"></span>
+                    </button>
+                    <button id="btn-thinking-effort-arrow" class="btn-thinking-effort-arrow" title="Select effort level">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:10px;height:10px;">
+                        <polyline points="9 18 15 12 9 6"/>
+                      </svg>
+                    </button>
+                    <div id="thinking-effort-dropdown" class="thinking-effort-dropdown hidden">
+                      <div class="effort-option" data-value="none">None</div>
+                      <div class="effort-option" data-value="minimal">Minimal</div>
+                      <div class="effort-option" data-value="low">Low</div>
+                      <div class="effort-option" data-value="medium">Medium</div>
+                      <div class="effort-option" data-value="high">High</div>
+                    </div>
+                  </div>
+
+
 
                   <!-- Image Gen Premium Pill Button Indicator -->
                   <div style="display: flex; align-items: center; gap: 4px;">
@@ -440,6 +475,12 @@
 
                 <!-- Actions: Send / Stop -->
                 <div class="input-actions">
+                  <div id="context-indicator" class="context-indicator hidden" data-tooltip="Checking context...">
+                    <svg class="donut-svg" viewBox="0 0 36 36">
+                      <path class="donut-ring" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke-width="3.5"></path>
+                      <path id="donut-segment" class="donut-segment" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke-width="3.5" stroke-dasharray="0 100" stroke-linecap="round"></path>
+                    </svg>
+                  </div>
                   <button id="btn-send" class="btn-send" title="Send">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
@@ -1092,6 +1133,29 @@
               </div>
             </div>
             <textarea id="genai-input" placeholder="Ask GenAI anything..." rows="1"></textarea>
+            <!-- Thinking Effort Button (GenAI) -->
+            <div id="genai-thinking-effort-wrapper" class="thinking-effort-wrapper">
+              <button id="btn-genai-thinking-effort-main" class="btn-thinking-effort" title="Reasoning effort">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:14px;height:14px;flex-shrink:0;">
+                  <path d="M9 18h6"/><path d="M10 22h4"/>
+                  <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/>
+                </svg>
+                <span class="thinking-btn-label">Thinking</span>
+                <span class="effort-level-label"></span>
+              </button>
+              <button id="btn-genai-thinking-effort-arrow" class="btn-thinking-effort-arrow" title="Select effort level">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:10px;height:10px;">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </button>
+              <div id="genai-thinking-effort-dropdown" class="thinking-effort-dropdown hidden">
+                <div class="effort-option" data-value="none">None</div>
+                <div class="effort-option" data-value="minimal">Minimal</div>
+                <div class="effort-option" data-value="low">Low</div>
+                <div class="effort-option" data-value="medium">Medium</div>
+                <div class="effort-option" data-value="high">High</div>
+              </div>
+            </div>
             <button id="btn-genai-brush" class="hidden" title="Generate image only">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="m12 22 1-1c1.4-1.4 2.4-3.2 3-5.2L18 9l-5-5-7 2-5 5 5 5z"/>
@@ -1177,6 +1241,10 @@
             <div class="form-group">
               <label for="char-system-prompt">System Prompt</label>
               <textarea id="char-system-prompt" rows="4" placeholder="Full system prompt for the LLM..."></textarea>
+            </div>
+            <div class="form-group">
+              <label for="char-message-examples">Message example and behaviour</label>
+              <textarea id="char-message-examples" rows="3" placeholder="Character must talk in this style..."></textarea>
             </div>
             <div class="form-group">
               <label for="char-first-message">First Message</label>
@@ -1827,20 +1895,6 @@
               <label>AI Comments</label>
               <label class="toggle-switch small">
                 <input type="checkbox" id="setting-ai-comments" checked />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-            <div class="form-group-row">
-              <label>Thinking Mode</label>
-              <label class="toggle-switch small">
-                <input type="checkbox" id="setting-thinking" />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-            <div class="form-group-row" id="thinking-snippets-row">
-              <label style="padding-left: 12px; font-size: 0.9em; color: var(--text-tertiary);">↳ Show Snippets</label>
-              <label class="toggle-switch small">
-                <input type="checkbox" id="setting-thinking-snippets" />
                 <span class="toggle-slider"></span>
               </label>
             </div>
@@ -2758,7 +2812,118 @@
       </div>
     </div>
 
-    <!-- Fullscreen Image Lightbox Overlay -->
+      <!-- ─── Context Details Modal ───────────────────────── -->
+      <div id="context-details-modal" class="modal hidden">
+        <div class="modal-backdrop" id="context-modal-backdrop"></div>
+        <div class="modal-content" style="max-width: 600px;">
+          <div class="modal-header">
+            <h2 style="display: flex; align-items: center; gap: 8px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 20px; height: 20px;">
+                <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+              </svg>
+              Context Breakdown
+            </h2>
+            <button class="btn-icon" id="btn-refresh-context" title="Force recalculate context via API" style="margin-left: auto; margin-right: 8px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l.56-.56"/>
+              </svg>
+            </button>
+            <button class="btn-close-modal btn-icon" id="btn-close-context-details">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <div class="modal-body">
+            <!-- Summary Progress -->
+            <div class="context-summary-section" style="margin-bottom: 20px;">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: var(--text-sm);">
+                <span id="context-total-info" style="font-weight: 600; color: var(--text-primary);">0 / 4096 tokens used</span>
+                <span id="context-free-info" style="color: var(--success); font-weight: 500;">100% free</span>
+              </div>
+              <div class="context-bar-bg" style="height: 10px; background: rgba(255,255,255,0.05); border-radius: 5px; overflow: hidden; border: 1px solid var(--border-light); display: flex;">
+                <div id="bar-char-card" style="height: 100%; background: #06b6d4; width: 0%; transition: width 0.3s;" title="Character Card"></div>
+                <div id="bar-system-prompt" style="height: 100%; background: #a78bfa; width: 0%; transition: width 0.3s;" title="System Prompt"></div>
+                <div id="bar-memory-context" style="height: 100%; background: #f472b6; width: 0%; transition: width 0.3s;" title="Memory Context"></div>
+                <div id="bar-auto-summary" style="height: 100%; background: #818cf8; width: 0%; transition: width 0.3s;" title="Auto Summary"></div>
+                <div id="bar-chat-history" style="height: 100%; background: #34d399; width: 0%; transition: width 0.3s;" title="Chat History"></div>
+              </div>
+              <div class="context-legend" style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; font-size: 11px; color: var(--text-tertiary);">
+                <div style="display: flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; background: #06b6d4; border-radius: 50%;"></span> Character Card: <span id="legend-char-card" style="color:var(--text-secondary);">0t</span></div>
+                <div style="display: flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; background: #a78bfa; border-radius: 50%;"></span> System Prompt: <span id="legend-system-prompt" style="color:var(--text-secondary);">0t</span></div>
+                <div style="display: flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; background: #f472b6; border-radius: 50%;"></span> Memory Context: <span id="legend-memory-context" style="color:var(--text-secondary);">0t</span></div>
+                <div style="display: flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; background: #818cf8; border-radius: 50%;"></span> Auto Summary: <span id="legend-auto-summary" style="color:var(--text-secondary);">0t</span></div>
+                <div style="display: flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; background: #34d399; border-radius: 50%;"></span> Chat History: <span id="legend-chat-history" style="color:var(--text-secondary);">0t</span></div>
+              </div>
+            </div>
+
+            <!-- Breakdown Accordion -->
+            <div class="context-accordion" style="display: flex; flex-direction: column; gap: 10px;">
+              
+              <!-- Character Card Panel -->
+              <div class="context-panel" style="border: 1px solid var(--border-light); border-radius: var(--radius-md); overflow: hidden; background: rgba(0,0,0,0.15);">
+                <div class="context-panel-header" id="header-details-char" style="padding: 12px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; transition: background 0.2s;">
+                  <span style="font-weight: 500; font-size: var(--text-sm);">Character Card details</span>
+                  <span id="badge-details-char" class="badge" style="background: rgba(6, 182, 212, 0.15); color: #06b6d4; padding: 2px 6px; border-radius: 4px; font-size: 11px;">0 tokens</span>
+                </div>
+                <div class="context-panel-content hidden" id="content-details-char" style="padding: 12px; border-top: 1px solid var(--border-light); max-height: 200px; overflow-y: auto; font-family: var(--font-mono); font-size: 11px; white-space: pre-wrap; color: var(--text-secondary); background: rgba(0,0,0,0.25);">
+                </div>
+              </div>
+
+              <!-- System Prompt Panel -->
+              <div class="context-panel" style="border: 1px solid var(--border-light); border-radius: var(--radius-md); overflow: hidden; background: rgba(0,0,0,0.15);">
+                <div class="context-panel-header" id="header-details-system" style="padding: 12px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; transition: background 0.2s;">
+                  <span style="font-weight: 500; font-size: var(--text-sm);">System Prompt & Instructions</span>
+                  <span id="badge-details-system" class="badge" style="background: rgba(167, 139, 250, 0.15); color: #c084fc; padding: 2px 6px; border-radius: 4px; font-size: 11px;">0 tokens</span>
+                </div>
+                <div class="context-panel-content hidden" id="content-details-system" style="padding: 12px; border-top: 1px solid var(--border-light); max-height: 200px; overflow-y: auto; font-family: var(--font-mono); font-size: 11px; white-space: pre-wrap; color: var(--text-secondary); background: rgba(0,0,0,0.25);">
+                </div>
+              </div>
+
+              <!-- Memory Context Panel -->
+              <div class="context-panel" style="border: 1px solid var(--border-light); border-radius: var(--radius-md); overflow: hidden; background: rgba(0,0,0,0.15);">
+                <div class="context-panel-header" id="header-details-memory" style="padding: 12px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; transition: background 0.2s;">
+                  <span style="font-weight: 500; font-size: var(--text-sm);">Memory Context</span>
+                  <span id="badge-details-memory" class="badge" style="background: rgba(244, 114, 182, 0.15); color: #f472b6; padding: 2px 6px; border-radius: 4px; font-size: 11px;">0 tokens</span>
+                </div>
+                <div class="context-panel-content hidden" id="content-details-memory" style="padding: 12px; border-top: 1px solid var(--border-light); max-height: 200px; overflow-y: auto; font-family: var(--font-mono); font-size: 11px; white-space: pre-wrap; color: var(--text-secondary); background: rgba(0,0,0,0.25);">
+                </div>
+              </div>
+
+              <!-- Auto Summary Panel -->
+              <div class="context-panel" style="border: 1px solid var(--border-light); border-radius: var(--radius-md); overflow: hidden; background: rgba(0,0,0,0.15);">
+                <div class="context-panel-header" id="header-details-summary" style="padding: 12px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; transition: background 0.2s;">
+                  <span style="font-weight: 500; font-size: var(--text-sm);">Auto Summary</span>
+                  <div style="display: flex; align-items: center; gap: 8px;" onclick="event.stopPropagation();">
+                    <button id="btn-make-auto-summary" class="btn-primary small" style="padding: 2px 8px; font-size: 11px; margin: 0; cursor: pointer; border-radius: 4px; background: var(--accent-primary); border: none; color: #212121; font-weight: 600;">Make summary</button>
+                    <button id="btn-revert-auto-summary" class="btn-secondary small" style="padding: 2px 8px; font-size: 11px; margin: 0; cursor: pointer; border-radius: 4px; display: none;">Revert</button>
+                    <span id="badge-details-summary" class="badge" style="background: rgba(99, 102, 241, 0.15); color: #818cf8; padding: 2px 6px; border-radius: 4px; font-size: 11px;">0 tokens</span>
+                  </div>
+                </div>
+                <div class="context-panel-content hidden" id="content-details-summary" style="padding: 12px; border-top: 1px solid var(--border-light); max-height: 250px; overflow-y: auto; font-family: var(--font-sans); font-size: var(--text-sm); line-height: 1.5; color: var(--text-secondary); background: rgba(0,0,0,0.25); white-space: pre-wrap;">
+                </div>
+              </div>
+
+              <!-- Message History Panel -->
+              <div class="context-panel" style="border: 1px solid var(--border-light); border-radius: var(--radius-md); overflow: hidden; background: rgba(0,0,0,0.15);">
+                <div class="context-panel-header" id="header-details-history" style="padding: 12px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; transition: background 0.2s;">
+                  <span style="font-weight: 500; font-size: var(--text-sm);">Chat History messages</span>
+                  <span id="badge-details-history" class="badge" style="background: rgba(52, 211, 153, 0.15); color: #34d399; padding: 2px 6px; border-radius: 4px; font-size: 11px;">0 tokens</span>
+                </div>
+                <div class="context-panel-content hidden" id="content-details-history" style="padding: 12px; border-top: 1px solid var(--border-light); max-height: 350px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; background: rgba(0,0,0,0.25);">
+                  <!-- Message list will be injected here -->
+                </div>
+              </div>
+
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button id="btn-close-context-modal-footer" class="btn-primary">Done</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Fullscreen Image Lightbox Overlay -->
     <div id="image-lightbox" class="image-lightbox hidden">
       <button class="lightbox-close" id="lightbox-close">&times;</button>
       <div class="lightbox-content" id="lightbox-content">

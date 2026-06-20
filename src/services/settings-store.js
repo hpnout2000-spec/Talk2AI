@@ -15,8 +15,7 @@ const DEFAULTS = {
   personas: [
     { id: 'default', name: 'Default Persona', description: '' }
   ],
-  thinking_enabled: false,
-  thinking_snippets: false,
+  reasoning_effort: 'none',
   memory_enabled: true,
   font_size: 15,
   response_length: 'auto',

@@ -79,10 +79,8 @@ export function initSettingsPanel() {
   setupRangeInput('adv-setting-top-k', 'adv-top-k-value', v => v);
   setupRangeInput('adv-setting-rep-penalty', 'adv-rep-penalty-value', v => parseFloat(v).toFixed(2));
 
-  // Syncing toggles
-  const syncToggles = [
-    { id: 'setting-thinking', target: 'thinking-toggle' }
-  ];
+  const syncToggles = [];
+
   syncToggles.forEach(sync => {
     const el = document.getElementById(sync.id);
     if (el) {
@@ -159,8 +157,6 @@ function loadSettingsToUI() {
     if (el) el.value = val || '';
   };
 
-  checkField('setting-thinking', settings.thinking_enabled);
-  checkField('setting-thinking-snippets', settings.thinking_snippets);
   setRangeValue('adv-setting-max-tokens', 'adv-max-tokens-value', settings.max_tokens);
   setRangeValue('adv-setting-temperature', 'adv-temperature-value', settings.temperature?.toFixed(2));
   setRangeValue('adv-setting-top-p', 'adv-top-p-value', settings.top_p?.toFixed(2));
@@ -265,8 +261,6 @@ async function saveSettings() {
     ...current,
     api_url: getVal('setting-api-url') || current.api_url,
     prompt_token_limit: parseInt(getVal('setting-prompt-token-limit')) || current.prompt_token_limit,
-    thinking_enabled: getChecked('setting-thinking'),
-    thinking_snippets: getChecked('setting-thinking-snippets'),
     memory_enabled: getChecked('setting-memory'),
     auto_translate: getChecked('setting-auto-translate'),
     translate_user_messages: getChecked('setting-translate-user'),
@@ -303,14 +297,14 @@ async function saveSettings() {
 
   await settingsStore.save(newSettings);
 
+  if (window.updateContextIndicator) {
+    window.updateContextIndicator();
+  }
+
   // Apply font size
   document.documentElement.style.setProperty('--text-base', `${newSettings.font_size / 16}rem`);
 
   applyGlobalSettingsStyles();
-
-  // Sync header thinking toggle
-  const headerThinking = document.getElementById('thinking-toggle');
-  if (headerThinking) headerThinking.checked = newSettings.thinking_enabled;
 
   showToast('Settings saved');
   checkConnection();

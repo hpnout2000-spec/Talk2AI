@@ -318,6 +318,10 @@ export function buildGroupApiMessages(respondingChar, allCharacters, session) {
   let sys = respondingChar.system_prompt || [respondingChar.description, respondingChar.personality].filter(Boolean).join('\n\n') || `You are ${respondingChar.name}.`;
   sys = sys.replace(/\{\{user\}\}/gi, userName).replace(/\{\{char\}\}/gi, respondingChar.name);
   
+  if (respondingChar.message_examples && respondingChar.message_examples.trim()) {
+    sys += `\n\nCharacter must talk in this style: ${respondingChar.message_examples.trim()}`;
+  }
+  
   sys += `\n\n[GROUP CHAT RULES]
 - You are ${respondingChar.name} in a group chat.
 - Other members: ${otherChars.map(c => c.name).join(', ')}.

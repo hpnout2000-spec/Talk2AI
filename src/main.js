@@ -42,12 +42,6 @@ async function init() {
   // Apply font size
   document.documentElement.style.setProperty('--text-base', `${settings.font_size / 16}rem`);
 
-  // Sync thinking toggle
-  const thinkingToggle = document.getElementById('thinking-toggle');
-  if (thinkingToggle) {
-    thinkingToggle.checked = settings.thinking_enabled;
-  }
-
   // Update user name display
   const userNameDisplay = document.getElementById('user-name-display');
   const updateUserNameDisplay = () => {

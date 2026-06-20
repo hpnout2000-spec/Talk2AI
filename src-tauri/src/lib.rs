@@ -19,6 +19,8 @@ pub struct Character {
     pub created_at: String,
     #[serde(default)]
     pub last_chat_at: String,
+    #[serde(default)]
+    pub message_examples: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

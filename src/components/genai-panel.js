@@ -3844,7 +3844,60 @@ export function initGenAIPanel() {
     renderAllSkillsList();
   });
 
+  // ─── GenAI Thinking Effort Button ───────────────────────────────────
+  (function initGenAIThinkingEffortBtn() {
+    const wrapper = document.getElementById('genai-thinking-effort-wrapper');
+    const btnMain = document.getElementById('btn-genai-thinking-effort-main');
+    const btnArrow = document.getElementById('btn-genai-thinking-effort-arrow');
+    const dropdown = document.getElementById('genai-thinking-effort-dropdown');
+    if (!wrapper || !btnArrow || !dropdown) return;
+
+    function refreshGenAIThinkingEffortUI() {
+      const effort = settingsStore.get().reasoning_effort || 'none';
+      const levelSpan = btnMain?.querySelector('.effort-level-label');
+      if (effort === 'none') {
+        wrapper.classList.remove('active');
+        if (levelSpan) levelSpan.textContent = '';
+      } else {
+        wrapper.classList.add('active');
+        if (levelSpan) levelSpan.textContent = effort;
+      }
+      dropdown.querySelectorAll('.effort-option').forEach(opt => {
+        opt.classList.toggle('selected', opt.dataset.value === effort);
+      });
+    }
+
+    btnArrow.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isHidden = dropdown.classList.contains('hidden');
+      dropdown.classList.toggle('hidden', !isHidden);
+    });
+
+    dropdown.querySelectorAll('.effort-option').forEach(opt => {
+      opt.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const value = opt.dataset.value;
+        settingsStore.save({ ...settingsStore.get(), reasoning_effort: value });
+        dropdown.classList.add('hidden');
+        refreshGenAIThinkingEffortUI();
+        // Sync chat toolbar button if visible
+        if (window.refreshThinkingEffortUI) window.refreshThinkingEffortUI();
+      });
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!wrapper.contains(e.target)) {
+        dropdown.classList.add('hidden');
+      }
+    });
+
+    refreshGenAIThinkingEffortUI();
+    window.refreshGenAIThinkingEffortUI = refreshGenAIThinkingEffortUI;
+  })();
+  // ─────────────────────────────────────────────────────────────────────
+
   sendBtn.addEventListener('click', sendUserMessage);
+
   if (brushBtn) {
     brushBtn.addEventListener('click', () => {
       if (isGenerating) return;
