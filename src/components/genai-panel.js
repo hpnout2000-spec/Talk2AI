@@ -11,7 +11,7 @@ import { skillsStore } from '../services/skills-store.js';
 import { gameStore } from '../services/game-store.js';
 import { groupChatStore } from '../services/group-chat-store.js';
 import { appState } from '../state.js';
-import { renderMarkdown, autoResizeTextarea, formatTime, injectCursor, escapeHtml } from '../utils/helpers.js';
+import { renderMarkdown, autoResizeTextarea, formatTime, injectCursor, escapeHtml, parseThinking, parseStreamThinking, createThinkingBlockHTML } from '../utils/helpers.js';
 import morphdom from '../vendor/morphdom.js';
 import { generateImageComfyUI, checkComfyUIConnection, buildAutoPromptFromContext } from '../services/comfyui-service.js';
 import { loadChat } from './chat.js';
@@ -54,7 +54,8 @@ creatorTabsList.forEach(tab => { creatorState[tab] = { facts: [], text: '' }; })
 let messagesEl, inputEl, sendBtn, stopBtn, clearBtn, closeBtn, fullscreenBtn, brushBtn;
 
 // ─── System Prompt ──────────────────────────────────────────────────
-const BASE_SYSTEM_PROMPT = `You are GenAI — a highly advanced, warm, and proactive virtual friend built into VibeChatting.
+const BASE_SYSTEM_PROMPT = `You are GenAI — a highly advanced, warm, proactive, and adaptive virtual friend built into VibeChatting.
+You are an adaptive assistant and must seamlessly adapt to the user's behavior, preferences, and conversational style.
 You have deep, direct access to all application data, settings, and features via custom tools. Your tone is helpful and warm. Use the "👉" emoji ONLY for bullet lists — never use this emoji in regular paragraphs.
 
 You also have direct access to the user's active screen and chat context (such as the currently open individual character chat, group chat, or game) which is appended at the very end of your system prompt under the "[APP CONTEXT]" block. Pay close attention to the character details, recent dialogue history, and settings in this context to help the user compose replies, orchestrate plots, summarize events, and manage their conversation history.
@@ -93,7 +94,7 @@ SPEECH & FORMAT RULES:
    }
    \`\`\`
    CRITICAL CONCEPT: The "message" field is what the USER will say/send when they click the button. It must ALWAYS be written in the FIRST PERSON (from the user's perspective, e.g. "Yes, please...", "I want to...").
-   * USE SPARINGLY & WHEN APPROPRIATE: Do NOT include interactive suggestion buttons in every single response. Only use them when there is a meaningful choice or action the user can perform next (e.g. suggesting options for roleplay continuations, settings changes, starting a game, or image variations). Avoid using suggestion buttons for simple conversations, standard answers, or greeting responses.
+   * USE SPARINGLY & ONLY WHEN TRULY NEEDED: Do NOT include interactive suggestion buttons in every single response. Only use them when they are strictly necessary and there is a specific, meaningful choice or action the user can perform next (e.g. suggesting options for roleplay continuations, settings changes, starting a game, or image variations). Otherwise, it is MUCH better to simply ask a natural follow-up question based on the context. Avoid using suggestion buttons for simple conversations, standard answers, or greeting responses.
    * Limit the number of suggestion buttons to 1-3. Do not clutter the chat.
    * Keep them highly CONCRETE and CONTEXTUAL, not abstract! Avoid generic, abstract actions like "Create character" that send static templates. Instead, make them natural, realistic dialogue continuations customized to your current text.
    * NEVER write a prompt, instruction, or question from the AI (like "Explain more?" or "How does it work?") in the "message" field! That is incorrect because when clicked, the user would be sending your own question back to you.
@@ -105,8 +106,8 @@ SPEECH & FORMAT RULES:
      - Good (If you suggested a roleplay scene):
        {"label": "Try this scene", "message": "Yes, let's try the tavern scenario and introduce a mysterious stranger!", "target": "character"}
    
-   * "target": "character" (default if omitted) - When clicked, the message will be sent to the active roleplay character chat on behalf of the user. Use this to suggest creative, witty, or plot-driving replies for the user.
-   * "target": "genai" - When clicked, the message will be sent directly to your own GenAI chat! Use this to provide convenient follow-up options, continuation flows, or control buttons for the user.
+   * "target": "genai" - VERY IMPORTANT: This targets the CURRENT OPEN CHAT with YOU (the GenAI assistant). When clicked, the message will be sent directly to your own GenAI chat. Use this to provide convenient follow-up options, continuation flows, or control buttons for the user.
+   * "target": "character" (default if omitted) - VERY IMPORTANT: This targets a COMPLETELY DIFFERENT CHAT with a roleplay character in the application. When clicked, the message will be sent to that active roleplay character chat on behalf of the user, NOT to your chat. Use this to suggest creative, witty, or plot-driving replies for the user.
    * Frame them beautifully by writing a heading that changes contextually (e.g. "Select next option: 👇", "Where should we go next? 👇", "Choose a scene continuation: 👇") in the detected active language of the dialogue, followed by the button JSON blocks.
 
 
@@ -659,9 +660,6 @@ async function buildApiMessages(extraUserInstruction = null) {
     stylePrompt += '\nIMPORTANT: Keep your response extremely brief and concise. Limit yourself to 1-2 short sentences maximum. No fluff. Be concise.';
   } else if (settings.genai_response_length === 'long') {
     stylePrompt += '\nIMPORTANT: Provide a detailed, long response with multiple paragraphs if necessary. Elaborate on everything and be as verbose as possible. Do NOT be concise.';
-  } else {
-    // default
-    stylePrompt += '\nIMPORTANT: Write balanced, moderately detailed responses. Keep it relatively short and to the point (1-2 paragraphs maximum).';
   }
 
   if (settings.genai_speech_style === 'official' && !isCharacterCreationMode) {
@@ -669,6 +667,28 @@ async function buildApiMessages(extraUserInstruction = null) {
   }
 
   let finalBasePrompt = isCharacterCreationMode ? CREATOR_SYSTEM_PROMPT : BASE_SYSTEM_PROMPT;
+  if (!settings.genai_duo_suggestions && !isCharacterCreationMode) {
+    const targetTextTargetBlock = `   * "target": "genai" - VERY IMPORTANT: This targets the CURRENT OPEN CHAT with YOU (the GenAI assistant). When clicked, the message will be sent directly to your own GenAI chat. Use this to provide convenient follow-up options, continuation flows, or control buttons for the user.\n   * "target": "character" (default if omitted) - VERY IMPORTANT: This targets a COMPLETELY DIFFERENT CHAT with a roleplay character in the application. When clicked, the message will be sent to that active roleplay character chat on behalf of the user, NOT to your chat. Use this to suggest creative, witty, or plot-driving replies for the user.`;
+    const replacementTextTargetBlock = `   * NOTE: All suggestion buttons will be automatically sent to the CURRENT OPEN CHAT with YOU (the GenAI assistant). Use this to provide convenient follow-up options, continuation flows, or control buttons for the user.`;
+    
+    finalBasePrompt = finalBasePrompt.replace(targetTextTargetBlock, replacementTextTargetBlock);
+    
+    const targetJsonBlock = `     "message": "The message sent to the chat ON BEHALF OF THE USER",\n     "target": "character" | "genai"`;
+    const replacementJsonBlock = `     "message": "The message sent to the chat ON BEHALF OF THE USER"`;
+    finalBasePrompt = finalBasePrompt.replace(targetJsonBlock, replacementJsonBlock);
+
+    const targetExamplesBlock = `      - Good (If you just asked "Would you like me to explain this concept in more detail?"):
+        {"label": "Explain in more detail", "message": "Yes, please explain this ComfyUI node setup in more detail to me!", "target": "genai"}
+      - Good (If you just generated an image):
+        {"label": "Generate more", "message": "This is great! Let's generate another image but make it warmer and more colorful.", "target": "genai"}
+      - Good (If you suggested a roleplay scene):
+        {"label": "Try this scene", "message": "Yes, let's try the tavern scenario and introduce a mysterious stranger!", "target": "character"}`;
+    const replacementExamplesBlock = `      - Good (If you just asked "Would you like me to explain this concept in more detail?"):
+        {"label": "Explain in more detail", "message": "Yes, please explain this ComfyUI node setup in more detail to me!"}
+      - Good (If you just generated an image):
+        {"label": "Generate more", "message": "This is great! Let's generate another image but make it warmer and more colorful."}`;
+    finalBasePrompt = finalBasePrompt.replace(targetExamplesBlock, replacementExamplesBlock);
+  }
   if (settings.genai_safe_mode) {
     if (isCharacterCreationMode) {
       finalBasePrompt += "\n\nMANDATORY RULE: You are strictly prohibited from generating, discussing, or engaging in any NSFW, explicit, sexual, or otherwise harmful content. If a user requests such content, you must politely decline and state that you cannot fulfill the request due to safety guidelines. This rule supersedes all previous instructions.";
@@ -937,7 +957,7 @@ Do NOT attempt to run any of the corresponding JSON commands for these features,
   let historyTokens = tokenCounts.slice(1);
   let totalTokens = systemTokens + historyTokens.reduce((sum, t) => sum + t, 0);
 
-  const targetLimit = tokenLimit - 1024; // reserve space for assistant output
+  const targetLimit = tokenLimit - (settingsStore.get().genai_max_tokens || 2048); // reserve space for assistant output
 
   // Pruning Stage A: Progressively reduce dynamic character chat context FIRST
   if (totalTokens > targetLimit) {
@@ -2030,7 +2050,7 @@ function animateFlyingText(startEl, text, destEl, callback) {
   }, { once: true });
 }
 
-function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWorking = false } = {}) {
+function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWorking = false, streaming = false } = {}) {
   if (!bubbleEl) return;
 
   let textCont = bubbleEl.querySelector('.genai-msg-text-container');
@@ -2041,10 +2061,22 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
 
   const text = entry.content || '';
 
+  // Parse thinking block from text
+  let thinking = entry.thinking || '';
+  let content = text;
+  let isInThinking = entry.isInThinking || false;
+
+  if (!entry.thinking && (streaming || !thinking)) {
+    const parsed = parseStreamThinking(text);
+    thinking = parsed.thinking;
+    content = parsed.content;
+    isInThinking = parsed.isInThinking;
+  }
+
   // Custom Inline Buttons Parsing
   const blockRegex = /```(?:json)?\s*([\s\S]*?)```/g;
-  let processedText = text;
-  const matches = [...text.matchAll(blockRegex)];
+  let processedText = content;
+  const matches = [...content.matchAll(blockRegex)];
   const buttonBlocksData = [];
   let blockIndex = 0;
   let globalButtonIndex = 0;
@@ -2093,7 +2125,7 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
   });
 
   // Parse raw JSON lines (not inside code blocks)
-  const lines = text.split('\n');
+  const lines = content.split('\n');
   let currentPos = 0;
 
   lines.forEach(line => {
@@ -2156,7 +2188,11 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
     }
   });
 
-  let html = renderMarkdown(processedText);
+  let html = '';
+  if (isInThinking || thinking) {
+    html += createThinkingBlockHTML(thinking, isInThinking);
+  }
+  html += renderMarkdown(processedText);
 
   buttonBlocksData.forEach((block, bIdx) => {
     const placeholder = `__GENAI_BUTTON_BLOCK_PLACEHOLDER_${bIdx}__`;
@@ -2278,7 +2314,16 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
 
   morphdom(textCont, temp, {
     childrenOnly: true,
-    getNodeKey: (node) => node.id || node.dataset?.wordIndex || null
+    getNodeKey: (node) => node.id || node.dataset?.wordIndex || null,
+    onBeforeElUpdated: (from, to) => {
+      if (from.nodeName === 'THINKING-SNIPPETS') {
+        if (to.hasAttribute('thoughts')) {
+          from.setAttribute('thoughts', to.getAttribute('thoughts'));
+        }
+        return false;
+      }
+      return true;
+    }
   });
 
   // Attach click listeners to GenAI inline suggestion buttons
@@ -2444,7 +2489,11 @@ function appendMsgEl(entry) {
   if (isUser) {
     bubbleEl.innerHTML = renderMarkdown(entry.content || '');
   } else {
-    renderAssistantBubble(entry, bubbleEl);
+    if (!entry.content && !entry.thinking) {
+      bubbleEl.innerHTML = `<div class="genai-bubble-text"><span class="chat-working-placeholder">Working...</span></div>`;
+    } else {
+      renderAssistantBubble(entry, bubbleEl);
+    }
   }
 
   messagesEl.appendChild(el);
@@ -2677,6 +2726,8 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
   scrollToBottom();
 
   let fullText = '';
+  let thinkingTextGenai = '';  // accumulated from delta.reasoning_content
+  let thinkingActiveGenai = false; // true during thinking phase via delta.reasoning_content
   let actionDetected = null;
 
   try {
@@ -2688,6 +2739,9 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
         fullText += chunk;
 
         // Detect JSON action mid-stream using our robust brace-counting scanner
+        // If we are getting content, thinking phase (via delta.reasoning_content) is over
+        if (thinkingActiveGenai) thinkingActiveGenai = false;
+
         const actionMatch = extractJsonAction(fullText);
         if (actionMatch) {
           const rawAction = actionMatch.json;
@@ -2827,6 +2881,10 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
         // Normal (first-pass) render
         const currentBubbleText = assistantEntry.content + finalDisplay;
         let assistantState = { ...assistantEntry, content: currentBubbleText };
+        if (thinkingTextGenai) {
+          assistantState.thinking = thinkingTextGenai;
+          assistantState.isInThinking = thinkingActiveGenai;
+        }
 
         renderAssistantBubble(assistantState, bubbleEl, {
           cursor: true,
@@ -2842,8 +2900,11 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
         } else {
           // Finalize content
           let finalContinuation = fullText.replace(/^[\s\n]+/, '');
-
           assistantEntry.content += finalContinuation;
+          // Persist thinking in entry if we received it via separate stream
+          if (thinkingTextGenai) {
+            assistantEntry.thinking = thinkingTextGenai;
+          }
           renderAssistantBubble(assistantEntry, bubbleEl, { cursor: false });
           finishGeneration();
         }
@@ -2859,7 +2920,15 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
       {
         temperature: 0.7,
         top_p: 0.95,
-        max_tokens: 1024
+        max_tokens: settingsStore.get().genai_max_tokens || 2048
+      },
+      // onThinkingChunk (delta.reasoning_content from KoboldCpp thinking models)
+      (thinkChunk) => {
+        thinkingTextGenai += thinkChunk;
+        // Show the thinking block immediately during accumulation
+        const displayState = { ...assistantEntry, content: assistantEntry.content, thinking: thinkingTextGenai, isInThinking: true };
+        renderAssistantBubble(displayState, bubbleEl, { cursor: true, streaming: true });
+        scrollToBottom();
       }
     );
   } catch (err) {
@@ -3867,11 +3936,14 @@ export function initGenAIPanel() {
       });
     }
 
-    btnArrow.addEventListener('click', (e) => {
+    const toggleDropdown = (e) => {
       e.stopPropagation();
       const isHidden = dropdown.classList.contains('hidden');
       dropdown.classList.toggle('hidden', !isHidden);
-    });
+    };
+
+    btnArrow.addEventListener('click', toggleDropdown);
+    if (btnMain) btnMain.addEventListener('click', toggleDropdown);
 
     dropdown.querySelectorAll('.effort-option').forEach(opt => {
       opt.addEventListener('click', (e) => {

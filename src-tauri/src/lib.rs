@@ -122,7 +122,7 @@ impl Default for AppSettings {
             temperature: 0.7,
             top_p: 0.9,
             top_k: 40,
-            rep_penalty: 1.1,
+            rep_penalty: 1.0,
             thinking_enabled: false,
             memory_enabled: true,
             font_size: 15,

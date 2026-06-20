@@ -2,6 +2,8 @@
    Helpers — Utility functions
    ════════════════════════════════════════════════════════════════════ */
 
+import { settingsStore } from '../services/settings-store.js';
+
 /**
  * Generate a random UUID-like ID
  */
@@ -37,7 +39,7 @@ export function renderMarkdown(text) {
   let html = escapeHtml(text);
 
   // Quotes ("...") - Must be first to avoid matching quotes in HTML tags
-  html = html.replace(/"([^"]+)"/g, '<span class="text-quotes">"$1"</span>');
+  html = html.replace(/&quot;(.*?)&quot;/g, '<span class="text-quotes">"$1"</span>');
 
   // Custom Image syntax: ![alt](url)
   html = html.replace(/!\[(.*?)\]\((.*?)\)/g, (match, alt, url) => {
@@ -127,9 +129,13 @@ export function renderMarkdown(text) {
  * Escape HTML special characters
  */
 export function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
+  if (!text) return '';
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 /**
@@ -137,6 +143,7 @@ export function escapeHtml(text) {
  * Returns { thinking: string|null, content: string }
  */
 export function parseThinking(text) {
+  if (typeof text !== 'string') return { thinking: null, content: '' };
   // Matches: <|channel>thought...</channel|>  OR  <thought>...</thought>
   // AND legacy: <think>...</think>  <|think|>...</|think|>  <reasoning>...</reasoning>
   const thinkRegex = /(?:<\|channel>thought|<\|?think\|?>|<thought>|<reasoning>)([\s\S]*?)(?:<channel\|>|<\|?\/think\|?>|<\/thought>|<\/reasoning>)/;
@@ -149,6 +156,211 @@ export function parseThinking(text) {
   }
 
   return { thinking: null, content: text };
+}
+
+/**
+ * Extract clean snippets/short phrases from streaming thinking text
+ */
+export function extractThinkingSnippets(text) {
+  if (typeof text !== 'string' || !text) return [];
+  
+  let cleanText = text
+    .replace(/(?:<\|?think\|?>|<reasoning>|<thought>)/gi, '')
+    .replace(/(?:<\|?\/think\|?>|<\/thought>|<\/reasoning>)/gi, '')
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/`[^`]*`/g, '')
+    .replace(/[*#_\[\]\(\)]/g, ' ')
+    .replace(/\s+/g, ' ');
+    
+  const parts = cleanText.split(/[.,!?;\n:]+/);
+  
+  const snippets = [];
+  for (let part of parts) {
+    part = part.trim();
+    if (part.length >= 8 && part.split(/\s+/).length >= 2) {
+      let formatted = part.charAt(0).toUpperCase() + part.slice(1);
+      // Truncate if too long to keep the UI clean
+      if (formatted.length > 90) {
+        // Find last space before 85 chars to not break words
+        let spaceIdx = formatted.lastIndexOf(' ', 85);
+        if (spaceIdx === -1) spaceIdx = 85;
+        formatted = formatted.substring(0, spaceIdx) + '...';
+      } else if (!formatted.endsWith('...')) {
+        formatted += '...';
+      }
+      snippets.push(formatted);
+    }
+  }
+  
+  return snippets;
+}
+
+/**
+ * Parse thinking block progress during streaming
+ */
+export function parseStreamThinking(text) {
+  if (typeof text !== 'string') return { thinking: '', content: '', isInThinking: false };
+  const startMatch = text.match(/<think>|<reasoning>|<thought>/);
+  if (!startMatch) {
+    return { thinking: '', content: text, isInThinking: false };
+  }
+
+  const startIdx = startMatch.index;
+  const thinkStart = startMatch[0];
+  const afterStart = startIdx + thinkStart.length;
+
+  const endMatch = text.substring(afterStart).match(/<channel\|>|<\|?\/think\|?>|<\/thought>|<\/reasoning>/);
+
+  if (!endMatch) {
+    const thinking = text.substring(afterStart);
+    const content = text.substring(0, startIdx);
+    return { thinking, content, isInThinking: true };
+  } else {
+    const endIdx = afterStart + endMatch.index;
+    const thinkEnd = endMatch[0];
+    const thinking = text.substring(afterStart, endIdx);
+    const content = text.substring(0, startIdx) + text.substring(endIdx + thinkEnd.length);
+    return { thinking, content: content.trim(), isInThinking: false };
+  }
+}
+
+/**
+ * Generate thinking block HTML structure
+ */
+export function createThinkingBlockHTML(thinkingText, isActive) {
+  if (isActive) {
+    const escapedThoughts = escapeHtml(thinkingText || '');
+    return `<div class="thinking-inline thinking-inline-active"><div class="thinking-inline-header"><thinking-snippets thoughts="${escapedThoughts}"></thinking-snippets></div></div>`;
+  }
+  return '<div class="thinking-inline"><div class="thinking-inline-header thinking-toggle-header" onclick="this.closest(\'.thinking-inline\').classList.toggle(\'thinking-expanded\')"><span class="thinking-done-text">Done</span><span class="thinking-chevron"> ▸</span></div><div class="thinking-inline-content">' + escapeHtml(thinkingText) + '</div></div>';
+}
+
+/**
+ * ThinkingSnippets Custom Element representing dynamic snippets from thinking stream
+ */
+class ThinkingSnippets extends HTMLElement {
+  constructor() {
+    super();
+    this.intervalId = null;
+    this.currentIndex = -1;
+    this.extractedSnippets = [];
+    this.placeholderPhrases = [];
+  }
+
+  static get observedAttributes() {
+    return ['thoughts'];
+  }
+
+  connectedCallback() {
+    this.placeholderPhrases = [];
+    this.lastTransitionTime = 0;
+
+    // Setup CSS Grid container for overlapping layers
+    this.style.display = 'inline-grid';
+    this.style.gridTemplateAreas = '"overlap"';
+    this.style.alignItems = 'center';
+
+    const initialThoughts = this.getAttribute('thoughts') || '';
+    this.accumulateThoughts(initialThoughts);
+
+    if (this.extractedSnippets.length > 0) {
+      this.currentIndex = Math.floor(Math.random() * this.extractedSnippets.length);
+      this.innerHTML = `<span class="thinking-snippet-layer" style="grid-area: overlap;">${this.extractedSnippets[this.currentIndex]}</span>`;
+    } else {
+      // Start with a static placeholder. It will be smoothly swept away when the first real snippet arrives.
+      this.innerHTML = `<span class="thinking-snippet-layer" style="grid-area: overlap;">Working...</span>`;
+    }
+    
+    this.intervalId = setInterval(() => {
+
+      const activeList = this.extractedSnippets.length > 0 ? this.extractedSnippets : this.placeholderPhrases;
+      if (activeList.length === 0) return;
+      
+      let nextIndex;
+      if (activeList.length === 1) {
+        nextIndex = 0;
+      } else {
+        do {
+          nextIndex = Math.floor(Math.random() * activeList.length);
+        } while (nextIndex === this.currentIndex);
+      }
+      
+      this.currentIndex = nextIndex;
+      this.transitionToSnippet(activeList[this.currentIndex]);
+    }, 4000);
+  }
+
+  attributeChangedCallback(name, oldValue, newValue) {
+    if (name === 'thoughts' && newValue !== oldValue) {
+      this.accumulateThoughts(newValue);
+    }
+  }
+
+  accumulateThoughts(thoughtsText) {
+    if (!thoughtsText) return;
+    const hadRealThoughts = this.extractedSnippets.length > 0;
+    const newSnippets = extractThinkingSnippets(thoughtsText);
+    
+    let addedNew = false;
+    for (const snip of newSnippets) {
+      if (!this.extractedSnippets.includes(snip)) {
+        this.extractedSnippets.push(snip);
+        addedNew = true;
+      }
+    }
+
+    if (this.extractedSnippets.length > 0) {
+      if (!hadRealThoughts) {
+        this.currentIndex = 0;
+        this.transitionToSnippet(this.extractedSnippets[0]);
+      } else if (addedNew && Math.random() > 0.6) {
+        const latestIdx = this.extractedSnippets.length - 1;
+        this.currentIndex = latestIdx;
+        this.transitionToSnippet(this.extractedSnippets[latestIdx]);
+      }
+    }
+  }
+
+  transitionToSnippet(text) {
+    const now = Date.now();
+    // Throttle transitions to ensure they don't happen faster than every 3 seconds
+    if (now - this.lastTransitionTime < 3000) return;
+    
+    const currentLayer = this.querySelector('.thinking-snippet-layer:not(.layer-leaving)');
+    if (currentLayer && currentLayer.textContent === text) return;
+    
+    this.lastTransitionTime = now;
+    
+    // Create new layer
+    const newLayer = document.createElement('span');
+    newLayer.className = 'thinking-snippet-layer layer-entering';
+    newLayer.style.gridArea = 'overlap';
+    newLayer.textContent = text;
+    
+    this.appendChild(newLayer);
+    
+    if (currentLayer) {
+      currentLayer.classList.add('layer-leaving');
+      currentLayer.classList.remove('layer-entering');
+      
+      // Remove old layer after animation completes (800ms)
+      setTimeout(() => {
+        if (currentLayer.parentNode === this) {
+          this.removeChild(currentLayer);
+        }
+      }, 800);
+    }
+  }
+
+  disconnectedCallback() {
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+    }
+  }
+}
+
+if (!customElements.get('thinking-snippets')) {
+  customElements.define('thinking-snippets', ThinkingSnippets);
 }
 
 /**

@@ -78,6 +78,7 @@ export function initSettingsPanel() {
   setupRangeInput('adv-setting-top-p', 'adv-top-p-value', v => parseFloat(v).toFixed(2));
   setupRangeInput('adv-setting-top-k', 'adv-top-k-value', v => v);
   setupRangeInput('adv-setting-rep-penalty', 'adv-rep-penalty-value', v => parseFloat(v).toFixed(2));
+  setupRangeInput('setting-genai-max-tokens', 'genai-max-tokens-value', v => v);
 
   const syncToggles = [];
 
@@ -161,7 +162,7 @@ function loadSettingsToUI() {
   setRangeValue('adv-setting-temperature', 'adv-temperature-value', settings.temperature?.toFixed(2));
   setRangeValue('adv-setting-top-p', 'adv-top-p-value', settings.top_p?.toFixed(2));
   setRangeValue('adv-setting-top-k', 'adv-top-k-value', settings.top_k);
-  setRangeValue('adv-setting-rep-penalty', 'adv-rep-penalty-value', settings.repeat_penalty?.toFixed(2));
+  setRangeValue('adv-setting-rep-penalty', 'adv-rep-penalty-value', settings.rep_penalty?.toFixed(2));
   checkField('setting-memory', settings.memory_enabled);
   checkField('setting-auto-translate', settings.auto_translate);
   checkField('setting-translate-user', settings.translate_user_messages);
@@ -176,6 +177,8 @@ function loadSettingsToUI() {
   
   setField('setting-genai-response-length', settings.genai_response_length || 'default');
   setField('setting-genai-speech-style', settings.genai_speech_style || 'default');
+  setRangeValue('setting-genai-max-tokens', 'genai-max-tokens-value', settings.genai_max_tokens || 2048);
+  checkField('setting-genai-duo-suggestions', settings.genai_duo_suggestions !== false);
   checkField('setting-genai-safe-mode', settings.genai_safe_mode);
 
   // Image Gen settings
@@ -273,6 +276,8 @@ async function saveSettings() {
     ai_comments_language: getVal('setting-ai-comments-lang'),
     genai_response_length: getVal('setting-genai-response-length'),
     genai_speech_style: getVal('setting-genai-speech-style'),
+    genai_max_tokens: parseInt(getVal('setting-genai-max-tokens')) || current.genai_max_tokens || 2048,
+    genai_duo_suggestions: getChecked('setting-genai-duo-suggestions'),
     genai_safe_mode: getChecked('setting-genai-safe-mode'),
     game_prompt_presets: currentSettings.game_prompt_presets,
     active_game_prompt_preset_id: currentSettings.active_game_prompt_preset_id,

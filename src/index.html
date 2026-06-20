@@ -108,6 +108,50 @@
         left: 5px;
       }
     </style>
+    <script>
+      window.onerror = function(message, source, lineno, colno, error) {
+        const errorMsg = `ERROR: ${message} at ${source}:${lineno}:${colno}\nStack: ${error ? error.stack : 'N/A'}`;
+        console.error(errorMsg);
+        localStorage.setItem('last_js_error', errorMsg);
+        const errDiv = document.createElement('div');
+        errDiv.style.position = 'fixed';
+        errDiv.style.top = '10px';
+        errDiv.style.left = '10px';
+        errDiv.style.right = '10px';
+        errDiv.style.background = '#ef4444';
+        errDiv.style.color = '#ffffff';
+        errDiv.style.padding = '15px';
+        errDiv.style.borderRadius = '8px';
+        errDiv.style.zIndex = '999999';
+        errDiv.style.fontFamily = 'monospace';
+        errDiv.style.fontSize = '12px';
+        errDiv.style.whiteSpace = 'pre-wrap';
+        errDiv.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.5)';
+        errDiv.innerText = errorMsg;
+        document.body.appendChild(errDiv);
+      };
+      window.onunhandledrejection = function(event) {
+        const errorMsg = `UNHANDLED REJECTION: ${event.reason ? (event.reason.message || event.reason) : 'N/A'}\nStack: ${event.reason && event.reason.stack ? event.reason.stack : 'N/A'}`;
+        console.error(errorMsg);
+        localStorage.setItem('last_js_error', errorMsg);
+        const errDiv = document.createElement('div');
+        errDiv.style.position = 'fixed';
+        errDiv.style.top = '10px';
+        errDiv.style.left = '10px';
+        errDiv.style.right = '10px';
+        errDiv.style.background = '#ef4444';
+        errDiv.style.color = '#ffffff';
+        errDiv.style.padding = '15px';
+        errDiv.style.borderRadius = '8px';
+        errDiv.style.zIndex = '999999';
+        errDiv.style.fontFamily = 'monospace';
+        errDiv.style.fontSize = '12px';
+        errDiv.style.whiteSpace = 'pre-wrap';
+        errDiv.style.boxShadow = '0 10px 15px -3px rgba(0, 0, 0, 0.5)';
+        errDiv.innerText = errorMsg;
+        document.body.appendChild(errDiv);
+      };
+    </script>
     <script type="module" src="/main.js" defer></script>
   </head>
 
@@ -435,10 +479,7 @@
                   <!-- Thinking Effort Button -->
                   <div id="thinking-effort-wrapper" class="thinking-effort-wrapper">
                     <button id="btn-thinking-effort-main" class="btn-thinking-effort" title="Reasoning effort">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:14px;height:14px;flex-shrink:0;">
-                        <path d="M9 18h6"/><path d="M10 22h4"/>
-                        <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/>
-                      </svg>
+                      <span class="thinking-btn-short">T</span>
                       <span class="thinking-btn-label">Thinking</span>
                       <span class="effort-level-label"></span>
                     </button>
@@ -1136,10 +1177,11 @@
             <!-- Thinking Effort Button (GenAI) -->
             <div id="genai-thinking-effort-wrapper" class="thinking-effort-wrapper">
               <button id="btn-genai-thinking-effort-main" class="btn-thinking-effort" title="Reasoning effort">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:14px;height:14px;flex-shrink:0;">
+                <svg class="thinking-icon-bulb" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:14px;height:14px;flex-shrink:0;display:none;">
                   <path d="M9 18h6"/><path d="M10 22h4"/>
                   <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/>
                 </svg>
+                <span class="thinking-btn-short">T</span>
                 <span class="thinking-btn-label">Thinking</span>
                 <span class="effort-level-label"></span>
               </button>
@@ -2029,6 +2071,20 @@
                 </select>
               </div>
             </div>
+            <div class="form-group">
+              <label for="setting-genai-max-tokens">Generation Token Limit: <span id="genai-max-tokens-value">2048</span></label>
+              <input type="range" id="setting-genai-max-tokens" min="1500" max="4000" step="50" value="2048" />
+            </div>
+            <div class="form-group-row">
+              <div style="display: flex; flex-direction: column; gap: 4px;">
+                <label>Duo Suggestions</label>
+                <span style="font-size: var(--text-xs); color: var(--text-tertiary);">Allow AI to suggest actions for both you and characters.</span>
+              </div>
+              <label class="toggle-switch small">
+                <input type="checkbox" id="setting-genai-duo-suggestions" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
             <div class="form-group-row">
               <div style="display: flex; flex-direction: column; gap: 4px;">
                 <label>Safe Mode</label>
@@ -2722,7 +2778,7 @@
                       <h3>Model Parameters</h3>
                       <div class="form-group">
                         <label for="adv-setting-max-tokens">Max Tokens: <span id="adv-max-tokens-value">2048</span></label>
-                        <input type="range" id="adv-setting-max-tokens" min="64" max="8192" step="64" value="2048" />
+                        <input type="range" id="adv-setting-max-tokens" min="1500" max="4000" step="50" value="2048" />
                       </div>
                       <div class="form-group">
                         <label for="adv-setting-temperature">Temperature: <span id="adv-temperature-value">0.7</span></label>
@@ -2737,8 +2793,8 @@
                         <input type="range" id="adv-setting-top-k" min="0" max="200" step="1" value="40" />
                       </div>
                       <div class="form-group">
-                        <label for="adv-setting-rep-penalty">Repetition Penalty: <span id="adv-rep-penalty-value">1.1</span></label>
-                        <input type="range" id="adv-setting-rep-penalty" min="1" max="2" step="0.05" value="1.1" />
+                        <label for="adv-setting-rep-penalty">Repetition Penalty: <span id="adv-rep-penalty-value">1.0</span></label>
+                        <input type="range" id="adv-setting-rep-penalty" min="1" max="2" step="0.05" value="1.0" />
                       </div>
                     </div>
                   </div>

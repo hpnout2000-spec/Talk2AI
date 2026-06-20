@@ -13,6 +13,8 @@ import { memoryService } from '../services/memory-service.js';
 import {
   renderMarkdown,
   parseThinking,
+  parseStreamThinking,
+  createThinkingBlockHTML,
   autoResizeTextarea,
   formatTime,
   escapeHtml,
@@ -610,7 +612,7 @@ export function initChat() {
       });
     }
 
-    btnArrow.addEventListener('click', (e) => {
+    const toggleDropdown = (e) => {
       e.stopPropagation();
       const isHidden = dropdown.classList.contains('hidden');
       // Close other popovers
@@ -618,7 +620,10 @@ export function initChat() {
       const chatPlusPopover = document.getElementById('chat-plus-popover');
       if (chatPlusPopover) chatPlusPopover.classList.add('hidden');
       dropdown.classList.toggle('hidden', !isHidden);
-    });
+    };
+
+    btnArrow.addEventListener('click', toggleDropdown);
+    if (btnMain) btnMain.addEventListener('click', toggleDropdown);
 
     dropdown.querySelectorAll('.effort-option').forEach(opt => {
       opt.addEventListener('click', (e) => {
@@ -1182,7 +1187,13 @@ async function performStreamingTranslation(contentEl, textToTranslate, targetLan
           childrenOnly: true,
           getNodeKey: (node) => node.dataset?.wordIndex || node.id || null,
           onBeforeElUpdated: (from, to) => {
-            if (from.classList.contains('word-blur') && from.textContent !== to.textContent) {
+            if (from.nodeName === 'THINKING-SNIPPETS') {
+              if (to.hasAttribute('thoughts')) {
+                from.setAttribute('thoughts', to.getAttribute('thoughts'));
+              }
+              return false;
+            }
+            if (from.classList && from.classList.contains('word-blur') && from.textContent !== to.textContent) {
               from.classList.add('word-replacing-out');
               setTimeout(() => {
                 from.textContent = to.textContent;
@@ -1298,83 +1309,129 @@ async function sendMessage() {
   const contentEl = msgElement.querySelector('.message-text');
 
   let fullResponse = '';
-  let thinkingContent = '';
-  let isInThinking = false;
+  let thinkingText = '';    // accumulated thinking from delta.reasoning_content
+  let isStreaming = true;   // true while generation is in progress
+  let hasReceivedFirstChunk = false; // tracks if anything has arrived yet
+  let thinkingActive = false; // true during thinking phase, false once content starts
 
   // Dynamic options override
   const apiOptions = {};
+
+  // Show Working... immediately while waiting for API response
+  contentEl.innerHTML = `<span class="chat-working-placeholder">Working...</span>`;
+
+  // Morphdom options — shared between stream and final renders
+  const morphOptions = {
+    childrenOnly: true,
+    getNodeKey: (node) => node.dataset?.wordIndex || node.id || null,
+    onBeforeElUpdated: (from, to) => {
+      // Keep THINKING-SNIPPETS alive (let attributeChangedCallback handle updates)
+      // BUT only when the replacement is ALSO THINKING-SNIPPETS — otherwise let morphdom replace it
+      if (from.nodeName === 'THINKING-SNIPPETS' && to.nodeName === 'THINKING-SNIPPETS') {
+        if (to.hasAttribute('thoughts')) {
+          from.setAttribute('thoughts', to.getAttribute('thoughts'));
+        }
+        return false;
+      }
+      return true;
+    }
+  };
+
+  // Shared UI updater — called both from onChunk and onThinkingChunk
+  function scheduleUpdate() {
+    if (appState.updateScheduled) return;
+    appState.updateScheduled = true;
+
+    requestAnimationFrame(() => {
+      appState.updateScheduled = false;
+      if (!isStreaming) return;
+
+      try {
+        let displayContent, currentThinking, currentIsInThinking;
+        if (thinkingText) {
+          // delta.reasoning_content path: thinking comes separately
+          currentThinking = thinkingText;
+          currentIsInThinking = thinkingActive;
+          displayContent = fullResponse;
+        } else {
+          // Inline <think> tag path
+          const parsed = parseStreamThinking(fullResponse);
+          currentThinking = parsed.thinking;
+          displayContent = parsed.content;
+          currentIsInThinking = parsed.isInThinking;
+          // Detect thinking→done transition for inline tags
+          if (thinkingActive && !parsed.isInThinking && parsed.thinking) {
+            thinkingActive = false;
+          }
+        }
+
+        // Still waiting for first output — keep Working... visible
+        if (!hasReceivedFirstChunk) return;
+
+        if (!currentIsInThinking && displayContent.startsWith('*') && !displayContent.endsWith('*')) {
+          displayContent += '*';
+        }
+
+        let html = '';
+        const showThinking = currentIsInThinking || currentThinking;
+        if (showThinking) {
+          html += createThinkingBlockHTML(currentThinking, currentIsInThinking);
+        }
+        const cleaned = stripJsonBlocks(displayContent, true);
+        let formatted = renderMarkdown(cleaned);
+        formatted = processCharacterMentions(formatted);
+        html += wrapWordsInSpans(formatted);
+
+        const temp = document.createElement('div');
+        temp.className = contentEl.className;
+        temp.innerHTML = html;
+
+        morphdom(contentEl, temp, morphOptions);
+
+        if (!currentIsInThinking) {
+          getOrCreateChatCursor();
+          repositionChatCursor(contentEl);
+        }
+      } catch (err) {
+        console.error("STREAM CHUNK ERROR:", err);
+        showToast("Streaming UI error: " + err.message, "error");
+      }
+    });
+  }
 
   try {
     await api.streamChat(
       apiMessages,
       appState.abortController.signal,
-      // onChunk
+      // onChunk (delta.content)
       (chunk) => {
         fullResponse += chunk;
-
-        // Throttle UI updates to requestAnimationFrame for maximum smoothness
-        if (appState.updateScheduled) return;
-        appState.updateScheduled = true;
-
-        requestAnimationFrame(() => {
-          appState.updateScheduled = false;
-
-          try {
-            const parsed = parseStreamThinking(fullResponse);
-            thinkingContent = parsed.thinking;
-            let displayContent = parsed.content;
-            isInThinking = parsed.isInThinking;
-
-            if (!isInThinking && displayContent.startsWith('*') && !displayContent.endsWith('*')) {
-              displayContent += '*';
-            }
-
-            let html = '';
-            // Show thinking block whenever we are inside a think tag (even if content is still empty)
-            const showThinkingBlock = isInThinking || (thinkingContent && !displayContent);
-            if (showThinkingBlock || thinkingContent) {
-              html += createThinkingBlockHTML(thinkingContent, isInThinking);
-            }
-            const cleaned = stripJsonBlocks(displayContent, true);
-            let formatted = renderMarkdown(cleaned);
-            formatted = processCharacterMentions(formatted);
-            html += wrapWordsInSpans(formatted);
-
-            // No inline cursor injection — we use the floating cursor instead
-
-            const temp = document.createElement('div');
-            temp.className = contentEl.className;
-            temp.innerHTML = html;
-
-            morphdom(contentEl, temp, {
-              childrenOnly: true,
-              getNodeKey: (node) => node.dataset?.wordIndex || node.id || null
-            });
-
-            // Move the floating cursor to the end of the last rendered word
-            if (!isInThinking) {
-              getOrCreateChatCursor();
-              repositionChatCursor(contentEl);
-            }
-          } catch (err) {
-            console.error("STREAM CHUNK ERROR:", err);
-            showToast("Streaming UI error: " + err.message, "error");
-          }
-        });
+        hasReceivedFirstChunk = true;
+        // If thinking was active and we now have content, thinking phase is done
+        if (thinkingActive) thinkingActive = false;
+        scheduleUpdate();
       },
       // onDone
       async () => {
-        let parsed;
+        isStreaming = false;
+        thinkingActive = false;
+        let parsedThinking, parsedContent;
         try {
-          parsed = parseThinking(fullResponse);
+          if (thinkingText) {
+            parsedThinking = thinkingText;
+            parsedContent = fullResponse;
+          } else {
+            const parsed = parseThinking(fullResponse);
+            parsedThinking = parsed.thinking;
+            parsedContent = parsed.content;
+          }
 
-          // Final render — remove floating cursor first, then do clean render
           removeChatCursor();
           let finalHtml = '';
-          if (parsed.thinking) {
-            finalHtml += createThinkingBlockHTML(parsed.thinking, false);
+          if (parsedThinking) {
+            finalHtml += createThinkingBlockHTML(parsedThinking, false);
           }
-          const cleaned = stripJsonBlocks(parsed.content, false);
+          const cleaned = stripJsonBlocks(parsedContent, false);
           let formatted = renderMarkdown(cleaned);
           formatted = processCharacterMentions(formatted);
           finalHtml += wrapWordsInSpans(formatted);
@@ -1384,19 +1441,17 @@ async function sendMessage() {
           tempFinal.innerHTML = finalHtml;
 
           perf.start('morphdom-final-patch');
-          morphdom(contentEl, tempFinal, {
-            childrenOnly: true,
-            getNodeKey: (node) => node.dataset?.wordIndex || node.id || null
-          });
+          morphdom(contentEl, tempFinal, morphOptions);
           perf.end('morphdom-final-patch');
         } catch (err) {
           console.error("ON DONE ERROR:", err);
           showToast("Final UI render error: " + err.message, "error");
-          parsed = parseThinking(fullResponse);
+          const fallback = parseThinking(fullResponse);
+          parsedThinking = fallback.thinking;
+          parsedContent = fallback.content;
         }
 
-        let originalContent = parsed.content;
-        // No more applyIndicatorUpdates here, it's now a separate call
+        let originalContent = parsedContent;
 
         let translatedContent = null;
 
@@ -1407,7 +1462,7 @@ async function sendMessage() {
           translatedContent = await performStreamingTranslation(contentEl, originalContent, settings.target_language);
         }
 
-        chatStore.updateLastAssistantMessage(originalContent, parsed.thinking, session, translatedContent);
+        chatStore.updateLastAssistantMessage(originalContent, parsedThinking, session, translatedContent);
         await chatStore.saveSession(session);
         updateContextIndicator();
 
@@ -1470,6 +1525,7 @@ async function sendMessage() {
       // onError
       (err) => {
         console.error('Stream error:', err);
+        isStreaming = false;
         removeChatCursor();
         contentEl.innerHTML = `<p style="color: var(--error)">Error: ${escapeHtml(err.message)}</p>`;
 
@@ -1484,7 +1540,14 @@ async function sendMessage() {
         }
         window.dispatchEvent(new CustomEvent('genai-chat-response-finished', { detail: { error: err.message } }));
       },
-      apiOptions
+      apiOptions,
+      // onThinkingChunk (delta.reasoning_content from KoboldCpp thinking models)
+      (thinkChunk) => {
+        thinkingText += thinkChunk;
+        thinkingActive = true;  // mark thinking phase as active
+        hasReceivedFirstChunk = true;
+        scheduleUpdate();
+      }
     );
   } catch (err) {
     console.error('Send error:', err);
@@ -1882,46 +1945,6 @@ async function buildApiMessages(character, session) {
   }
 
   return messages;
-}
-
-// ─── Parse Streaming Thinking ───────────────────────────────────────
-
-function parseStreamThinking(text) {
-  // Try to find the start tag
-  const startMatch = text.match(/<\|channel>thought|<\|?think\|?>|<thought>|<reasoning>/);
-  if (!startMatch) {
-    return { thinking: '', content: text, isInThinking: false };
-  }
-
-  const thinkStart = startMatch[0];
-  const startIdx = startMatch.index;
-  const afterStart = startIdx + thinkStart.length;
-
-  // Try to find the end tag
-  const endMatch = text.substring(afterStart).match(/<channel\|>|<\|?\/think\|?>|<\/thought>|<\/reasoning>/);
-
-  if (!endMatch) {
-    // Still in thinking
-    const thinking = text.substring(afterStart);
-    const content = text.substring(0, startIdx);
-    return { thinking, content, isInThinking: true };
-  } else {
-    // Thinking complete
-    const endIdx = afterStart + endMatch.index;
-    const thinkEnd = endMatch[0];
-    const thinking = text.substring(afterStart, endIdx);
-    const content = text.substring(0, startIdx) + text.substring(endIdx + thinkEnd.length);
-    return { thinking, content: content.trim(), isInThinking: false };
-  }
-}
-
-// ─── Create Thinking Block HTML ─────────────────────────────────────
-
-function createThinkingBlockHTML(thinkingText, isActive) {
-  if (isActive) {
-    return '<div class="thinking-inline thinking-inline-active"><div class="thinking-inline-header"><span class="brain-icon">\u{1F9E0}</span><span class="thinking-text-animated">Thinking...</span> <span class="streaming-cursor"></span></div></div>';
-  }
-  return '<div class="thinking-inline"><div class="thinking-inline-header thinking-toggle-header" style="cursor:pointer;" onclick="this.closest(\'.thinking-inline\').classList.toggle(\'thinking-expanded\')"><span>\u{1F9E0}</span><span style="color:var(--text-tertiary);">Thought for a moment</span><span class="thinking-chevron"> ▸</span></div><div class="thinking-inline-content">' + escapeHtml(thinkingText) + '</div></div>';
 }
 
 // ─── Stop Generation ────────────────────────────────────────────────
@@ -2358,7 +2381,71 @@ async function triggerAssistantGeneration() {
   const contentEl = msgElement.querySelector('.message-text');
 
   let fullResponse = '';
+  let thinkingText2 = '';  // accumulated from delta.reasoning_content
+  let isStreaming2 = true;
+  let hasReceivedFirstChunk2 = false;
+  let thinkingActive2 = false;
   const apiOptions = {};
+
+  // Show Working... immediately while waiting for API response
+  contentEl.innerHTML = `<span class="chat-working-placeholder">Working...</span>`;
+
+  const morphOptions2 = {
+    childrenOnly: true,
+    getNodeKey: (node) => node.dataset?.wordIndex || node.id || null,
+    onBeforeElUpdated: (from, to) => {
+      if (from.nodeName === 'THINKING-SNIPPETS' && to.nodeName === 'THINKING-SNIPPETS') {
+        if (to.hasAttribute('thoughts')) from.setAttribute('thoughts', to.getAttribute('thoughts'));
+        return false;
+      }
+      return true;
+    }
+  };
+
+  function scheduleUpdate2() {
+    if (appState.updateScheduled) return;
+    appState.updateScheduled = true;
+    requestAnimationFrame(() => {
+      appState.updateScheduled = false;
+      if (!isStreaming2) return;
+
+      let displayContent, currentThinking, currentIsInThinking;
+      if (thinkingText2) {
+        currentThinking = thinkingText2;
+        currentIsInThinking = thinkingActive2;
+        displayContent = fullResponse;
+      } else {
+        const parsed = parseStreamThinking(fullResponse);
+        currentThinking = parsed.thinking;
+        displayContent = parsed.content;
+        currentIsInThinking = parsed.isInThinking;
+        if (thinkingActive2 && !parsed.isInThinking && parsed.thinking) {
+          thinkingActive2 = false;
+        }
+      }
+
+      if (!currentIsInThinking && displayContent.startsWith('*') && !displayContent.endsWith('*')) {
+        displayContent += '*';
+      }
+
+      // Still waiting for first output — keep Working... visible
+      if (!hasReceivedFirstChunk2) return;
+
+      let html = '';
+      if (currentIsInThinking || currentThinking) html += createThinkingBlockHTML(currentThinking, currentIsInThinking);
+      html += wrapWordsInSpans(renderMarkdown(displayContent));
+
+      const temp = document.createElement('div');
+      temp.className = contentEl.className;
+      temp.innerHTML = html;
+      morphdom(contentEl, temp, morphOptions2);
+
+      if (!currentIsInThinking) {
+        getOrCreateChatCursor();
+        repositionChatCursor(contentEl);
+      }
+    });
+  }
 
   try {
     await api.streamChat(
@@ -2366,50 +2453,34 @@ async function triggerAssistantGeneration() {
       appState.abortController.signal,
       (chunk) => {
         fullResponse += chunk;
-        const parsed = parseStreamThinking(fullResponse);
-        let displayContent = parsed.content;
-        const thinkingContent = parsed.thinking;
-        const isInThinking = parsed.isInThinking;
-
-        if (!isInThinking && displayContent.startsWith('*') && !displayContent.endsWith('*')) {
-          displayContent += '*';
-        }
-
-        let html = '';
-        // Show thinking block as soon as tag opens, even if content is still empty
-        if (isInThinking || thinkingContent) html += createThinkingBlockHTML(thinkingContent, isInThinking);
-        html += wrapWordsInSpans(renderMarkdown(displayContent));
-
-        const temp = document.createElement('div');
-        temp.className = contentEl.className;
-        temp.innerHTML = html;
-        morphdom(contentEl, temp, {
-          childrenOnly: true,
-          getNodeKey: (node) => node.dataset?.wordIndex || node.id || null
-        });
-
-        // Move the floating cursor to the end of the last rendered word
-        if (!isInThinking) {
-          getOrCreateChatCursor();
-          repositionChatCursor(contentEl);
-        }
+        hasReceivedFirstChunk2 = true;
+        if (thinkingActive2) thinkingActive2 = false;
+        scheduleUpdate2();
       },
       async () => {
+        isStreaming2 = false;
+        thinkingActive2 = false;
+        let parsedThinking2, parsedContent2;
+        if (thinkingText2) {
+          parsedThinking2 = thinkingText2;
+          parsedContent2 = fullResponse;
+        } else {
+          const parsed = parseThinking(fullResponse);
+          parsedThinking2 = parsed.thinking;
+          parsedContent2 = parsed.content;
+        }
+
         removeChatCursor();
-        const parsed = parseThinking(fullResponse);
         let finalHtml = '';
-        if (parsed.thinking) finalHtml += createThinkingBlockHTML(parsed.thinking, false);
-        finalHtml += wrapWordsInSpans(renderMarkdown(parsed.content));
+        if (parsedThinking2) finalHtml += createThinkingBlockHTML(parsedThinking2, false);
+        finalHtml += wrapWordsInSpans(renderMarkdown(parsedContent2));
 
         const tempFinal = document.createElement('div');
         tempFinal.className = contentEl.className;
         tempFinal.innerHTML = finalHtml;
-        morphdom(contentEl, tempFinal, {
-          childrenOnly: true,
-          getNodeKey: (node) => node.dataset?.wordIndex || node.id || null
-        });
+        morphdom(contentEl, tempFinal, morphOptions2);
 
-        let originalContent = parsed.content;
+        let originalContent = parsedContent2;
 
         let translatedContent = null;
         if (settings.auto_translate && originalContent) {
@@ -2473,6 +2544,7 @@ async function triggerAssistantGeneration() {
       },
       (err) => {
         console.error('Regeneration error:', err);
+        isStreaming2 = false;
         removeChatCursor();
         appState.isGenerating = false;
         btnSend.classList.remove('hidden');
@@ -2480,7 +2552,14 @@ async function triggerAssistantGeneration() {
         headerCharStatus.textContent = 'Error';
         headerCharStatus.classList.remove('generating');
       },
-      apiOptions
+      apiOptions,
+      // onThinkingChunk (delta.reasoning_content from KoboldCpp thinking models)
+      (thinkChunk) => {
+        thinkingText2 += thinkChunk;
+        thinkingActive2 = true;
+        hasReceivedFirstChunk2 = true;
+        scheduleUpdate2();
+      }
     );
   } catch (err) {
     console.error('Regeneration try/catch error:', err);

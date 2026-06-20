@@ -482,30 +482,53 @@
   100% { background-position: -100% center; }
 }
 
-/* Snippet text fade-cycle animation */
-.thinking-snippet-text {
+/* Snippet text fade-cycle animation with premium shimmer sweep */
+.thinking-snippet-layer {
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  font-size: var(--text-xs);
   display: inline-block;
-  animation: snippetFadeIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
-  color: var(--thinking-text, #8a8a9a);
+  font-style: italic;
   font-weight: 400;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  max-width: 320px;
+  opacity: 0.85;
+  position: relative;
+  text-transform: none;
+  letter-spacing: normal;
   vertical-align: middle;
+  
+  /* Same neutral shimmer as genai-working-text */
+  background: linear-gradient(
+    90deg,
+    var(--text-tertiary) 0%,
+    var(--text-secondary) 45%,
+    #ffffff 50%,
+    var(--text-secondary) 55%,
+    var(--text-tertiary) 100%
+  );
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: sweep 3.5s linear infinite;
 }
 
-@keyframes snippetFadeIn {
-  from {
-    opacity: 0;
-    filter: blur(4px);
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    filter: blur(0);
-    transform: translateY(0);
-  }
+.thinking-snippet-layer.layer-leaving {
+  -webkit-mask-image: linear-gradient(to right, transparent 35%, black 65%);
+  -webkit-mask-size: 300% 100%;
+  -webkit-mask-position: 100% center; /* Starts visible (black part) */
+  animation: sweep 3.5s linear infinite, sweepLeave 0.8s ease forwards;
+}
+@keyframes sweepLeave {
+  to { -webkit-mask-position: 0% center; } /* Ends hidden (transparent part) */
+}
+
+.thinking-snippet-layer.layer-entering {
+  -webkit-mask-image: linear-gradient(to right, black 35%, transparent 65%);
+  -webkit-mask-size: 300% 100%;
+  -webkit-mask-position: 100% center; /* Starts hidden (transparent part) */
+  animation: sweep 3.5s linear infinite, sweepEnter 0.8s ease forwards;
+}
+@keyframes sweepEnter {
+  to { -webkit-mask-position: 0% center; } /* Ends visible (black part) */
 }
 
 @keyframes textShimmer {

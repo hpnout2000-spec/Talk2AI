@@ -120,7 +120,7 @@ export const api = {
    * @param {Function} onDone - Callback when generation is complete
    * @param {Function} onError - Callback on error
    */
-  async streamChat(messages, signal, onChunk, onDone, onError, options = {}) {
+  async streamChat(messages, signal, onChunk, onDone, onError, options = {}, onThinkingChunk = null) {
     return llmQueue.add(async (internalSignal) => {
       const settings = settingsStore.get();
 
@@ -158,7 +158,7 @@ export const api = {
 
       // Add reasoning_effort parameter (KoboldCpp parameter for thinking budget)
       const effort = options.reasoning_effort ?? settings.reasoning_effort ?? 'none';
-      if (effort) {
+      if (effort && effort !== 'none') {
         body.reasoning_effort = effort;
       }
 
@@ -209,6 +209,9 @@ export const api = {
             try {
               const parsed = JSON.parse(data);
               const delta = parsed.choices?.[0]?.delta;
+              if (delta?.reasoning_content && onThinkingChunk) {
+                onThinkingChunk(delta.reasoning_content);
+              }
               if (delta?.content) {
                 onChunk(delta.content);
               }
