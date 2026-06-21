@@ -20,8 +20,15 @@ import { imageSessionStore } from '../services/image-session-store.js';
 import { nhentaiApi } from '../services/nhentai-api.js';
 import { gelbooruApi } from '../services/gelbooru-api.js';
 import { openWindow, closeWindow, showToast } from '../main.js';
+import { localSyncService } from '../services/local-sync-service.js';
 
 async function invokeTauri(cmd, args = {}) {
+  if (localSyncService.isClientMode) {
+    if (cmd === 'save_genai_history') {
+      localSyncService.pushGenaiHistoryToHost(args.data);
+    }
+  }
+
   if (window.__TAURI_INTERNALS__) {
     return await window.__TAURI_INTERNALS__.invoke(cmd, args);
   }

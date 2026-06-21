@@ -1966,6 +1966,14 @@
                 <button class="btn-local-net primary" id="btn-start-hosting">▶ Start Hosting</button>
                 <button class="btn-local-net danger" id="btn-stop-hosting" style="display:none;">■ Stop Hosting</button>
               </div>
+
+              <!-- Devices list (hidden until hosting is active) -->
+              <div id="local-net-devices-section" style="display:none; margin-top: var(--space-4); border-top: 1px dashed rgba(196, 181, 253, 0.25); padding-top: var(--space-3);">
+                <div class="local-net-card-title">📱 Paired / Pending Devices</div>
+                <div id="local-net-devices-list" class="local-net-devices-list">
+                  <div class="local-net-no-devices">No devices seen yet.</div>
+                </div>
+              </div>
             </div>
 
             <!-- CLIENT CARD -->

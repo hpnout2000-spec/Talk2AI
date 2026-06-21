@@ -5,10 +5,17 @@
 import { api } from './api.js';
 import { settingsStore } from './settings-store.js';
 import { generateId } from '../utils/helpers.js';
+import { localSyncService } from './local-sync-service.js';
 
 let memories = {}; // characterId -> { character_id, entries: [] }
 
 async function invokeTauri(cmd, args = {}) {
+  if (localSyncService.isClientMode) {
+    if (cmd === 'save_memory') {
+      localSyncService.pushMemoryToHost(args.characterId, args.data);
+    }
+  }
+
   if (window.__TAURI_INTERNALS__) {
     return await window.__TAURI_INTERNALS__.invoke(cmd, args);
   }

@@ -7,12 +7,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 // Axum / tokio networking
 use axum::{
     body::Body,
-    extract::{Query, State},
-    http::StatusCode,
+    extract::{Query, State, ConnectInfo},
+    http::{StatusCode, HeaderMap},
     response::{IntoResponse, Response},
     routing::{delete, get, post},
     Json, Router,
 };
+use std::collections::HashMap;
+use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tokio_stream::StreamExt;
 
@@ -215,6 +217,90 @@ struct AxumState {
 #[derive(Deserialize)]
 struct KeyQuery {
     key: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct AllowedDevice {
+    pub id: String,
+    pub name: String,
+    pub ip: String,
+    pub allowed_without_key: bool,
+    pub last_seen: String,
+}
+
+fn read_allowed_devices() -> Vec<AllowedDevice> {
+    let path = get_app_dir().join("allowed_devices.json");
+    if path.exists() {
+        if let Ok(data) = fs::read_to_string(&path) {
+            if let Ok(list) = serde_json::from_str::<Vec<AllowedDevice>>(&data) {
+                return list;
+            }
+        }
+    }
+    Vec::new()
+}
+
+fn write_allowed_devices(list: &[AllowedDevice]) {
+    let path = get_app_dir().join("allowed_devices.json");
+    let _ = fs::write(&path, serde_json::to_string_pretty(list).unwrap());
+}
+
+fn register_device(id: String, name: String, ip: String) -> Result<(), String> {
+    let mut list = read_allowed_devices();
+    let now = chrono::Local::now().to_rfc3339();
+    
+    if let Some(d) = list.iter_mut().find(|d| d.id == id) {
+        d.name = name;
+        if !ip.is_empty() { d.ip = ip; }
+        d.last_seen = now;
+    } else {
+        list.push(AllowedDevice {
+            id,
+            name,
+            ip,
+            allowed_without_key: false,
+            last_seen: now,
+        });
+    }
+    write_allowed_devices(&list);
+    Ok(())
+}
+
+fn is_device_allowed_without_key(id: &str) -> bool {
+    let list = read_allowed_devices();
+    list.iter().any(|d| d.id == id && d.allowed_without_key)
+}
+
+fn check_auth(
+    q: &KeyQuery,
+    headers: &HeaderMap,
+    client_ip: String,
+    s: &AxumState,
+) -> bool {
+    let is_key_valid = q.key.as_deref() == Some(s.key.as_str());
+    
+    let device_id = headers.get("x-device-id").and_then(|v| v.to_str().ok());
+    let device_name = headers.get("x-device-name")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("Unknown Device");
+
+    if is_key_valid {
+        if let Some(id) = device_id {
+            let _ = register_device(id.to_string(), device_name.to_string(), client_ip);
+        }
+        return true;
+    }
+
+    if let Some(id) = device_id {
+        if is_device_allowed_without_key(id) {
+            let _ = register_device(id.to_string(), device_name.to_string(), client_ip);
+            return true;
+        } else {
+            let _ = register_device(id.to_string(), device_name.to_string(), client_ip);
+        }
+    }
+
+    false
 }
 
 // Helper to get local LAN IP
@@ -445,10 +531,12 @@ fn build_sync_bundle() -> serde_json::Value {
 
 async fn route_ping(
     Query(q): Query<KeyQuery>,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(s): State<AxumState>,
 ) -> Response {
-    if q.key.as_deref() != Some(s.key.as_str()) {
-        return (StatusCode::UNAUTHORIZED, "Invalid key").into_response();
+    if !check_auth(&q, &headers, addr.ip().to_string(), &s) {
+        return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
     }
     s.client_count.fetch_add(1, Ordering::Relaxed);
     Json(serde_json::json!({"ok": true, "version": "1"})).into_response()
@@ -456,10 +544,12 @@ async fn route_ping(
 
 async fn route_sync_bundle(
     Query(q): Query<KeyQuery>,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(s): State<AxumState>,
 ) -> Response {
-    if q.key.as_deref() != Some(s.key.as_str()) {
-        return (StatusCode::UNAUTHORIZED, "Invalid key").into_response();
+    if !check_auth(&q, &headers, addr.ip().to_string(), &s) {
+        return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
     }
     s.client_count.fetch_add(0, Ordering::Relaxed); // no-op, just satisfy compiler
     let bundle = build_sync_bundle();
@@ -468,11 +558,13 @@ async fn route_sync_bundle(
 
 async fn route_relay(
     Query(q): Query<KeyQuery>,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(s): State<AxumState>,
     body: axum::body::Bytes,
 ) -> Response {
-    if q.key.as_deref() != Some(s.key.as_str()) {
-        return (StatusCode::UNAUTHORIZED, "Invalid key").into_response();
+    if !check_auth(&q, &headers, addr.ip().to_string(), &s) {
+        return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
     }
 
     let api_url = read_api_url();
@@ -512,11 +604,13 @@ async fn route_relay(
 // Push a chat session from client to host filesystem
 async fn route_push_chat(
     Query(q): Query<KeyQuery>,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(s): State<AxumState>,
     Json(payload): Json<serde_json::Value>,
 ) -> Response {
-    if q.key.as_deref() != Some(s.key.as_str()) {
-        return (StatusCode::UNAUTHORIZED, "Invalid key").into_response();
+    if !check_auth(&q, &headers, addr.ip().to_string(), &s) {
+        return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
     }
     let char_id = payload["character_id"].as_str().unwrap_or("").to_string();
     let chat_data = &payload["data"];
@@ -547,11 +641,13 @@ async fn route_push_chat(
 // Delete a chat session on host
 async fn route_delete_chat(
     Query(q): Query<KeyQuery>,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(s): State<AxumState>,
     Json(payload): Json<serde_json::Value>,
 ) -> Response {
-    if q.key.as_deref() != Some(s.key.as_str()) {
-        return (StatusCode::UNAUTHORIZED, "Invalid key").into_response();
+    if !check_auth(&q, &headers, addr.ip().to_string(), &s) {
+        return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
     }
     let char_id = payload["character_id"].as_str().unwrap_or("").to_string();
     let chat_id = payload["chat_id"].as_str().unwrap_or("").to_string();
@@ -574,11 +670,13 @@ async fn route_delete_chat(
 // Push a character from client to host
 async fn route_push_character(
     Query(q): Query<KeyQuery>,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(s): State<AxumState>,
     Json(payload): Json<serde_json::Value>,
 ) -> Response {
-    if q.key.as_deref() != Some(s.key.as_str()) {
-        return (StatusCode::UNAUTHORIZED, "Invalid key").into_response();
+    if !check_auth(&q, &headers, addr.ip().to_string(), &s) {
+        return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
     }
     let character: Character = match serde_json::from_value(payload) {
         Ok(c) => c,
@@ -600,11 +698,13 @@ async fn route_push_character(
 // Delete a character on host
 async fn route_delete_character(
     Query(q): Query<KeyQuery>,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(s): State<AxumState>,
     Json(payload): Json<serde_json::Value>,
 ) -> Response {
-    if q.key.as_deref() != Some(s.key.as_str()) {
-        return (StatusCode::UNAUTHORIZED, "Invalid key").into_response();
+    if !check_auth(&q, &headers, addr.ip().to_string(), &s) {
+        return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
     }
     let id = payload["id"].as_str().unwrap_or("").to_string();
     if id.is_empty() || id.contains('/') || id.contains('\\') || id.contains('.') {
@@ -622,6 +722,79 @@ async fn route_delete_character(
     use tauri::Emitter;
     let _ = s.app_handle.emit("host-data-updated", ());
     StatusCode::OK.into_response()
+}
+
+async fn route_push_genai_history(
+    Query(q): Query<KeyQuery>,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    State(s): State<AxumState>,
+    Json(payload): Json<serde_json::Value>,
+) -> Response {
+    if !check_auth(&q, &headers, addr.ip().to_string(), &s) {
+        return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
+    }
+    let data = payload["data"].as_str().unwrap_or("");
+    if data.is_empty() {
+        return (StatusCode::BAD_REQUEST, "Missing data").into_response();
+    }
+    match save_genai_history(data.to_string()) {
+        Ok(_) => {
+            use tauri::Emitter;
+            let _ = s.app_handle.emit("host-data-updated", ());
+            StatusCode::OK.into_response()
+        },
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+    }
+}
+
+async fn route_push_memory(
+    Query(q): Query<KeyQuery>,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    State(s): State<AxumState>,
+    Json(payload): Json<serde_json::Value>,
+) -> Response {
+    if !check_auth(&q, &headers, addr.ip().to_string(), &s) {
+        return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
+    }
+    let char_id = payload["character_id"].as_str().unwrap_or("").to_string();
+    let data = payload["data"].as_str().unwrap_or("");
+    if char_id.is_empty() || data.is_empty() {
+        return (StatusCode::BAD_REQUEST, "Missing character_id or data").into_response();
+    }
+    match save_memory(char_id, data.to_string()) {
+        Ok(_) => {
+            use tauri::Emitter;
+            let _ = s.app_handle.emit("host-data-updated", ());
+            StatusCode::OK.into_response()
+        },
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+    }
+}
+
+async fn route_push_genai_memories(
+    Query(q): Query<KeyQuery>,
+    headers: HeaderMap,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    State(s): State<AxumState>,
+    Json(payload): Json<serde_json::Value>,
+) -> Response {
+    if !check_auth(&q, &headers, addr.ip().to_string(), &s) {
+        return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
+    }
+    let data = payload["data"].as_str().unwrap_or("");
+    if data.is_empty() {
+        return (StatusCode::BAD_REQUEST, "Missing data").into_response();
+    }
+    match save_genai_memories(data.to_string()) {
+        Ok(_) => {
+            use tauri::Emitter;
+            let _ = s.app_handle.emit("host-data-updated", ());
+            StatusCode::OK.into_response()
+        },
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+    }
 }
 
 // ─── Tauri Commands: Local Network ───────────────────────────────────
@@ -664,6 +837,9 @@ async fn start_host_server(
         .route("/push/chat", delete(route_delete_chat))
         .route("/push/character", post(route_push_character))
         .route("/push/character", delete(route_delete_character))
+        .route("/push/genai_history", post(route_push_genai_history))
+        .route("/push/memory", post(route_push_memory))
+        .route("/push/genai_memories", post(route_push_genai_memories))
         .with_state(axum_state)
         .layer(cors);
 
@@ -676,7 +852,7 @@ async fn start_host_server(
 
     // Start axum server
     tokio::spawn(async move {
-        axum::serve(listener, app)
+        axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
             .with_graceful_shutdown(async move {
                 let _ = shutdown_rx.await;
             })
@@ -811,6 +987,7 @@ async fn client_http_request(
     method: String,
     url: String,
     body: Option<String>,
+    headers: Option<HashMap<String, String>>,
     timeout_secs: Option<u64>,
 ) -> Result<String, String> {
     let client = reqwest::Client::new();
@@ -823,6 +1000,12 @@ async fn client_http_request(
     let secs = timeout_secs.unwrap_or(10);
     builder = builder.timeout(std::time::Duration::from_secs(secs));
     
+    if let Some(ref h) = headers {
+        for (k, v) in h {
+            builder = builder.header(k, v);
+        }
+    }
+
     if let Some(ref b) = body {
         builder = builder.header("Content-Type", "application/json").body(b.clone());
     }
@@ -850,6 +1033,7 @@ async fn client_relay_stream(
     url: String,
     body: String,
     event_id: String,
+    headers: Option<HashMap<String, String>>,
 ) -> Result<(), String> {
     use tokio_stream::StreamExt;
     use tauri::Emitter;
@@ -875,11 +1059,17 @@ async fn client_relay_stream(
     let _cleanup = Cleanup { event_id: event_id.clone() };
 
     let client = reqwest::Client::new();
-    let send_fut = client
+    let mut builder = client
         .post(&url)
-        .header("Content-Type", "application/json")
-        .body(body)
-        .send();
+        .header("Content-Type", "application/json");
+
+    if let Some(ref h) = headers {
+        for (k, v) in h {
+            builder = builder.header(k, v);
+        }
+    }
+
+    let send_fut = builder.body(body).send();
 
     let result = tokio::select! {
         res = send_fut => match res {
@@ -1330,6 +1520,36 @@ fn load_genai_memories() -> Result<String, String> {
         fs::read_to_string(&path).map_err(|e| e.to_string())
     } else {
         Ok("".to_string())
+    }
+}
+
+#[tauri::command]
+fn get_allowed_devices() -> Result<Vec<AllowedDevice>, String> {
+    Ok(read_allowed_devices())
+}
+
+#[tauri::command]
+fn set_device_auth_status(id: String, allowed_without_key: bool) -> Result<(), String> {
+    let mut list = read_allowed_devices();
+    if let Some(d) = list.iter_mut().find(|d| d.id == id) {
+        d.allowed_without_key = allowed_without_key;
+        write_allowed_devices(&list);
+        Ok(())
+    } else {
+        Err("Device not found".to_string())
+    }
+}
+
+#[tauri::command]
+fn remove_allowed_device(id: String) -> Result<(), String> {
+    let mut list = read_allowed_devices();
+    let old_len = list.len();
+    list.retain(|d| d.id != id);
+    if list.len() != old_len {
+        write_allowed_devices(&list);
+        Ok(())
+    } else {
+        Err("Device not found".to_string())
     }
 }
 
@@ -1867,7 +2087,10 @@ pub fn run() {
             client_relay_stream,
             cancel_client_relay,
             save_genai_memories,
-            load_genai_memories
+            load_genai_memories,
+            get_allowed_devices,
+            set_device_auth_status,
+            remove_allowed_device
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

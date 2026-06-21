@@ -3,11 +3,18 @@
    ════════════════════════════════════════════════════════════════════ */
 
 import { generateId } from '../utils/helpers.js';
+import { localSyncService } from './local-sync-service.js';
 
 const STORAGE_KEY = 'vibechat_genai_memories';
 let memories = [];
 
 async function invokeTauri(cmd, args = {}) {
+  if (localSyncService.isClientMode) {
+    if (cmd === 'save_genai_memories') {
+      localSyncService.pushGenaiMemoriesToHost(args.data);
+    }
+  }
+
   if (window.__TAURI_INTERNALS__) {
     return await window.__TAURI_INTERNALS__.invoke(cmd, args);
   }

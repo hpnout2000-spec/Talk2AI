@@ -16,6 +16,8 @@ const RELAY_TIMEOUT_MS = 60_000; // max time to wait for relay to respond
 const PUSH_RETRY_ATTEMPTS = 3;
 const PUSH_RETRY_DELAY_MS = 2000;
 
+import { settingsStore } from './settings-store.js';
+
 class LocalSyncService {
   constructor() {
     // ── Client state ──────────────────────────────────────────────────
@@ -52,9 +54,30 @@ class LocalSyncService {
   // Client-facing API
   // ────────────────────────────────────────────────────────────────────
 
+  getDeviceId() {
+    let id = localStorage.getItem('llmchat_client_device_id');
+    if (!id) {
+      id = 'dev-' + Math.random().toString(36).substring(2, 11) + '-' + Math.random().toString(36).substring(2, 11);
+      localStorage.setItem('llmchat_client_device_id', id);
+    }
+    return id;
+  }
+
+  getDeviceName() {
+    const settings = settingsStore?.get() || {};
+    return settings.user_name || 'Web Client';
+  }
+
+  getSyncHeaders() {
+    return {
+      'x-device-id': this.getDeviceId(),
+      'x-device-name': this.getDeviceName(),
+    };
+  }
+
   /**
    * Attempt to connect to a host.
-   * @returns {Promise<{ok: boolean, error?: string}>}
+   * @returns {Promise<{ok: boolean, status?: string, error?: string}>}
    */
   async connectToHost(ip, port, key) {
     const base = `http://${ip}:${port}`;
@@ -67,6 +90,7 @@ class LocalSyncService {
         method: 'GET',
         url,
         body: null,
+        headers: this.getSyncHeaders(),
         timeoutSecs: 5,
       });
 
@@ -85,6 +109,9 @@ class LocalSyncService {
       const errMsg = err.message || String(err);
       if (errMsg.toLowerCase().includes('timeout') || errMsg.toLowerCase().includes('timed out')) {
         return { ok: false, error: 'Host not reachable (timeout)' };
+      }
+      if (errMsg.includes('401')) {
+        return { ok: false, status: 'pending', error: 'Approval required. Please authorize this device on the Host PC settings.' };
       }
       return { ok: false, error: errMsg };
     }
@@ -111,6 +138,7 @@ class LocalSyncService {
         method: 'GET',
         url,
         body: null,
+        headers: this.getSyncHeaders(),
         timeoutSecs: 15,
       });
       const bundle = JSON.parse(respText);
@@ -167,6 +195,33 @@ class LocalSyncService {
     });
   }
 
+  pushGenaiHistoryToHost(historyData) {
+    if (!this.isClientMode) return;
+    this._pushWithRetry(`${this.hostBaseUrl}/push/genai_history?key=${encodeURIComponent(this.hostKey)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: historyData }),
+    });
+  }
+
+  pushMemoryToHost(characterId, memoryData) {
+    if (!this.isClientMode) return;
+    this._pushWithRetry(`${this.hostBaseUrl}/push/memory?key=${encodeURIComponent(this.hostKey)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character_id: characterId, data: memoryData }),
+    });
+  }
+
+  pushGenaiMemoriesToHost(memoriesData) {
+    if (!this.isClientMode) return;
+    this._pushWithRetry(`${this.hostBaseUrl}/push/genai_memories?key=${encodeURIComponent(this.hostKey)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ data: memoriesData }),
+    });
+  }
+
   // ────────────────────────────────────────────────────────────────────
   // Host-mode polling (updates isHostMode, clientCount, etc.)
   // ────────────────────────────────────────────────────────────────────
@@ -211,6 +266,10 @@ class LocalSyncService {
         method: options.method || 'POST',
         url,
         body: options.body || null,
+        headers: {
+          ...options.headers,
+          ...this.getSyncHeaders(),
+        },
         timeoutSecs: 8,
       });
     } catch (err) {

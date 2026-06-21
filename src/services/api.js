@@ -244,6 +244,7 @@ export const api = {
               url: effectiveUrl,
               body: JSON.stringify(body),
               eventId,
+              headers: localSyncService.getSyncHeaders(),
             });
           } catch (err) {
             if (!combinedController.signal.aborted) {

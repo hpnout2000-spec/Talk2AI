@@ -7,6 +7,7 @@ import { showToast, checkConnection, applyGlobalSettingsStyles, openWindow, clos
 import { api } from '../services/api.js';
 import { checkComfyUIConnection } from '../services/comfyui-service.js';
 import { localSyncService } from '../services/local-sync-service.js';
+import { escapeHtml } from '../utils/helpers.js';
 
 let currentSettings;
 let editingGamePresetId = null;
@@ -737,6 +738,8 @@ function initLocalNetworkSection() {
   const btnStartHosting = document.getElementById('btn-start-hosting');
   const btnStopHosting  = document.getElementById('btn-stop-hosting');
   const hostCard        = document.getElementById('local-net-host-card');
+  const devicesSection  = document.getElementById('local-net-devices-section');
+  const devicesList     = document.getElementById('local-net-devices-list');
 
   const discoveryArea   = document.getElementById('local-net-discovery-area');
   const discoveryChips  = document.getElementById('local-net-discovery-chips');
@@ -762,12 +765,78 @@ function initLocalNetworkSection() {
     syncStatus.className = 'sync-status-line' + (cls ? ' ' + cls : '');
   }
 
+  let _devicesInterval = null;
+
+  async function refreshDevicesList() {
+    if (!devicesList) return;
+    try {
+      const devices = await invoke('get_allowed_devices');
+      if (devices && devices.length > 0) {
+        devicesList.innerHTML = '';
+        devices.forEach(d => {
+          const item = document.createElement('div');
+          item.className = 'local-net-device-item';
+          
+          const lastSeenDate = new Date(d.last_seen);
+          const lastSeenStr = isNaN(lastSeenDate.getTime()) ? 'never' : lastSeenDate.toLocaleTimeString();
+
+          item.innerHTML = `
+            <div class="device-info">
+              <span class="device-name" title="${escapeHtml(d.name)}">${escapeHtml(d.name)}</span>
+              <span class="device-meta">IP: ${d.ip || '—'} · Last seen: ${lastSeenStr}</span>
+            </div>
+            <div class="device-actions">
+              <label class="device-toggle-label">
+                <input type="checkbox" class="device-allow-checkbox" ${d.allowed_without_key ? 'checked' : ''} />
+                <span>Allow without key</span>
+              </label>
+              <button class="btn-device-remove" title="Remove device">🗑️</button>
+            </div>
+          `;
+          
+          // Toggle auth status
+          const checkbox = item.querySelector('.device-allow-checkbox');
+          checkbox.addEventListener('change', async (e) => {
+            try {
+              await invoke('set_device_auth_status', { id: d.id, allowed_without_key: e.target.checked });
+              showToast(`Device authorization updated.`);
+            } catch (err) {
+              showToast(`Failed to update device authorization: ${err}`, 'error');
+              e.target.checked = !e.target.checked; // Revert
+            }
+          });
+
+          // Remove device
+          const removeBtn = item.querySelector('.btn-device-remove');
+          removeBtn.addEventListener('click', async () => {
+            if (confirm(`Are you sure you want to remove device "${d.name}"?`)) {
+              try {
+                await invoke('remove_allowed_device', { id: d.id });
+                showToast(`Device removed.`);
+                refreshDevicesList();
+              } catch (err) {
+                showToast(`Failed to remove device: ${err}`, 'error');
+              }
+            }
+          });
+
+          devicesList.appendChild(item);
+        });
+      } else {
+        devicesList.innerHTML = '<div class="local-net-no-devices">No devices connected yet.</div>';
+      }
+    } catch (e) {
+      console.warn('Failed to load allowed devices:', e);
+    }
+  }
+
   function updateHostUI(status) {
     if (!status) return;
     if (status.local_ip && hostIpEl) hostIpEl.textContent = status.local_ip;
     if (status.running) {
       // Hosting active
       if (keySection) keySection.style.display = '';
+      if (devicesSection) devicesSection.style.display = 'block';
       // Show key without the copy button text
       const key = status.key || '????????';
       if (keyDisplay) {
@@ -780,11 +849,22 @@ function initLocalNetworkSection() {
       if (btnStartHosting) btnStartHosting.style.display = 'none';
       if (btnStopHosting)  btnStopHosting.style.display = '';
       if (hostCard) hostCard.classList.add('active');
+
+      if (!_devicesInterval) {
+        refreshDevicesList();
+        _devicesInterval = setInterval(refreshDevicesList, 3000);
+      }
     } else {
       if (keySection) keySection.style.display = 'none';
+      if (devicesSection) devicesSection.style.display = 'none';
       if (btnStartHosting) btnStartHosting.style.display = '';
       if (btnStopHosting)  btnStopHosting.style.display = 'none';
       if (hostCard) hostCard.classList.remove('active');
+
+      if (_devicesInterval) {
+        clearInterval(_devicesInterval);
+        _devicesInterval = null;
+      }
     }
   }
 
@@ -906,8 +986,8 @@ function initLocalNetworkSection() {
     btnConnect.addEventListener('click', async () => {
       const addrRaw = (hostAddrInput?.value || '').trim();
       const key = (clientKeyInput?.value || '').trim().toUpperCase();
-      if (!addrRaw || !key) {
-        setSyncStatus('Please enter host address and key.', 'error');
+      if (!addrRaw) {
+        setSyncStatus('Please enter host address.', 'error');
         return;
       }
 
@@ -925,6 +1005,8 @@ function initLocalNetworkSection() {
         setSyncStatus('✓ Connected! Click "Sync Now" to import host data.', 'success');
         updateClientUI();
         showToast('🔗 Connected to host via local network!');
+      } else if (result.status === 'pending') {
+        setSyncStatus('⏳ Approval required. Please authorize this device under "Paired / Pending Devices" on the Host PC settings.', 'loading');
       } else {
         setSyncStatus(`✗ ${result.error}`, 'error');
       }
