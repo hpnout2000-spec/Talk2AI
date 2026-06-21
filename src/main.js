@@ -28,12 +28,66 @@ import { initGenAISkillsMgr } from './components/genai-skills-mgr.js';
 import { initGenAIFetchedDataMgr } from './components/genai-fetched-data-mgr.js';
 import { initLightbox } from './utils/lightbox.js';
 import { initAlbumView } from './components/album-view.js';
+import { localSyncService } from './services/local-sync-service.js';
 
 // ─── Initialize App ─────────────────────────────────────────────────
 
 async function init() {
   console.log('LLM Chat initializing...');
-  
+
+  // ── Tauri invoke interceptor for bidirectional sync ─────────────────
+  // When in client mode, mirrors data mutations to the host transparently.
+  // This single intercept covers all call sites (chat.js, genai-panel.js, etc.)
+  if (window.__TAURI_INTERNALS__) {
+    const originalInternals = window.__TAURI_INTERNALS__;
+    const interceptedInvoke = async (cmd, args, ...rest) => {
+      const result = await originalInternals.invoke(cmd, args, ...rest);
+      // Mirror mutations to host (fire-and-forget, non-blocking)
+      if (localSyncService.isClientMode) {
+        try {
+          if (cmd === 'save_chat' && args?.characterId && args?.data) {
+            localSyncService.pushChatToHost(args.characterId, JSON.parse(args.data));
+          } else if (cmd === 'delete_chat' && args?.characterId && args?.chatId) {
+            localSyncService.deleteChatOnHost(args.characterId, args.chatId);
+          } else if (cmd === 'save_character' && args?.data) {
+            localSyncService.pushCharacterToHost(JSON.parse(args.data));
+          } else if (cmd === 'delete_character' && args?.id) {
+            localSyncService.deleteCharacterOnHost(args.id);
+          }
+        } catch { /* never let sync errors affect the UI */ }
+      }
+      return result;
+    };
+
+    try {
+      const proxy = new Proxy(originalInternals, {
+        get(target, prop, receiver) {
+          if (prop === 'invoke') {
+            return interceptedInvoke;
+          }
+          return Reflect.get(target, prop, receiver);
+        }
+      });
+      Object.defineProperty(window, '__TAURI_INTERNALS__', {
+        value: proxy,
+        configurable: true,
+        writable: true,
+        enumerable: true
+      });
+    } catch (e) {
+      console.error("Failed to intercept Tauri internals via proxy:", e);
+      // Fallback: try direct defineProperty on the read-only invoke
+      try {
+        Object.defineProperty(originalInternals, 'invoke', {
+          value: interceptedInvoke,
+          configurable: true,
+          writable: true
+        });
+      } catch (err) {
+        console.error("Tauri intercept fallback failed:", err);
+      }
+    }
+  }
 
   // Load settings first
   await settingsStore.load();

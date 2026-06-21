@@ -1,6 +1,21 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+// Axum / tokio networking
+use axum::{
+    body::Body,
+    extract::{Query, State},
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    routing::{delete, get, post},
+    Json, Router,
+};
+use tokio::net::TcpListener;
+use tokio_stream::StreamExt;
+
 
 // ─── Data Structures ────────────────────────────────────────────────
 
@@ -141,6 +156,501 @@ fn ensure_dir(path: &PathBuf) {
     if !path.exists() {
         fs::create_dir_all(path).ok();
     }
+}
+
+// ─── Local Network Server State ──────────────────────────────────────
+
+struct RunningServer {
+    key: String,
+    port: u16,
+    shutdown_tx: tokio::sync::oneshot::Sender<()>,
+    udp_shutdown_tx: tokio::sync::oneshot::Sender<()>,
+    client_count: Arc<AtomicUsize>,
+    local_ip: String,
+}
+
+#[derive(Clone)]
+struct ServerShared {
+    inner: Arc<Mutex<Option<RunningServer>>>,
+}
+
+impl ServerShared {
+    fn new() -> Self {
+        ServerShared { inner: Arc::new(Mutex::new(None)) }
+    }
+}
+
+#[derive(Serialize)]
+struct StartServerResult {
+    key: String,
+    port: u16,
+    local_ip: String,
+}
+
+#[derive(Serialize)]
+struct ServerStatusResult {
+    running: bool,
+    key: Option<String>,
+    port: Option<u16>,
+    local_ip: Option<String>,
+    client_count: usize,
+}
+
+#[derive(Serialize, Clone)]
+struct DiscoveredHost {
+    ip: String,
+    port: u16,
+    host_name: String,
+}
+
+// Shared axum app state
+#[derive(Clone)]
+struct AxumState {
+    key: String,
+    client_count: Arc<AtomicUsize>,
+}
+
+// Query params for all routes
+#[derive(Deserialize)]
+struct KeyQuery {
+    key: Option<String>,
+}
+
+// Helper to get local LAN IP
+fn get_local_ip() -> String {
+    use std::net::UdpSocket;
+    let socket = UdpSocket::bind("0.0.0.0:0").ok();
+    if let Some(s) = socket {
+        s.connect("8.8.8.8:80").ok();
+        if let Ok(addr) = s.local_addr() {
+            return addr.ip().to_string();
+        }
+    }
+    "127.0.0.1".to_string()
+}
+
+// Generate random 8-char alphanumeric key
+fn generate_key() -> String {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    (0..8)
+        .map(|_| {
+            let idx = rng.gen_range(0..36);
+            if idx < 10 { (b'0' + idx) as char } else { (b'A' + idx - 10) as char }
+        })
+        .collect()
+}
+
+// Read api_url from settings file
+fn read_api_url() -> String {
+    let path = get_app_dir().join("settings.json");
+    if let Ok(content) = fs::read_to_string(&path) {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&content) {
+            if let Some(url) = v["api_url"].as_str() {
+                return url.to_string();
+            }
+        }
+    }
+    "http://localhost:5001".to_string()
+}
+
+// Build and return the sync bundle (all characters + all chats + settings)
+fn build_sync_bundle() -> serde_json::Value {
+    let app_dir = get_app_dir();
+
+    // Settings
+    let settings_str = fs::read_to_string(app_dir.join("settings.json")).unwrap_or_default();
+    let settings: serde_json::Value = serde_json::from_str(&settings_str).unwrap_or(serde_json::Value::Null);
+
+    // Characters
+    let chars_dir = app_dir.join("characters");
+    let mut characters: Vec<serde_json::Value> = Vec::new();
+    if let Ok(entries) = fs::read_dir(&chars_dir) {
+        for entry in entries.flatten() {
+            if entry.path().extension().map_or(false, |e| e == "json") {
+                if let Ok(c) = fs::read_to_string(entry.path()) {
+                    if let Ok(v) = serde_json::from_str::<serde_json::Value>(&c) {
+                        characters.push(v);
+                    }
+                }
+            }
+        }
+    }
+
+    // Chats: map of character_id -> Vec<session>
+    let chats_root = app_dir.join("chats");
+    let mut chats_map: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
+    if let Ok(char_dirs) = fs::read_dir(&chats_root) {
+        for char_dir in char_dirs.flatten() {
+            if char_dir.path().is_dir() {
+                let char_id = char_dir.file_name().to_string_lossy().to_string();
+                let mut sessions: Vec<serde_json::Value> = Vec::new();
+                if let Ok(chat_files) = fs::read_dir(char_dir.path()) {
+                    for cf in chat_files.flatten() {
+                        if cf.path().extension().map_or(false, |e| e == "json") {
+                            if let Ok(c) = fs::read_to_string(cf.path()) {
+                                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&c) {
+                                    sessions.push(v);
+                                }
+                            }
+                        }
+                    }
+                }
+                chats_map.insert(char_id, serde_json::Value::Array(sessions));
+            }
+        }
+    }
+
+    serde_json::json!({
+        "settings": settings,
+        "characters": characters,
+        "chats": chats_map
+    })
+}
+
+// ─── Axum Route Handlers ─────────────────────────────────────────────
+
+async fn route_ping(
+    Query(q): Query<KeyQuery>,
+    State(s): State<AxumState>,
+) -> Response {
+    if q.key.as_deref() != Some(s.key.as_str()) {
+        return (StatusCode::UNAUTHORIZED, "Invalid key").into_response();
+    }
+    s.client_count.fetch_add(1, Ordering::Relaxed);
+    Json(serde_json::json!({"ok": true, "version": "1"})).into_response()
+}
+
+async fn route_sync_bundle(
+    Query(q): Query<KeyQuery>,
+    State(s): State<AxumState>,
+) -> Response {
+    if q.key.as_deref() != Some(s.key.as_str()) {
+        return (StatusCode::UNAUTHORIZED, "Invalid key").into_response();
+    }
+    s.client_count.fetch_add(0, Ordering::Relaxed); // no-op, just satisfy compiler
+    let bundle = build_sync_bundle();
+    Json(bundle).into_response()
+}
+
+async fn route_relay(
+    Query(q): Query<KeyQuery>,
+    State(s): State<AxumState>,
+    body: axum::body::Bytes,
+) -> Response {
+    if q.key.as_deref() != Some(s.key.as_str()) {
+        return (StatusCode::UNAUTHORIZED, "Invalid key").into_response();
+    }
+
+    let api_url = read_api_url();
+    let target = format!("{}/v1/chat/completions", api_url);
+
+    let client = reqwest::Client::new();
+    let result = client
+        .post(&target)
+        .header("Content-Type", "application/json")
+        .body(body.to_vec())
+        .send()
+        .await;
+
+    match result {
+        Ok(resp) => {
+            let status = axum::http::StatusCode::from_u16(resp.status().as_u16())
+                .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+
+            // Convert reqwest bytes stream to axum Body stream
+            let byte_stream = resp.bytes_stream().map(|r| {
+                r.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+            });
+            let body = Body::from_stream(byte_stream);
+
+            Response::builder()
+                .status(status)
+                .header("Content-Type", "text/event-stream")
+                .header("Cache-Control", "no-cache")
+                .header("X-Accel-Buffering", "no")
+                .body(body)
+                .unwrap_or_else(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Stream error").into_response())
+        }
+        Err(e) => (StatusCode::BAD_GATEWAY, format!("LLM relay error: {}", e)).into_response(),
+    }
+}
+
+// Push a chat session from client to host filesystem
+async fn route_push_chat(
+    Query(q): Query<KeyQuery>,
+    State(s): State<AxumState>,
+    Json(payload): Json<serde_json::Value>,
+) -> Response {
+    if q.key.as_deref() != Some(s.key.as_str()) {
+        return (StatusCode::UNAUTHORIZED, "Invalid key").into_response();
+    }
+    let char_id = payload["character_id"].as_str().unwrap_or("").to_string();
+    let chat_data = &payload["data"];
+    if char_id.is_empty() || chat_data.is_null() {
+        return (StatusCode::BAD_REQUEST, "Missing character_id or data").into_response();
+    }
+    // Security: prevent path traversal
+    if char_id.contains('/') || char_id.contains('\\') || char_id.contains('.') {
+        return (StatusCode::BAD_REQUEST, "Invalid character_id").into_response();
+    }
+    let session: ChatSession = match serde_json::from_value(chat_data.clone()) {
+        Ok(s) => s,
+        Err(e) => return (StatusCode::BAD_REQUEST, format!("Invalid session: {}", e)).into_response(),
+    };
+    let dir = get_app_dir().join("chats").join(&char_id);
+    ensure_dir(&dir);
+    let path = dir.join(format!("{}.json", session.id));
+    match fs::write(&path, serde_json::to_string_pretty(&session).unwrap()) {
+        Ok(_) => StatusCode::OK.into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+// Delete a chat session on host
+async fn route_delete_chat(
+    Query(q): Query<KeyQuery>,
+    State(s): State<AxumState>,
+    Json(payload): Json<serde_json::Value>,
+) -> Response {
+    if q.key.as_deref() != Some(s.key.as_str()) {
+        return (StatusCode::UNAUTHORIZED, "Invalid key").into_response();
+    }
+    let char_id = payload["character_id"].as_str().unwrap_or("").to_string();
+    let chat_id = payload["chat_id"].as_str().unwrap_or("").to_string();
+    if char_id.is_empty() || chat_id.is_empty() {
+        return (StatusCode::BAD_REQUEST, "Missing ids").into_response();
+    }
+    if char_id.contains('/') || char_id.contains('\\') || char_id.contains('.')
+        || chat_id.contains('/') || chat_id.contains('\\') || chat_id.contains('.') {
+        return (StatusCode::BAD_REQUEST, "Invalid id").into_response();
+    }
+    let path = get_app_dir().join("chats").join(&char_id).join(format!("{}.json", chat_id));
+    if path.exists() {
+        let _ = fs::remove_file(&path);
+    }
+    StatusCode::OK.into_response()
+}
+
+// Push a character from client to host
+async fn route_push_character(
+    Query(q): Query<KeyQuery>,
+    State(s): State<AxumState>,
+    Json(payload): Json<serde_json::Value>,
+) -> Response {
+    if q.key.as_deref() != Some(s.key.as_str()) {
+        return (StatusCode::UNAUTHORIZED, "Invalid key").into_response();
+    }
+    let character: Character = match serde_json::from_value(payload) {
+        Ok(c) => c,
+        Err(e) => return (StatusCode::BAD_REQUEST, format!("Invalid character: {}", e)).into_response(),
+    };
+    let dir = get_app_dir().join("characters");
+    ensure_dir(&dir);
+    let path = dir.join(format!("{}.json", character.id));
+    match fs::write(&path, serde_json::to_string_pretty(&character).unwrap()) {
+        Ok(_) => StatusCode::OK.into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+// Delete a character on host
+async fn route_delete_character(
+    Query(q): Query<KeyQuery>,
+    State(s): State<AxumState>,
+    Json(payload): Json<serde_json::Value>,
+) -> Response {
+    if q.key.as_deref() != Some(s.key.as_str()) {
+        return (StatusCode::UNAUTHORIZED, "Invalid key").into_response();
+    }
+    let id = payload["id"].as_str().unwrap_or("").to_string();
+    if id.is_empty() || id.contains('/') || id.contains('\\') || id.contains('.') {
+        return (StatusCode::BAD_REQUEST, "Invalid id").into_response();
+    }
+    let path = get_app_dir().join("characters").join(format!("{}.json", id));
+    if path.exists() {
+        let _ = fs::remove_file(&path);
+    }
+    // Also remove associated chats dir and memory
+    let chats_dir = get_app_dir().join("chats").join(&id);
+    if chats_dir.exists() { let _ = fs::remove_dir_all(&chats_dir); }
+    let mem = get_app_dir().join("memory").join(format!("{}.json", id));
+    if mem.exists() { let _ = fs::remove_file(&mem); }
+    StatusCode::OK.into_response()
+}
+
+// ─── Tauri Commands: Local Network ───────────────────────────────────
+
+#[tauri::command]
+async fn start_host_server(
+    state: tauri::State<'_, ServerShared>,
+) -> Result<StartServerResult, String> {
+    let port: u16 = 8765;
+    let key = generate_key();
+    let local_ip = get_local_ip();
+    let client_count = Arc::new(AtomicUsize::new(0));
+
+    // Stop existing server if running
+    {
+        let mut guard = state.inner.lock().unwrap();
+        if let Some(old) = guard.take() {
+            let _ = old.shutdown_tx.send(());
+            let _ = old.udp_shutdown_tx.send(());
+        }
+    }
+
+    let axum_state = AxumState {
+        key: key.clone(),
+        client_count: client_count.clone(),
+    };
+
+    let app = Router::new()
+        .route("/ping", get(route_ping))
+        .route("/sync/bundle", get(route_sync_bundle))
+        .route("/relay", post(route_relay))
+        .route("/push/chat", post(route_push_chat))
+        .route("/push/chat", delete(route_delete_chat))
+        .route("/push/character", post(route_push_character))
+        .route("/push/character", delete(route_delete_character))
+        .with_state(axum_state);
+
+    let listener = TcpListener::bind(format!("0.0.0.0:{}", port))
+        .await
+        .map_err(|e| format!("Failed to bind port {}: {}", port, e))?;
+
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    let (udp_tx, udp_rx) = tokio::sync::oneshot::channel::<()>();
+
+    // Start axum server
+    tokio::spawn(async move {
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async move {
+                let _ = shutdown_rx.await;
+            })
+            .await
+            .ok();
+    });
+
+    // Start UDP broadcast
+    let udp_ip = local_ip.clone();
+    let _udp_key_hint = key[..2].to_string();
+    tokio::spawn(async move {
+        use tokio::net::UdpSocket;
+        let sock = match UdpSocket::bind("0.0.0.0:0").await {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        let _ = sock.set_broadcast(true);
+        let hostname = std::env::var("COMPUTERNAME")
+            .or_else(|_| std::env::var("HOSTNAME"))
+            .unwrap_or_else(|_| "LLMChat Host".to_string());
+        let msg = serde_json::json!({
+            "app": "llmchat",
+            "port": port,
+            "host_name": hostname,
+            "ip": udp_ip,
+        })
+        .to_string();
+        let msg_bytes = msg.as_bytes().to_vec();
+        let mut udp_rx = udp_rx;
+        loop {
+            tokio::select! {
+                _ = &mut udp_rx => break,
+                _ = tokio::time::sleep(tokio::time::Duration::from_secs(3)) => {
+                    let _ = sock.send_to(&msg_bytes, "255.255.255.255:8766").await;
+                }
+            }
+        }
+    });
+
+    {
+        let mut guard = state.inner.lock().unwrap();
+        *guard = Some(RunningServer {
+            key: key.clone(),
+            port,
+            shutdown_tx,
+            udp_shutdown_tx: udp_tx,
+            client_count,
+            local_ip: local_ip.clone(),
+        });
+    }
+
+    Ok(StartServerResult { key, port, local_ip })
+}
+
+#[tauri::command]
+async fn stop_host_server(
+    state: tauri::State<'_, ServerShared>,
+) -> Result<(), String> {
+    let mut guard = state.inner.lock().unwrap();
+    if let Some(server) = guard.take() {
+        let _ = server.shutdown_tx.send(());
+        let _ = server.udp_shutdown_tx.send(());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_host_server_status(
+    state: tauri::State<'_, ServerShared>,
+) -> Result<ServerStatusResult, String> {
+    let guard = state.inner.lock().unwrap();
+    if let Some(server) = guard.as_ref() {
+        Ok(ServerStatusResult {
+            running: true,
+            key: Some(server.key.clone()),
+            port: Some(server.port),
+            local_ip: Some(server.local_ip.clone()),
+            client_count: server.client_count.load(Ordering::Relaxed),
+        })
+    } else {
+        Ok(ServerStatusResult {
+            running: false,
+            key: None,
+            port: None,
+            local_ip: None,
+            client_count: 0,
+        })
+    }
+}
+
+#[tauri::command]
+async fn discover_hosts() -> Result<Vec<DiscoveredHost>, String> {
+    use tokio::net::UdpSocket;
+    let sock = UdpSocket::bind("0.0.0.0:8766")
+        .await
+        .map_err(|e| format!("Cannot listen for discovery: {}", e))?;
+
+    let mut hosts: Vec<DiscoveredHost> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let deadline = tokio::time::Instant::now() + tokio::time::Duration::from_secs(4);
+    let mut buf = [0u8; 1024];
+
+    loop {
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() { break; }
+
+        match tokio::time::timeout(remaining, sock.recv_from(&mut buf)).await {
+            Ok(Ok((len, addr))) => {
+                let msg = std::str::from_utf8(&buf[..len]).unwrap_or("");
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(msg) {
+                    if v["app"].as_str() == Some("llmchat") {
+                        let ip = v["ip"].as_str()
+                            .unwrap_or(&addr.ip().to_string())
+                            .to_string();
+                        let port = v["port"].as_u64().unwrap_or(8765) as u16;
+                        let host_name = v["host_name"].as_str().unwrap_or("Unknown").to_string();
+                        let key = format!("{}:{}", ip, port);
+                        if seen.insert(key) {
+                            hosts.push(DiscoveredHost { ip, port, host_name });
+                        }
+                    }
+                }
+            }
+            _ => break,
+        }
+    }
+    Ok(hosts)
 }
 
 // ─── Character Commands ─────────────────────────────────────────────
@@ -1021,6 +1531,7 @@ async fn web_fetch(url: String) -> Result<String, String> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .manage(ServerShared::new())
         .invoke_handler(tauri::generate_handler![
             save_character,
             load_characters,
@@ -1051,7 +1562,11 @@ pub fn run() {
             gelbooru_request,
             gelbooru_fetch_image_base64,
             web_search,
-            web_fetch
+            web_fetch,
+            start_host_server,
+            stop_host_server,
+            get_host_server_status,
+            discover_hosts
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

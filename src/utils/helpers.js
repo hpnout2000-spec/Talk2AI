@@ -95,6 +95,16 @@ export function renderMarkdown(text) {
     return `<pre><code class="language-${lang}">${code.trim()}</code></pre>`;
   });
 
+  // Headings (### ...)
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+
+  // Blockquotes (> ...)
+  html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+
+  // Unordered lists (- ... or * ...)
+  html = html.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+
   // Inline code (`...`)
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
 
@@ -103,13 +113,6 @@ export function renderMarkdown(text) {
 
   // Italic (*...*)
   html = html.replace(/\*(.+?)\*/g, '<span class="text-asterisks">$1</span>');
-
-  // Blockquotes (> ...)
-  html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
-
-  // Unordered lists (- ...)
-  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
-  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
 
   // Paragraphs (double newline)
   html = html.replace(/\n\n/g, '</p><p>');

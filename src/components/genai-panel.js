@@ -986,6 +986,11 @@ Do NOT attempt to run any of the corresponding JSON commands for these features,
     }
   }
 
+  // Prepend <|think|> for Gemma 4 thinking models when reasoning effort is active
+  if (settings.gemma4_support && settings.reasoning_effort && settings.reasoning_effort !== 'none') {
+    systemContent = '<|think|>\n' + systemContent;
+  }
+
   const finalMessages = [{ role: 'system', content: systemContent }, ...historyMsgs];
 
   // Inject Skills, JSON Tool calling rules, and Memories directly into the last user message to guarantee it is NEVER truncated
@@ -2189,10 +2194,19 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
   });
 
   let html = '';
-  if (isInThinking || thinking) {
-    html += createThinkingBlockHTML(thinking, isInThinking);
+  const splitIdx = processedText.indexOf('[[THINKING_BLOCK]]');
+  if (splitIdx !== -1) {
+    html += renderMarkdown(processedText.substring(0, splitIdx));
+    if (isInThinking || thinking) {
+      html += createThinkingBlockHTML(thinking, isInThinking);
+    }
+    html += renderMarkdown(processedText.substring(splitIdx + 18));
+  } else {
+    if (isInThinking || thinking) {
+      html += createThinkingBlockHTML(thinking, isInThinking);
+    }
+    html += renderMarkdown(processedText);
   }
-  html += renderMarkdown(processedText);
 
   buttonBlocksData.forEach((block, bIdx) => {
     const placeholder = `__GENAI_BUTTON_BLOCK_PLACEHOLDER_${bIdx}__`;
@@ -2230,34 +2244,62 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
       let badgeHtml = '';
 
       if (tool.state === 'awaiting_approval') {
-        const actionName = tool.action.genai_action;
-        const detailHtml = actionName === 'web_search'
-          ? `выполнить поиск по запросу: <strong style="color:var(--primary)">"${escapeHtml(tool.action.query)}"</strong>`
-          : `загрузить страницу: <a href="${escapeHtml(tool.action.url)}" target="_blank" style="color:var(--primary); word-break:break-all;">${escapeHtml(tool.action.url)}</a>`;
-
-        badgeHtml = `
-          <div class="genai-inline-tool genai-tool-pending" id="genai-tool-${idx}" style="width: 100%; display: grid; margin-top: 10px;">
-            <!-- Inner wrapper to isolate grid layout and allow normal flow inside -->
-            <div style="grid-area: 1 / 1; width: 100%; border: 1px solid var(--primary); padding: 12px; border-radius: var(--radius-md); background: rgba(var(--primary-rgb), 0.05); animation: fadeIn 0.3s ease; box-sizing: border-box;">
-              <div style="font-weight: bold; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 1.2em;">🌐</span> Запрос доступа к интернету
+        const isWebTool = tool.action.genai_action === 'web_search' || tool.action.genai_action === 'web_fetch';
+        if (isWebTool) {
+          const pendingWebTools = entry.tools.filter(t => 
+            (t.action.genai_action === 'web_search' || t.action.genai_action === 'web_fetch') &&
+            t.state === 'awaiting_approval'
+          );
+          const firstPendingWebTool = pendingWebTools[0];
+          if (tool === firstPendingWebTool) {
+            const count = pendingWebTools.length;
+            badgeHtml = `
+              <div class="genai-inline-tool genai-tool-pending" id="genai-tool-${idx}" style="margin-top: 10px; width: 100%; display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--primary); padding: 8px 16px; border-radius: 100px; background: rgba(var(--primary-rgb), 0.08); animation: fadeIn 0.3s ease; box-sizing: border-box; gap: var(--space-3); line-height: 1;">
+                <div style="display: flex; align-items: center; gap: 8px; font-size: 0.95em; color: var(--text-primary); font-family: var(--font-sans);">
+                  <span style="font-size: 1.2em; line-height: 1;">🌐</span>
+                  <span>AI wants to use web search for <strong style="color: var(--primary); font-weight: 600;">${count}</strong> ${count === 1 ? 'query' : 'queries'}</span>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <button id="approve-tool-${idx}" class="continuation-option-btn" 
+                          style="margin: 0; padding: 6px 14px; background: var(--primary); border: none; color: white; border-radius: 100px; cursor: pointer; font-size: 0.85em; font-weight: 500; opacity: 1; transform: none; animation: none; transition: transform 0.1s ease;">
+                    Allow
+                  </button>
+                  <button id="deny-tool-${idx}" class="continuation-option-btn" 
+                          style="margin: 0; padding: 6px 14px; background: transparent; border: 1px solid var(--border-light); color: var(--text-muted); border-radius: 100px; cursor: pointer; font-size: 0.85em; opacity: 1; transform: none; animation: none; transition: all 0.2s ease;">
+                    Deny
+                  </button>
+                </div>
               </div>
-              <div style="font-size: 0.9em; margin-bottom: 10px; opacity: 0.9; line-height: 1.5;">
-                GenAI хочет ${detailHtml}. Разрешить?
-              </div>
-              <div style="display: flex; gap: 8px;">
-                <button id="approve-tool-${idx}" class="continuation-option-btn" 
-                        style="padding: 6px 14px; background: var(--primary); border: none; color: white; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85em; font-weight: 500; transition: transform 0.1s ease;">
-                  Разрешить
-                </button>
-                <button id="deny-tool-${idx}" class="continuation-option-btn" 
-                        style="padding: 6px 14px; background: transparent; border: 1px solid var(--border-light); color: var(--text-muted); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85em; transition: all 0.2s ease;">
-                  Отклонить
-                </button>
+            `;
+          } else {
+            badgeHtml = '';
+          }
+        } else {
+          const actionName = tool.action.genai_action;
+          const detailHtml = `выполнить действие: <strong style="color:var(--primary)">"${escapeHtml(actionName)}"</strong>`;
+          badgeHtml = `
+            <div class="genai-inline-tool genai-tool-pending" id="genai-tool-${idx}" style="width: 100%; display: grid; margin-top: 10px;">
+              <div style="grid-area: 1 / 1; width: 100%; border: 1px solid var(--primary); padding: 12px; border-radius: var(--radius-md); background: rgba(var(--primary-rgb), 0.05); animation: fadeIn 0.3s ease; box-sizing: border-box;">
+                <div style="font-weight: bold; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+                  <span style="font-size: 1.2em;">⚙️</span> Запрос разрешения
+                </div>
+                <div style="font-size: 0.9em; margin-bottom: 10px; opacity: 0.9; line-height: 1.5;">
+                  GenAI хочет ${detailHtml}. Разрешить?
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <button id="approve-tool-${idx}" class="continuation-option-btn" 
+                          style="padding: 6px 14px; background: var(--primary); border: none; color: white; border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85em; font-weight: 500; transition: transform 0.1s ease;">
+                    Разрешить
+                  </button>
+                  <button id="deny-tool-${idx}" class="continuation-option-btn" 
+                          style="padding: 6px 14px; background: transparent; border: 1px solid var(--border-light); color: var(--text-muted); border-radius: var(--radius-sm); cursor: pointer; font-size: 0.85em; transition: all 0.2s ease;">
+                    Отклонить
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        `;
+          `;
+        }
       } else if (tool.state === 'working') {
         let text = 'Working...';
         if (tool.action && tool.action.genai_action === 'generate_image' && tool.action.loading_message) {
@@ -2690,7 +2732,6 @@ function healAndParseJsonAction(jsonStr) {
 }
 
 async function streamGenAI(extraUserInstruction = null, _continuationEntry = null, _continuationBubble = null) {
-  // If we are starting a fresh generation (not a continuation), check flag
   if (isGenerating && !extraUserInstruction) return;
   isGenerating = true;
   if (sendBtn) sendBtn.disabled = true;
@@ -2698,17 +2739,14 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
   if (stopBtn) stopBtn.classList.remove('hidden');
 
   abortController = new AbortController();
-  const apiMessages = await buildApiMessages(extraUserInstruction);
+  const isMaxThinking = settingsStore.get().extended_thinking && settingsStore.get().reasoning_effort !== 'none';
+  let baseApiMessages = await buildApiMessages(extraUserInstruction);
 
-  // Reuse existing bubble if this is a continuation, otherwise create a new one
   let assistantEntry, bubbleEl;
-
   if (_continuationEntry && _continuationBubble) {
-    // ── Continuation: reuse same bubble and entry ──
     assistantEntry = _continuationEntry;
     bubbleEl = _continuationBubble;
   } else {
-    // ── Fresh message: create new bubble ──
     assistantEntry = {
       role: 'assistant',
       content: '',
@@ -2716,7 +2754,6 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
       timestamp: new Date().toISOString()
     };
     genaiHistory.push(assistantEntry);
-
     const empty = messagesEl.querySelector('.genai-empty-state');
     if (empty) empty.remove();
     const msgEl = appendMsgEl(assistantEntry);
@@ -2725,212 +2762,324 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
 
   scrollToBottom();
 
-  let fullText = '';
-  let thinkingTextGenai = '';  // accumulated from delta.reasoning_content
-  let thinkingActiveGenai = false; // true during thinking phase via delta.reasoning_content
+  let maxPhase = isMaxThinking ? (_continuationEntry ? 2 : 1) : 0;
   let actionDetected = null;
 
-  try {
-    await api.streamChat(
-      apiMessages,
-      abortController.signal,
-      (chunk) => {
-        if (actionDetected) return;
-        fullText += chunk;
+  async function runPhase() {
+    let currentApiMessages = JSON.parse(JSON.stringify(baseApiMessages));
+    let effortToUse = settingsStore.get().reasoning_effort || 'none';
 
-        // Detect JSON action mid-stream using our robust brace-counting scanner
-        // If we are getting content, thinking phase (via delta.reasoning_content) is over
-        if (thinkingActiveGenai) thinkingActiveGenai = false;
+    if (maxPhase === 1) {
+      effortToUse = 'none';
+      currentApiMessages.push({
+        role: 'system',
+        content: 'You are in Extended Thinking mode. Write a very brief, unique, and engaging 1-2 sentence statement explaining that you are about to carefully investigate the facts and deeply think about the user\'s request. You MUST write this statement in the EXACT same language that the user used in their last message. Adapt the tone and style of your statement to match the context and nature of the user\'s question. If Web Search is active, you MUST immediately start a Web search by making 1 to 3 queries. Do NOT make explicit queries (do not output your search queries as plain text), just output the tool commands directly. Do NOT generate the actual answer yet. STOP generating immediately after these sentences and/or tool calls.'
+      });
+    } else if (maxPhase >= 2) {
+      effortToUse = settingsStore.get().reasoning_effort || 'high';
+      if (effortToUse === 'none') effortToUse = 'high'; // Should not happen, but fallback
+      if (isMaxThinking) {
+        if (assistantEntry.content.includes('[[THINKING_BLOCK]]')) {
+          assistantEntry.content = assistantEntry.content
+            .replace(/\[\[THINKING_BLOCK\]\]/g, '')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim() + '\n\n[[THINKING_BLOCK]]\n\n';
+        } else {
+          assistantEntry.content += '\n\n[[THINKING_BLOCK]]\n\n';
+        }
+      }
+      if (assistantEntry.content) {
+        currentApiMessages.push({ role: 'assistant', content: assistantEntry.content });
+      }
+      currentApiMessages.push({
+        role: 'system',
+        content: 'You must now perform deep thinking. If you need to stop and think more (including if you need to gather more information or search the internet further) before finishing, output <thinkextended> instead of finishing. If you don\'t have enough information and web search is turned on, you can make another query or fetch sites. In that case, do not write the whole response; instead, make another short intro and output the command you need. Use this only when it\'s really needed. Example:\n"Almost done. Need to check something real quick to be sure. 😏\n[Command for web search, fetching site or anything else what\'s needed]"\n\nAlso, pay close attention to any search queries performed in the previous message/turn: they were initiated by you (GenAI), not by the user, so you must not say "your search queries" (ваши поисковые запросы) when referring to them. Instead, refer to them as search queries that you performed (e.g., "my search queries", "the search queries I performed", or "на основе выполненных мной поисковых запросов").'
+      });
+    }
 
-        const actionMatch = extractJsonAction(fullText);
-        if (actionMatch) {
-          const rawAction = actionMatch.json;
-          let parsedAction = null;
-          try {
-            parsedAction = healAndParseJsonAction(rawAction);
-          } catch (e) {
-            console.error('Failed to parse JSON action mid-stream:', rawAction, e);
-          }
+    let fullText = '';
+    let thinkingTextGenai = '';
+    let thinkingActiveGenai = false;
+    let showOutputDetected = false;
+    let thinkExtendedDetected = false;
+    let originalContentLength = assistantEntry.content.length;
 
-          if (parsedAction) {
-            const isCreatorTool = ['add_char_fact', 'remove_char_fact', 'set_char_final_text', 'show_char_tab'].includes(parsedAction.genai_action);
+    return new Promise((resolvePhase) => {
+      api.streamChat(
+        currentApiMessages,
+        abortController.signal,
+        (chunk) => {
+          if (actionDetected) return;
+          fullText += chunk;
 
-            if (isCreatorTool) {
-              const toolIdx = assistantEntry.tools.length;
-              const marker = `[[GENAI_TOOL_${toolIdx}]]`;
-              const tool = { action: parsedAction, state: 'working' };
-              assistantEntry.tools.push(tool);
+          if (thinkingActiveGenai) thinkingActiveGenai = false;
 
-              // Execute in background
-              executeTool(parsedAction).then(result => {
-                tool.state = 'done';
-                tool.result = result;
-                renderAssistantBubble(assistantEntry, bubbleEl);
-                saveCreatorState();
-              }).catch(err => {
-                tool.state = 'done';
-                tool.result = { error: err.message };
-                renderAssistantBubble(assistantEntry, bubbleEl);
-              });
-
-              // Replace action with marker in assistantEntry.content
-              const jsonIdx = actionMatch.startIdx;
-              let before = fullText.substring(0, jsonIdx);
-              before = before.replace(/```json\s*$/, '').replace(/```\s*$/, '');
-              assistantEntry.content += before + marker;
-
-              // Clear fullText for the remaining stream
-              fullText = '';
-
-              // Render UI
-              renderAssistantBubble(assistantEntry, bubbleEl, { cursor: true, streaming: true });
-              scrollToBottom();
-              return;
-            }
-          }
-
-          // Non-creator tool (standard abort and handle behavior)
-          actionDetected = rawAction;
-
-          const jsonIdx = actionMatch.startIdx;
-          let before = fullText.substring(0, jsonIdx);
-
-          // Smart cleanup: strip leading/trailing markdown code blocks surrounding the action
-          before = before.replace(/```json\s*$/, '').replace(/```\s*$/, '');
-
-          const toolIdx = assistantEntry.tools.length;
-          const marker = `[[GENAI_TOOL_${toolIdx}]]`;
-
-          assistantEntry.content += before + marker;
-
-          try {
-            const parsedAction = healAndParseJsonAction(actionDetected);
-            assistantEntry.tools.push({ action: parsedAction, state: 'working' });
-          } catch (e) {
-            console.error('Failed to parse JSON action after healing:', actionDetected, e);
-            // Revert marker if parse fails completely
-            assistantEntry.content = assistantEntry.content.split(marker).join(actionDetected);
-            actionDetected = null;
+          if (maxPhase >= 2 && fullText.includes('<thinkextended>')) {
+            thinkExtendedDetected = true;
+            abortController.abort();
             return;
           }
 
-          renderAssistantBubble(assistantEntry, bubbleEl, { cursor: true, streaming: true });
-          abortController.abort();
-          return;
-        }
+          const actionMatch = extractJsonAction(fullText);
+          if (actionMatch) {
+            const rawAction = actionMatch.json;
+            let parsedAction = null;
+            try { parsedAction = healAndParseJsonAction(rawAction); } catch (e) {}
 
-        // Strip leading whitespace from continuation text
-        let displayContent = fullText.replace(/^[\s\n]+/, '');
+            if (parsedAction) {
+              const isCreatorTool = ['add_char_fact', 'remove_char_fact', 'set_char_final_text', 'show_char_tab'].includes(parsedAction.genai_action);
+              const isWebTool = ['web_search', 'web_fetch'].includes(parsedAction.genai_action);
 
-        // Hide partial JSON while streaming and show Working... preemptively
-        const braceIndex = displayContent.lastIndexOf('{');
-        const bracketIndex = displayContent.lastIndexOf('[');
-        const startJsonIndex = Math.max(braceIndex, bracketIndex);
-        let finalDisplay = displayContent;
-        let showPreemptiveWorking = false;
+              if (isCreatorTool || isWebTool) {
+                const toolIdx = assistantEntry.tools.length;
+                const marker = `[[GENAI_TOOL_${toolIdx}]]`;
 
-        // Mathematically robust tick block tracking
-        const tickCount = (displayContent.match(/```/g) || []).length;
-        const isInsideUnclosedCodeBlock = (tickCount % 2 === 1);
-        let isInsideUnclosedJsonCodeBlock = false;
-        let unclosedTickIndex = -1;
+                if (isCreatorTool) {
+                  const tool = { action: parsedAction, state: 'working' };
+                  assistantEntry.tools.push(tool);
 
-        if (isInsideUnclosedCodeBlock) {
-          unclosedTickIndex = displayContent.lastIndexOf('```');
-          const afterTick = displayContent.substring(unclosedTickIndex).replace(/\s/g, '').toLowerCase();
-          const braceInBlockIdx = displayContent.indexOf('{', unclosedTickIndex);
-          const bracketInBlockIdx = displayContent.indexOf('[', unclosedTickIndex);
-          const firstJsonInBlockIdx = (braceInBlockIdx !== -1 && bracketInBlockIdx !== -1)
-            ? Math.min(braceInBlockIdx, bracketInBlockIdx)
-            : (braceInBlockIdx !== -1 ? braceInBlockIdx : bracketInBlockIdx);
-          const hasUnclosedBrace = firstJsonInBlockIdx !== -1 && isBraceUnclosed(displayContent, firstJsonInBlockIdx);
+                  executeTool(parsedAction).then(result => {
+                    tool.state = 'done';
+                    tool.result = result;
+                    renderAssistantBubble(assistantEntry, bubbleEl);
+                    saveCreatorState();
+                  }).catch(err => {
+                    tool.state = 'done';
+                    tool.result = { error: err.message };
+                    renderAssistantBubble(assistantEntry, bubbleEl);
+                  });
+                } else {
+                  const tool = { action: parsedAction, state: 'awaiting_approval' };
+                  assistantEntry.tools.push(tool);
+                }
 
-          if (['', 'j', 'js', 'jso', 'json'].some(s => afterTick === '```' + s) || afterTick.startsWith('```json') || hasUnclosedBrace) {
-            isInsideUnclosedJsonCodeBlock = true;
+                const jsonIdx = actionMatch.startIdx;
+                let before = fullText.substring(0, jsonIdx).replace(/```json\s*$/, '').replace(/```\s*$/, '');
+                
+                if (maxPhase >= 2) {
+                   if (fullText.includes('<Showoutput>')) {
+                      showOutputDetected = true;
+                      before = before.substring(before.indexOf('<Showoutput>') + 12);
+                   } else {
+                      // No Showoutput tag required, so the text is treated as user-facing
+                   }
+                }
+                
+                assistantEntry.content = assistantEntry.content.substring(0, originalContentLength) + before + marker;
+                originalContentLength = assistantEntry.content.length;
+                fullText = '';
+                renderAssistantBubble(assistantEntry, bubbleEl, { cursor: true, streaming: true });
+                scrollToBottom();
+                return;
+              }
+            }
+
+            actionDetected = rawAction;
+            const jsonIdx = actionMatch.startIdx;
+            let before = fullText.substring(0, jsonIdx).replace(/```json\s*$/, '').replace(/```\s*$/, '');
+            if (maxPhase >= 2) {
+               if (fullText.includes('<Showoutput>')) {
+                  showOutputDetected = true;
+                  before = before.substring(before.indexOf('<Showoutput>') + 12);
+               } else {
+                  // No Showoutput tag required, so the text is treated as user-facing
+               }
+            }
+
+            const toolIdx = assistantEntry.tools.length;
+            const marker = `[[GENAI_TOOL_${toolIdx}]]`;
+            assistantEntry.content = assistantEntry.content.substring(0, originalContentLength) + before + marker;
+            originalContentLength = assistantEntry.content.length;
+
+            try {
+              const parsedAction2 = healAndParseJsonAction(actionDetected);
+              assistantEntry.tools.push({ action: parsedAction2, state: 'working' });
+            } catch (e) {
+              assistantEntry.content = assistantEntry.content.split(marker).join(actionDetected);
+              actionDetected = null;
+              return;
+            }
+
+            renderAssistantBubble(assistantEntry, bubbleEl, { cursor: true, streaming: true });
+            abortController.abort();
+            return;
           }
-        }
 
-        if (isInsideUnclosedJsonCodeBlock) {
-          finalDisplay = displayContent.substring(0, unclosedTickIndex);
-          showPreemptiveWorking = true;
-        } else {
-          // If not already preemptively showing, check curly braces / brackets
-          if (startJsonIndex !== -1) {
-            const afterBrace = displayContent.substring(startJsonIndex);
-            const normalized = afterBrace.replace(/\s/g, '').toLowerCase();
+          let displayContent = '';
+          if (maxPhase === 0 || maxPhase === 1) {
+            displayContent = fullText.replace(/^[\s\n]+/, '');
+          } else if (maxPhase >= 2) {
+            if (fullText.includes('<Showoutput>')) {
+              showOutputDetected = true;
+              let afterTag = fullText.substring(fullText.indexOf('<Showoutput>') + 12);
+              if (afterTag.includes('</Showoutput>')) {
+                afterTag = afterTag.substring(0, afterTag.indexOf('</Showoutput>'));
+              }
+              displayContent = afterTag.replace(/^[\s\n]+/, '');
+            } else {
+              displayContent = fullText.replace(/^[\s\n]+/, '');
+            }
+          }
 
-            // Check if it starts like a JSON tool/button block or button list
-            const isJsonBlock = normalized.startsWith('{') || 
-                                normalized.startsWith('{"') ||
-                                normalized.startsWith('[') ||
-                                normalized.startsWith('[{') ||
-                                normalized.includes('genai') || 
-                                normalized.includes('action') ||
-                                normalized.includes('label') ||
-                                normalized.includes('message');
+          const braceIndex = displayContent.lastIndexOf('{');
+          const bracketIndex = displayContent.lastIndexOf('[');
+          const startJsonIndex = Math.max(braceIndex, bracketIndex);
+          let finalDisplay = displayContent;
+          let showPreemptiveWorking = false;
 
-            if (isJsonBlock || afterBrace.length < 25) {
-              if (isBraceUnclosed(displayContent, startJsonIndex)) {
-                finalDisplay = displayContent.substring(0, startJsonIndex);
-                showPreemptiveWorking = true;
+          const tickCount = (displayContent.match(/```/g) || []).length;
+          const isInsideUnclosedCodeBlock = (tickCount % 2 === 1);
+          let isInsideUnclosedJsonCodeBlock = false;
+          let unclosedTickIndex = -1;
+
+          if (isInsideUnclosedCodeBlock) {
+            unclosedTickIndex = displayContent.lastIndexOf('```');
+            const afterTick = displayContent.substring(unclosedTickIndex).replace(/\s/g, '').toLowerCase();
+            const braceInBlockIdx = displayContent.indexOf('{', unclosedTickIndex);
+            const bracketInBlockIdx = displayContent.indexOf('[', unclosedTickIndex);
+            const firstJsonInBlockIdx = (braceInBlockIdx !== -1 && bracketInBlockIdx !== -1)
+              ? Math.min(braceInBlockIdx, bracketInBlockIdx)
+              : (braceInBlockIdx !== -1 ? braceInBlockIdx : bracketInBlockIdx);
+            const hasUnclosedBrace = firstJsonInBlockIdx !== -1 && isBraceUnclosed(displayContent, firstJsonInBlockIdx);
+
+            if (['', 'j', 'js', 'jso', 'json'].some(s => afterTick === '```' + s) || afterTick.startsWith('```json') || hasUnclosedBrace) {
+              isInsideUnclosedJsonCodeBlock = true;
+            }
+          }
+
+          if (isInsideUnclosedJsonCodeBlock) {
+            finalDisplay = displayContent.substring(0, unclosedTickIndex);
+            showPreemptiveWorking = true;
+          } else {
+            if (startJsonIndex !== -1) {
+              const afterBrace = displayContent.substring(startJsonIndex);
+              const normalized = afterBrace.replace(/\s/g, '').toLowerCase();
+              const isJsonBlock = normalized.startsWith('{') || 
+                                  normalized.startsWith('{"') ||
+                                  normalized.startsWith('[') ||
+                                  normalized.startsWith('[{') ||
+                                  normalized.includes('genai') || 
+                                  normalized.includes('action') ||
+                                  normalized.includes('label') ||
+                                  normalized.includes('message');
+              if (isJsonBlock || afterBrace.length < 25) {
+                if (isBraceUnclosed(displayContent, startJsonIndex)) {
+                  finalDisplay = displayContent.substring(0, startJsonIndex);
+                  showPreemptiveWorking = true;
+                }
               }
             }
           }
-        }
 
-        // Normal (first-pass) render
-        const currentBubbleText = assistantEntry.content + finalDisplay;
-        let assistantState = { ...assistantEntry, content: currentBubbleText };
-        if (thinkingTextGenai) {
-          assistantState.thinking = thinkingTextGenai;
-          assistantState.isInThinking = thinkingActiveGenai;
-        }
-
-        renderAssistantBubble(assistantState, bubbleEl, {
-          cursor: true,
-          streaming: true,
-          preemptiveWorking: showPreemptiveWorking
-        });
-        scrollToBottom();
-      },
-      async () => {
-        // onDone
-        if (actionDetected) {
-          handleActionDetected(assistantEntry, bubbleEl).catch(finishGeneration);
-        } else {
-          // Finalize content
-          let finalContinuation = fullText.replace(/^[\s\n]+/, '');
-          assistantEntry.content += finalContinuation;
-          // Persist thinking in entry if we received it via separate stream
+          let assistantState = { ...assistantEntry, content: assistantEntry.content.substring(0, originalContentLength) + finalDisplay };
           if (thinkingTextGenai) {
-            assistantEntry.thinking = thinkingTextGenai;
+            assistantState.thinking = assistantEntry.thinking ? assistantEntry.thinking + '\n\n' + thinkingTextGenai : thinkingTextGenai;
+            assistantState.isInThinking = thinkingActiveGenai;
           }
-          renderAssistantBubble(assistantEntry, bubbleEl, { cursor: false });
-          finishGeneration();
+
+          renderAssistantBubble(assistantState, bubbleEl, {
+            cursor: true,
+            streaming: true,
+            preemptiveWorking: showPreemptiveWorking
+          });
+          scrollToBottom();
+        },
+        async () => {
+          if (actionDetected) {
+            resolvePhase({ status: 'action' });
+          } else if (thinkExtendedDetected) {
+            resolvePhase({ status: 'extended' });
+          } else {
+            let finalContinuation = '';
+            if (maxPhase === 0 || maxPhase === 1) {
+               finalContinuation = fullText.replace(/^[\s\n]+/, '');
+            } else if (maxPhase >= 2) {
+               if (fullText.includes('<Showoutput>')) {
+                  showOutputDetected = true;
+                  let afterTag = fullText.substring(fullText.indexOf('<Showoutput>') + 12);
+                  if (afterTag.includes('</Showoutput>')) {
+                    afterTag = afterTag.substring(0, afterTag.indexOf('</Showoutput>'));
+                  }
+                  finalContinuation = afterTag.replace(/^[\s\n]+/, '');
+               } else {
+                  finalContinuation = fullText.replace(/^[\s\n]+/, '');
+               }
+            }
+            
+            assistantEntry.content = assistantEntry.content.substring(0, originalContentLength) + finalContinuation;
+            if (thinkingTextGenai) {
+              assistantEntry.thinking = assistantEntry.thinking ? assistantEntry.thinking + '\n\n' + thinkingTextGenai : thinkingTextGenai;
+            }
+            
+            if (maxPhase === 1) {
+              assistantEntry.content += '\n\n[[THINKING_BLOCK]]\n\n';
+              resolvePhase({ status: 'next_phase' });
+            } else {
+              resolvePhase({ status: 'done' });
+            }
+          }
+        },
+        (err) => {
+          if (err.name === 'AbortError' && thinkExtendedDetected) {
+             resolvePhase({ status: 'extended' });
+             return;
+          }
+          if (err.name === 'AbortError' && actionDetected) {
+             resolvePhase({ status: 'action' });
+             return;
+          }
+          if (err.name === 'AbortError') {
+             resolvePhase({ status: 'done' });
+             return;
+          }
+          console.error('GenAI stream error:', err);
+          assistantEntry.content += `\n\n**Error:** ${err.message}`;
+          resolvePhase({ status: 'done' });
+        },
+        {
+          temperature: 0.7,
+          top_p: 0.95,
+          max_tokens: settingsStore.get().genai_max_tokens || 2048,
+          reasoning_effort: effortToUse
+        },
+        (thinkChunk) => {
+          thinkingTextGenai += thinkChunk;
+          let currentThinking = assistantEntry.thinking ? assistantEntry.thinking + '\n\n' + thinkingTextGenai : thinkingTextGenai;
+          const displayState = { ...assistantEntry, thinking: currentThinking, isInThinking: true };
+          renderAssistantBubble(displayState, bubbleEl, { cursor: true, streaming: true });
+          scrollToBottom();
         }
-      },
-      (err) => {
-        if (err.name === 'AbortError') return;
-        console.error('GenAI stream error:', err);
-        const errorMsg = `\n\n**Error:** ${err.message}`;
-        assistantEntry.content += errorMsg;
-        renderAssistantBubble(assistantEntry, bubbleEl);
-        finishGeneration();
-      },
-      {
-        temperature: 0.7,
-        top_p: 0.95,
-        max_tokens: settingsStore.get().genai_max_tokens || 2048
-      },
-      // onThinkingChunk (delta.reasoning_content from KoboldCpp thinking models)
-      (thinkChunk) => {
-        thinkingTextGenai += thinkChunk;
-        // Show the thinking block immediately during accumulation
-        const displayState = { ...assistantEntry, content: assistantEntry.content, thinking: thinkingTextGenai, isInThinking: true };
-        renderAssistantBubble(displayState, bubbleEl, { cursor: true, streaming: true });
-        scrollToBottom();
+      );
+    });
+  }
+
+  try {
+    while (true) {
+      const result = await runPhase();
+
+      const pendingWebTools = assistantEntry.tools.filter(t => 
+        (t.action.genai_action === 'web_search' || t.action.genai_action === 'web_fetch') && 
+        (t.state === 'awaiting_approval' || t.state === 'working')
+      );
+
+      if (pendingWebTools.length > 0) {
+        handleMultipleActions(pendingWebTools, assistantEntry, bubbleEl).catch(finishGeneration);
+        break;
       }
-    );
+
+      if (result.status === 'action') {
+        handleActionDetected(assistantEntry, bubbleEl).catch(finishGeneration);
+        break;
+      } else if (result.status === 'extended') {
+        maxPhase++;
+      } else if (result.status === 'next_phase') {
+        maxPhase = 2;
+      } else {
+        renderAssistantBubble(assistantEntry, bubbleEl, { cursor: false });
+        finishGeneration();
+        break;
+      }
+    }
   } catch (err) {
     if (err.name !== 'AbortError') {
       console.error('GenAI fetch error:', err);
@@ -2938,6 +3087,7 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
     }
   }
 }
+
 
 async function handleActionDetected(assistantEntry, bubbleEl) {
   try {
@@ -3216,6 +3366,140 @@ async function handleImageRedAction(task, messageEl) {
   }
 }
 
+async function handleMultipleActions(pendingTools, assistantEntry, bubbleEl) {
+  try {
+    for (const tool of pendingTools) {
+      tool.state = 'awaiting_approval';
+    }
+    renderAssistantBubble(assistantEntry, bubbleEl);
+    scrollToBottom();
+
+    const firstTool = pendingTools[0];
+    const firstToolIdx = assistantEntry.tools.indexOf(firstTool);
+
+    const approved = await new Promise((resolve) => {
+      const checkInterval = setInterval(() => {
+        const approveBtn = bubbleEl.querySelector(`#approve-tool-${firstToolIdx}`);
+        const denyBtn = bubbleEl.querySelector(`#deny-tool-${firstToolIdx}`);
+        if (approveBtn && denyBtn && !approveBtn._hasListener) {
+          approveBtn._hasListener = true;
+          approveBtn.addEventListener('click', () => {
+            clearInterval(checkInterval);
+            resolve(true);
+          });
+          denyBtn.addEventListener('click', () => {
+            clearInterval(checkInterval);
+            resolve(false);
+          });
+        }
+      }, 100);
+    });
+
+    if (!approved) {
+      for (const tool of pendingTools) {
+        tool.state = 'done';
+        tool.result = { error: "User denied internet access for this request." };
+      }
+      renderAssistantBubble(assistantEntry, bubbleEl);
+      saveHistory();
+
+      const results = pendingTools.map(tool => ({ tool, success: false, result: tool.result }));
+      isGenerating = false;
+      continueAfterMultipleTools(results, assistantEntry, bubbleEl);
+      return;
+    }
+
+    for (const tool of pendingTools) {
+      tool.state = 'working';
+    }
+    renderAssistantBubble(assistantEntry, bubbleEl);
+    scrollToBottom();
+
+    const executionPromises = pendingTools.map(async (tool) => {
+      const toolIdx = assistantEntry.tools.indexOf(tool);
+      try {
+        const result = await executeTool(
+          tool.action,
+          (status) => {
+            const loaderStatusEl = bubbleEl.querySelector(`#genai-tool-${toolIdx} .genai-working-text`);
+            if (loaderStatusEl) {
+              loaderStatusEl.textContent = status;
+            }
+          },
+          (previewUrl) => {
+            const container = bubbleEl.querySelector(`#genai-tool-${toolIdx} .live-preview-container`);
+            const img = bubbleEl.querySelector(`#genai-tool-${toolIdx} .live-preview-img`);
+            if (container && img) {
+              container.classList.remove('hidden');
+              img.src = previewUrl;
+            }
+          },
+          async (blobUrl) => {
+            const img = bubbleEl.querySelector(`#genai-tool-${toolIdx} .live-preview-img`);
+            if (img) {
+              img.style.filter = 'blur(0px)';
+              img.src = blobUrl;
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+          }
+        );
+
+        tool.state = 'done';
+        tool.result = result;
+        renderAssistantBubble(assistantEntry, bubbleEl);
+        saveHistory();
+        return { tool, success: true, result };
+      } catch (err) {
+        console.error('Tool execution failed:', err);
+        tool.state = 'done';
+        tool.result = { error: err.message || err };
+        renderAssistantBubble(assistantEntry, bubbleEl);
+        saveHistory();
+        return { tool, success: false, result: tool.result };
+      }
+    });
+
+    const results = await Promise.all(executionPromises);
+
+    isGenerating = false;
+    continueAfterMultipleTools(results, assistantEntry, bubbleEl);
+  } catch (err) {
+    console.error('Multiple actions handling failed:', err);
+    isGenerating = false;
+    finishGeneration();
+  }
+}
+
+function continueAfterMultipleTools(toolResults, assistantEntry, bubbleEl) {
+  let instruction = '';
+  
+  for (const { tool, result } of toolResults) {
+    let resultForLlm = result;
+    if (result && typeof result === 'object') {
+      resultForLlm = Object.fromEntries(
+        Object.entries(result).filter(([k, v]) => {
+          if (k === 'base64' || k === '_base64' || k === 'messages') return false;
+          if (typeof v === 'string' && v.startsWith('data:') && v.length > 200) return false;
+          return true;
+        })
+      );
+    }
+    instruction += `[TOOL RESULT] ${tool.action.genai_action}: ${JSON.stringify(resultForLlm)}\n\n`;
+  }
+  
+  instruction += `Continue your GenAI response now. IMPORTANT: Continue naturally from where you left off as GenAI. Do not repeat your previous text and do not write as a character in the roleplay, just provide the next part of your previous GenAI answer.`;
+
+  const previousText = assistantEntry?.content || '';
+  const hasCyrillic = /[а-яА-ЯёЁ]/.test(previousText);
+  if (hasCyrillic) {
+    instruction += `\n\nIMPORTANT: You MUST write the continuation in Russian (продолжай на русском языке). Do not switch to English!`;
+  } else {
+    instruction += `\n\nIMPORTANT: You MUST write the continuation in the exact same language that was used in the previous part of your response. If you started writing in Russian, continue in Russian. If you started in English, continue in English.`;
+  }
+
+  streamGenAI(instruction, assistantEntry, bubbleEl);
+}
+
 function continueAfterTool(action, result, assistantEntry, bubbleEl) {
   // Strip binary/base64 data from tool results before sending to LLM.
   // This prevents megabytes of image data from polluting the LLM context.
@@ -3270,7 +3554,7 @@ function finishGeneration() {
   isGenerating = false;
   abortController = null;
   if (sendBtn) sendBtn.disabled = false;
-  if (sendBtn) sendBtn.classList.remove('hidden');
+  if (sendBtn) sendBtn.classList.add('hidden');
   if (stopBtn) stopBtn.classList.add('hidden');
 
   // Remove generating class from all messages to show timestamps
@@ -3934,6 +4218,22 @@ export function initGenAIPanel() {
       dropdown.querySelectorAll('.effort-option').forEach(opt => {
         opt.classList.toggle('selected', opt.dataset.value === effort);
       });
+      
+      const isExtended = settingsStore.get().extended_thinking;
+      const toggleRow = document.getElementById('genai-extended-thinking-toggle-row');
+      const toggleCheck = document.getElementById('genai-extended-thinking-toggle-check');
+      if (toggleCheck) {
+        toggleCheck.checked = !!isExtended;
+      }
+      if (toggleRow) {
+        if (effort === 'none') {
+          toggleRow.style.opacity = '0.5';
+          toggleRow.style.pointerEvents = 'none';
+        } else {
+          toggleRow.style.opacity = '1';
+          toggleRow.style.pointerEvents = 'auto';
+        }
+      }
     }
 
     const toggleDropdown = (e) => {
@@ -3943,19 +4243,38 @@ export function initGenAIPanel() {
     };
 
     btnArrow.addEventListener('click', toggleDropdown);
-    if (btnMain) btnMain.addEventListener('click', toggleDropdown);
-
-    dropdown.querySelectorAll('.effort-option').forEach(opt => {
-      opt.addEventListener('click', (e) => {
+    if (btnMain) {
+      btnMain.addEventListener('click', (e) => {
         e.stopPropagation();
-        const value = opt.dataset.value;
-        settingsStore.save({ ...settingsStore.get(), reasoning_effort: value });
-        dropdown.classList.add('hidden');
+        const currentEffort = settingsStore.get().reasoning_effort || 'none';
+        if (currentEffort !== 'none') {
+          settingsStore.save({ ...settingsStore.get(), reasoning_effort: 'none', previous_reasoning_effort: currentEffort });
+        } else {
+          const prev = settingsStore.get().previous_reasoning_effort || 'medium';
+          settingsStore.save({ ...settingsStore.get(), reasoning_effort: prev });
+        }
+        if (dropdown) dropdown.classList.add('hidden');
         refreshGenAIThinkingEffortUI();
-        // Sync chat toolbar button if visible
         if (window.refreshThinkingEffortUI) window.refreshThinkingEffortUI();
       });
-    });
+      refreshGenAIThinkingEffortUI();
+      // Sync chat toolbar button if visible
+      if (window.refreshThinkingEffortUI) window.refreshThinkingEffortUI();
+    }
+
+    const extendedToggleRow = document.getElementById('genai-extended-thinking-toggle-row');
+    if (extendedToggleRow) {
+      extendedToggleRow.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const effort = settingsStore.get().reasoning_effort || 'none';
+        if (effort === 'none') return;
+        
+        const current = !!settingsStore.get().extended_thinking;
+        settingsStore.save({ ...settingsStore.get(), extended_thinking: !current });
+        refreshGenAIThinkingEffortUI();
+        if (window.refreshThinkingEffortUI) window.refreshThinkingEffortUI();
+      });
+    }
 
     document.addEventListener('click', (e) => {
       if (!wrapper.contains(e.target)) {
@@ -4000,7 +4319,30 @@ export function initGenAIPanel() {
     }
   });
   inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const activeApproveBtn = document.querySelector('.genai-tool-pending button[id^="approve-tool-"]');
+      if (activeApproveBtn) {
+        e.preventDefault();
+        activeApproveBtn.click();
+        return;
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendUserMessage(); }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const activeApproveBtn = document.querySelector('.genai-tool-pending button[id^="approve-tool-"]');
+      if (activeApproveBtn) {
+        if (document.activeElement && 
+            document.activeElement !== inputEl && 
+            (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA')) {
+          return;
+        }
+        e.preventDefault();
+        activeApproveBtn.click();
+      }
+    }
   });
   inputEl.addEventListener('input', () => autoResizeTextarea(inputEl));
 

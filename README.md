@@ -2,11 +2,14 @@
 
 VibeChatting is a modern AI chat application focused on aesthetics, performance, and advanced functionality.
 
-## ✨ Key Advantages
+## Key Advantages
 - **Premium Interface:** A stunning design featuring glassmorphism, smooth animations, and a deep, harmonious dark mode.
 
-## 🧠 AI Features
-- **Core Chat:** Advanced interface with real-time streaming and a dedicated "Thinking" mode visualization (thinking doesn't work for now).
+## AI Features
+- **Core Chat:** Advanced interface with real-time streaming and a dedicated "Thinking" mode visualization.
+- **Reasoning Support:** Reasoning is now fully supported thanks to the new Kobold.cpp update including the Reasoning effort feature.
+
+  ![Reasoning Effort Settings](src/assets/reasoning.png)
 - **Interactive Game Mode:** A choices-driven interactive text-adventure game engine where the AI guides the scene dynamically in real-time, showing streamed stats, choices, extra actions, and game session history.
 - **GenAI Panel & Active Skills:** A universal in-app assistant with deep tool access that manages settings, writes messages (vibe mode), manipulates characters and groups, queries your memories, and executes game actions. Supports modular **GenAI Skills** (custom tools in `.json` or `.txt` formats) with a customizable active skills menu and library.
 - **Web Search & Browsing:** GenAI has full internet access (Web Search function), enabling it to search the web in real time and browse websites to retrieve up-to-date information.
@@ -18,12 +21,9 @@ VibeChatting is a modern AI chat application focused on aesthetics, performance,
 - **AI Commenter:** Get situational analysis or creative (and funny) comments from a secondary AI agent.
 - **AI Suggester:** Dynamic generation of suggestions for next replies or story continuation.
 
-## 🚀 Future Roadmap
+## Future Roadmap
 - **Book Authoring:** An automated agent system to write, review, and structure entire novels or books interactively.
 
-## 💻 System Requirements
+## System Requirements
 - **Model:** **Gemma 4 31B (RP fine-tune reccomended)** (Gemma 4 26B is not enough.)
 - **Performance:** Generation speed of at least **20 tokens per second**.
-
----
-*Developed with Tauri, Rust, and Premium JS.*

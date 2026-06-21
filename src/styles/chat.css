@@ -97,6 +97,11 @@ body.genai-sidebar-open #genai-sidebar {
   margin-left: 0;
 }
 
+body.ai-sidebar-open .main-content,
+body.genai-sidebar-open .main-content {
+  margin-right: auto;
+}
+
 body.ai-sidebar-open .btn-toggle-right-sidebar svg,
 body.genai-sidebar-open .btn-toggle-right-sidebar svg {
   transform: rotate(180deg);
@@ -695,6 +700,14 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
   margin: 0.5em 0;
   color: var(--text-secondary);
   font-style: italic;
+}
+
+.message-content h1,
+.message-content h2,
+.message-content h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0.6em 0 0.2em;
 }
 
 .text-asterisks {

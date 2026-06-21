@@ -163,6 +163,22 @@ function removeChatCursor() {
 
 export function initChat() {
   messagesContainer = document.getElementById('chat-messages');
+
+  window.addEventListener('local-sync-applied', async () => {
+    chatStore.clearCache();
+    if (appState.currentCharacter) {
+      await chatStore.loadForCharacter(appState.currentCharacter.id);
+      updateChatHistory();
+      if (appState.currentChat) {
+        const updatedSession = chatStore.getSessions(appState.currentCharacter.id)
+          .find(s => s.id === appState.currentChat.id);
+        if (updatedSession) {
+          chatStore.setCurrentSession(updatedSession);
+          loadChat(updatedSession);
+        }
+      }
+    }
+  });
   messageInput = document.getElementById('message-input');
   btnSend = document.getElementById('btn-send');
   btnStop = document.getElementById('btn-stop');
@@ -623,7 +639,21 @@ export function initChat() {
     };
 
     btnArrow.addEventListener('click', toggleDropdown);
-    if (btnMain) btnMain.addEventListener('click', toggleDropdown);
+    if (btnMain) {
+      btnMain.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const currentEffort = settingsStore.get().reasoning_effort || 'none';
+        if (currentEffort !== 'none') {
+          settingsStore.save({ ...settingsStore.get(), reasoning_effort: 'none', previous_reasoning_effort: currentEffort });
+        } else {
+          const prev = settingsStore.get().previous_reasoning_effort || 'medium';
+          settingsStore.save({ ...settingsStore.get(), reasoning_effort: prev });
+        }
+        if (dropdown) dropdown.classList.add('hidden');
+        refreshThinkingEffortUI();
+        if (window.refreshGenAIThinkingEffortUI) window.refreshGenAIThinkingEffortUI();
+      });
+    }
 
     dropdown.querySelectorAll('.effort-option').forEach(opt => {
       opt.addEventListener('click', (e) => {
@@ -632,6 +662,7 @@ export function initChat() {
         settingsStore.save({ ...settingsStore.get(), reasoning_effort: value });
         dropdown.classList.add('hidden');
         refreshThinkingEffortUI();
+        if (window.refreshGenAIThinkingEffortUI) window.refreshGenAIThinkingEffortUI();
       });
     });
 
@@ -1923,6 +1954,11 @@ async function buildApiMessages(character, session) {
   if (session.indicators?.enabled && session.indicators.list?.length > 0) {
     const statusStr = session.indicators.list.map(ind => `${ind.name}: ${ind.value}%`).join('\n');
     systemContent += `\n\n[CURRENT MOOD STATUS]\n${statusStr}`;
+  }
+
+  // Prepend <|think|> for Gemma 4 thinking models when reasoning effort is active
+  if (settings.gemma4_support && settings.reasoning_effort && settings.reasoning_effort !== 'none') {
+    systemContent = '<|think|>\n' + systemContent;
   }
 
   messages.push({ role: 'system', content: systemContent });

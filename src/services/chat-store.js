@@ -282,4 +282,9 @@ export const chatStore = {
       console.warn('Tauri delete_chat failed', e);
     }
   },
+
+  clearCache() {
+    sessions = {};
+    currentSession = null;
+  },
 };

@@ -15,6 +15,11 @@ let editingCharacterId = null;
 export function initCharacterPanel() {
   renderCharacterList();
 
+  window.addEventListener('local-sync-applied', async () => {
+    await characterStore.load();
+    renderCharacterList();
+  });
+
   // Scroll blur logic
   const charSidebarSection = document.getElementById('char-sidebar-section');
   const blurTop = document.getElementById('char-blur-top');

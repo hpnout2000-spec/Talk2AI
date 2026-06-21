@@ -17,6 +17,10 @@ body.genai-sidebar-open #genai-sidebar {
   margin-left: 0;
 }
 
+body.genai-sidebar-open .main-content {
+  margin-right: auto;
+}
+
 /* ─── Fullscreen state ────────────────────────────────────────────── */
 
 /* Ensure left sidebar transitions width smoothly for fullscreen collapse
@@ -585,10 +589,19 @@ body.genai-fullscreen .genai-fullscreen-placeholder {
   max-width: 100%;
 }
 
-/* Premium styling for assistant messages in fullscreen mode */
-body.genai-fullscreen .genai-msg.genai-assistant {
-  max-width: 70%;
+/* Premium styling for messages in fullscreen mode */
+body.genai-fullscreen .genai-msg {
+  max-width: 960px;
+  width: 100%;
+  margin-left: auto;
   margin-right: auto;
+  box-sizing: border-box;
+  padding-left: var(--space-4);
+  padding-right: var(--space-4);
+}
+
+body.genai-fullscreen .genai-msg.genai-assistant {
+  max-width: 960px;
 }
 
 body.genai-fullscreen .genai-msg.genai-assistant .genai-msg-bubble {
@@ -598,6 +611,12 @@ body.genai-fullscreen .genai-msg.genai-assistant .genai-msg-bubble {
   padding: var(--space-3) var(--space-4);
   box-shadow: var(--shadow-sm);
   backdrop-filter: blur(8px);
+}
+
+body.genai-fullscreen .genai-empty-state {
+  max-width: 960px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 
@@ -843,6 +862,13 @@ body.genai-fullscreen .genai-msg.genai-assistant .genai-msg-bubble {
   border-radius: 22px;
   padding: var(--space-2) var(--space-3);
   transition: all var(--transition-fast);
+}
+
+body.genai-fullscreen .genai-input-row {
+  max-width: 960px;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
 }
 
 body:not(.genai-fullscreen) #genai-thinking-effort-wrapper {

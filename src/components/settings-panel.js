@@ -6,6 +6,7 @@ import { settingsStore } from '../services/settings-store.js';
 import { showToast, checkConnection, applyGlobalSettingsStyles, openWindow, closeWindow } from '../main.js';
 import { api } from '../services/api.js';
 import { checkComfyUIConnection } from '../services/comfyui-service.js';
+import { localSyncService } from '../services/local-sync-service.js';
 
 let currentSettings;
 let editingGamePresetId = null;
@@ -112,6 +113,7 @@ export function initSettingsPanel() {
   loadSettingsToUI();
   initVibeDropdowns();
   initImageGenSettings();
+  initLocalNetworkSection();
 
   // Listen for global settings updates
   window.addEventListener('settings-updated', () => {
@@ -164,6 +166,7 @@ function loadSettingsToUI() {
   setRangeValue('adv-setting-top-k', 'adv-top-k-value', settings.top_k);
   setRangeValue('adv-setting-rep-penalty', 'adv-rep-penalty-value', settings.rep_penalty?.toFixed(2));
   checkField('setting-memory', settings.memory_enabled);
+  checkField('setting-gemma4-support', settings.gemma4_support);
   checkField('setting-auto-translate', settings.auto_translate);
   checkField('setting-translate-user', settings.translate_user_messages);
   checkField('setting-italic-asterisks', settings.italic_asterisks);
@@ -265,6 +268,7 @@ async function saveSettings() {
     api_url: getVal('setting-api-url') || current.api_url,
     prompt_token_limit: parseInt(getVal('setting-prompt-token-limit')) || current.prompt_token_limit,
     memory_enabled: getChecked('setting-memory'),
+    gemma4_support: getChecked('setting-gemma4-support'),
     auto_translate: getChecked('setting-auto-translate'),
     translate_user_messages: getChecked('setting-translate-user'),
     italic_asterisks: getChecked('setting-italic-asterisks'),
@@ -717,3 +721,252 @@ function _updateResolutionButtons(w, h) {
     }
   });
 }
+
+/* ── Local Network Sync UI ──────────────────────────────────────────── */
+
+function initLocalNetworkSection() {
+  const invoke = window.__TAURI_INTERNALS__?.invoke;
+  if (!invoke) return; // Only in Tauri
+
+  // ── Elements ────────────────────────────────────────────────────────
+  const hostIpEl        = document.getElementById('local-net-host-ip');
+  const keySection      = document.getElementById('local-net-key-section');
+  const keyDisplay      = document.getElementById('local-net-key-display');
+  const btnCopyKey      = document.getElementById('btn-copy-host-key');
+  const hostStatusText  = document.getElementById('local-net-host-status-text');
+  const btnStartHosting = document.getElementById('btn-start-hosting');
+  const btnStopHosting  = document.getElementById('btn-stop-hosting');
+  const hostCard        = document.getElementById('local-net-host-card');
+
+  const discoveryArea   = document.getElementById('local-net-discovery-area');
+  const discoveryChips  = document.getElementById('local-net-discovery-chips');
+  const hostAddrInput   = document.getElementById('local-net-host-addr');
+  const clientKeyInput  = document.getElementById('local-net-client-key');
+  const connectActions  = document.getElementById('local-net-connect-actions');
+  const connectedActions= document.getElementById('local-net-connected-actions');
+  const clientStatusText= document.getElementById('local-net-client-status-text');
+  const btnDiscover     = document.getElementById('btn-discover-hosts');
+  const btnConnect      = document.getElementById('btn-connect-to-host');
+  const btnSyncNow      = document.getElementById('btn-sync-now');
+  const btnDisconnect   = document.getElementById('btn-disconnect-host');
+  const syncStatus      = document.getElementById('local-net-sync-status');
+  const clientCard      = document.getElementById('local-net-client-card');
+
+  if (!btnStartHosting) return; // HTML not present
+
+  // ── Helpers ─────────────────────────────────────────────────────────
+
+  function setSyncStatus(msg, cls = '') {
+    if (!syncStatus) return;
+    syncStatus.textContent = msg;
+    syncStatus.className = 'sync-status-line' + (cls ? ' ' + cls : '');
+  }
+
+  function updateHostUI(status) {
+    if (!status) return;
+    if (status.local_ip && hostIpEl) hostIpEl.textContent = status.local_ip;
+    if (status.running) {
+      // Hosting active
+      if (keySection) keySection.style.display = '';
+      // Show key without the copy button text
+      const key = status.key || '????????';
+      if (keyDisplay) {
+        keyDisplay.childNodes[0].textContent = key + ' ';
+      }
+      if (hostStatusText) {
+        const n = status.client_count || 0;
+        hostStatusText.textContent = `Hosting · ${n} client${n !== 1 ? 's' : ''} connected`;
+      }
+      if (btnStartHosting) btnStartHosting.style.display = 'none';
+      if (btnStopHosting)  btnStopHosting.style.display = '';
+      if (hostCard) hostCard.classList.add('active');
+    } else {
+      if (keySection) keySection.style.display = 'none';
+      if (btnStartHosting) btnStartHosting.style.display = '';
+      if (btnStopHosting)  btnStopHosting.style.display = 'none';
+      if (hostCard) hostCard.classList.remove('active');
+    }
+  }
+
+  function updateClientUI() {
+    if (localSyncService.isClientMode) {
+      if (connectActions)   connectActions.style.display = 'none';
+      if (connectedActions) connectedActions.style.display = '';
+      if (clientCard) clientCard.classList.add('active');
+      if (clientStatusText) {
+        clientStatusText.textContent = `Connected to ${localSyncService.hostBaseUrl}`;
+      }
+    } else {
+      if (connectActions)   connectActions.style.display = '';
+      if (connectedActions) connectedActions.style.display = 'none';
+      if (clientCard) clientCard.classList.remove('active');
+    }
+  }
+
+  // ── Restore persisted connection state ──────────────────────────────
+  const persisted = localSyncService.loadPersisted();
+  if (persisted.ip && persisted.key) {
+    if (hostAddrInput) hostAddrInput.value = `${persisted.ip}:${persisted.port}`;
+    if (clientKeyInput) clientKeyInput.value = persisted.key;
+  }
+  if (localSyncService.isClientMode) updateClientUI();
+
+  // ── Start status polling ─────────────────────────────────────────────
+  localSyncService.startStatusPolling((status) => {
+    updateHostUI(status);
+  });
+
+  // Also get initial host IP even if not hosting
+  invoke('get_host_server_status').then(s => {
+    if (s && s.local_ip && hostIpEl) hostIpEl.textContent = s.local_ip;
+    updateHostUI(s);
+  }).catch(() => {});
+
+  // ── HOST: Start Hosting ──────────────────────────────────────────────
+  if (btnStartHosting) {
+    btnStartHosting.addEventListener('click', async () => {
+      btnStartHosting.disabled = true;
+      btnStartHosting.textContent = '⏳ Starting…';
+      try {
+        const result = await invoke('start_host_server');
+        updateHostUI({ running: true, ...result, client_count: 0 });
+        showToast('🌐 Hosting started! Share the key with other devices.');
+      } catch (err) {
+        showToast(`❌ Failed to start server: ${err}`, 'error');
+      } finally {
+        btnStartHosting.disabled = false;
+        btnStartHosting.textContent = '▶ Start Hosting';
+      }
+    });
+  }
+
+  // ── HOST: Stop Hosting ───────────────────────────────────────────────
+  if (btnStopHosting) {
+    btnStopHosting.addEventListener('click', async () => {
+      try {
+        await invoke('stop_host_server');
+        updateHostUI({ running: false });
+        showToast('Hosting stopped.');
+      } catch { /* ignore */ }
+    });
+  }
+
+  // ── HOST: Copy Key ───────────────────────────────────────────────────
+  if (btnCopyKey) {
+    btnCopyKey.addEventListener('click', async () => {
+      const status = await invoke('get_host_server_status').catch(() => null);
+      if (status?.key) {
+        try {
+          await navigator.clipboard.writeText(status.key);
+          showToast('Key copied to clipboard!');
+        } catch {
+          showToast('Copy failed — select and copy manually.');
+        }
+      }
+    });
+  }
+
+  // ── CLIENT: Auto-Discover ────────────────────────────────────────────
+  if (btnDiscover) {
+    btnDiscover.addEventListener('click', async () => {
+      btnDiscover.disabled = true;
+      btnDiscover.textContent = '⏳ Scanning…';
+      setSyncStatus('Scanning local network (4s)…', 'loading');
+      discoveryArea.style.display = 'none';
+      discoveryChips.innerHTML = '';
+
+      try {
+        const hosts = await invoke('discover_hosts');
+        if (hosts && hosts.length > 0) {
+          discoveryArea.style.display = '';
+          hosts.forEach(h => {
+            const chip = document.createElement('button');
+            chip.className = 'discovery-chip';
+            chip.textContent = `${h.host_name} (${h.ip})`;
+            chip.addEventListener('click', () => {
+              if (hostAddrInput) hostAddrInput.value = `${h.ip}:${h.port}`;
+            });
+            discoveryChips.appendChild(chip);
+          });
+          setSyncStatus(`Found ${hosts.length} host${hosts.length > 1 ? 's' : ''} — click to auto-fill`, 'success');
+        } else {
+          setSyncStatus('No hosts found. Make sure the host PC is running the app with Hosting active.', 'error');
+        }
+      } catch (err) {
+        setSyncStatus(`Discovery error: ${err}`, 'error');
+      } finally {
+        btnDiscover.disabled = false;
+        btnDiscover.textContent = '🔍 Discover';
+      }
+    });
+  }
+
+  // ── CLIENT: Connect ──────────────────────────────────────────────────
+  if (btnConnect) {
+    btnConnect.addEventListener('click', async () => {
+      const addrRaw = (hostAddrInput?.value || '').trim();
+      const key = (clientKeyInput?.value || '').trim().toUpperCase();
+      if (!addrRaw || !key) {
+        setSyncStatus('Please enter host address and key.', 'error');
+        return;
+      }
+
+      // Parse IP:port
+      const parts = addrRaw.split(':');
+      const ip   = parts[0].trim();
+      const port = parseInt(parts[1] || '8765', 10);
+
+      btnConnect.disabled = true;
+      btnConnect.textContent = '⏳ Connecting…';
+      setSyncStatus('Connecting…', 'loading');
+
+      const result = await localSyncService.connectToHost(ip, port, key);
+      if (result.ok) {
+        setSyncStatus('✓ Connected! Click "Sync Now" to import host data.', 'success');
+        updateClientUI();
+        showToast('🔗 Connected to host via local network!');
+      } else {
+        setSyncStatus(`✗ ${result.error}`, 'error');
+      }
+
+      btnConnect.disabled = false;
+      btnConnect.textContent = '🔗 Connect';
+    });
+  }
+
+  // ── CLIENT: Sync Now ─────────────────────────────────────────────────
+  if (btnSyncNow) {
+    btnSyncNow.addEventListener('click', async () => {
+      btnSyncNow.disabled = true;
+      btnSyncNow.textContent = '⏳ Syncing…';
+      setSyncStatus('Fetching data from host…', 'loading');
+
+      const result = await localSyncService.syncFromHost();
+      if (result.ok) {
+        setSyncStatus('✓ Sync complete! Refresh app to see all data.', 'success');
+        showToast('↻ Sync complete!');
+        // Trigger app refresh
+        window.dispatchEvent(new CustomEvent('local-sync-applied'));
+      } else {
+        setSyncStatus(`✗ Sync failed: ${result.error}`, 'error');
+      }
+
+      btnSyncNow.disabled = false;
+      btnSyncNow.textContent = '↻ Sync Now';
+    });
+  }
+
+  // ── CLIENT: Disconnect ───────────────────────────────────────────────
+  if (btnDisconnect) {
+    btnDisconnect.addEventListener('click', () => {
+      localSyncService.disconnectFromHost();
+      localSyncService.clearPersisted();
+      updateClientUI();
+      setSyncStatus('Disconnected. Using direct LLM connection.', '');
+      showToast('🔌 Disconnected from host.');
+      if (hostAddrInput) hostAddrInput.value = '';
+      if (clientKeyInput) clientKeyInput.value = '';
+    });
+  }
+}
+

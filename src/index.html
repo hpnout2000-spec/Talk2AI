@@ -1196,6 +1196,19 @@
                 <div class="effort-option" data-value="low">Low</div>
                 <div class="effort-option" data-value="medium">Medium</div>
                 <div class="effort-option" data-value="high">High</div>
+                <div style="height: 1px; background: var(--border-light); margin: 4px 0;"></div>
+                <div id="genai-extended-thinking-toggle-row" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; cursor: pointer;" class="hover-bg-light">
+                  <span style="display: flex; align-items: center; gap: 4px; font-size: var(--text-sm); font-weight: 500;">
+                    Extended
+                    <span data-tooltip="Включает режим расширенного мышления: нейросеть сначала напишет короткий ответ, а затем перейдет к скрытым рассуждениям перед окончательным ответом." style="color: var(--text-tertiary); cursor: help; display: flex; align-items: center;">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                    </span>
+                  </span>
+                  <label class="toggle-switch small" style="pointer-events: none;">
+                    <input type="checkbox" id="genai-extended-thinking-toggle-check" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
               </div>
             </div>
             <button id="btn-genai-brush" class="hidden" title="Generate image only">
@@ -1909,11 +1922,99 @@
               <label for="setting-prompt-token-limit">Prompt Token Limit</label>
               <input type="number" id="setting-prompt-token-limit" placeholder="4096" style="padding: var(--space-3); background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: var(--radius-md); color: var(--text-primary); font-family: var(--font-sans); font-size: var(--text-sm); width: 100%;" />
             </div>
+            <div class="form-group-row">
+              <label>Gemma 4 Support <span style="font-size:0.78em;color:var(--text-muted);font-weight:400;">(prepends &lt;|think|&gt; to system prompt)</span></label>
+              <label class="toggle-switch small">
+                <input type="checkbox" id="setting-gemma4-support" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
             <button id="btn-test-connection" class="btn-secondary btn-full">Test Connection</button>
+
+            <!-- ──────────── LOCAL NETWORK SYNC ──────────── -->
+            <div class="local-net-divider">🌐 Local Network</div>
+
+            <!-- HOST CARD -->
+            <div class="local-net-card" id="local-net-host-card">
+              <div class="local-net-card-title">📡 Host This PC</div>
+
+              <div class="local-net-info-row">
+                <span>Your IP:</span>
+                <span class="val" id="local-net-host-ip">—</span>
+              </div>
+              <div class="local-net-info-row">
+                <span>Port:</span>
+                <span class="val">8765</span>
+              </div>
+
+              <!-- Key display (hidden until hosting) -->
+              <div id="local-net-key-section" style="display:none; margin-top: var(--space-3);">
+                <div class="local-net-info-row" style="margin-bottom: var(--space-2);">
+                  <span>Access Key:</span>
+                </div>
+                <div class="sync-key-pill" id="local-net-key-display">
+                  ········
+                  <button class="btn-copy-key" id="btn-copy-host-key" title="Copy key">📋</button>
+                </div>
+                <div class="net-status-badge">
+                  <div class="net-status-dot green" id="local-net-host-dot"></div>
+                  <span id="local-net-host-status-text">Hosting · waiting for connections</span>
+                </div>
+              </div>
+
+              <div class="local-net-btn-row">
+                <button class="btn-local-net primary" id="btn-start-hosting">▶ Start Hosting</button>
+                <button class="btn-local-net danger" id="btn-stop-hosting" style="display:none;">■ Stop Hosting</button>
+              </div>
+            </div>
+
+            <!-- CLIENT CARD -->
+            <div class="local-net-card" id="local-net-client-card">
+              <div class="local-net-card-title">🔗 Connect to Host</div>
+
+              <!-- Auto-discovered hosts -->
+              <div id="local-net-discovery-area" style="display:none;">
+                <div class="discovery-label">📡 Found on network:</div>
+                <div class="discovery-chips" id="local-net-discovery-chips"></div>
+              </div>
+
+              <div class="local-net-input-row">
+                <label for="local-net-host-addr">Host IP:Port</label>
+                <input type="text" id="local-net-host-addr" placeholder="192.168.1.5:8765" autocomplete="off" spellcheck="false" />
+              </div>
+              <div class="local-net-input-row">
+                <label for="local-net-client-key">Access Key</label>
+                <input type="text" id="local-net-client-key" placeholder="Enter host key" autocomplete="off" spellcheck="false" maxlength="8" style="font-family: 'Courier New', monospace; letter-spacing: 0.12em;" />
+              </div>
+
+              <!-- When not connected -->
+              <div id="local-net-connect-actions">
+                <div class="local-net-btn-row">
+                  <button class="btn-local-net primary" id="btn-discover-hosts">🔍 Discover</button>
+                  <button class="btn-local-net secondary" id="btn-connect-to-host">🔗 Connect</button>
+                </div>
+              </div>
+
+              <!-- When connected -->
+              <div id="local-net-connected-actions" style="display:none;">
+                <div class="net-status-badge" style="margin-top: var(--space-2);">
+                  <div class="net-status-dot green"></div>
+                  <span id="local-net-client-status-text">Connected</span>
+                </div>
+                <div class="local-net-btn-row">
+                  <button class="btn-local-net secondary" id="btn-sync-now">↻ Sync Now</button>
+                  <button class="btn-local-net danger" id="btn-disconnect-host">🔌 Disconnect</button>
+                </div>
+              </div>
+
+              <div class="sync-status-line" id="local-net-sync-status"></div>
+            </div>
+            <!-- ──────────────────────────────────────────── -->
           </div>
           <div class="modal-footer">
             <button class="btn-primary btn-full btn-save-settings">Save Changes</button>
           </div>
+
         </div>
       </div>
 
@@ -2073,7 +2174,7 @@
             </div>
             <div class="form-group">
               <label for="setting-genai-max-tokens">Generation Token Limit: <span id="genai-max-tokens-value">2048</span></label>
-              <input type="range" id="setting-genai-max-tokens" min="1500" max="4000" step="50" value="2048" />
+              <input type="range" id="setting-genai-max-tokens" min="1500" max="8000" step="50" value="2048" />
             </div>
             <div class="form-group-row">
               <div style="display: flex; flex-direction: column; gap: 4px;">
@@ -2778,7 +2879,7 @@
                       <h3>Model Parameters</h3>
                       <div class="form-group">
                         <label for="adv-setting-max-tokens">Max Tokens: <span id="adv-max-tokens-value">2048</span></label>
-                        <input type="range" id="adv-setting-max-tokens" min="1500" max="4000" step="50" value="2048" />
+                        <input type="range" id="adv-setting-max-tokens" min="1500" max="8000" step="50" value="2048" />
                       </div>
                       <div class="form-group">
                         <label for="adv-setting-temperature">Temperature: <span id="adv-temperature-value">0.7</span></label>

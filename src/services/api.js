@@ -3,6 +3,7 @@
    ════════════════════════════════════════════════════════════════════ */
 
 import { settingsStore } from './settings-store.js';
+import { localSyncService } from './local-sync-service.js';
 
 class RequestQueue {
   constructor() {
@@ -158,7 +159,7 @@ export const api = {
 
       // Add reasoning_effort parameter (KoboldCpp parameter for thinking budget)
       const effort = options.reasoning_effort ?? settings.reasoning_effort ?? 'none';
-      if (effort && effort !== 'none') {
+      if (effort) {
         body.reasoning_effort = effort;
       }
 
@@ -171,7 +172,12 @@ export const api = {
           return;
         }
 
-        const resp = await fetch(`${settings.api_url}/v1/chat/completions`, {
+        // Use relay URL when connected to a host, otherwise direct LLM
+        const effectiveUrl = localSyncService.isClientMode
+          ? localSyncService.getRelayUrl()
+          : `${settings.api_url}/v1/chat/completions`;
+
+        const resp = await fetch(effectiveUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
