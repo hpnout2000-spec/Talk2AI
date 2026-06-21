@@ -205,4 +205,7 @@ export const memoryService = {
       localStorage.setItem(`llmchat_memory_${characterId}`, JSON.stringify(memory));
     }
   },
+  clearCache() {
+    memories = {};
+  },
 };

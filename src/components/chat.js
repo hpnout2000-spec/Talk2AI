@@ -166,8 +166,14 @@ export function initChat() {
 
   window.addEventListener('local-sync-applied', async () => {
     chatStore.clearCache();
+    memoryService.clearCache();
     if (appState.currentCharacter) {
       await chatStore.loadForCharacter(appState.currentCharacter.id);
+      try {
+        await memoryService.loadForCharacter(appState.currentCharacter.id);
+      } catch (err) {
+        console.warn('Failed to reload character memories:', err);
+      }
       updateChatHistory();
       if (appState.currentChat) {
         const updatedSession = chatStore.getSessions(appState.currentCharacter.id)

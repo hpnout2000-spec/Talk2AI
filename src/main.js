@@ -43,6 +43,14 @@ async function init() {
     });
   }
 
+  window.addEventListener('local-sync-applied', async () => {
+    console.log('[Sync] Local sync applied. Reloading settings...');
+    await settingsStore.load();
+    applyGlobalSettingsStyles();
+    if (window.updateUserNameDisplay) window.updateUserNameDisplay();
+    if (window.refreshGenAIThinkingEffortUI) window.refreshGenAIThinkingEffortUI();
+  });
+
   // Load settings first
   await settingsStore.load();
   const settings = settingsStore.get();

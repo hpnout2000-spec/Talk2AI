@@ -4197,6 +4197,21 @@ export function initGenAIPanel() {
     renderAllSkillsList();
   });
 
+  window.addEventListener('local-sync-applied', async () => {
+    try {
+      await loadHistory();
+      renderMessages();
+      updateGenaiPlusButtonState();
+      renderSkillsList();
+      renderAllSkillsList();
+      if (window.refreshGenAIThinkingEffortUI) {
+        window.refreshGenAIThinkingEffortUI();
+      }
+    } catch (e) {
+      console.warn('GenAI reload after sync failed:', e);
+    }
+  });
+
   // ─── GenAI Thinking Effort Button ───────────────────────────────────
   (function initGenAIThinkingEffortBtn() {
     const wrapper = document.getElementById('genai-thinking-effort-wrapper');
