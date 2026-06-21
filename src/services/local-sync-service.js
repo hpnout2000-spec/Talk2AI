@@ -19,9 +19,24 @@ const PUSH_RETRY_DELAY_MS = 2000;
 class LocalSyncService {
   constructor() {
     // ── Client state ──────────────────────────────────────────────────
-    this.isClientMode = false;
-    this.hostBaseUrl  = '';  // e.g. "http://192.168.1.5:8765"
-    this.hostKey      = '';
+    let persistedIp = '';
+    let persistedPort = '8765';
+    let persistedKey = '';
+    try {
+      persistedIp   = localStorage.getItem('llmchat_sync_host_ip') || '';
+      persistedPort = localStorage.getItem('llmchat_sync_host_port') || '8765';
+      persistedKey  = localStorage.getItem('llmchat_sync_host_key') || '';
+    } catch { /* ignore */ }
+
+    if (persistedIp && persistedKey) {
+      this.isClientMode = true;
+      this.hostBaseUrl  = `http://${persistedIp}:${persistedPort}`;
+      this.hostKey      = persistedKey;
+    } else {
+      this.isClientMode = false;
+      this.hostBaseUrl  = '';
+      this.hostKey      = '';
+    }
 
     // ── Host state (mirrored from Rust via polling) ───────────────────
     this.isHostMode    = false;

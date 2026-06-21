@@ -55,6 +55,29 @@ async function init() {
   await settingsStore.load();
   const settings = settingsStore.get();
 
+  // Auto-connect and sync local network client if configured
+  try {
+    const persisted = localSyncService.loadPersisted();
+    if (persisted.ip && persisted.key) {
+      console.log('[Sync] Restoring client mode connection to host:', persisted.ip);
+      localSyncService.connectToHost(persisted.ip, persisted.port, persisted.key).then(async (res) => {
+        if (res.ok) {
+          console.log('[Sync] Auto-connected to host. Performing startup sync...');
+          const syncRes = await localSyncService.syncFromHost();
+          if (syncRes.ok) {
+            console.log('[Sync] Startup sync complete.');
+          } else {
+            console.warn('[Sync] Startup sync failed:', syncRes.error);
+          }
+        } else {
+          console.warn('[Sync] Auto-connection failed:', res.error);
+        }
+      });
+    }
+  } catch (err) {
+    console.warn('[Sync] Auto-connection error:', err);
+  }
+
   // Apply font size
   document.documentElement.style.setProperty('--text-base', `${settings.font_size / 16}rem`);
 
