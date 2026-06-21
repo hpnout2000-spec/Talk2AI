@@ -177,6 +177,86 @@ export const api = {
           ? localSyncService.getRelayUrl()
           : `${settings.api_url}/v1/chat/completions`;
 
+        if (localSyncService.isClientMode) {
+          const invoke = window.__TAURI_INTERNALS__?.invoke;
+          if (!invoke) {
+            onError(new Error('Tauri invoke not available in client mode'));
+            return;
+          }
+
+          const eventId = 'relay_' + Date.now() + '_' + Math.floor(Math.random() * 1000000);
+          let unlisten = null;
+          let doneUnlisten = null;
+          let buffer = '';
+
+          // 1. Set up event listener for the stream chunks
+          if (window.__TAURI__ && window.__TAURI__.event) {
+            unlisten = await window.__TAURI__.event.listen(`relay-chunk-${eventId}`, (event) => {
+              const text = event.payload;
+              buffer += text;
+              const lines = buffer.split('\n');
+              buffer = lines.pop(); // Keep incomplete line in buffer
+
+              for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed || !trimmed.startsWith('data: ')) continue;
+
+                const data = trimmed.slice(6);
+                if (data === '[DONE]') {
+                  continue;
+                }
+
+                try {
+                  const parsed = JSON.parse(data);
+                  const delta = parsed.choices?.[0]?.delta;
+                  if (delta?.reasoning_content && onThinkingChunk) {
+                    onThinkingChunk(delta.reasoning_content);
+                  }
+                  if (delta?.content) {
+                    onChunk(delta.content);
+                  }
+                } catch {
+                  // Skip malformed JSON
+                }
+              }
+            });
+          }
+
+          if (window.__TAURI__ && window.__TAURI__.event) {
+            doneUnlisten = await window.__TAURI__.event.listen(`relay-done-${eventId}`, () => {
+              if (unlisten) unlisten();
+              if (doneUnlisten) doneUnlisten();
+              onDone();
+            });
+          }
+
+          // Handle abort signal
+          const handleAbort = () => {
+            invoke('cancel_client_relay', { eventId }).catch(() => {});
+            if (unlisten) unlisten();
+            if (doneUnlisten) doneUnlisten();
+          };
+
+          combinedController.signal.addEventListener('abort', handleAbort);
+
+          try {
+            await invoke('client_relay_stream', {
+              url: effectiveUrl,
+              body: JSON.stringify(body),
+              eventId,
+            });
+          } catch (err) {
+            if (!combinedController.signal.aborted) {
+              onError(new Error(err));
+            }
+          } finally {
+            combinedController.signal.removeEventListener('abort', handleAbort);
+            if (unlisten) unlisten();
+            if (doneUnlisten) doneUnlisten();
+          }
+          return;
+        }
+
         const resp = await fetch(effectiveUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

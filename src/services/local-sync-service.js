@@ -44,14 +44,18 @@ class LocalSyncService {
   async connectToHost(ip, port, key) {
     const base = `http://${ip}:${port}`;
     try {
-      const resp = await fetch(`${base}/ping?key=${encodeURIComponent(key)}`, {
+      const invoke = window.__TAURI_INTERNALS__?.invoke;
+      if (!invoke) return { ok: false, error: 'Tauri not available' };
+
+      const url = `${base}/ping?key=${encodeURIComponent(key)}`;
+      const respText = await invoke('client_http_request', {
         method: 'GET',
-        signal: AbortSignal.timeout(5000),
+        url,
+        body: null,
+        timeoutSecs: 5,
       });
-      if (!resp.ok) {
-        return { ok: false, error: resp.status === 401 ? 'Invalid key' : `Server error ${resp.status}` };
-      }
-      const json = await resp.json();
+
+      const json = JSON.parse(respText);
       if (!json.ok) return { ok: false, error: 'Unexpected response' };
 
       this.isClientMode = true;
@@ -63,7 +67,11 @@ class LocalSyncService {
 
       return { ok: true };
     } catch (err) {
-      return { ok: false, error: err.name === 'TimeoutError' ? 'Host not reachable (timeout)' : err.message };
+      const errMsg = err.message || String(err);
+      if (errMsg.toLowerCase().includes('timeout') || errMsg.toLowerCase().includes('timed out')) {
+        return { ok: false, error: 'Host not reachable (timeout)' };
+      }
+      return { ok: false, error: errMsg };
     }
   }
 
@@ -80,17 +88,22 @@ class LocalSyncService {
   async syncFromHost() {
     if (!this.isClientMode) return { ok: false, error: 'Not in client mode' };
     try {
-      const resp = await fetch(
-        `${this.hostBaseUrl}/sync/bundle?key=${encodeURIComponent(this.hostKey)}`,
-        { signal: AbortSignal.timeout(15000) }
-      );
-      if (!resp.ok) return { ok: false, error: `Server error ${resp.status}` };
-      const bundle = await resp.json();
+      const invoke = window.__TAURI_INTERNALS__?.invoke;
+      if (!invoke) return { ok: false, error: 'Tauri not available' };
+
+      const url = `${this.hostBaseUrl}/sync/bundle?key=${encodeURIComponent(this.hostKey)}`;
+      const respText = await invoke('client_http_request', {
+        method: 'GET',
+        url,
+        body: null,
+        timeoutSecs: 15,
+      });
+      const bundle = JSON.parse(respText);
 
       await this._applyBundle(bundle);
       return { ok: true };
     } catch (err) {
-      return { ok: false, error: err.message };
+      return { ok: false, error: err.message || String(err) };
     }
   }
 
@@ -176,15 +189,21 @@ class LocalSyncService {
   /** Fire-and-forget push with simple retry */
   async _pushWithRetry(url, options, attempt = 1) {
     try {
-      const resp = await fetch(url, { ...options, signal: AbortSignal.timeout(8000) });
-      if (!resp.ok && resp.status !== 401) {
-        throw new Error(`HTTP ${resp.status}`);
-      }
+      const invoke = window.__TAURI_INTERNALS__?.invoke;
+      if (!invoke) throw new Error('Tauri not available');
+
+      await invoke('client_http_request', {
+        method: options.method || 'POST',
+        url,
+        body: options.body || null,
+        timeoutSecs: 8,
+      });
     } catch (err) {
+      const errMsg = err.message || String(err);
       if (attempt < PUSH_RETRY_ATTEMPTS) {
         setTimeout(() => this._pushWithRetry(url, options, attempt + 1), PUSH_RETRY_DELAY_MS);
       } else {
-        console.warn('[LocalSync] Push failed after retries:', err.message);
+        console.warn('[LocalSync] Push failed after retries:', errMsg);
       }
     }
   }

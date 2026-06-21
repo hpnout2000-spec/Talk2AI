@@ -674,6 +674,130 @@ async fn discover_hosts() -> Result<Vec<DiscoveredHost>, String> {
     Ok(hosts)
 }
 
+#[tauri::command]
+async fn client_http_request(
+    method: String,
+    url: String,
+    body: Option<String>,
+    timeout_secs: Option<u64>,
+) -> Result<String, String> {
+    let client = reqwest::Client::new();
+    let mut builder = match method.to_uppercase().as_str() {
+        "POST" => client.post(&url),
+        "DELETE" => client.delete(&url),
+        _ => client.get(&url),
+    };
+    
+    let secs = timeout_secs.unwrap_or(10);
+    builder = builder.timeout(std::time::Duration::from_secs(secs));
+    
+    if let Some(ref b) = body {
+        builder = builder.header("Content-Type", "application/json").body(b.clone());
+    }
+
+    let resp = builder.send().await.map_err(|e| e.to_string())?;
+    let status = resp.status();
+    let text = resp.text().await.map_err(|e| e.to_string())?;
+    
+    if !status.is_success() {
+        return Err(format!("HTTP error {}: {}", status, text));
+    }
+    
+    Ok(text)
+}
+
+static ACTIVE_RELAYS: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<String, tokio::sync::oneshot::Sender<()>>>> = std::sync::OnceLock::new();
+
+fn get_active_relays() -> &'static std::sync::Mutex<std::collections::HashMap<String, tokio::sync::oneshot::Sender<()>>> {
+    ACTIVE_RELAYS.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+#[tauri::command]
+async fn client_relay_stream(
+    app_handle: tauri::AppHandle,
+    url: String,
+    body: String,
+    event_id: String,
+) -> Result<(), String> {
+    use tokio_stream::StreamExt;
+    use tauri::Emitter;
+
+    let (cancel_tx, mut cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    
+    // Register the cancellation channel
+    {
+        let mut map = get_active_relays().lock().unwrap();
+        map.insert(event_id.clone(), cancel_tx);
+    }
+
+    // Ensure we remove the channel when this function exits
+    struct Cleanup {
+        event_id: String,
+    }
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let mut map = get_active_relays().lock().unwrap();
+            map.remove(&self.event_id);
+        }
+    }
+    let _cleanup = Cleanup { event_id: event_id.clone() };
+
+    let client = reqwest::Client::new();
+    let send_fut = client
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .body(body)
+        .send();
+
+    let result = tokio::select! {
+        res = send_fut => match res {
+            Ok(r) => r,
+            Err(e) => return Err(e.to_string()),
+        },
+        _ = &mut cancel_rx => {
+            return Ok(());
+        }
+    };
+
+    if !result.status().is_success() {
+        let status = result.status();
+        let text = result.text().await.unwrap_or_default();
+        return Err(format!("Relay HTTP error {}: {}", status, text));
+    }
+
+    let mut stream = result.bytes_stream();
+    loop {
+        tokio::select! {
+            chunk_opt = stream.next() => {
+                match chunk_opt {
+                    Some(Ok(bytes)) => {
+                        let text = String::from_utf8_lossy(&bytes).into_owned();
+                        let _ = app_handle.emit(&format!("relay-chunk-{}", event_id), text);
+                    }
+                    Some(Err(e)) => {
+                        return Err(e.to_string());
+                    }
+                    None => break,
+                }
+            }
+            _ = &mut cancel_rx => {
+                break;
+            }
+        }
+    }
+
+    let _ = app_handle.emit(&format!("relay-done-{}", event_id), ());
+    Ok(())
+}
+
+#[tauri::command]
+fn cancel_client_relay(event_id: String) {
+    let mut map = get_active_relays().lock().unwrap();
+    if let Some(tx) = map.remove(&event_id) {
+        let _ = tx.send(());
+    }
+}
+
 // ─── Character Commands ─────────────────────────────────────────────
 
 #[tauri::command]
@@ -1587,7 +1711,10 @@ pub fn run() {
             start_host_server,
             stop_host_server,
             get_host_server_status,
-            discover_hosts
+            discover_hosts,
+            client_http_request,
+            client_relay_stream,
+            cancel_client_relay
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
