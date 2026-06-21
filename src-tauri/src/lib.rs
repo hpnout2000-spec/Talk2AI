@@ -519,6 +519,11 @@ async fn start_host_server(
         app_handle: app_handle.clone(),
     };
 
+    let cors = tower_http::cors::CorsLayer::new()
+        .allow_origin(tower_http::cors::Any)
+        .allow_methods(tower_http::cors::Any)
+        .allow_headers(tower_http::cors::Any);
+
     let app = Router::new()
         .route("/ping", get(route_ping))
         .route("/sync/bundle", get(route_sync_bundle))
@@ -527,7 +532,8 @@ async fn start_host_server(
         .route("/push/chat", delete(route_delete_chat))
         .route("/push/character", post(route_push_character))
         .route("/push/character", delete(route_delete_character))
-        .with_state(axum_state);
+        .with_state(axum_state)
+        .layer(cors);
 
     let listener = TcpListener::bind(format!("0.0.0.0:{}", port))
         .await
