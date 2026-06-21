@@ -208,6 +208,7 @@ struct DiscoveredHost {
 struct AxumState {
     key: String,
     client_count: Arc<AtomicUsize>,
+    app_handle: tauri::AppHandle,
 }
 
 // Query params for all routes
@@ -402,7 +403,11 @@ async fn route_push_chat(
     ensure_dir(&dir);
     let path = dir.join(format!("{}.json", session.id));
     match fs::write(&path, serde_json::to_string_pretty(&session).unwrap()) {
-        Ok(_) => StatusCode::OK.into_response(),
+        Ok(_) => {
+            use tauri::Emitter;
+            let _ = s.app_handle.emit("host-data-updated", ());
+            StatusCode::OK.into_response()
+        },
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }
@@ -429,6 +434,8 @@ async fn route_delete_chat(
     if path.exists() {
         let _ = fs::remove_file(&path);
     }
+    use tauri::Emitter;
+    let _ = s.app_handle.emit("host-data-updated", ());
     StatusCode::OK.into_response()
 }
 
@@ -449,7 +456,11 @@ async fn route_push_character(
     ensure_dir(&dir);
     let path = dir.join(format!("{}.json", character.id));
     match fs::write(&path, serde_json::to_string_pretty(&character).unwrap()) {
-        Ok(_) => StatusCode::OK.into_response(),
+        Ok(_) => {
+            use tauri::Emitter;
+            let _ = s.app_handle.emit("host-data-updated", ());
+            StatusCode::OK.into_response()
+        },
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }
@@ -476,6 +487,8 @@ async fn route_delete_character(
     if chats_dir.exists() { let _ = fs::remove_dir_all(&chats_dir); }
     let mem = get_app_dir().join("memory").join(format!("{}.json", id));
     if mem.exists() { let _ = fs::remove_file(&mem); }
+    use tauri::Emitter;
+    let _ = s.app_handle.emit("host-data-updated", ());
     StatusCode::OK.into_response()
 }
 
@@ -484,6 +497,7 @@ async fn route_delete_character(
 #[tauri::command]
 async fn start_host_server(
     state: tauri::State<'_, ServerShared>,
+    app_handle: tauri::AppHandle,
 ) -> Result<StartServerResult, String> {
     let port: u16 = 8765;
     let key = generate_key();
@@ -502,6 +516,7 @@ async fn start_host_server(
     let axum_state = AxumState {
         key: key.clone(),
         client_count: client_count.clone(),
+        app_handle: app_handle.clone(),
     };
 
     let app = Router::new()

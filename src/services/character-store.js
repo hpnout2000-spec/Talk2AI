@@ -3,10 +3,16 @@
    ════════════════════════════════════════════════════════════════════ */
 
 import { generateId } from '../utils/helpers.js';
+import { localSyncService } from './local-sync-service.js';
 
 let characters = [];
 
 async function invokeTauri(cmd, args = {}) {
+  if (localSyncService.isClientMode) {
+    if (cmd === 'save_character') localSyncService.pushCharacterToHost(JSON.parse(args.data));
+    else if (cmd === 'delete_character') localSyncService.deleteCharacterOnHost(args.id);
+  }
+
   if (window.__TAURI_INTERNALS__) {
     return await window.__TAURI_INTERNALS__.invoke(cmd, args);
   }

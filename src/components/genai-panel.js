@@ -4262,6 +4262,17 @@ export function initGenAIPanel() {
       if (window.refreshThinkingEffortUI) window.refreshThinkingEffortUI();
     }
 
+    dropdown.querySelectorAll('.effort-option').forEach(opt => {
+      opt.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const value = opt.dataset.value;
+        settingsStore.save({ ...settingsStore.get(), reasoning_effort: value });
+        dropdown.classList.add('hidden');
+        refreshGenAIThinkingEffortUI();
+        if (window.refreshThinkingEffortUI) window.refreshThinkingEffortUI();
+      });
+    });
+
     const extendedToggleRow = document.getElementById('genai-extended-thinking-toggle-row');
     if (extendedToggleRow) {
       extendedToggleRow.addEventListener('click', (e) => {

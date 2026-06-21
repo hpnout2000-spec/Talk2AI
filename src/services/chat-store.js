@@ -3,11 +3,17 @@
    ════════════════════════════════════════════════════════════════════ */
 
 import { generateId } from '../utils/helpers.js';
+import { localSyncService } from './local-sync-service.js';
 
 let currentSession = null;
 let sessions = {};
 
 async function invokeTauri(cmd, args = {}) {
+  if (localSyncService.isClientMode) {
+    if (cmd === 'save_chat') localSyncService.pushChatToHost(args.characterId, JSON.parse(args.data));
+    else if (cmd === 'delete_chat') localSyncService.deleteChatOnHost(args.characterId, args.chatId);
+  }
+
   if (window.__TAURI_INTERNALS__) {
     return await window.__TAURI_INTERNALS__.invoke(cmd, args);
   }
@@ -258,6 +264,21 @@ export const chatStore = {
       session.updated_at = new Date().toISOString();
       await this.saveSession(session);
     }
+  },
+
+  async saveCharacterSettings(characterId, settings) {
+    if (!characterId) return;
+    
+    await this.ensureSession(characterId);
+    sessions[characterId].settings = settings;
+    await this.saveSessionToDisk(characterId);
+  },
+
+  // Clear in-memory cache, e.g. when syncing from another device
+  clearCache() {
+    sessions = {};
+    currentSession = null;
+    console.log('Chat store cache cleared');
   },
 
   async deleteSession(characterId, chatId) {

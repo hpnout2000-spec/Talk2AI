@@ -35,58 +35,12 @@ import { localSyncService } from './services/local-sync-service.js';
 async function init() {
   console.log('LLM Chat initializing...');
 
-  // ── Tauri invoke interceptor for bidirectional sync ─────────────────
-  // When in client mode, mirrors data mutations to the host transparently.
-  // This single intercept covers all call sites (chat.js, genai-panel.js, etc.)
-  if (window.__TAURI_INTERNALS__) {
-    const originalInternals = window.__TAURI_INTERNALS__;
-    const interceptedInvoke = async (cmd, args, ...rest) => {
-      const result = await originalInternals.invoke(cmd, args, ...rest);
-      // Mirror mutations to host (fire-and-forget, non-blocking)
-      if (localSyncService.isClientMode) {
-        try {
-          if (cmd === 'save_chat' && args?.characterId && args?.data) {
-            localSyncService.pushChatToHost(args.characterId, JSON.parse(args.data));
-          } else if (cmd === 'delete_chat' && args?.characterId && args?.chatId) {
-            localSyncService.deleteChatOnHost(args.characterId, args.chatId);
-          } else if (cmd === 'save_character' && args?.data) {
-            localSyncService.pushCharacterToHost(JSON.parse(args.data));
-          } else if (cmd === 'delete_character' && args?.id) {
-            localSyncService.deleteCharacterOnHost(args.id);
-          }
-        } catch { /* never let sync errors affect the UI */ }
-      }
-      return result;
-    };
-
-    try {
-      const proxy = new Proxy(originalInternals, {
-        get(target, prop, receiver) {
-          if (prop === 'invoke') {
-            return interceptedInvoke;
-          }
-          return Reflect.get(target, prop, receiver);
-        }
-      });
-      Object.defineProperty(window, '__TAURI_INTERNALS__', {
-        value: proxy,
-        configurable: true,
-        writable: true,
-        enumerable: true
-      });
-    } catch (e) {
-      console.error("Failed to intercept Tauri internals via proxy:", e);
-      // Fallback: try direct defineProperty on the read-only invoke
-      try {
-        Object.defineProperty(originalInternals, 'invoke', {
-          value: interceptedInvoke,
-          configurable: true,
-          writable: true
-        });
-      } catch (err) {
-        console.error("Tauri intercept fallback failed:", err);
-      }
-    }
+  // Listen for pushes from clients if we are acting as host
+  if (window.__TAURI__ && window.__TAURI__.event) {
+    window.__TAURI__.event.listen('host-data-updated', () => {
+      console.log('[Sync] Host data updated from client push. Firing local-sync-applied.');
+      window.dispatchEvent(new CustomEvent('local-sync-applied'));
+    });
   }
 
   // Load settings first
