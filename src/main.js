@@ -24,6 +24,7 @@ import { initGroupChatView } from './components/group-chat-view.js';
 import { groupChatStore } from './services/group-chat-store.js';
 import { initGameView } from './components/game-view.js';
 import { initGenAIMemoriesMgr } from './components/genai-memories-mgr.js';
+import { initSmartContextMgr } from './components/genai-smart-context-mgr.js';
 import { initGenAISkillsMgr } from './components/genai-skills-mgr.js';
 import { initGenAIFetchedDataMgr } from './components/genai-fetched-data-mgr.js';
 import { initLightbox } from './utils/lightbox.js';
@@ -344,6 +345,7 @@ async function init() {
   initBookView();
   initGenAIPanel();
   initGenAIMemoriesMgr();
+  initSmartContextMgr();
   initGenAISkillsMgr();
   initGenAIFetchedDataMgr();
   initGroupChatPanel();

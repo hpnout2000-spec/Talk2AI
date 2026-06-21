@@ -1301,13 +1301,7 @@
 }
 
 .streaming-cursor {
-  display: inline-block;
-  width: 2px;
-  height: 15px;
-  background-color: var(--accent-secondary, #06b6d4);
-  margin-left: 2px;
-  vertical-align: middle;
-  animation: cursor-blink 0.8s infinite;
+  display: none !important;
 }
 
 @keyframes cursor-blink {

@@ -597,6 +597,7 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
   gap: var(--space-1);
   user-select: none;
   line-height: 1;
+  white-space: nowrap;
 }
 
 .thinking-toggle-header {
@@ -727,34 +728,13 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
 /* ─── Streaming Cursor ───────────────────────────────────────────── */
 
 .streaming-cursor {
-  display: inline-block;
-  width: 4px;
-  height: 1.1em;
-  background: var(--accent-primary);
-  border-radius: 2px;
-  vertical-align: middle;
-  margin-left: 4px;
-  animation: cursorPulse 1s ease-in-out infinite alternate;
-  box-shadow: 0 0 8px var(--accent-primary-glow);
+  display: none !important;
 }
 
 /* Floating variant — fixed to the viewport and glides smoothly
    to the end of the last typed word using CSS transition on transform */
 .streaming-cursor--float {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 4px;
-  height: 1.1em;
-  background: var(--accent-primary);
-  border-radius: 2px;
-  margin-left: 4px;
-  box-shadow: 0 0 8px var(--accent-primary-glow);
-  pointer-events: none;
-  z-index: 9999;
-  animation: cursorPulse 1s ease-in-out infinite alternate;
-  /* Smooth glide between positions */
-  transition: transform 100ms cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  display: none !important;
 }
 
 @keyframes cursorPulse {

@@ -291,6 +291,8 @@ class ThinkingSnippets extends HTMLElement {
       this.currentIndex = nextIndex;
       this.transitionToSnippet(activeList[this.currentIndex]);
     }, 4000);
+
+    this.adjustBubbleWidth();
   }
 
   attributeChangedCallback(name, oldValue, newValue) {
@@ -324,6 +326,24 @@ class ThinkingSnippets extends HTMLElement {
     }
   }
 
+  adjustBubbleWidth() {
+    const run = () => {
+      const bubble = this.closest('.genai-msg-bubble');
+      if (bubble && bubble.classList.contains('thinking-only')) {
+        const activeLayer = this.querySelector('.thinking-snippet-layer:not(.layer-leaving)');
+        if (activeLayer) {
+          const rect = activeLayer.getBoundingClientRect();
+          if (rect.width > 0) {
+            bubble.style.width = (rect.width + 34) + 'px';
+          } else {
+            requestAnimationFrame(run);
+          }
+        }
+      }
+    };
+    requestAnimationFrame(run);
+  }
+
   transitionToSnippet(text) {
     const now = Date.now();
     // Throttle transitions to ensure they don't happen faster than every 3 seconds
@@ -353,6 +373,8 @@ class ThinkingSnippets extends HTMLElement {
         }
       }, 800);
     }
+
+    this.adjustBubbleWidth();
   }
 
   disconnectedCallback() {

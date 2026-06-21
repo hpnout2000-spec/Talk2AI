@@ -40,6 +40,8 @@ const DEFAULTS = {
   genai_speech_style: 'default',
   genai_duo_suggestions: true,
   genai_safe_mode: false,
+  genai_smart_context: false,
+  genai_smart_context_token_limit: 1500,
   game_system_prompt: 'You are a Game Master in an interactive text RPG.',
   game_response_length: 'default',
   active_game_prompt_preset_id: 'default-game-1',

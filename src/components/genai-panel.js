@@ -1020,6 +1020,29 @@ To call a tool/command, you MUST output the JSON block on its own line in your r
 {"genai_action":"nhentai_search_galleries","query":"parody"}
 Always output the JSON action block on its own line. Stop generating immediately after outputting the JSON block. Do not write text promising to call a tool without actually outputting it.`;
 
+  // Inject Smart Context summaries of other chats
+  if (settings.genai_smart_context) {
+    const otherSessions = (genaiSessions || []).filter(s => s.id !== currentGenaiSessionId && s.summary && s.summary.trim().length > 0);
+    if (otherSessions.length > 0) {
+      // Sort other sessions by updated_at desc (most recent first)
+      otherSessions.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+      
+      const limitChars = (settings.genai_smart_context_token_limit || 1500) * 4;
+      let contextStr = '';
+      for (const s of otherSessions) {
+        const summaryBlock = `\n- Chat "${s.title || 'Untitled'}": ${s.summary}`;
+        if ((contextStr + summaryBlock).length > limitChars) {
+          break;
+        }
+        contextStr += summaryBlock;
+      }
+      
+      if (contextStr) {
+        skillsInjection += `\n\n[Smart Context (Summaries of your other recent conversations with the user — Use this background context to stay consistent across chats):]${contextStr}`;
+      }
+    }
+  }
+
   // Inject GenAI Memories into the last user message of the payload to ensure they are present in every prompt
   const memories = genaiMemoryStore.getAll();
   if (memories.length > 0) {
@@ -2357,6 +2380,17 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
     html = injectCursor(html);
   }
 
+  const hasFinishedOrPendingTool = entry.tools && entry.tools.some(t => t.state !== 'working');
+  const hasUserText = content.replace(/\[\[GENAI_TOOL_\d+\]\]/g, '').trim().length > 0;
+  const isThinkingOnly = !hasUserText && !hasFinishedOrPendingTool;
+
+  if (isThinkingOnly) {
+    bubbleEl.classList.add('thinking-only');
+  } else {
+    bubbleEl.classList.remove('thinking-only');
+    bubbleEl.style.width = '';
+  }
+
   const temp = document.createElement('div');
   temp.className = 'genai-msg-text-container';
   temp.innerHTML = html;
@@ -2381,7 +2415,8 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
     btn._listenerBound = true;
     btn.addEventListener('click', () => {
       const msg = btn.getAttribute('data-message');
-      const target = btn.getAttribute('data-target') || 'character';
+      const settings = settingsStore.get();
+      const target = !settings.genai_duo_suggestions ? 'genai' : (btn.getAttribute('data-target') || 'character');
       if (msg) {
         if (target === 'genai') {
           // ── GenAI Chat Flow (Dynamic Bubble Creation + Flight) ──
@@ -2537,9 +2572,12 @@ function appendMsgEl(entry) {
   const bubbleEl = el.querySelector('.genai-msg-bubble');
   if (isUser) {
     bubbleEl.innerHTML = renderMarkdown(entry.content || '');
+    bubbleEl.classList.remove('thinking-only');
+    bubbleEl.style.width = '';
   } else {
     if (!entry.content && !entry.thinking) {
       bubbleEl.innerHTML = `<div class="genai-bubble-text"><span class="chat-working-placeholder">Working...</span></div>`;
+      bubbleEl.classList.add('thinking-only');
     } else {
       renderAssistantBubble(entry, bubbleEl);
     }
@@ -3688,6 +3726,10 @@ function saveHistory() {
         console.error('Failed to save GenAI history via Tauri:', e);
       });
     }
+
+    if (!isGenerating && currentGenaiSessionId && window.scheduleSmartContextAutoUpdate) {
+      window.scheduleSmartContextAutoUpdate(currentGenaiSessionId);
+    }
   } catch (e) {
     console.error('Unexpected error in saveHistory:', e);
   }
@@ -3798,6 +3840,10 @@ async function loadHistory() {
 }
 
 function createNewGenaiChat() {
+  if (currentGenaiSessionId && window.handleChatSwitched) {
+    window.handleChatSwitched(currentGenaiSessionId);
+  }
+
   currentGenaiSessionId = Date.now().toString();
   genaiHistory = [];
   
@@ -3831,6 +3877,10 @@ function createNewGenaiChat() {
 function switchGenaiChat(id) {
   const session = genaiSessions.find(s => s.id === id);
   if (session) {
+    if (currentGenaiSessionId && currentGenaiSessionId !== session.id && window.handleChatSwitched) {
+      window.handleChatSwitched(currentGenaiSessionId);
+    }
+
     currentGenaiSessionId = session.id;
     genaiHistory = session.messages || [];
 
@@ -3937,8 +3987,8 @@ function renderRecentChatsList() {
   // Bind events
   listEl.querySelectorAll('.genai-chat-item').forEach(el => {
     el.addEventListener('click', (e) => {
-      // ignore if pin/delete button clicked
-      if (e.target.closest('.btn-pin-chat') || e.target.closest('.btn-delete-chat')) return;
+      // ignore if pin/delete/toggle-sc button clicked
+      if (e.target.closest('.btn-pin-chat') || e.target.closest('.btn-delete-chat') || e.target.closest('.btn-toggle-sc')) return;
       switchGenaiChat(el.dataset.id);
       document.getElementById('genai-chat-menu-popover').classList.add('hidden');
     });
@@ -3949,11 +3999,36 @@ function renderRecentChatsList() {
   listEl.querySelectorAll('.btn-delete-chat').forEach(el => {
     el.addEventListener('click', (e) => deleteGenaiChat(el.dataset.id, e));
   });
+  listEl.querySelectorAll('.btn-toggle-sc').forEach(el => {
+    el.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = el.dataset.id;
+      const session = genaiSessions.find(s => s.id === id);
+      if (session) {
+        const hasSummary = session.summary && session.summary.trim().length > 0;
+        if (hasSummary) {
+          session.summary = '';
+          saveHistory();
+          renderRecentChatsList();
+          if (window.renderSmartContextChats) {
+            window.renderSmartContextChats();
+          }
+        } else {
+          if (window.updateSessionSummary) {
+            // Trigger background summarization
+            await window.updateSessionSummary(session);
+          }
+          renderRecentChatsList();
+        }
+      }
+    });
+  });
 }
 
 function renderChatRow(s) {
   const isActive = s.id === currentGenaiSessionId;
   const isPinned = s.pinned;
+  const hasSummary = s.summary && s.summary.trim().length > 0;
   const d = new Date(s.updated_at);
   const timeStr = d.toLocaleDateString() === new Date().toLocaleDateString() ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString();
   return `
@@ -3963,6 +4038,17 @@ function renderChatRow(s) {
         <div class="genai-chat-item-date">${timeStr}</div>
       </div>
       <div style="display: flex; align-items: center; gap: 2px;">
+        <button class="btn-toggle-sc ${hasSummary ? 'active' : ''}" data-id="${s.id}" title="${hasSummary ? 'Remove from Smart Context' : 'Add to Smart Context'}">
+          ${hasSummary ? `
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 14px; height: 14px;">
+              <polyline points="20 6 9 17 4 12"/>
+            </svg>
+          ` : `
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+          `}
+        </button>
         <button class="btn-pin-chat ${isPinned ? 'pinned' : ''}" data-id="${s.id}" title="${isPinned ? 'Unpin chat' : 'Pin chat'}">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;">
             <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
@@ -3982,6 +4068,26 @@ function renderChatRow(s) {
 async function sendUserMessage() {
   const text = inputEl.value.trim();
   if (!text || isGenerating) return;
+
+  // Intercept send if Smart Context is currently summarizing
+  if (window.isSmartContextRunning && window.isSmartContextRunning()) {
+    const isOverride = window.getAndResetProceedOverride && window.getAndResetProceedOverride();
+    if (!isOverride && !window.showingSmartContextWarning) {
+      window.showingSmartContextWarning = true;
+      const warningPopup = document.getElementById('genai-smart-context-warning');
+      if (warningPopup) {
+        warningPopup.classList.remove('hidden');
+      }
+      return;
+    }
+    if (window.showingSmartContextWarning) {
+      window.showingSmartContextWarning = false;
+      const warningPopup = document.getElementById('genai-smart-context-warning');
+      if (warningPopup) {
+        warningPopup.classList.add('hidden');
+      }
+    }
+  }
 
   inputEl.value = '';
   autoResizeTextarea(inputEl);
@@ -5481,4 +5587,11 @@ window.toggleGenAiSkill = async (skillId, el) => {
 export function getGenaiHistory() {
   return genaiHistory;
 }
+export function getGenaiSessions() {
+  return genaiSessions;
+}
+export function getCurrentGenaiSessionId() {
+  return currentGenaiSessionId;
+}
+window.renderRecentChatsList = renderRecentChatsList;
 export { saveHistory, renderMessages };

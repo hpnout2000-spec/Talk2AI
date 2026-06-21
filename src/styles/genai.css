@@ -473,6 +473,55 @@ body.genai-fullscreen .genai-fullscreen-placeholder {
   color: var(--accent-primary);
 }
 
+/* Smart Context Toggle Buttons (with border box/outline container) */
+.btn-toggle-sc, .btn-sc-modal-toggle {
+  border: 1px solid var(--border-light, rgba(255, 255, 255, 0.08)) !important;
+  background: rgba(255, 255, 255, 0.02) !important;
+  border-radius: 4px !important;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition-fast) ease;
+  box-sizing: border-box;
+  padding: 0;
+}
+
+.btn-toggle-sc {
+  color: var(--text-tertiary);
+  opacity: 0;
+}
+
+.btn-sc-modal-toggle {
+  color: var(--text-tertiary);
+  opacity: 1;
+}
+
+.genai-chat-item:hover .btn-toggle-sc,
+.btn-toggle-sc.active {
+  opacity: 1;
+}
+
+.btn-toggle-sc:hover, .btn-sc-modal-toggle:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.2) !important;
+  color: var(--text-primary) !important;
+}
+
+.btn-toggle-sc.active, .btn-sc-modal-toggle.active {
+  border-color: rgba(16, 185, 129, 0.3) !important;
+  background: rgba(16, 185, 129, 0.08) !important;
+  color: #10b981 !important;
+}
+
+.btn-toggle-sc.active:hover, .btn-sc-modal-toggle.active:hover {
+  background: rgba(16, 185, 129, 0.15) !important;
+  border-color: rgba(16, 185, 129, 0.5) !important;
+  color: #10b981 !important;
+}
+
 /* ─── Light Sweep Effect ─── */
 .btn-genai-action::after {
   content: "";
@@ -587,6 +636,31 @@ body.genai-fullscreen .genai-fullscreen-placeholder {
   color: var(--text-primary);
   padding: 0;
   max-width: 100%;
+  width: fit-content;
+  transition: width 0.4s cubic-bezier(0.25, 0.8, 0.25, 1),
+              max-width 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+              padding 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+              border-radius 0.5s cubic-bezier(0.16, 1, 0.3, 1),
+              background-color 0.5s ease,
+              border-color 0.5s ease;
+}
+
+.genai-msg.genai-assistant .genai-msg-bubble.thinking-only {
+  max-width: 320px;
+  width: fit-content;
+  line-height: 1;
+}
+
+.genai-msg-bubble.thinking-only .thinking-inline {
+  margin-bottom: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.genai-msg-bubble.thinking-only .genai-bubble-text {
+  line-height: 1;
+  display: flex;
+  align-items: center;
 }
 
 /* Premium styling for messages in fullscreen mode */
@@ -611,6 +685,18 @@ body.genai-fullscreen .genai-msg.genai-assistant .genai-msg-bubble {
   padding: var(--space-3) var(--space-4);
   box-shadow: var(--shadow-sm);
   backdrop-filter: blur(8px);
+  box-sizing: border-box;
+  display: block;
+  width: fit-content;
+}
+
+body.genai-fullscreen .genai-msg.genai-assistant .genai-msg-bubble.thinking-only {
+  max-width: 320px;
+  width: fit-content;
+  padding: 6px 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  line-height: 1;
 }
 
 body.genai-fullscreen .genai-empty-state {
