@@ -219,6 +219,49 @@ struct KeyQuery {
 
 // Helper to get local LAN IP
 fn get_local_ip() -> String {
+    if let Ok(interfaces) = local_ip_address::list_afinet_netifas() {
+        let mut best_ip = None;
+        for (name, ip) in &interfaces {
+            if ip.is_ipv4() && !ip.is_loopback() {
+                let ip_str = ip.to_string();
+                let name_lower = name.to_lowercase();
+                
+                // Exclude common VPN / virtual interface names
+                if name_lower.contains("tun")
+                    || name_lower.contains("tap")
+                    || name_lower.contains("vpn")
+                    || name_lower.contains("wg")
+                    || name_lower.contains("ppp")
+                    || name_lower.contains("virtual")
+                    || name_lower.contains("vbox")
+                    || name_lower.contains("vmware")
+                    || name_lower.contains("wsl")
+                {
+                    continue;
+                }
+                
+                // Prioritize standard Wi-Fi / Ethernet prefixes
+                if name_lower.contains("wi-fi")
+                    || name_lower.contains("wifi")
+                    || name_lower.contains("ethernet")
+                    || name_lower.contains("wlan")
+                    || name_lower.contains("eth")
+                    || name_lower.contains("en")
+                {
+                    return ip_str;
+                }
+                
+                // Fallback to any valid private LAN IPv4 address
+                if ip_str.starts_with("192.168.") || ip_str.starts_with("10.") || ip_str.starts_with("172.") {
+                    best_ip = Some(ip_str);
+                }
+            }
+        }
+        if let Some(ip) = best_ip {
+            return ip;
+        }
+    }
+
     use std::net::UdpSocket;
     let socket = UdpSocket::bind("0.0.0.0:0").ok();
     if let Some(s) = socket {
@@ -255,15 +298,68 @@ fn read_api_url() -> String {
     "http://localhost:5001".to_string()
 }
 
-// Build and return the sync bundle (all characters + all chats + settings)
+fn read_dir_json_files_stem(dir_path: std::path::PathBuf) -> serde_json::Value {
+    let mut map = serde_json::Map::new();
+    if let Ok(entries) = fs::read_dir(dir_path) {
+        for entry in entries.flatten() {
+            if entry.path().is_file() && entry.path().extension().map_or(false, |e| e == "json") {
+                if let Some(filename_os) = entry.path().file_stem() {
+                    let filename = filename_os.to_string_lossy().to_string();
+                    if let Ok(content) = fs::read_to_string(entry.path()) {
+                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
+                            map.insert(filename, val);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    serde_json::Value::Object(map)
+}
+
+fn read_dir_text_files_stem(dir_path: std::path::PathBuf) -> serde_json::Value {
+    let mut map = serde_json::Map::new();
+    if let Ok(entries) = fs::read_dir(dir_path) {
+        for entry in entries.flatten() {
+            if entry.path().is_file() {
+                if let Some(filename_os) = entry.path().file_stem() {
+                    let filename = filename_os.to_string_lossy().to_string();
+                    if let Ok(content) = fs::read_to_string(entry.path()) {
+                        map.insert(filename, serde_json::Value::String(content));
+                    }
+                }
+            }
+        }
+    }
+    serde_json::Value::Object(map)
+}
+
+fn read_dir_text_files_name(dir_path: std::path::PathBuf) -> serde_json::Value {
+    let mut map = serde_json::Map::new();
+    if let Ok(entries) = fs::read_dir(dir_path) {
+        for entry in entries.flatten() {
+            if entry.path().is_file() {
+                if let Some(filename_os) = entry.path().file_name() {
+                    let filename = filename_os.to_string_lossy().to_string();
+                    if let Ok(content) = fs::read_to_string(entry.path()) {
+                        map.insert(filename, serde_json::Value::String(content));
+                    }
+                }
+            }
+        }
+    }
+    serde_json::Value::Object(map)
+}
+
+// Build and return the sync bundle (all characters + all chats + settings + memories + history + RPG + skills + credentials)
 fn build_sync_bundle() -> serde_json::Value {
     let app_dir = get_app_dir();
 
-    // Settings
+    // 1. Settings
     let settings_str = fs::read_to_string(app_dir.join("settings.json")).unwrap_or_default();
     let settings: serde_json::Value = serde_json::from_str(&settings_str).unwrap_or(serde_json::Value::Null);
 
-    // Characters
+    // 2. Characters
     let chars_dir = app_dir.join("characters");
     let mut characters: Vec<serde_json::Value> = Vec::new();
     if let Ok(entries) = fs::read_dir(&chars_dir) {
@@ -278,7 +374,7 @@ fn build_sync_bundle() -> serde_json::Value {
         }
     }
 
-    // Chats: map of character_id -> Vec<session>
+    // 3. Chats: character_id -> Vec<session>
     let chats_root = app_dir.join("chats");
     let mut chats_map: serde_json::Map<String, serde_json::Value> = serde_json::Map::new();
     if let Ok(char_dirs) = fs::read_dir(&chats_root) {
@@ -302,10 +398,41 @@ fn build_sync_bundle() -> serde_json::Value {
         }
     }
 
+    // 4. GenAI Memories
+    let memories = read_dir_json_files_stem(app_dir.join("memory"));
+
+    // 5. GenAI History
+    let genai_history_str = fs::read_to_string(app_dir.join("genai_history.json")).unwrap_or_default();
+    let genai_history: serde_json::Value = serde_json::from_str(&genai_history_str).unwrap_or(serde_json::Value::Null);
+
+    // 6. Games State
+    let games_state_str = fs::read_to_string(app_dir.join("games_state.json")).unwrap_or_default();
+    let games_state: serde_json::Value = serde_json::from_str(&games_state_str).unwrap_or(serde_json::Value::Null);
+
+    // 7. Groups
+    let groups_str = fs::read_to_string(app_dir.join("groups.json")).unwrap_or_default();
+    let groups: serde_json::Value = serde_json::from_str(&groups_str).unwrap_or(serde_json::Value::Null);
+
+    // 8. Group Chats
+    let group_chats = read_dir_json_files_stem(app_dir.join("group_chats"));
+
+    // 9. Custom Skills
+    let skills = read_dir_text_files_name(app_dir.join("skills"));
+
+    // 10. Credentials
+    let credentials = read_dir_text_files_stem(app_dir.join("credentials"));
+
     serde_json::json!({
         "settings": settings,
         "characters": characters,
-        "chats": chats_map
+        "chats": chats_map,
+        "memories": memories,
+        "genai_history": genai_history,
+        "games_state": games_state,
+        "groups": groups,
+        "group_chats": group_chats,
+        "skills": skills,
+        "credentials": credentials
     })
 }
 

@@ -213,14 +213,20 @@ class LocalSyncService {
     const invoke = window.__TAURI_INTERNALS__?.invoke;
     if (!invoke) return;
 
-    // 1. Settings — merge (do NOT overwrite local api_url etc.)
+    // 1. Settings — merge (Host settings take priority, preserving local network fields)
     if (bundle.settings && typeof bundle.settings === 'object') {
       const { api_url, ...hostSettings } = bundle.settings;
-      // Apply host settings but keep our own network settings
       try {
         const localRaw = await invoke('load_settings');
         const local = localRaw ? JSON.parse(localRaw) : {};
-        const merged = { ...hostSettings, ...local }; // local takes priority for network fields
+        const merged = {
+          ...local,
+          ...hostSettings,
+          api_url: local.api_url || hostSettings.api_url,
+          comfyui_url: local.comfyui_url || hostSettings.comfyui_url,
+          local_sync_saved_host_ip: local.local_sync_saved_host_ip || hostSettings.local_sync_saved_host_ip,
+          local_sync_saved_host_key: local.local_sync_saved_host_key || hostSettings.local_sync_saved_host_key,
+        };
         await invoke('save_settings', { data: JSON.stringify(merged) });
       } catch { /* ignore */ }
     }
@@ -246,7 +252,62 @@ class LocalSyncService {
       }
     }
 
-    // Notify app to reload characters and chats
+    // 4. GenAI Memories
+    if (bundle.memories && typeof bundle.memories === 'object') {
+      for (const [charId, memoryData] of Object.entries(bundle.memories)) {
+        try {
+          await invoke('save_memory', { character_id: charId, data: JSON.stringify(memoryData) });
+        } catch { /* ignore */ }
+      }
+    }
+
+    // 5. GenAI History
+    if (bundle.genai_history) {
+      try {
+        await invoke('save_genai_history', { data: JSON.stringify(bundle.genai_history) });
+      } catch { /* ignore */ }
+    }
+
+    // 6. Games State (RPG)
+    if (bundle.games_state) {
+      try {
+        await invoke('save_game_state', { data: JSON.stringify(bundle.games_state) });
+      } catch { /* ignore */ }
+    }
+
+    // 7. Groups and 8. Group Chats
+    if (bundle.groups) {
+      try {
+        await invoke('save_group_state', { data: JSON.stringify(bundle.groups) });
+      } catch { /* ignore */ }
+    }
+    if (bundle.group_chats && typeof bundle.group_chats === 'object') {
+      for (const [groupId, groupSession] of Object.entries(bundle.group_chats)) {
+        try {
+          await invoke('save_group_sessions', { group_id: groupId, data: JSON.stringify(groupSession) });
+        } catch { /* ignore */ }
+      }
+    }
+
+    // 9. Custom Skills
+    if (bundle.skills && typeof bundle.skills === 'object') {
+      for (const [filename, content] of Object.entries(bundle.skills)) {
+        try {
+          await invoke('save_skill', { filename, content });
+        } catch { /* ignore */ }
+      }
+    }
+
+    // 10. Credentials (API Keys)
+    if (bundle.credentials && typeof bundle.credentials === 'object') {
+      for (const [provider, key] of Object.entries(bundle.credentials)) {
+        try {
+          await invoke('save_credential', { provider, key });
+        } catch { /* ignore */ }
+      }
+    }
+
+    // Notify app to reload characters, chats, and other settings
     window.dispatchEvent(new CustomEvent('local-sync-applied'));
   }
 
