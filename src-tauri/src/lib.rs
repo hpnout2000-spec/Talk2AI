@@ -422,6 +422,10 @@ fn build_sync_bundle() -> serde_json::Value {
     // 10. Credentials
     let credentials = read_dir_text_files_stem(app_dir.join("credentials"));
 
+    // 11. GenAI assistant memories (stored facts)
+    let genai_memories_str = fs::read_to_string(app_dir.join("genai_memories.json")).unwrap_or_default();
+    let genai_memories: serde_json::Value = serde_json::from_str(&genai_memories_str).unwrap_or(serde_json::Value::Null);
+
     serde_json::json!({
         "settings": settings,
         "characters": characters,
@@ -432,7 +436,8 @@ fn build_sync_bundle() -> serde_json::Value {
         "groups": groups,
         "group_chats": group_chats,
         "skills": skills,
-        "credentials": credentials
+        "credentials": credentials,
+        "genai_memories": genai_memories
     })
 }
 
@@ -1310,6 +1315,25 @@ fn load_credential(provider: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn save_genai_memories(data: String) -> Result<(), String> {
+    let dir = get_app_dir();
+    ensure_dir(&dir);
+    let path = dir.join("genai_memories.json");
+    fs::write(&path, data).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+fn load_genai_memories() -> Result<String, String> {
+    let path = get_app_dir().join("genai_memories.json");
+    if path.exists() {
+        fs::read_to_string(&path).map_err(|e| e.to_string())
+    } else {
+        Ok("".to_string())
+    }
+}
+
+#[tauri::command]
 async fn nhentai_request(
     url: String,
     method: String,
@@ -1841,7 +1865,9 @@ pub fn run() {
             discover_hosts,
             client_http_request,
             client_relay_stream,
-            cancel_client_relay
+            cancel_client_relay,
+            save_genai_memories,
+            load_genai_memories
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

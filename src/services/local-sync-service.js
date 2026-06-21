@@ -322,6 +322,13 @@ class LocalSyncService {
       }
     }
 
+    // 11. GenAI assistant memories (stored facts)
+    if (bundle.genai_memories) {
+      try {
+        await invoke('save_genai_memories', { data: JSON.stringify(bundle.genai_memories) });
+      } catch { /* ignore */ }
+    }
+
     // Notify app to reload characters, chats, and other settings
     window.dispatchEvent(new CustomEvent('local-sync-applied'));
   }

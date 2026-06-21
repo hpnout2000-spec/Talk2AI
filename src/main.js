@@ -29,6 +29,7 @@ import { initGenAIFetchedDataMgr } from './components/genai-fetched-data-mgr.js'
 import { initLightbox } from './utils/lightbox.js';
 import { initAlbumView } from './components/album-view.js';
 import { localSyncService } from './services/local-sync-service.js';
+import { genaiMemoryStore } from './services/genai-memory-store.js';
 
 // ─── Initialize App ─────────────────────────────────────────────────
 
@@ -44,8 +45,9 @@ async function init() {
   }
 
   window.addEventListener('local-sync-applied', async () => {
-    console.log('[Sync] Local sync applied. Reloading settings...');
+    console.log('[Sync] Local sync applied. Reloading settings and GenAI memories...');
     await settingsStore.load();
+    await genaiMemoryStore.load();
     applyGlobalSettingsStyles();
     if (window.updateUserNameDisplay) window.updateUserNameDisplay();
     if (window.refreshGenAIThinkingEffortUI) window.refreshGenAIThinkingEffortUI();
@@ -53,6 +55,7 @@ async function init() {
 
   // Load settings first
   await settingsStore.load();
+  await genaiMemoryStore.load();
   const settings = settingsStore.get();
 
   // Auto-connect and sync local network client if configured

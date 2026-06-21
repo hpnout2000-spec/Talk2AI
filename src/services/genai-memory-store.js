@@ -7,31 +7,43 @@ import { generateId } from '../utils/helpers.js';
 const STORAGE_KEY = 'vibechat_genai_memories';
 let memories = [];
 
+async function invokeTauri(cmd, args = {}) {
+  if (window.__TAURI_INTERNALS__) {
+    return await window.__TAURI_INTERNALS__.invoke(cmd, args);
+  }
+  throw new Error('Not running in Tauri environment');
+}
+
 export const genaiMemoryStore = {
-  load() {
+  async load() {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        memories = JSON.parse(saved);
+      const result = await invokeTauri('load_genai_memories');
+      if (result) {
+        memories = JSON.parse(result);
       } else {
-        memories = [];
+        const saved = localStorage.getItem(STORAGE_KEY);
+        memories = saved ? JSON.parse(saved) : [];
       }
     } catch (e) {
-      memories = [];
+      const saved = localStorage.getItem(STORAGE_KEY);
+      memories = saved ? JSON.parse(saved) : [];
     }
     return memories;
   },
 
-  save() {
+  async save() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(memories));
+      await invokeTauri('save_genai_memories', { data: JSON.stringify(memories) });
     } catch (e) {
-      console.error('Failed to save GenAI memories:', e);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(memories));
+      } catch (err) {
+        console.error('Failed to save GenAI memories:', err);
+      }
     }
   },
 
   getAll() {
-    this.load();
     return memories;
   },
 
