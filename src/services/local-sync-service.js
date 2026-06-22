@@ -30,7 +30,7 @@ class LocalSyncService {
       persistedKey  = localStorage.getItem('llmchat_sync_host_key') || '';
     } catch { /* ignore */ }
 
-    if (persistedIp && persistedKey) {
+    if (persistedIp) {
       this.isClientMode = true;
       this.hostBaseUrl  = `http://${persistedIp}:${persistedPort}`;
       this.hostKey      = persistedKey;

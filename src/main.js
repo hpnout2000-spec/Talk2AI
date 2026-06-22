@@ -40,6 +40,10 @@ async function init() {
   // Listen for pushes from clients if we are acting as host
   if (window.__TAURI__ && window.__TAURI__.event) {
     window.__TAURI__.event.listen('host-data-updated', () => {
+      if (localSyncService.isClientMode) {
+        console.log('[Sync] Host data updated event ignored because we are in client mode.');
+        return;
+      }
       console.log('[Sync] Host data updated from client push. Firing local-sync-applied.');
       window.dispatchEvent(new CustomEvent('local-sync-applied'));
     });
