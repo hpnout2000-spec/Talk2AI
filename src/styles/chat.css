@@ -754,6 +754,15 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
   border-bottom: none;
 }
 
+.message-content hr,
+.genai-msg-bubble hr,
+.message-text hr {
+  border: 0;
+  height: 1px;
+  background-image: linear-gradient(to right, rgba(128, 128, 128, 0), rgba(128, 128, 128, 0.5), rgba(128, 128, 128, 0));
+  margin: 20px 0;
+}
+
 .message-content h1,
 .message-content h2,
 .message-content h3 {

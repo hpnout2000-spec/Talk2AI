@@ -78,7 +78,8 @@ To run a fast, private, and unlimited search engine on your local machine:
 
 ## Future Roadmap
 - **Book Authoring:** An automated agent system to write, review, and structure entire novels or books interactively.
+- **Advanced Animations:** I'll improve the streaming animations soon.
 
 ## System Requirements
-- **Model:** **Gemma 4 31B (RP fine-tune reccomended)** (Gemma 4 26B is not enough.)
+- **Model:** **Gemma 4 31B (RP fine-tune recommended)** (Gemma 4 26B is okay, but has troubles sometimes.)
 - **Performance:** Generation speed of at least **20 tokens per second**.

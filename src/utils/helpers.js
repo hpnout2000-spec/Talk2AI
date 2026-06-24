@@ -106,6 +106,9 @@ export function renderMarkdown(text) {
   // Headings (### ...)
   html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
 
+  // Horizontal rules (***)
+  html = html.replace(/^\s*(?:\*\s*){3,}$/gm, '<hr>');
+
   // Blockquotes (> ...)
   html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
 
@@ -260,7 +263,7 @@ export function renderMarkdown(text) {
   let inParagraph = false;
   let currentParagraph = [];
 
-  const blockTags = /^(?:<table|<thead|<tbody|<tr|<th|<td|<\/table|<\/thead|<\/tbody>|<\/tr>|<\/th>|<\/td>|<pre|<code|<\/pre>|<\/code>|<ul|<ol|<li|<\/ul>|<\/ol>|<\/li>|<blockquote>|<\/blockquote>|<h3>)/;
+  const blockTags = /^(?:<table|<thead|<tbody|<tr|<th|<td|<\/table|<\/thead>|<\/tbody>|<\/tr>|<\/th>|<\/td>|<pre|<code|<\/pre>|<\/code>|<ul|<ol|<li|<\/ul>|<\/ol>|<\/li>|<blockquote>|<\/blockquote>|<h3>|<hr)/;
 
   for (let i = 0; i < processedLines.length; i++) {
     const line = processedLines[i];

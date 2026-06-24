@@ -981,15 +981,21 @@ Do NOT attempt to run any of the corresponding JSON commands for these features,
   let dynamicContext = buildDynamicContext(activeChatMsgCount);
   let systemContent = staticBase + staticContext + '\n\n' + dynamicContext + activeSkillsBlock + disabledSkillsNotice;
 
-  // Count exact tokens in parallel for all components
-  const textsToCount = [systemContent, ...historyMsgs.map(m => m.content || '')];
-  const tokenCounts = await Promise.all(textsToCount.map(t => api.countTokens(t)));
+  const getExactPromptTokens = async (sysContent, histMsgs) => {
+    // Replicate finalMessages structure built in streamGenAI / buildApiMessages
+    const msgs = [{ role: 'system', content: sysContent }, ...histMsgs];
+    
+    // Add extra system prompt / assistant preamble if Extended Thinking is enabled
+    if (settings.extended_thinking && settings.reasoning_effort !== 'none') {
+      const p2 = 'You must now perform deep thinking. If you need to stop and think more (including if you need to gather more information or search the internet further) before finishing, output <thinkextended> instead of finishing. If you don\'t have enough information and web search is turned on, you can make another query or fetch sites. In that case, do not write the whole response; instead, make another short, informative status preamble/intro of 1-4 words in the EXACT same language that the user used in their last message, reflecting what exactly you are going to search for or find, and output the command you need. Use this only when it\'s really needed. Example:\n"Searching weather forecast...\n[Command for web search, fetching site or anything else what\'s needed]"\n\nAlso, pay close attention to any search queries performed in the previous message/turn: they were initiated by you (GenAI), not by the user, so you must not say "your search queries" when referring to them. Instead, refer to them as search queries that you performed.';
+      msgs.push({ role: 'system', content: p2 });
+      msgs.push({ role: 'assistant', content: 'Continuing...' }); // representative assistant preamble
+    }
+    return await api.countMessagesTokens(msgs);
+  };
 
-  let systemTokens = tokenCounts[0];
-  let historyTokens = tokenCounts.slice(1);
-  let totalTokens = systemTokens + historyTokens.reduce((sum, t) => sum + t, 0);
-
-  const targetLimit = tokenLimit - (settingsStore.get().genai_max_tokens || 2048); // reserve space for assistant output
+  let totalTokens = await getExactPromptTokens(systemContent, historyMsgs);
+  const targetLimit = tokenLimit - (settingsStore.get().genai_max_tokens || 2048) - 15; // Leave at least 15 tokens free as requested
 
   // Pruning Stage A: Progressively reduce dynamic character chat context FIRST
   if (totalTokens > targetLimit) {
@@ -999,10 +1005,7 @@ Do NOT attempt to run any of the corresponding JSON commands for these features,
       dynamicContext = buildDynamicContext(activeChatMsgCount);
       systemContent = staticBase + staticContext + '\n\n' + dynamicContext + activeSkillsBlock + disabledSkillsNotice;
       
-      // Get the exact new system prompt token count
-      systemTokens = await api.countTokens(systemContent);
-      totalTokens = systemTokens + historyTokens.reduce((sum, t) => sum + t, 0);
-      
+      totalTokens = await getExactPromptTokens(systemContent, historyMsgs);
       if (totalTokens <= targetLimit) {
         break;
       }
@@ -1013,8 +1016,7 @@ Do NOT attempt to run any of the corresponding JSON commands for these features,
   if (totalTokens > targetLimit) {
     while (totalTokens > targetLimit && historyMsgs.length > 2) {
       historyMsgs.shift();
-      historyTokens.shift();
-      totalTokens = systemTokens + historyTokens.reduce((sum, t) => sum + t, 0);
+      totalTokens = await getExactPromptTokens(systemContent, historyMsgs);
     }
   }
 

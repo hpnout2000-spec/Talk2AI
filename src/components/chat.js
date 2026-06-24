@@ -1793,27 +1793,65 @@ async function computeContextAndTrimHistory(character, session) {
     }));
   }
 
-  // Go backward to fit within budget
-  let historyTokens = 0;
-  const historyItems = [];
+  // Go backward to fit within budget (estimate first using local token counts)
+  let estimatedHistoryTokens = 0;
   const trimmedMessages = [];
+  const estimatedBudget = maxContext - maxTokensSetting - 15; // Leave at least 15 tokens free
 
   for (let i = messagesMeta.length - 1; i >= 0; i--) {
     const item = messagesMeta[i];
     const tokens = tokenCountCache.get(item.msgKey) || 0;
+    const tokensWithOverhead = tokens + 4; // Add message wrapper overhead (~4 tokens)
 
-    if (historyTokens + tokens <= historyBudget) {
-      historyTokens += tokens;
-      historyItems.unshift({
-        role: item.msg.role,
-        text: item.contentText,
-        tokens: tokens
-      });
+    if (basePromptTokens + estimatedHistoryTokens + tokensWithOverhead <= estimatedBudget) {
+      estimatedHistoryTokens += tokensWithOverhead;
       trimmedMessages.unshift(item.msg);
     } else {
       break;
     }
   }
+
+  // Construct the exact messages array template to count exact tokens on the server
+  const buildTestMessages = (trimmed) => {
+    const msgs = [];
+    const parts = [charText, systemContentPure, memoryText].filter(Boolean);
+    const systemPromptContent = parts.join('\n\n');
+    msgs.push({ role: 'system', content: systemPromptContent });
+    
+    if (summaryText) {
+      msgs.push({
+        role: 'system',
+        content: `[Auto Summary of previous conversation:\n${summaryText}]`
+      });
+    }
+    
+    for (const msg of trimmed) {
+      const contentText = msg.role === 'user' ? (msg.translated_content || msg.content) : (msg.original_text || msg.content);
+      msgs.push({ role: msg.role, content: contentText });
+    }
+    return msgs;
+  };
+
+  // Call the precise token counting endpoint on the constructed message list
+  let testMsgs = buildTestMessages(trimmedMessages);
+  let exactTokens = await api.countMessagesTokens(testMsgs);
+
+  // Prune further if the server token count exceeds the limit (leaving 15 tokens free)
+  while (exactTokens > maxContext - maxTokensSetting - 15 && trimmedMessages.length > 0) {
+    trimmedMessages.shift(); // Remove the oldest message
+    testMsgs = buildTestMessages(trimmedMessages);
+    exactTokens = await api.countMessagesTokens(testMsgs);
+  }
+
+  const historyItems = trimmedMessages.map(msg => {
+    const contentText = msg.role === 'user' ? (msg.translated_content || msg.content) : (msg.original_text || msg.content);
+    const tokens = tokenCountCache.get(`msg_${msg.id}_${contentText.length}`) || 0;
+    return {
+      role: msg.role,
+      text: contentText,
+      tokens: tokens
+    };
+  });
 
   return {
     maxContext,
@@ -1825,10 +1863,10 @@ async function computeContextAndTrimHistory(character, session) {
     memoryText,
     summaryTokens,
     summaryText,
-    historyTokens,
+    historyTokens: exactTokens - basePromptTokens,
     historyItems,
     trimmedMessages,
-    baseTokens: charTokens + systemTokens + memoryTokens + summaryTokens + historyTokens
+    baseTokens: exactTokens
   };
 }
 
@@ -4057,7 +4095,7 @@ export async function updateContextIndicator(debounce = false, forceRecalculate 
       const currentInputText = messageInput ? messageInput.value.trim() : '';
       let inputTokens = 0;
       if (currentInputText) {
-        inputTokens = Math.ceil(currentInputText.length / (/[а-яА-ЯёЁ]/.test(currentInputText) ? 3.0 : 3.7));
+        inputTokens = Math.ceil(currentInputText.length / (/[а-яА-ЯёЁ]/.test(currentInputText) ? 2.3 : 3.3));
       }
 
       const totalUsed = cached.baseTokens + inputTokens;
@@ -4103,7 +4141,7 @@ export async function updateContextIndicator(debounce = false, forceRecalculate 
   const currentInputText = messageInput ? messageInput.value.trim() : '';
   let inputTokens = 0;
   if (currentInputText) {
-    inputTokens = Math.ceil(currentInputText.length / (/[а-яА-ЯёЁ]/.test(currentInputText) ? 3.0 : 3.7));
+    inputTokens = Math.ceil(currentInputText.length / (/[а-яА-ЯёЁ]/.test(currentInputText) ? 2.3 : 3.3));
   }
 
   // Save base tokens in memory cache

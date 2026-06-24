@@ -800,9 +800,29 @@ Focus ONLY on what is known or can be directly inferred from the history. Keep t
       // Fail silently and use fallback
     }
 
-    // Fallback to modern token characters-per-token ratio (Llama 3, Gemma 2, Qwen 2)
-    // English: ~3.7 chars/token. Cyrillic: ~3.0 chars/token.
-    return Math.ceil(text.length / (/[а-яА-ЯёЁ]/.test(text) ? 3.0 : 3.7));
+    // Fallback to modern token characters-per-token ratio (Llama 3, Gemma 2, Qwen 2, Gemini)
+    // English: ~3.3 chars/token. Cyrillic: ~2.3 chars/token.
+    return Math.ceil(text.length / (/[а-яА-ЯёЁ]/.test(text) ? 2.3 : 3.3));
+  },
+
+  /**
+   * Count tokens for a messages array by formatting it into a single prompt string
+   * @param {Array} messages
+   * @returns {Promise<number>}
+   */
+  async countMessagesTokens(messages) {
+    if (!messages || messages.length === 0) return 0;
+    
+    // Format the messages array into a single ChatML-like string
+    let formattedText = '';
+    for (const msg of messages) {
+      const role = msg.role || 'user';
+      const content = msg.content || '';
+      formattedText += `<|im_start|>${role}\n${content}<|im_end|>\n`;
+    }
+    formattedText += `<|im_start|>assistant\n`;
+    
+    return await this.countTokens(formattedText);
   },
 
   /**
