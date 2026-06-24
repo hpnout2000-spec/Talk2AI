@@ -703,6 +703,57 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
   font-style: italic;
 }
 
+.message-content table,
+.genai-msg-bubble table,
+.message-text table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin: 16px 0;
+  border: 1px solid rgba(128, 128, 128, 0.35);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  font-size: var(--text-sm);
+  background: var(--bg-secondary);
+}
+
+.message-content th,
+.genai-msg-bubble th,
+.message-text th {
+  background: var(--bg-primary);
+  font-weight: 600;
+  color: var(--text-primary);
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.35);
+  border-right: 1px solid rgba(128, 128, 128, 0.35);
+  overflow-wrap: break-word;
+}
+
+.message-content td,
+.genai-msg-bubble td,
+.message-text td {
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.35);
+  border-right: 1px solid rgba(128, 128, 128, 0.35);
+  color: var(--text-secondary);
+  overflow-wrap: break-word;
+}
+
+.message-content th:last-child,
+.message-content td:last-child,
+.genai-msg-bubble th:last-child,
+.genai-msg-bubble td:last-child,
+.message-text th:last-child,
+.message-text td:last-child {
+  border-right: none;
+}
+
+.message-content tr:last-child td,
+.genai-msg-bubble tr:last-child td,
+.message-text tr:last-child td {
+  border-bottom: none;
+}
+
 .message-content h1,
 .message-content h2,
 .message-content h3 {

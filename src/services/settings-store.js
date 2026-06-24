@@ -96,7 +96,12 @@ const DEFAULTS = {
     }
   ],
   local_sync_saved_host_ip: '',
-  local_sync_saved_host_key: ''
+  local_sync_saved_host_key: '',
+  web_search_provider: 'ddg',
+  web_search_searxng_url: 'http://localhost:8080',
+  web_search_tavily_key: '',
+  web_search_clean_pages: false,
+  web_search_auto_approve: false
 };
 
 let settings = { ...DEFAULTS };

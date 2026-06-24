@@ -131,6 +131,40 @@ pub struct AppSettings {
     pub font_size: u32,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SearchSettings {
+    #[serde(default = "default_web_search_provider")]
+    pub web_search_provider: String,
+    #[serde(default = "default_web_search_searxng_url")]
+    pub web_search_searxng_url: String,
+    #[serde(default = "default_web_search_tavily_key")]
+    pub web_search_tavily_key: String,
+    #[serde(default)]
+    pub web_search_clean_pages: bool,
+    #[serde(default)]
+    pub web_search_auto_approve: bool,
+}
+
+fn default_web_search_provider() -> String { "ddg".to_string() }
+fn default_web_search_searxng_url() -> String { "http://localhost:8080".to_string() }
+fn default_web_search_tavily_key() -> String { "".to_string() }
+
+fn read_search_settings() -> SearchSettings {
+    let path = get_app_dir().join("settings.json");
+    if let Ok(content) = fs::read_to_string(&path) {
+        if let Ok(settings) = serde_json::from_str::<SearchSettings>(&content) {
+            return settings;
+        }
+    }
+    SearchSettings {
+        web_search_provider: "ddg".to_string(),
+        web_search_searxng_url: "http://localhost:8080".to_string(),
+        web_search_tavily_key: "".to_string(),
+        web_search_clean_pages: false,
+        web_search_auto_approve: false,
+    }
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         AppSettings {
@@ -1395,17 +1429,15 @@ fn ensure_default_skills() {
 
     // Skill 3: Internet Browser
     let internet_path = dir.join("Internet Browser.json");
-    if !internet_path.exists() {
-        let content = r#"{
+    let content = r#"{
   "name": "Internet Browser",
   "capabilities": [
-    "Web Search: Can search the web for real-time information, weather, news, facts, and website details using 'web_search' command.",
+    "Web Search: Can search the web for real-time information, weather, news, facts, and website details using 'web_search' command. Supports advanced search operators such as 'site:example.com query' to search within specific domains.",
     "Web Page Reader: Can read and fetch the text content of a specific webpage or URL using 'web_fetch' command."
   ],
-  "instructions": "Whenever the user asks about current events, facts you don't know, or requests web data, use the following tools on a new line and nothing else: \n1. {\"genai_action\":\"web_search\",\"query\":\"your search query\"}\n2. {\"genai_action\":\"web_fetch\",\"url\":\"https://...\"}"
+  "instructions": "Whenever the user asks about current events, facts you don't know, or requests web data, use the following tools on a new line and nothing else: \n1. {\"genai_action\":\"web_search\",\"query\":\"your search query\"}\n2. {\"genai_action\":\"web_fetch\",\"url\":\"https://...\"}\n\nTip: You can search within specific websites by using the 'site:domain.com query' syntax in your web_search query (e.g. {\"genai_action\":\"web_search\",\"query\":\"site:en.wikipedia.org quantum physics\"})."
 }"#;
-        fs::write(&internet_path, content).ok();
-    }
+    fs::write(&internet_path, content).ok();
 
     // Skill 4: App Settings
     let app_settings_path = dir.join("App Settings.json");
@@ -1939,31 +1971,254 @@ fn parse_ddg_html(html: &str) -> String {
     }
 }
 
+const SEARXNG_ROTATION_POOL: &[&str] = &[
+    "https://searx.be",
+    "https://searxng.site",
+    "https://searx.work",
+    "https://search.disroot.org",
+    "https://priv.au",
+    "https://searx.name",
+    "https://search.noc.im",
+    "https://baresearch.org",
+    "https://search.river.ooo",
+    "https://searx.dresden.network",
+    "https://search.bus-hit.me",
+    "https://searx.si",
+];
+
+fn strip_layout_blocks_from_html(html: &str) -> String {
+    let mut cleaned = String::new();
+    let mut pos = 0;
+    
+    // We want to skip content inside: script, style, nav, footer, header, aside, form, iframe, svg
+    let skip_tags = ["script", "style", "nav", "footer", "header", "aside", "form", "iframe", "svg"];
+    
+    while pos < html.len() {
+        if let Some(start_tag_idx) = html[pos..].find('<') {
+            let abs_start = pos + start_tag_idx;
+            cleaned.push_str(&html[pos..abs_start]);
+            
+            // Find tag end
+            if let Some(tag_end_idx) = html[abs_start..].find('>') {
+                let abs_tag_end = abs_start + tag_end_idx;
+                let tag_content = html[abs_start + 1..abs_tag_end].trim();
+                let tag_name = tag_content.split_whitespace().next().unwrap_or("").to_lowercase();
+                
+                let is_skip_tag = skip_tags.iter().any(|&t| tag_name == t || tag_name.starts_with(&(t.to_owned() + " ")));
+                
+                if is_skip_tag && !tag_name.starts_with('/') {
+                    // Find closing tag
+                    let close_tag = format!("</{}", tag_name);
+                    if let Some(close_idx) = html[abs_tag_end..].to_lowercase().find(&close_tag) {
+                        let abs_close = abs_tag_end + close_idx;
+                        // Find the closing tag end '>'
+                        if let Some(close_end_idx) = html[abs_close..].find('>') {
+                            pos = abs_close + close_end_idx + 1;
+                            continue;
+                        }
+                    }
+                }
+                
+                // Normal tag (or closing tag, or tag we don't skip), we just consume the tag itself
+                cleaned.push('<');
+                cleaned.push_str(&html[abs_start + 1..abs_tag_end + 1]);
+                pos = abs_tag_end + 1;
+            } else {
+                // No closing tag bracket, append rest and break
+                cleaned.push_str(&html[abs_start..]);
+                break;
+            }
+        } else {
+            cleaned.push_str(&html[pos..]);
+            break;
+        }
+    }
+    cleaned
+}
+
+async fn search_searxng(client: &reqwest::Client, base_url: &str, query: &str) -> Result<String, String> {
+    let mut url = base_url.trim_end_matches('/').to_string();
+    url.push_str("/search");
+
+    let resp = client.get(&url)
+        .query(&[("q", query), ("format", "json")])
+        .send()
+        .await
+        .map_err(|e| format!("SearXNG request failed: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("SearXNG HTTP Error {}", resp.status()));
+    }
+
+    let json: serde_json::Value = resp.json()
+        .await
+        .map_err(|e| format!("Failed to parse SearXNG JSON: {}", e))?;
+
+    let results_array = json["results"]
+        .as_array()
+        .ok_or_else(|| "No results array in SearXNG JSON".to_string())?;
+
+    let mut results = Vec::new();
+    for item in results_array.iter().take(5) {
+        let title = item["title"].as_str().unwrap_or("Untitled");
+        let url_str = item["url"].as_str().unwrap_or("");
+        let content = item["content"].as_str().unwrap_or("");
+
+        if url_str.is_empty() {
+            continue;
+        }
+        results.push(format!("### [{}]({})\n{}\n", title, url_str, content));
+    }
+
+    if results.is_empty() {
+        Ok("No results found.".to_string())
+    } else {
+        Ok(results.join("\n"))
+    }
+}
+
+async fn search_searxng_rotation(client: &reqwest::Client, query: &str) -> Result<String, String> {
+    use rand::seq::SliceRandom;
+    
+    let mut pool = SEARXNG_ROTATION_POOL.to_vec();
+    {
+        let mut rng = rand::thread_rng();
+        pool.shuffle(&mut rng);
+    }
+
+    let max_attempts = 4;
+    let mut last_err = String::new();
+    
+    for (i, instance) in pool.iter().take(max_attempts).enumerate() {
+        println!("SearXNG rotation attempt {}: trying {}", i + 1, instance);
+        match search_searxng(client, instance, query).await {
+            Ok(res) => {
+                if res != "No results found." {
+                    return Ok(res);
+                } else {
+                    last_err = "No results found.".to_string();
+                }
+            }
+            Err(e) => {
+                last_err = e;
+            }
+        }
+    }
+    
+    Err(format!("All rotation attempts failed. Last error: {}", last_err))
+}
+
+async fn search_tavily(client: &reqwest::Client, api_key: &str, query: &str) -> Result<String, String> {
+    if api_key.trim().is_empty() {
+        return Err("Tavily API key is empty. Please set it in Web Search Settings.".to_string());
+    }
+
+    let url = "https://api.tavily.com/search";
+    
+    let body = serde_json::json!({
+        "api_key": api_key,
+        "query": query,
+        "search_depth": "basic",
+        "include_answer": false,
+        "max_results": 5
+    });
+
+    let resp = client.post(url)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Request to Tavily failed: {}", e))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("Tavily HTTP Error {}", resp.status()));
+    }
+
+    let json: serde_json::Value = resp.json()
+        .await
+        .map_err(|e| format!("Failed to parse Tavily JSON: {}", e))?;
+
+    let results_array = json["results"]
+        .as_array()
+        .ok_or_else(|| "No results array in Tavily response".to_string())?;
+
+    let mut results = Vec::new();
+    for item in results_array.iter().take(5) {
+        let title = item["title"].as_str().unwrap_or("Untitled");
+        let url_str = item["url"].as_str().unwrap_or("");
+        let content = item["content"].as_str().unwrap_or("");
+
+        if url_str.is_empty() {
+            continue;
+        }
+        results.push(format!("### [{}]({})\n{}\n", title, url_str, content));
+    }
+
+    if results.is_empty() {
+        Ok("No results found.".to_string())
+    } else {
+        Ok(results.join("\n"))
+    }
+}
+
+async fn search_ddg(client: &reqwest::Client, query: &str) -> Result<String, String> {
+    let resp = client.get("https://html.duckduckgo.com/html/")
+        .query(&[("q", query)])
+        .send()
+        .await
+        .map_err(|e| format!("DDG search failed to connect: {}", e))?;
+
+    let html = resp.text()
+        .await
+        .map_err(|e| format!("Failed to read DDG response body: {}", e))?;
+
+    Ok(parse_ddg_html(&html))
+}
+
 #[tauri::command]
 async fn web_search(query: String) -> Result<String, String> {
-    use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
+    let settings = read_search_settings();
     
-    let client = reqwest::Client::new();
-    let url = "https://html.duckduckgo.com/html/";
-    
+    use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT, ACCEPT, ACCEPT_LANGUAGE};
     let mut headers = HeaderMap::new();
     headers.insert(
         USER_AGENT,
         HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"),
     );
+    headers.insert(
+        ACCEPT,
+        HeaderValue::from_static("application/json, text/html, application/xhtml+xml, */*"),
+    );
+    headers.insert(
+        ACCEPT_LANGUAGE,
+        HeaderValue::from_static("en-US,en;q=0.9,ru;q=0.8"),
+    );
 
-    let resp = client.get(url)
-        .headers(headers)
-        .query(&[("q", &query)])
-        .send()
-        .await
-        .map_err(|e| format!("Web search failed to connect: {}", e))?;
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .default_headers(headers)
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
 
-    let html = resp.text()
-        .await
-        .map_err(|e| format!("Failed to read search response body: {}", e))?;
-
-    Ok(parse_ddg_html(&html))
+    match settings.web_search_provider.as_str() {
+        "searxng_rotation" => {
+            match search_searxng_rotation(&client, &query).await {
+                Ok(res) => Ok(res),
+                Err(e) => {
+                    println!("SearXNG rotation failed: {}. Falling back to DuckDuckGo.", e);
+                    search_ddg(&client, &query).await
+                }
+            }
+        }
+        "searxng_custom" => {
+            search_searxng(&client, &settings.web_search_searxng_url, &query).await
+        }
+        "tavily" => {
+            search_tavily(&client, &settings.web_search_tavily_key, &query).await
+        }
+        _ => {
+            search_ddg(&client, &query).await
+        }
+    }
 }
 
 #[tauri::command]
@@ -2030,7 +2285,13 @@ async fn web_fetch(url: String) -> Result<String, String> {
         .await
         .map_err(|e| format!("Failed to read page content: {}", e))?;
 
-    let text = strip_html_tags(&html);
+    let cleaned_html = if read_search_settings().web_search_clean_pages {
+        strip_layout_blocks_from_html(&html)
+    } else {
+        html
+    };
+
+    let text = strip_html_tags(&cleaned_html);
     
     let char_count = text.chars().count();
     if char_count > 4000 {

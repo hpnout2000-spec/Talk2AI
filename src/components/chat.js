@@ -2531,7 +2531,7 @@ async function triggerAssistantGeneration() {
           translatedContent = await performStreamingTranslation(contentEl, originalContent, settings.target_language);
         }
 
-        chatStore.updateLastAssistantMessage(originalContent, parsed.thinking, session, translatedContent);
+        chatStore.updateLastAssistantMessage(originalContent, parsedThinking2, session, translatedContent);
         await chatStore.saveSession(session);
 
         appState.isGenerating = false;

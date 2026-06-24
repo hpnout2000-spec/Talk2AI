@@ -95,15 +95,155 @@ export function renderMarkdown(text) {
     return `<pre><code class="language-${lang}">${code.trim()}</code></pre>`;
   });
 
+  // Extract code blocks (pre-formatted HTML) to protect them from parsing
+  const codeBlocks = [];
+  html = html.replace(/<pre>[\s\S]*?<\/pre>/g, (match) => {
+    const placeholder = `__CODE_BLOCK_PLACEHOLDER_${codeBlocks.length}__`;
+    codeBlocks.push(match);
+    return placeholder;
+  });
+
   // Headings (### ...)
   html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
 
   // Blockquotes (> ...)
   html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
 
-  // Unordered lists (- ... or * ...)
-  html = html.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
-  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+  // Table parser
+  const lines = html.split('\n');
+  const resultLines = [];
+  let inTable = false;
+  let alignments = [];
+
+  const tableRowRegex = /^\|(.+)\|$/;
+  const tableDelimiterRegex = /^\|\s*(?:\s*:?-+:?\s*\|)+\s*$/;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    
+    if (!inTable) {
+      const nextLine = lines[i + 1] ? lines[i + 1].trim() : '';
+      if (tableRowRegex.test(line) && tableDelimiterRegex.test(nextLine)) {
+        inTable = true;
+        const delims = nextLine.split('|').map(s => s.trim()).filter((s, idx, arr) => idx > 0 && idx < arr.length - 1);
+        alignments = delims.map(d => {
+          if (d.startsWith(':') && d.endsWith(':')) return 'center';
+          if (d.endsWith(':')) return 'right';
+          return 'left';
+        });
+
+        const headers = line.split('|').map(s => s.trim()).filter((s, idx, arr) => idx > 0 && idx < arr.length - 1);
+        let headerHtml = '<table><thead><tr>';
+        for (let colIdx = 0; colIdx < headers.length; colIdx++) {
+          const align = alignments[colIdx] || 'left';
+          headerHtml += `<th style="text-align:${align}">${headers[colIdx]}</th>`;
+        }
+        headerHtml += '</tr></thead><tbody>';
+        resultLines.push(headerHtml);
+        i++;
+      } else {
+        resultLines.push(lines[i]);
+      }
+    } else {
+      if (tableRowRegex.test(line)) {
+        const cells = line.split('|').map(s => s.trim()).filter((s, idx, arr) => idx > 0 && idx < arr.length - 1);
+        let rowHtml = '<tr>';
+        for (let colIdx = 0; colIdx < cells.length; colIdx++) {
+          const align = alignments[colIdx] || 'left';
+          rowHtml += `<td style="text-align:${align}">${cells[colIdx]}</td>`;
+        }
+        rowHtml += '</tr>';
+        resultLines.push(rowHtml);
+      } else {
+        inTable = false;
+        resultLines.push('</tbody></table>');
+        resultLines.push(lines[i]);
+      }
+    }
+  }
+
+  if (inTable) {
+    resultLines.push('</tbody></table>');
+  }
+
+  html = resultLines.join('\n');
+
+  // Multi-level list parser (unordered and ordered lists)
+  const listLines = html.split('\n');
+  const resultListLines = [];
+  const listStack = []; // stores { indent: number, type: 'ul' | 'ol' }
+  const listItemRegex = /^(\s*)([-*+]|(?:\d+\.))\s+(.*)$/;
+
+  for (let i = 0; i < listLines.length; i++) {
+    const line = listLines[i];
+    const match = line.match(listItemRegex);
+    
+    if (match) {
+      const indentStr = match[1];
+      const marker = match[2];
+      const content = match[3];
+      
+      // Calculate indent level (count spaces, treat tab as 4 spaces)
+      let indent = 0;
+      for (let char of indentStr) {
+        if (char === '\t') indent += 4;
+        else if (char === ' ') indent += 1;
+      }
+      
+      const type = (marker === '-' || marker === '*' || marker === '+') ? 'ul' : 'ol';
+      
+      if (listStack.length === 0) {
+        listStack.push({ indent, type });
+        resultListLines.push(`<${type}><li>${content}`);
+      } else {
+        let top = listStack[listStack.length - 1];
+        if (indent > top.indent) {
+          listStack.push({ indent, type });
+          resultListLines.push(`<${type}><li>${content}`);
+        } else if (indent < top.indent) {
+          while (listStack.length > 0 && listStack[listStack.length - 1].indent > indent) {
+            const closed = listStack.pop();
+            resultListLines.push(`</li></${closed.type}>`);
+          }
+          
+          if (listStack.length === 0) {
+            listStack.push({ indent, type });
+            resultListLines.push(`<${type}><li>${content}`);
+          } else {
+            top = listStack[listStack.length - 1];
+            if (top.type !== type) {
+              listStack.pop();
+              resultListLines.push(`</li></${top.type}><${type}><li>${content}`);
+              listStack.push({ indent, type });
+            } else {
+              resultListLines.push(`</li><li>${content}`);
+            }
+          }
+        } else {
+          if (top.type !== type) {
+            listStack.pop();
+            resultListLines.push(`</li></${top.type}><${type}><li>${content}`);
+            listStack.push({ indent, type });
+          } else {
+            resultListLines.push(`</li><li>${content}`);
+          }
+        }
+      }
+    } else {
+      while (listStack.length > 0) {
+        const closed = listStack.pop();
+        resultListLines.push(`</li></${closed.type}>`);
+      }
+      resultListLines.push(line);
+    }
+  }
+  
+  while (listStack.length > 0) {
+    const closed = listStack.pop();
+    resultListLines.push(`</li></${closed.type}>`);
+  }
+  
+  html = resultListLines.join('\n');
 
   // Inline code (`...`)
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
@@ -114,15 +254,52 @@ export function renderMarkdown(text) {
   // Italic (*...*)
   html = html.replace(/\*(.+?)\*/g, '<span class="text-asterisks">$1</span>');
 
-  // Paragraphs (double newline)
-  html = html.replace(/\n\n/g, '</p><p>');
+  // Group lines into paragraphs and block elements
+  const processedLines = html.split('\n');
+  const finalBlocks = [];
+  let inParagraph = false;
+  let currentParagraph = [];
 
-  // Single newlines to <br>
-  html = html.replace(/\n/g, '<br>');
+  const blockTags = /^(?:<table|<thead|<tbody|<tr|<th|<td|<\/table|<\/thead|<\/tbody>|<\/tr>|<\/th>|<\/td>|<pre|<code|<\/pre>|<\/code>|<ul|<ol|<li|<\/ul>|<\/ol>|<\/li>|<blockquote>|<\/blockquote>|<h3>)/;
 
-  // Wrap in paragraph if not already wrapped
-  if (!html.startsWith('<')) {
-    html = `<p>${html}</p>`;
+  for (let i = 0; i < processedLines.length; i++) {
+    const line = processedLines[i];
+    const trimmed = line.trim();
+
+    if (trimmed === '') {
+      if (inParagraph) {
+        finalBlocks.push(`<p>${currentParagraph.join('<br>')}</p>`);
+        currentParagraph = [];
+        inParagraph = false;
+      }
+    } else if (blockTags.test(trimmed) || trimmed.startsWith('__CODE_BLOCK_PLACEHOLDER_')) {
+      if (inParagraph) {
+        finalBlocks.push(`<p>${currentParagraph.join('<br>')}</p>`);
+        currentParagraph = [];
+        inParagraph = false;
+      }
+      finalBlocks.push(line);
+    } else {
+      if (!inParagraph) {
+        inParagraph = true;
+      }
+      currentParagraph.push(line);
+    }
+  }
+
+  if (inParagraph) {
+    finalBlocks.push(`<p>${currentParagraph.join('<br>')}</p>`);
+  }
+
+  html = finalBlocks.join('\n');
+
+  // Clean up all newlines inside and around list/table tags to keep them compact
+  html = html.replace(/(<\/?(?:ul|ol|li|table|thead|tbody|tr|th|td)>)\n+/g, '$1');
+  html = html.replace(/\n+(<\/?(?:ul|ol|li|table|thead|tbody|tr|th|td)>)/g, '$1');
+
+  // Restore code blocks
+  for (let i = 0; i < codeBlocks.length; i++) {
+    html = html.split(`__CODE_BLOCK_PLACEHOLDER_${i}__`).join(codeBlocks[i]);
   }
 
   return html;

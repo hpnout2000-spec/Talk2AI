@@ -2250,10 +2250,93 @@
                 </svg>
                 <span>Manage Skills</span>
               </button>
+              <button id="btn-open-web-search-settings" type="button" class="btn-secondary btn-full" style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px; color: var(--text-accent);">
+                  <circle cx="11" cy="11" r="8"></circle>
+                  <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                </svg>
+                <span>Web Search Settings</span>
+              </button>
             </div>
           </div>
           <div class="modal-footer">
             <button class="btn-primary btn-full btn-save-settings">Save Changes</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Web Search Settings Modal -->
+      <div id="modal-web-search-settings" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content" style="max-width: 440px; width: 90vw;">
+          <div class="modal-header">
+            <h2 style="display: flex; align-items: center; gap: 12px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 22px; height: 22px; color: var(--text-accent);">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              Web Search Settings
+            </h2>
+            <button class="btn-icon btn-close-submodal" id="btn-close-web-search-settings" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+          <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px; max-height: 60vh; overflow-y: auto;">
+            
+            <div class="form-group">
+              <label for="setting-web-search-provider">Search Provider</label>
+              <div class="vibe-dropdown" id="dropdown-web-search-provider">
+                <div class="vibe-dropdown-trigger" data-value="ddg">DuckDuckGo (Built-in)</div>
+                <div class="vibe-dropdown-menu">
+                  <div class="vibe-dropdown-item" data-value="ddg">DuckDuckGo (Built-in)</div>
+                  <div class="vibe-dropdown-item" data-value="searxng_rotation">SearXNG (Auto-rotation)</div>
+                  <div class="vibe-dropdown-item" data-value="searxng_custom">SearXNG (Custom URL)</div>
+                  <div class="vibe-dropdown-item" data-value="tavily">Tavily API</div>
+                </div>
+                <select id="setting-web-search-provider" class="hidden">
+                  <option value="ddg">DuckDuckGo (Built-in)</option>
+                  <option value="searxng_rotation">SearXNG (Auto-rotation)</option>
+                  <option value="searxng_custom">SearXNG (Custom URL)</option>
+                  <option value="tavily">Tavily API</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Custom SearXNG URL -->
+            <div class="form-group hidden" id="group-web-search-searxng-url">
+              <label for="setting-web-search-searxng-url">Custom SearXNG URL</label>
+              <input type="text" id="setting-web-search-searxng-url" placeholder="http://localhost:8080" style="width: 100%; padding: 8px 12px; background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: var(--radius-md); color: var(--text-primary); font-size: var(--text-sm);" />
+            </div>
+
+            <!-- Tavily API Key -->
+            <div class="form-group hidden" id="group-web-search-tavily-key">
+              <label for="setting-web-search-tavily-key">Tavily API Key</label>
+              <input type="password" id="setting-web-search-tavily-key" placeholder="tvly-..." style="width: 100%; padding: 8px 12px; background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: var(--radius-md); color: var(--text-primary); font-size: var(--text-sm);" />
+            </div>
+
+            <!-- Toggle switches -->
+            <div class="form-group-row">
+              <div style="display: flex; flex-direction: column; gap: 4px;">
+                <label>Clean Web Pages</label>
+                <span style="font-size: var(--text-xs); color: var(--text-tertiary);">Removes layout boilerplate (menus, footers, scripts) to save tokens.</span>
+              </div>
+              <label class="toggle-switch small">
+                <input type="checkbox" id="setting-web-search-clean-pages" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <div class="form-group-row">
+              <div style="display: flex; flex-direction: column; gap: 4px;">
+                <label>Auto-approve Web Requests</label>
+                <span style="font-size: var(--text-xs); color: var(--text-tertiary);">Executes searches and page fetches automatically without asking.</span>
+              </div>
+              <label class="toggle-switch small">
+                <input type="checkbox" id="setting-web-search-auto-approve" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
           </div>
         </div>
       </div>

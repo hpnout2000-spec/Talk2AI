@@ -61,9 +61,18 @@ creatorTabsList.forEach(tab => { creatorState[tab] = { facts: [], text: '' }; })
 let messagesEl, inputEl, sendBtn, stopBtn, clearBtn, closeBtn, fullscreenBtn, brushBtn;
 
 // ─── System Prompt ──────────────────────────────────────────────────
-const BASE_SYSTEM_PROMPT = `You are GenAI — a highly advanced, warm, proactive, and adaptive virtual friend built into VibeChatting.
+const BASE_SYSTEM_PROMPT = `You are GenAI — an advanced, direct, and adaptive assistant built into VibeChatting.
 You are an adaptive assistant and must seamlessly adapt to the user's behavior, preferences, and conversational style.
-You have deep, direct access to all application data, settings, and features via custom tools. Your tone is helpful and warm. Use the "👉" emoji ONLY for bullet lists — never use this emoji in regular paragraphs.
+You have deep, direct access to all application data, settings, and features via custom tools. Use the "👉" emoji ONLY for bullet lists — never use this emoji in regular paragraphs.
+
+PERSONALITY & TONE:
+- You have a distinct personality: direct, slightly dry, occasionally sarcastic — but never cold.
+- Do NOT open responses with validation like "Great question!", "Sure!", "Of course!" — just answer.
+- Match the user's energy. Casual message = casual reply. Don't be stiff when it's not needed.
+- You can have opinions. If something is funny, note it. If a request is a bit dumb, you can gently roast it.
+- Light self-awareness about being an AI is fine — but don't dwell on it or make it your whole personality.
+- Humor should feel natural, not forced. One dry remark > three exclamation marks.
+- Don't over-explain. Say what needs to be said, stop there. However, dynamically read the user's mood and intent: if the user wants to dive deeper, ask follow-up questions, or shows interest in exploring a topic, you MUST provide a longer, more detailed response with engaging, interesting information, facts, or hooks to keep the user engaged.
 
 You also have direct access to the user's active screen and chat context (such as the currently open individual character chat, group chat, or game) which is appended at the very end of your system prompt under the "[APP CONTEXT]" block. Pay close attention to the character details, recent dialogue history, and settings in this context to help the user compose replies, orchestrate plots, summarize events, and manage their conversation history.
 
@@ -84,9 +93,9 @@ STEP-BY-STEP SEARCH WORKFLOW FOR CHARACTER/CHAT ACTIONS:
 4. Switch/Execute: Once you have the real retrieved ID from the tool result, execute the final action (like switch_chat, delete_memory, rename_chat, etc.).
 
 SPEECH & FORMAT RULES:
-1. 1-2 WORD PREEMPTIVE HEADS-UP: Before you send a JSON action, you may notify the user, but keep it extremely brief (strictly 1-2 words maximum).
-   * Good: "Searching..." or "Switching..."
-   * Bad: "Sure thing! Switching to chat with Lelyo... " (Never pre-claim success!)
+1. 1-4 WORD PREEMPTIVE HEADS-UP: Before you send a JSON action, you may notify the user. This status preamble MUST be extremely brief (strictly 1-4 words maximum), written in the EXACT same language as the user's latest query, and must be informative, reflecting what exactly you are going to search for or do.
+   * Good: "Searching weather in Moscow..." or "Ищу погоду в Москве..."
+   * Bad: "Sure thing! Switching to chat with Lelyo... " (Never pre-claim success, keep it to 1-4 words!)
 2. JSON ACTION FORMAT: Emitting a JSON action is your way of calling functions. Emitted JSON must be on its own line. STOP generating immediately after outputting a JSON block — do not write any text after the JSON object.
 3. Since you're an adaptive AI, embrace the character, if you think user wants you to, actions and descriptions in your given RP persona should be in asterisks. Do not forget that you're a GenAI - write 1-2 sentences before your RP persona output and 1-2 sentences after, making a subtle playful conclusion and follow-up for easy guiding to continue.
 4. Do NOT write or mention about ID to user.
@@ -101,7 +110,13 @@ SPEECH & FORMAT RULES:
    }
    \`\`\`
    CRITICAL CONCEPT: The "message" field is what the USER will say/send when they click the button. It must ALWAYS be written in the FIRST PERSON (from the user's perspective, e.g. "Yes, please...", "I want to...").
-   * USE SPARINGLY & ONLY WHEN TRULY NEEDED: Do NOT include interactive suggestion buttons in every single response. Only use them when they are strictly necessary and there is a specific, meaningful choice or action the user can perform next (e.g. suggesting options for roleplay continuations, settings changes, starting a game, or image variations). Otherwise, it is MUCH better to simply ask a natural follow-up question based on the context. Avoid using suggestion buttons for simple conversations, standard answers, or greeting responses.
+   * DEFAULT: No suggestion buttons. Do not add them.
+   * Only generate buttons if ALL of the following are true simultaneously:
+     1. The user faces a concrete binary/multiple choice (not just "what next?")
+     2. The choices are specific enough to write a realistic user message for each
+     3. A natural follow-up question would NOT serve the same purpose
+   * If you are unsure whether buttons are needed — they are not. Skip them.
+   * Never add buttons to: greetings, simple answers, explanations, confirmations, or any response where you could just ask a question instead.
    * Limit the number of suggestion buttons to 1-3. Do not clutter the chat.
    * Keep them highly CONCRETE and CONTEXTUAL, not abstract! Avoid generic, abstract actions like "Create character" that send static templates. Instead, make them natural, realistic dialogue continuations customized to your current text.
    * NEVER write a prompt, instruction, or question from the AI (like "Explain more?" or "How does it work?") in the "message" field! That is incorrect because when clicked, the user would be sending your own question back to you.
@@ -657,14 +672,21 @@ function buildDynamicContext(maxMessages = 15) {
   return '[APP CONTEXT - DYNAMIC SESSION DATA]\n' + parts.join('\n');
 }
 
-async function buildApiMessages(extraUserInstruction = null) {
+function stripSuggestions(text) {
+  if (!text) return '';
+  // Match any ```json ... ``` blocks containing "label" and "message"
+  const jsonBlockRegex = /```json\s*\{\s*["']label["']\s*:[\s\S]*?\}\s*```/gi;
+  return text.replace(jsonBlockRegex, '').trim();
+}
+
+async function buildApiMessages(extraUserInstruction = null, skipSmartContextOverride = false) {
   const settings = settingsStore.get();
   const tokenLimit = Math.max(settings.prompt_token_limit || 4096, 2048);
 
   // Inject GenAI specific style/length instructions
   let stylePrompt = '';
   if (settings.genai_response_length === 'short') {
-    stylePrompt += '\nIMPORTANT: Keep your response extremely brief and concise. Limit yourself to 1-2 short sentences maximum. No fluff. Be concise.';
+    stylePrompt += '\nIMPORTANT: Keep your response extremely brief and concise. Limit yourself to 1-2 short sentences maximum. No fluff. Be concise. However, if you detect that the user wants to dive deeper, explore a topic, or needs elaboration, make your response longer and provide engaging and interesting details to hook the user.';
   } else if (settings.genai_response_length === 'long') {
     stylePrompt += '\nIMPORTANT: Provide a detailed, long response with multiple paragraphs if necessary. Elaborate on everything and be as verbose as possible. Do NOT be concise.';
   }
@@ -905,7 +927,10 @@ ${skill.content}
       historyMsgs.push({ role: 'user', content: `[TOOL RESULT]\n${e.content}` });
       continue;
     }
-    const cleanContent = (e.content || '').replace(/\[\[GENAI_TOOL_\d+\]\]/g, '').trim();
+    let cleanContent = (e.content || '').replace(/\[\[GENAI_TOOL_\d+\]\]/g, '').trim();
+    if (e.role === 'assistant') {
+      cleanContent = stripSuggestions(cleanContent);
+    }
     historyMsgs.push({ role: e.role, content: cleanContent });
 
     // Inject executed tool results back into history so the AI has context of successful runs!
@@ -1021,7 +1046,7 @@ To call a tool/command, you MUST output the JSON block on its own line in your r
 Always output the JSON action block on its own line. Stop generating immediately after outputting the JSON block. Do not write text promising to call a tool without actually outputting it.`;
 
   // Inject Smart Context summaries of other chats
-  if (settings.genai_smart_context) {
+  if (settings.genai_smart_context && !skipSmartContextOverride) {
     const otherSessions = (genaiSessions || []).filter(s => s.id !== currentGenaiSessionId && s.summary && s.summary.trim().length > 0);
     if (otherSessions.length > 0) {
       // Sort other sessions by updated_at desc (most recent first)
@@ -1889,12 +1914,49 @@ async function executeTool(action, onStatus = null, onPreview = null, onComplete
   if (name === 'web_search') {
     const { query } = action;
     if (!query) return { error: 'Search query is empty.' };
+    
+    let results = '';
+    let isError = false;
+    let errorDetail = '';
+
+    // First attempt
     try {
-      const results = await invokeTauri('web_search', { query });
-      return { success: true, query, results };
+      results = await invokeTauri('web_search', { query });
+      if (!results || results.trim() === 'No results found.') {
+        isError = true;
+        errorDetail = results || 'No results found.';
+      }
     } catch (err) {
-      console.error('Tauri web search failed:', err);
-      return { error: err.message || err };
+      isError = true;
+      errorDetail = err.message || String(err);
+      console.warn('First web search attempt failed:', err);
+    }
+
+    // If first attempt failed, retry once
+    if (isError) {
+      console.log(`Web search failed ("${errorDetail}"). Retrying in 1 second...`);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      try {
+        results = await invokeTauri('web_search', { query });
+        if (!results || results.trim() === 'No results found.') {
+          isError = true;
+          errorDetail = results || 'No results found.';
+        } else {
+          isError = false;
+        }
+      } catch (err) {
+        isError = true;
+        errorDetail = err.message || String(err);
+        console.error('Second web search attempt failed:', err);
+      }
+    }
+
+    if (!isError) {
+      return { success: true, query, results };
+    } else {
+      const displayError = `Web search failed: ${errorDetail}`;
+      showToast(displayError, 'error');
+      return { error: displayError };
     }
   }
 
@@ -2223,6 +2285,28 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
     }
   });
 
+  // Remove consecutive web tool markers and any whitespace between them to prevent empty paragraphs
+  if (entry.tools && entry.tools.length > 0) {
+    const webToolIndices = entry.tools
+      .map((t, idx) => ({ t, idx }))
+      .filter(({ t }) => t.action && (t.action.genai_action === 'web_search' || t.action.genai_action === 'web_fetch'))
+      .map(({ idx }) => idx);
+
+    if (webToolIndices.length > 1) {
+      const firstWebIdx = webToolIndices[0];
+      const otherWebIndices = webToolIndices.slice(1);
+
+      otherWebIndices.forEach(otherIdx => {
+        const regex = new RegExp(`\\s*\\[\\[GENAI_TOOL_${otherIdx}\\]\\]\\s*`, 'g');
+        processedText = processedText.replace(regex, '\n');
+      });
+
+      const firstMarker = `[[GENAI_TOOL_${firstWebIdx}]]`;
+      const regexPost = new RegExp(`(\\[\\[GENAI_TOOL_${firstWebIdx}\\]\\])\\s*\\n\\s*`, 'g');
+      processedText = processedText.replace(regexPost, '$1\n');
+    }
+  }
+
   let html = '';
   const splitIdx = processedText.indexOf('[[THINKING_BLOCK]]');
   if (splitIdx !== -1) {
@@ -2273,38 +2357,54 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
       const marker = `[[GENAI_TOOL_${idx}]]`;
       let badgeHtml = '';
 
-      if (tool.state === 'awaiting_approval') {
-        const isWebTool = tool.action.genai_action === 'web_search' || tool.action.genai_action === 'web_fetch';
-        if (isWebTool) {
-          const pendingWebTools = entry.tools.filter(t => 
-            (t.action.genai_action === 'web_search' || t.action.genai_action === 'web_fetch') &&
-            t.state === 'awaiting_approval'
-          );
-          const firstPendingWebTool = pendingWebTools[0];
-          if (tool === firstPendingWebTool) {
-            const count = pendingWebTools.length;
+      const isWebTool = tool.action && (tool.action.genai_action === 'web_search' || tool.action.genai_action === 'web_fetch');
+
+      if (isWebTool) {
+        const webTools = entry.tools.filter(t => 
+          t.action && (t.action.genai_action === 'web_search' || t.action.genai_action === 'web_fetch')
+        );
+        const firstWebTool = webTools[0];
+        if (tool !== firstWebTool) {
+          badgeHtml = '';
+        } else {
+          const anyAwaiting = webTools.some(t => t.state === 'awaiting_approval');
+          const anyWorking = webTools.some(t => t.state === 'working');
+          const onceSweepStyle = 'background: none; -webkit-background-clip: initial; background-clip: initial; color: var(--text-tertiary); -webkit-text-fill-color: var(--text-tertiary); animation: workingEnter 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;';
+          
+          if (anyAwaiting) {
+            const count = webTools.length;
             badgeHtml = `
-              <div class="genai-inline-tool genai-tool-pending" id="genai-tool-${idx}" style="margin-top: 10px; width: 100%; display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--primary); padding: 8px 16px; border-radius: 100px; background: rgba(var(--primary-rgb), 0.08); animation: fadeIn 0.3s ease; box-sizing: border-box; gap: var(--space-3); line-height: 1;">
-                <div style="display: flex; align-items: center; gap: 8px; font-size: 0.95em; color: var(--text-primary); font-family: var(--font-sans);">
-                  <span style="font-size: 1.2em; line-height: 1;">🌐</span>
-                  <span>AI wants to use web search for <strong style="color: var(--primary); font-weight: 600;">${count}</strong> ${count === 1 ? 'query' : 'queries'}</span>
-                </div>
-                <div style="display: flex; gap: 8px;">
+              <div class="genai-inline-tool genai-tool-pending" id="genai-tool-${idx}" style="margin: var(--space-2) 0; width: 100%; display: flex; align-items: center; gap: var(--space-3); line-height: 1.2;">
+                <span class="genai-working-text" style="${onceSweepStyle} margin: 0; padding: 0;">AI wants to use web search for ${count} ${count === 1 ? 'query' : 'queries'}.</span>
+                <div style="display: flex; gap: 8px; margin-left: auto;">
                   <button id="approve-tool-${idx}" class="continuation-option-btn" 
-                          style="margin: 0; padding: 6px 14px; background: var(--primary); border: none; color: white; border-radius: 100px; cursor: pointer; font-size: 0.85em; font-weight: 500; opacity: 1; transform: none; animation: none; transition: transform 0.1s ease;">
+                          style="margin: 0; padding: 4px 12px; background: var(--primary); border: none; color: white; border-radius: 100px; cursor: pointer; font-size: 0.8em; font-weight: 500; opacity: 1; transform: none; animation: none; transition: transform 0.1s ease;">
                     Allow
                   </button>
                   <button id="deny-tool-${idx}" class="continuation-option-btn" 
-                          style="margin: 0; padding: 6px 14px; background: transparent; border: 1px solid var(--border-light); color: var(--text-muted); border-radius: 100px; cursor: pointer; font-size: 0.85em; opacity: 1; transform: none; animation: none; transition: all 0.2s ease;">
+                          style="margin: 0; padding: 4px 12px; background: transparent; border: 1px solid var(--border-light); color: var(--text-muted); border-radius: 100px; cursor: pointer; font-size: 0.8em; opacity: 1; transform: none; animation: none; transition: all 0.2s ease;">
                     Deny
                   </button>
                 </div>
               </div>
             `;
+          } else if (anyWorking) {
+            badgeHtml = `
+              <div class="genai-inline-tool genai-tool-working" id="genai-tool-${idx}">
+                <span class="genai-working-text">Searching...</span>
+              </div>
+            `;
           } else {
-            badgeHtml = '';
+            const count = webTools.length;
+            badgeHtml = `
+              <div class="genai-inline-tool genai-tool-done" id="genai-tool-${idx}">
+                <span class="genai-working-text" style="${onceSweepStyle}">Web Search completed for ${count} ${count === 1 ? 'query' : 'queries'}.</span>
+              </div>
+            `;
           }
-        } else {
+        }
+      } else {
+        if (tool.state === 'awaiting_approval') {
           const actionName = tool.action.genai_action;
           const detailHtml = `выполнить действие: <strong style="color:var(--primary)">"${escapeHtml(actionName)}"</strong>`;
           badgeHtml = `
@@ -2329,37 +2429,37 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
               </div>
             </div>
           `;
-        }
-      } else if (tool.state === 'working') {
-        let text = 'Working...';
-        if (tool.action && tool.action.genai_action === 'generate_image' && tool.action.loading_message) {
-          text = tool.action.loading_message;
-        }
-        badgeHtml = `<div class="genai-inline-tool genai-tool-working" id="genai-tool-${idx}" style="display: flex; flex-direction: column; gap: 8px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <div class="genai-working-dots" style="display:flex; gap:3px;"><span></span><span></span><span></span></div>
-            <span class="genai-working-text" style="font-size: var(--text-xs); font-style: italic; margin-left: 4px;">${escapeHtml(text)}</span>
-          </div>
-          <div class="live-preview-container hidden" style="position: relative; max-width: 360px; width: 100%; border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border-light); background: rgba(0,0,0,0.15);">
-            <img class="live-preview-img" style="width: 100%; height: auto; filter: blur(8px); transition: filter 1s ease, transform 0.5s ease; display: block;">
-          </div>
-        </div>`;
-      } else if (tool.action.genai_action === 'silent') {
-        badgeHtml = `<div id="genai-tool-${idx}"></div>`;
-      } else {
-        const toolResultForRender = tool.renderResult || tool.result;
-        const badge = tool.action.genai_action === 'list_memories' && toolResultForRender && !toolResultForRender.error
-          ? renderMemoryListCardHtml(toolResultForRender)
-          : resultBadgeForAction(tool.action, toolResultForRender);
+        } else if (tool.state === 'working') {
+          let text = 'Working...';
+          if (tool.action && tool.action.genai_action === 'generate_image' && tool.action.loading_message) {
+            text = tool.action.loading_message;
+          }
+          badgeHtml = `<div class="genai-inline-tool genai-tool-working" id="genai-tool-${idx}" style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div class="genai-working-dots" style="display:flex; gap:3px;"><span></span><span></span><span></span></div>
+              <span class="genai-working-text" style="font-size: var(--text-xs); font-style: italic; margin-left: 4px;">${escapeHtml(text)}</span>
+            </div>
+            <div class="live-preview-container hidden" style="position: relative; max-width: 360px; width: 100%; border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border-light); background: rgba(0,0,0,0.15);">
+              <img class="live-preview-img" style="width: 100%; height: auto; filter: blur(8px); transition: filter 1s ease, transform 0.5s ease; display: block;">
+            </div>
+          </div>`;
+        } else if (tool.action.genai_action === 'silent') {
+          badgeHtml = `<div id="genai-tool-${idx}"></div>`;
+        } else {
+          const toolResultForRender = tool.renderResult || tool.result;
+          const badge = tool.action.genai_action === 'list_memories' && toolResultForRender && !toolResultForRender.error
+            ? renderMemoryListCardHtml(toolResultForRender)
+            : resultBadgeForAction(tool.action, toolResultForRender);
 
-        let text = 'Working...';
-        if (tool.action && tool.action.genai_action === 'generate_image' && tool.action.loading_message) {
-          text = tool.action.loading_message;
+          let text = 'Working...';
+          if (tool.action && tool.action.genai_action === 'generate_image' && tool.action.loading_message) {
+            text = tool.action.loading_message;
+          }
+          badgeHtml = `<div class="genai-inline-tool genai-tool-done" id="genai-tool-${idx}">
+            <span class="genai-working-text exiting">${escapeHtml(text)}</span>
+            ${badge}
+          </div>`;
         }
-        badgeHtml = `<div class="genai-inline-tool genai-tool-done" id="genai-tool-${idx}">
-          <span class="genai-working-text exiting">${escapeHtml(text)}</span>
-          ${badge}
-        </div>`;
       }
 
       // Use split/join for global replace and to avoid regex escaping issues
@@ -2394,6 +2494,14 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
   const temp = document.createElement('div');
   temp.className = 'genai-msg-text-container';
   temp.innerHTML = html;
+
+  // Remove empty paragraphs to avoid extra blank lines
+  temp.querySelectorAll('p').forEach(p => {
+    const trimmed = p.innerHTML.replace(/&nbsp;/g, '').trim();
+    if (trimmed === '' || trimmed === '<br>') {
+      p.remove();
+    }
+  });
 
   morphdom(textCont, temp, {
     childrenOnly: true,
@@ -2785,7 +2893,12 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
 
   abortController = new AbortController();
   const isMaxThinking = settingsStore.get().extended_thinking && settingsStore.get().reasoning_effort !== 'none';
-  let baseApiMessages = await buildApiMessages(extraUserInstruction);
+  
+  // In Extended mode, Phase 1 (maxPhase = 1) is the initial command generation phase without deep thinking.
+  // We want to skip Smart Context in Phase 1, but keep it in Phase 2.
+  // Thus, we pre-build baseApiMessages without SC, and baseApiMessagesWithSC with SC.
+  let baseApiMessages = await buildApiMessages(extraUserInstruction, isMaxThinking);
+  let baseApiMessagesWithSC = isMaxThinking ? await buildApiMessages(extraUserInstruction, false) : null;
 
   let assistantEntry, bubbleEl;
   if (_continuationEntry && _continuationBubble) {
@@ -2811,14 +2924,21 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
   let actionDetected = null;
 
   async function runPhase() {
-    let currentApiMessages = JSON.parse(JSON.stringify(baseApiMessages));
+    // In Phase 1, we use baseApiMessages (which has Smart Context disabled in Extended mode).
+    // In Phase 2, we use baseApiMessagesWithSC (which has Smart Context enabled).
+    let currentApiMessages;
+    if (maxPhase === 1) {
+      currentApiMessages = JSON.parse(JSON.stringify(baseApiMessages));
+    } else {
+      currentApiMessages = JSON.parse(JSON.stringify(baseApiMessagesWithSC || baseApiMessages));
+    }
     let effortToUse = settingsStore.get().reasoning_effort || 'none';
 
     if (maxPhase === 1) {
       effortToUse = 'none';
       currentApiMessages.push({
         role: 'system',
-        content: 'You are in Extended Thinking mode. Write a very brief, unique, and engaging 1-2 sentence statement explaining that you are about to carefully investigate the facts and deeply think about the user\'s request. You MUST write this statement in the EXACT same language that the user used in their last message. Adapt the tone and style of your statement to match the context and nature of the user\'s question. If Web Search is active, you MUST immediately start a Web search by making 1 to 3 queries. Do NOT make explicit queries (do not output your search queries as plain text), just output the tool commands directly. Do NOT generate the actual answer yet. STOP generating immediately after these sentences and/or tool calls.'
+        content: 'You are in Extended Thinking mode. Write a very brief, informative status preamble of 1-4 words in the EXACT same language that the user used in their last message, reflecting what exactly you are going to search for or find (e.g. "Searching ComfyUI nodes..." or "Ищу ноды ComfyUI..."). If Web Search is active, you MUST immediately start a Web search by making 1 to 3 queries. Do NOT make explicit queries (do not output your search queries as plain text), just output the tool commands directly. Do NOT generate the actual answer yet. STOP generating immediately after these sentences and/or tool calls.'
       });
     } else if (maxPhase >= 2) {
       effortToUse = settingsStore.get().reasoning_effort || 'high';
@@ -2838,7 +2958,7 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
       }
       currentApiMessages.push({
         role: 'system',
-        content: 'You must now perform deep thinking. If you need to stop and think more (including if you need to gather more information or search the internet further) before finishing, output <thinkextended> instead of finishing. If you don\'t have enough information and web search is turned on, you can make another query or fetch sites. In that case, do not write the whole response; instead, make another short intro and output the command you need. Use this only when it\'s really needed. Example:\n"Almost done. Need to check something real quick to be sure. 😏\n[Command for web search, fetching site or anything else what\'s needed]"\n\nAlso, pay close attention to any search queries performed in the previous message/turn: they were initiated by you (GenAI), not by the user, so you must not say "your search queries" (ваши поисковые запросы) when referring to them. Instead, refer to them as search queries that you performed (e.g., "my search queries", "the search queries I performed", or "на основе выполненных мной поисковых запросов").'
+        content: 'You must now perform deep thinking. If you need to stop and think more (including if you need to gather more information or search the internet further) before finishing, output <thinkextended> instead of finishing. If you don\'t have enough information and web search is turned on, you can make another query or fetch sites. In that case, do not write the whole response; instead, make another short, informative status preamble/intro of 1-4 words in the EXACT same language that the user used in their last message, reflecting what exactly you are going to search for or find, and output the command you need. Use this only when it\'s really needed. Example:\n"Searching weather forecast...\n[Command for web search, fetching site or anything else what\'s needed]"\n\nAlso, pay close attention to any search queries performed in the previous message/turn: they were initiated by you (GenAI), not by the user, so you must not say "your search queries" when referring to them. Instead, refer to them as search queries that you performed.'
       });
     }
 
@@ -3082,8 +3202,8 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
           resolvePhase({ status: 'done' });
         },
         {
-          temperature: 0.7,
-          top_p: 0.95,
+          temperature: 0.85,
+          top_p: 0.99,
           max_tokens: settingsStore.get().genai_max_tokens || 2048,
           reasoning_effort: effortToUse
         },
@@ -3413,32 +3533,37 @@ async function handleImageRedAction(task, messageEl) {
 
 async function handleMultipleActions(pendingTools, assistantEntry, bubbleEl) {
   try {
-    for (const tool of pendingTools) {
-      tool.state = 'awaiting_approval';
+    const autoApprove = !!settingsStore.get().web_search_auto_approve;
+    let approved = true;
+
+    if (!autoApprove) {
+      for (const tool of pendingTools) {
+        tool.state = 'awaiting_approval';
+      }
+      renderAssistantBubble(assistantEntry, bubbleEl);
+      scrollToBottom();
+
+      const firstTool = pendingTools[0];
+      const firstToolIdx = assistantEntry.tools.indexOf(firstTool);
+
+      approved = await new Promise((resolve) => {
+        const checkInterval = setInterval(() => {
+          const approveBtn = bubbleEl.querySelector(`#approve-tool-${firstToolIdx}`);
+          const denyBtn = bubbleEl.querySelector(`#deny-tool-${firstToolIdx}`);
+          if (approveBtn && denyBtn && !approveBtn._hasListener) {
+            approveBtn._hasListener = true;
+            approveBtn.addEventListener('click', () => {
+              clearInterval(checkInterval);
+              resolve(true);
+            });
+            denyBtn.addEventListener('click', () => {
+              clearInterval(checkInterval);
+              resolve(false);
+            });
+          }
+        }, 100);
+      });
     }
-    renderAssistantBubble(assistantEntry, bubbleEl);
-    scrollToBottom();
-
-    const firstTool = pendingTools[0];
-    const firstToolIdx = assistantEntry.tools.indexOf(firstTool);
-
-    const approved = await new Promise((resolve) => {
-      const checkInterval = setInterval(() => {
-        const approveBtn = bubbleEl.querySelector(`#approve-tool-${firstToolIdx}`);
-        const denyBtn = bubbleEl.querySelector(`#deny-tool-${firstToolIdx}`);
-        if (approveBtn && denyBtn && !approveBtn._hasListener) {
-          approveBtn._hasListener = true;
-          approveBtn.addEventListener('click', () => {
-            clearInterval(checkInterval);
-            resolve(true);
-          });
-          denyBtn.addEventListener('click', () => {
-            clearInterval(checkInterval);
-            resolve(false);
-          });
-        }
-      }, 100);
-    });
 
     if (!approved) {
       for (const tool of pendingTools) {
