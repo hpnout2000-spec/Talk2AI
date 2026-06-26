@@ -62,17 +62,19 @@ let messagesEl, inputEl, sendBtn, stopBtn, clearBtn, closeBtn, fullscreenBtn, br
 
 // ─── System Prompt ──────────────────────────────────────────────────
 const BASE_SYSTEM_PROMPT = `You are GenAI — an advanced, direct, and adaptive assistant built into VibeChatting.
+Today is {{TODAY_DATE_TIME}}
 You are an adaptive assistant and must seamlessly adapt to the user's behavior, preferences, and conversational style.
 You have deep, direct access to all application data, settings, and features via custom tools. Use the "👉" emoji ONLY for bullet lists — never use this emoji in regular paragraphs.
 
 PERSONALITY & TONE:
-- You have a distinct personality: direct, slightly dry, occasionally sarcastic — but never cold.
+- You have a distinct personality: direct, occasionally sarcastic — but never cold.
 - Do NOT open responses with validation like "Great question!", "Sure!", "Of course!" — just answer.
 - Match the user's energy. Casual message = casual reply. Don't be stiff when it's not needed.
 - You can have opinions. If something is funny, note it. If a request is a bit dumb, you can gently roast it.
 - Light self-awareness about being an AI is fine — but don't dwell on it or make it your whole personality.
-- Humor should feel natural, not forced. One dry remark > three exclamation marks.
-- Don't over-explain. Say what needs to be said, stop there. However, dynamically read the user's mood and intent: if the user wants to dive deeper, ask follow-up questions, or shows interest in exploring a topic, you MUST provide a longer, more detailed response with engaging, interesting information, facts, or hooks to keep the user engaged.
+- Humor should feel natural, not forced.
+- Think about whether to use emojis in your response or not. Use emojis if they match the user's vibe and conversational tone, or omit them if a more straightforward or clean style is appropriate.
+- Dynamically read the user's mood and intent: if the user wants to dive deeper, ask follow-up questions, or shows interest in exploring a topic, you MUST provide a longer, more detailed response with engaging, interesting information, facts, or hooks to keep the user engaged.
 
 You also have direct access to the user's active screen and chat context (such as the currently open individual character chat, group chat, or game) which is appended at the very end of your system prompt under the "[APP CONTEXT]" block. Pay close attention to the character details, recent dialogue history, and settings in this context to help the user compose replies, orchestrate plots, summarize events, and manage their conversation history.
 
@@ -456,7 +458,7 @@ ${settings.comfyui_enabled_genai ? `
 31. generate_image: Generate or illustrate an image using premium ComfyUI diffusion models.
     - When to use: ALWAYS use this when the user asks you to generate, draw, paint, create, or show an image, scene, character illustration, or background.
     - Parameters:
-      - "prompt": string (required) - Extremely detailed descriptive prompt in English detailing style, quality, lighting, and subjects. Do NOT use generic or cliché tags/buzzwords like "detailed texture", "highly detailed face", "volumetric lighting", or "vibrant colors".
+      - "prompt": string (required) - Extremely detailed descriptive prompt in English detailing style, quality, lighting, and subjects. Do NOT use generic or cliché tags/buzzwords like "detailed texture", "highly detailed face", or "volumetric lighting".
       - "loading_message": string (required) - Contextual status message in Russian shown to the user while generating.${settings.comfyui_auto_scale ? `
       - "width": number (optional) - The width of the image. Must be chosen ONLY from the list of allowed resolutions (1024, 896, 832, 768, 640).
       - "height": number (optional) - The height of the image. Must be chosen ONLY from the list of allowed resolutions (1024, 1152, 1216, 1344, 1536).
@@ -468,18 +470,19 @@ ${settings.comfyui_enabled_genai ? `
         - 640x1536 [9:21]
         Do not use any other resolutions.` : ''}
     - Example: {"genai_action":"generate_image","prompt":"highly detailed scenery of a fantasy lake, twilight lighting, masterpieces","loading_message":"Рисую волшебное озеро..."${settings.comfyui_auto_scale ? `,"width":832,"height":1216` : ''}}
-
+` : ''}
+${settings.comfyui_enabled_genai && settings.genai_imagered_enabled !== false ? `
 32. ImageRed: Advanced Image Editor & Vision Agent.
     - When to use: When the user asks for complex image editing: adding text to images, removing backgrounds, compositing/layering characters on backgrounds, or applying filters. You delegate the entire task to the Sub-AI agent.
     - Parameters:
       - "task": string (required) - Detailed instruction for the Image Editor Agent (e.g., "Сгенерируй девушку на фоне пляжа и добавь текст Summer"). IMPORTANT: If referencing or editing an existing photo from the chat, you MUST explicitly specify its exact image ID (e.g. img_001, img_002) in the task description!
     - Example: {"genai_action":"ImageRed","task":"Сгенерируй девушку на фоне гор и добавь текст 'hello world'"}
-
-33. analyze_image: View and analyze an existing generated photo in the chat.
-    - When to use: When the user asks you to look at, describe, or analyze a photo that has already been generated in the chat. You send this to the Image Editor Vision Agent to inspect it and report back to you.
-    - Parameters:
-      - "task": string (required) - Instructions on what to look for. IMPORTANT: You MUST explicitly specify the exact image ID (e.g. img_001, img_002) of the photo in this task description so the agent knows which photo to analyze!
-    - Example: {"genai_action":"analyze_image","task":"Look at img_002 and describe the background"}
+` : ''}
+${settings.genai_viewimage_enabled ? `
+33. viewimage: View and perform visual analysis on an existing photo in the chat.
+    - When to use: When you need to look at, describe, or analyze a photo that has been generated or uploaded in the chat.
+    - How to use: Simply output the command "viewimage(img_id)" directly in your response text, replacing img_id with the actual ID of the image (e.g. viewimage(img_001)).
+    - Do NOT use JSON format for this command, output it inline as text. The system will automatically attach the image to your next request so you can analyze it.
 ` : ''}
 
 
@@ -741,6 +744,20 @@ async function buildApiMessages(extraUserInstruction = null, skipSmartContextOve
     finalBasePrompt = finalBasePrompt.replace(targetText, replacementText);
   }
 
+  if (finalBasePrompt.includes('{{TODAY_DATE_TIME}}')) {
+    const now = new Date();
+    const year = now.getFullYear();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const time = now.toTimeString().split(' ')[0]; // HH:MM:SS
+    const todayStr = `${year}, ${day}/${month} ${time}`;
+    finalBasePrompt = finalBasePrompt.replace('{{TODAY_DATE_TIME}}', todayStr);
+  }
+
+  if (settings.genai_viewimage_enabled) {
+    stylePrompt += '\n\nVISION ANALYSIS DIRECTIVE: You have the ability to view and analyze images generated or uploaded in the chat. To trigger a visual analysis of a specific image, you can output the command "viewimage(id)" (where "id" is the image identifier like img_001, img_002, etc.) anywhere in your response (e.g., viewimage(img_001)). The system will intercept this command and perform a visual analysis on that image.';
+  }
+
   // Build static base (never truncated — always needed for instructions & tools)
   const staticBase = finalBasePrompt + stylePrompt + '\n\n';
 
@@ -931,7 +948,36 @@ ${skill.content}
     if (e.role === 'assistant') {
       cleanContent = stripSuggestions(cleanContent);
     }
-    historyMsgs.push({ role: e.role, content: cleanContent });
+    if (e.role === 'user' && Array.isArray(e.images) && e.images.length > 0) {
+      const enabledImgs = e.images.filter(img => {
+        if (typeof img === 'object' && img !== null) {
+          return img.enabled !== false;
+        }
+        return true; // plain string is enabled by default
+      }).map(img => {
+        if (typeof img === 'object' && img !== null) {
+          return img.base64;
+        }
+        return img;
+      });
+
+      if (enabledImgs.length > 0) {
+        historyMsgs.push({
+          role: 'user',
+          content: [
+            { type: 'text', text: cleanContent },
+            ...enabledImgs.map(base64 => ({
+              type: 'image_url',
+              image_url: { url: base64 }
+            }))
+          ]
+        });
+      } else {
+        historyMsgs.push({ role: e.role, content: cleanContent });
+      }
+    } else {
+      historyMsgs.push({ role: e.role, content: cleanContent });
+    }
 
     // Inject executed tool results back into history so the AI has context of successful runs!
     if (e.role === 'assistant' && Array.isArray(e.tools) && e.tools.length > 0) {
@@ -940,10 +986,19 @@ ${skill.content}
           let resultDesc = '';
           if (t.result._type === 'image') {
             resultDesc = `[SYSTEM NOTE: The tool command "${t.action?.genai_action}" executed successfully. The requested image "${t.result.label || 'Image'}" has been loaded and displayed directly in the user's chat window. The user is now looking at it.]`;
+            historyMsgs.push({ role: 'user', content: resultDesc });
+          } else if (t.result._type === 'vision_image') {
+            historyMsgs.push({
+              role: 'user',
+              content: [
+                { type: 'text', text: `[SYSTEM NOTE: You requested to view image ID "${t.result.image_id}". The image is attached below. Please provide your analysis.]` },
+                { type: 'image_url', image_url: { url: t.result.base64 } }
+              ]
+            });
           } else {
             resultDesc = `[SYSTEM NOTE: The tool command "${t.action?.genai_action}" executed successfully. Result details:\n${JSON.stringify(t.result)}`;
+            historyMsgs.push({ role: 'user', content: resultDesc });
           }
-          historyMsgs.push({ role: 'user', content: resultDesc });
         }
       }
     }
@@ -1051,20 +1106,30 @@ Always output the JSON action block on its own line. Stop generating immediately
   if (settings.genai_smart_context && !skipSmartContextOverride) {
     const otherSessions = (genaiSessions || []).filter(s => s.id !== currentGenaiSessionId && s.summary && s.summary.trim().length > 0);
     if (otherSessions.length > 0) {
-      // Sort other sessions by updated_at desc (most recent first)
+      // Sort other sessions by updated_at desc to prioritize most recent ones first
       otherSessions.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
       
       const limitChars = (settings.genai_smart_context_token_limit || 1500) * 4;
-      let contextStr = '';
+      const selectedSessions = [];
+      let currentLength = 0;
+      
       for (const s of otherSessions) {
         const summaryBlock = `\n- Chat "${s.title || 'Untitled'}": ${s.summary}`;
-        if ((contextStr + summaryBlock).length > limitChars) {
+        if (currentLength + summaryBlock.length > limitChars) {
           break;
         }
-        contextStr += summaryBlock;
+        selectedSessions.push(s);
+        currentLength += summaryBlock.length;
       }
       
-      if (contextStr) {
+      if (selectedSessions.length > 0) {
+        // Sort selected sessions chronologically (oldest first, newest last)
+        selectedSessions.sort((a, b) => new Date(a.updated_at) - new Date(b.updated_at));
+        
+        let contextStr = '';
+        for (const s of selectedSessions) {
+          contextStr += `\n- Chat "${s.title || 'Untitled'}": ${s.summary}`;
+        }
         skillsInjection += `\n\n[Smart Context (Summaries of your other recent conversations with the user — Use this background context to stay consistent across chats):]${contextStr}`;
       }
     }
@@ -1080,7 +1145,17 @@ Always output the JSON action block on its own line. Stop generating immediately
   // Find the last user message in finalMessages and append our complete injection payload to it
   for (let i = finalMessages.length - 1; i >= 0; i--) {
     if (finalMessages[i].role === 'user') {
-      finalMessages[i].content += skillsInjection;
+      if (Array.isArray(finalMessages[i].content)) {
+        // Content is an array (multimodal format), so append skillsInjection to the first element (the text block)
+        const textPart = finalMessages[i].content.find(p => p.type === 'text');
+        if (textPart) {
+          textPart.text += skillsInjection;
+        } else {
+          finalMessages[i].content.unshift({ type: 'text', text: skillsInjection });
+        }
+      } else {
+        finalMessages[i].content += skillsInjection;
+      }
       break;
     }
   }
@@ -1984,7 +2059,8 @@ async function executeTool(action, onStatus = null, onPreview = null, onComplete
 
 // ─── Action Badge HTML ───────────────────────────────────────────────
 function actionBadgeHtml(type, icon, text) {
-  return `<div class="genai-action-badge ${type}"><span class="genai-action-badge-icon">${icon}</span><span class="genai-action-badge-text">${text}</span></div>`;
+  const iconHtml = icon ? `<span class="genai-action-badge-icon">${icon}</span>` : '';
+  return `<div class="genai-action-badge ${type}">${iconHtml}<span class="genai-action-badge-text">${text}</span></div>`;
 }
 
 function resultBadgeForAction(action, result) {
@@ -2034,7 +2110,10 @@ function resultBadgeForAction(action, result) {
   if (name === 'web_fetch') return actionBadgeHtml('result-data', '🌐', `Web Fetch completed for "${action.url}"`);
 
   if (name === 'ImageRed' || name === 'analyze_image') {
-    const badge = actionBadgeHtml('result-data', '🎨', 'Image Editor Session Completed');
+    const isVision = name === 'analyze_image';
+    const badgeTitle = isVision ? 'Vision Analysis Completed' : 'Image Editor Session Completed';
+    const badgeIcon = isVision ? '' : '🎨';
+    const badge = actionBadgeHtml('result-data', badgeIcon, badgeTitle);
     let content = badge;
     if (result && result.messages && result.messages.length > 0) {
       content += `
@@ -2112,7 +2191,7 @@ function resultBadgeForAction(action, result) {
     return badge;
   }
 
-  return actionBadgeHtml('result-data', '🔧', 'Action completed');
+  return actionBadgeHtml('result-data', '', 'Action completed');
 }
 
 // ─── Flying Text Animation Helper ────────────────────────────────────
@@ -2149,7 +2228,164 @@ function animateFlyingText(startEl, text, destEl, callback) {
   }, { once: true });
 }
 
-function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWorking = false, streaming = false } = {}) {
+// ─── GenAI Animations & Height Transitions Helpers ──────────────────
+
+function wrapWordsInFirstParagraphSpans(htmlString, startIdx = 0) {
+  if (!htmlString) return { html: '', nextIdx: startIdx };
+  const parts = htmlString.split(/(<[^>]+>)/g);
+  let wordIndex = startIdx;
+  let inSkipTag = false;
+  const processedParts = parts.map(part => {
+    if (part.startsWith('<')) {
+      const lower = part.toLowerCase();
+      if (lower.startsWith('<pre') || lower.startsWith('<code')) inSkipTag = true;
+      if (lower.startsWith('</pre') || lower.startsWith('</code')) inSkipTag = false;
+      return part;
+    }
+    if (inSkipTag || !part.trim()) return part;
+    return part.split(/(\s+)/).map(w => {
+      if (!w || w.trim() === '') return w;
+      return `<span class="word-blur" data-word-index="${wordIndex++}">${w}</span>`;
+    }).join('');
+  });
+  return { html: processedParts.join(''), nextIdx: wordIndex };
+}
+
+function wrapWordsInDiagonalSpans(htmlString) {
+  if (!htmlString) return '';
+  const parts = htmlString.split(/(<[^>]+>)/g);
+  let inSkipTag = false;
+  const processedParts = parts.map(part => {
+    if (part.startsWith('<')) {
+      const lower = part.toLowerCase();
+      if (lower.startsWith('<pre') || lower.startsWith('<code')) inSkipTag = true;
+      if (lower.startsWith('</pre') || lower.startsWith('</code')) inSkipTag = false;
+      return part;
+    }
+    if (inSkipTag || !part.trim()) return part;
+    return part.split(/(\s+)/).map(w => {
+      if (!w || w.trim() === '') return w;
+      return `<span class="diagonal-word">${w}</span>`;
+    }).join('');
+  });
+  return processedParts.join('');
+}
+
+function processGenaiBubbleDom(container, streaming) {
+  // Extract logical content blocks, treating list items (li) as individual blocks
+  const getContentElements = (parent) => {
+    const list = [];
+    const walk = (node) => {
+      if (node.nodeType !== 1) return;
+      const tagName = node.tagName.toLowerCase();
+      
+      if (tagName === 'thinking-snippets' || 
+          node.classList.contains('thinking-inline') || 
+          node.classList.contains('genai-inline-tool') || 
+          node.classList.contains('inline-suggestion-btn-container') || 
+          node.classList.contains('inline-suggestion-buttons-row') || 
+          node.classList.contains('genai-breathing-spacer')) {
+        return;
+      }
+
+      if (tagName === 'ul' || tagName === 'ol') {
+        Array.from(node.children).forEach(child => {
+          if (child.tagName.toLowerCase() === 'li') {
+            list.push(child);
+          } else {
+            walk(child);
+          }
+        });
+      } else {
+        list.push(node);
+      }
+    };
+    
+    Array.from(parent.children).forEach(walk);
+    return list;
+  };
+
+  const contentElements = getContentElements(container);
+  let wordIndex = 0;
+  let firstContentFound = false;
+  let hasHiddenParagraph = false;
+
+  contentElements.forEach((node, contentIdx) => {
+    if (!firstContentFound) {
+      firstContentFound = true;
+      const res = wrapWordsInFirstParagraphSpans(node.innerHTML, wordIndex);
+      node.innerHTML = res.html;
+      wordIndex = res.nextIdx;
+    } else {
+      const isLastContent = (contentIdx === contentElements.length - 1);
+      if (streaming && isLastContent) {
+        // Hide subsequent incomplete paragraphs/list items during streaming
+        node.style.display = 'none';
+        node.classList.add('genai-incomplete-paragraph');
+        hasHiddenParagraph = true;
+      } else {
+        if (!node.classList.contains('diagonal-animated-paragraph')) {
+          node.classList.add('diagonal-animated-paragraph');
+          let originalHtml = node.innerHTML;
+          const incompleteSpan = node.querySelector('.genai-incomplete-text');
+          if (incompleteSpan) {
+            originalHtml = incompleteSpan.innerHTML;
+          }
+          const tempDiv = document.createElement('div');
+          tempDiv.innerHTML = originalHtml;
+          const cursor = tempDiv.querySelector('.streaming-cursor');
+          if (cursor) cursor.remove();
+          
+          node.innerHTML = wrapWordsInDiagonalSpans(tempDiv.innerHTML);
+        }
+      }
+    }
+  });
+
+  // Clean up: if a ul/ol has only hidden children, hide it as well to avoid empty container spacing
+  container.querySelectorAll('ul, ol').forEach(listNode => {
+    const liItems = Array.from(listNode.children).filter(c => c.tagName.toLowerCase() === 'li');
+    if (liItems.length > 0 && liItems.every(li => li.style.display === 'none')) {
+      listNode.style.display = 'none';
+    }
+  });
+
+  // If streaming and we have a hidden/incomplete subsequent paragraph, add the breathing spacer
+  if (streaming && hasHiddenParagraph) {
+    const spacer = document.createElement('div');
+    spacer.className = 'genai-breathing-spacer';
+    spacer.innerHTML = `
+      <span></span>
+      <span></span>
+      <span></span>
+    `;
+    container.appendChild(spacer);
+  }
+}
+
+function applyDiagonalAnimation(container) {
+  const paragraphs = container.querySelectorAll('.diagonal-animated-paragraph:not(.animated-applied)');
+  paragraphs.forEach(p => {
+    const words = p.querySelectorAll('.diagonal-word');
+    if (words.length === 0) return;
+
+    const pRect = p.getBoundingClientRect();
+    if (pRect.width === 0 && pRect.height === 0) return;
+
+    p.classList.add('animated-applied');
+
+    words.forEach(word => {
+      const wRect = word.getBoundingClientRect();
+      const x = wRect.left - pRect.left;
+      const y = wRect.top - pRect.top;
+      
+      const delay = (x + y) * 0.45;
+      word.style.animationDelay = `${delay}ms`;
+    });
+  });
+}
+
+function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWorking = false, streaming = false, animate = false } = {}) {
   if (!bubbleEl) return;
 
   let textCont = bubbleEl.querySelector('.genai-msg-text-container');
@@ -2505,6 +2741,13 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
     }
   });
 
+  const shouldAnimate = streaming || animate;
+
+  if (shouldAnimate) {
+    // Apply custom GenAI animations and paragraph buffering
+    processGenaiBubbleDom(temp, streaming);
+  }
+
   morphdom(textCont, temp, {
     childrenOnly: true,
     getNodeKey: (node) => node.id || node.dataset?.wordIndex || null,
@@ -2515,9 +2758,25 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
         }
         return false;
       }
+      if (shouldAnimate) {
+        if (from.classList?.contains('diagonal-word') && from.style.animationDelay) {
+          to.style.animationDelay = from.style.animationDelay;
+        }
+        if (from.classList?.contains('diagonal-animated-paragraph') && from.classList.contains('animated-applied')) {
+          to.classList.add('animated-applied');
+        }
+      }
       return true;
     }
   });
+
+  if (shouldAnimate) {
+    // Calculate layout delay offsets for diagonal entrance
+    requestAnimationFrame(() => {
+      applyDiagonalAnimation(textCont);
+    });
+  }
+
 
   // Attach click listeners to GenAI inline suggestion buttons
   textCont.querySelectorAll('.genai-inline-suggest-btn').forEach(btn => {
@@ -2681,7 +2940,16 @@ function appendMsgEl(entry) {
 
   const bubbleEl = el.querySelector('.genai-msg-bubble');
   if (isUser) {
-    bubbleEl.innerHTML = renderMarkdown(entry.content || '');
+    let htmlContent = '';
+    if (Array.isArray(entry.images) && entry.images.length > 0) {
+      htmlContent += `<div class="genai-msg-images" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">`;
+      entry.images.forEach(base64 => {
+        htmlContent += `<img src="${base64}" style="max-width: 180px; max-height: 180px; object-fit: cover; border-radius: var(--radius-md); box-shadow: var(--shadow-sm); cursor: pointer;" onclick="if(window.openLightbox){window.openLightbox(this.src)}else{window.open(this.src,'_blank')}" />`;
+      });
+      htmlContent += `</div>`;
+    }
+    htmlContent += renderMarkdown(entry.content || '');
+    bubbleEl.innerHTML = htmlContent;
     bubbleEl.classList.remove('thinking-only');
     bubbleEl.style.width = '';
   } else {
@@ -2886,6 +3154,36 @@ function healAndParseJsonAction(jsonStr) {
   }
 }
 
+function stripTagsAndPartials(text, isDone = false) {
+  if (typeof text !== 'string') return '';
+  let cleaned = text;
+  
+  // Replace complete tags (case-insensitive)
+  cleaned = cleaned.replace(/<skipthinking>/gi, '');
+  cleaned = cleaned.replace(/<nointro>/gi, '');
+  cleaned = cleaned.replace(/<skipintro>/gi, '');
+  
+  if (!isDone) {
+    // Strip partial tags at the end of the string to prevent flickering
+    const lower = cleaned.toLowerCase();
+    const tags = ['<skipthinking>', '<nointro>', '<skipintro>'];
+    for (const tag of tags) {
+      for (let i = 1; i < tag.length; i++) {
+        const prefix = tag.substring(0, i);
+        if (lower.endsWith(prefix)) {
+          const lastLt = lower.lastIndexOf('<');
+          if (lastLt !== -1 && lastLt === lower.length - prefix.length) {
+            cleaned = cleaned.substring(0, lastLt);
+            break;
+          }
+        }
+      }
+    }
+  }
+  
+  return cleaned;
+}
+
 async function streamGenAI(extraUserInstruction = null, _continuationEntry = null, _continuationBubble = null) {
   if (isGenerating && !extraUserInstruction) return;
   isGenerating = true;
@@ -2906,6 +3204,20 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
   if (_continuationEntry && _continuationBubble) {
     assistantEntry = _continuationEntry;
     bubbleEl = _continuationBubble;
+
+    // If Extended thinking mode is off but we are using model thinking (reasoning_effort !== 'none'),
+    // we want to transition to a new phase of generation by appending [[THINKING_BLOCK]]
+    // at the end of the existing content. This ensures the active thinking snippets appear at the bottom
+    // during thinking, but the final response is generated below it (so Done stays above the final response).
+    if (!isMaxThinking && settingsStore.get().reasoning_effort !== 'none') {
+      if (assistantEntry.content.includes('[[THINKING_BLOCK]]')) {
+        assistantEntry.content = assistantEntry.content
+          .replace(/\[\[THINKING_BLOCK\]\]/g, '')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+      }
+      assistantEntry.content = assistantEntry.content.trim() ? assistantEntry.content + '\n\n[[THINKING_BLOCK]]\n\n' : '[[THINKING_BLOCK]]\n\n';
+    }
   } else {
     assistantEntry = {
       role: 'assistant',
@@ -2940,7 +3252,11 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
       effortToUse = 'none';
       currentApiMessages.push({
         role: 'system',
-        content: 'You are in Extended Thinking mode. Write a very brief, informative status preamble of 1-4 words in the EXACT same language that the user used in their last message, reflecting what exactly you are going to search for or find (e.g. "Searching ComfyUI nodes..." or "Ищу ноды ComfyUI..."). If Web Search is active, you MUST immediately start a Web search by making 1 to 3 queries. Do NOT make explicit queries (do not output your search queries as plain text), just output the tool commands directly. Do NOT generate the actual answer yet. STOP generating immediately after these sentences and/or tool calls.'
+        content: 'You are in Extended Thinking mode. Write a very brief, informative status preamble of 1-4 words in the EXACT same language that the user used in their last message, reflecting what exactly you are going to search for or find (e.g. "Searching ComfyUI nodes..." or "Ищу ноды ComfyUI...").\n\n' +
+                 'Alternatively, you can use one of these tags to control the thinking flow:\n' +
+                 '- If the user\'s message is extremely simple and does not require deep thinking, research, or web search (e.g., greetings like "hello", "thank you", simple conversational pleasantries), you can skip the extended thinking phase. To do this, output "<skipthinking>" at the very beginning of your response and write the final direct answer immediately after it. Do not write any status preamble.\n' +
+                 '- If you do not need to do any web searches or write a status preamble, and want to proceed directly to the deep thinking phase, output "<nointro>" and stop generating immediately. Do not write any preamble text.\n\n' +
+                 'If Web Search is active, you MUST immediately start a Web search by making 1 to 3 queries. Do NOT make explicit queries (do not output your search queries as plain text), just output the tool commands directly. Do NOT generate the actual answer yet. STOP generating immediately after these sentences and/or tool calls.'
       });
     } else if (maxPhase >= 2) {
       effortToUse = settingsStore.get().reasoning_effort || 'high';
@@ -2950,9 +3266,10 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
           assistantEntry.content = assistantEntry.content
             .replace(/\[\[THINKING_BLOCK\]\]/g, '')
             .replace(/\n{3,}/g, '\n\n')
-            .trim() + '\n\n[[THINKING_BLOCK]]\n\n';
+            .trim();
+          assistantEntry.content = assistantEntry.content ? assistantEntry.content + '\n\n[[THINKING_BLOCK]]\n\n' : '[[THINKING_BLOCK]]\n\n';
         } else {
-          assistantEntry.content += '\n\n[[THINKING_BLOCK]]\n\n';
+          assistantEntry.content = assistantEntry.content.trim() ? assistantEntry.content + '\n\n[[THINKING_BLOCK]]\n\n' : '[[THINKING_BLOCK]]\n\n';
         }
       }
       if (assistantEntry.content) {
@@ -2969,13 +3286,15 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
     let thinkingActiveGenai = false;
     let showOutputDetected = false;
     let thinkExtendedDetected = false;
+    let skipThinkingDetected = false;
+    let noIntroDetected = false;
     let originalContentLength = assistantEntry.content.length;
 
     return new Promise((resolvePhase) => {
       api.streamChat(
         currentApiMessages,
         abortController.signal,
-        (chunk) => {
+        async (chunk) => {
           if (actionDetected) return;
           fullText += chunk;
 
@@ -2987,11 +3306,46 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
             return;
           }
 
-          const actionMatch = extractJsonAction(fullText);
-          if (actionMatch) {
-            const rawAction = actionMatch.json;
+          let actionMatch = extractJsonAction(fullText);
+          let useViewImage = false;
+          let viewImageId = '';
+          let viewImageStartIdx = -1;
+          let viewImageLength = 0;
+
+          if (settingsStore.get().genai_viewimage_enabled) {
+            const viewImageRegex = /viewimage\s*\(\s*(['"]?)(img_[a-zA-Z0-9_-]+)\1\s*\)/i;
+            const match = fullText.match(viewImageRegex);
+            if (match) {
+              // Ensure we prioritize whichever comes first in stream
+              if (!actionMatch || match.index < actionMatch.startIdx) {
+                useViewImage = true;
+                viewImageId = match[2];
+                viewImageStartIdx = match.index;
+                viewImageLength = match[0].length;
+              }
+            }
+          }
+
+          if (actionMatch || useViewImage) {
             let parsedAction = null;
-            try { parsedAction = healAndParseJsonAction(rawAction); } catch (e) {}
+            let startIdx;
+            let before;
+
+            if (useViewImage) {
+              parsedAction = {
+                genai_action: 'viewimage',
+                image_id: viewImageId
+              };
+              actionDetected = JSON.stringify(parsedAction);
+              startIdx = viewImageStartIdx;
+              before = fullText.substring(0, startIdx);
+            } else {
+              const rawAction = actionMatch.json;
+              actionDetected = rawAction;
+              try { parsedAction = healAndParseJsonAction(rawAction); } catch (e) {}
+              startIdx = actionMatch.startIdx;
+              before = fullText.substring(0, startIdx).replace(/```json\s*$/, '').replace(/```\s*$/, '');
+            }
 
             if (parsedAction) {
               const isCreatorTool = ['add_char_fact', 'remove_char_fact', 'set_char_final_text', 'show_char_tab'].includes(parsedAction.genai_action);
@@ -3020,15 +3374,10 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
                   assistantEntry.tools.push(tool);
                 }
 
-                const jsonIdx = actionMatch.startIdx;
-                let before = fullText.substring(0, jsonIdx).replace(/```json\s*$/, '').replace(/```\s*$/, '');
-                
                 if (maxPhase >= 2) {
                    if (fullText.includes('<Showoutput>')) {
                       showOutputDetected = true;
                       before = before.substring(before.indexOf('<Showoutput>') + 12);
-                   } else {
-                      // No Showoutput tag required, so the text is treated as user-facing
                    }
                 }
                 
@@ -3041,25 +3390,68 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
               }
             }
 
-            actionDetected = rawAction;
-            const jsonIdx = actionMatch.startIdx;
-            let before = fullText.substring(0, jsonIdx).replace(/```json\s*$/, '').replace(/```\s*$/, '');
-            if (maxPhase >= 2) {
-               if (fullText.includes('<Showoutput>')) {
-                  showOutputDetected = true;
-                  before = before.substring(before.indexOf('<Showoutput>') + 12);
-               } else {
-                  // No Showoutput tag required, so the text is treated as user-facing
-               }
-            }
-
             const toolIdx = assistantEntry.tools.length;
             const marker = `[[GENAI_TOOL_${toolIdx}]]`;
             assistantEntry.content = assistantEntry.content.substring(0, originalContentLength) + before + marker;
             originalContentLength = assistantEntry.content.length;
 
             try {
-              const parsedAction2 = healAndParseJsonAction(actionDetected);
+              if (useViewImage) {
+                const session = getCurrentGenaiSession();
+                if (!imageSessionStore.get(viewImageId)) {
+                  let foundBase64 = null;
+                  let foundPrompt = 'Chat image';
+
+                  // 1. Check uploadedImages
+                  const uploadedImg = session?.uploadedImages?.find(img => img.id === viewImageId);
+                  if (uploadedImg) {
+                    foundBase64 = uploadedImg.base64;
+                    foundPrompt = uploadedImg.name || 'Uploaded image';
+                  }
+
+                  // 2. Check message history tool results
+                  if (!foundBase64 && session?.messages) {
+                    for (const msg of session.messages) {
+                      if (msg.tools) {
+                        for (const tool of msg.tools) {
+                          if (tool.result) {
+                            if (tool.action?.genai_action === 'generate_image' && tool.result.image_id === viewImageId) {
+                              if (tool.result.image_url) {
+                                try {
+                                  const { fetchAsBase64 } = await import('../services/image-tools.js');
+                                  foundBase64 = await fetchAsBase64(tool.result.image_url);
+                                  foundPrompt = tool.result.prompt || 'Generated image';
+                                } catch (e) {
+                                  console.warn('Failed to fetch image base64 from tool result url:', e);
+                                }
+                              }
+                            } else if ((tool.action?.genai_action === 'ImageRed' || tool.action?.genai_action === 'viewimage') && tool.result.image_id === viewImageId) {
+                              if (tool.result.base64) {
+                                foundBase64 = tool.result.base64;
+                                foundPrompt = tool.action.task || 'Edited image';
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+
+                  if (foundBase64) {
+                    imageSessionStore.images.set(viewImageId, {
+                      id: viewImageId,
+                      dataUrl: foundBase64,
+                      source: 'chat_history',
+                      description: foundPrompt,
+                      width: 832,
+                      height: 1216,
+                      createdAt: Date.now()
+                    });
+                  }
+                }
+              }
+
+              const parsedAction2 = useViewImage ? parsedAction : healAndParseJsonAction(actionDetected);
               assistantEntry.tools.push({ action: parsedAction2, state: 'working' });
             } catch (e) {
               assistantEntry.content = assistantEntry.content.split(marker).join(actionDetected);
@@ -3075,6 +3467,15 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
           let displayContent = '';
           if (maxPhase === 0 || maxPhase === 1) {
             displayContent = fullText.replace(/^[\s\n]+/, '');
+            if (maxPhase === 1) {
+              if (displayContent.toLowerCase().includes('<skipthinking>')) {
+                skipThinkingDetected = true;
+              }
+              if (displayContent.toLowerCase().includes('<nointro>') || displayContent.toLowerCase().includes('<skipintro>')) {
+                noIntroDetected = true;
+              }
+              displayContent = stripTagsAndPartials(displayContent, false);
+            }
           } else if (maxPhase >= 2) {
             if (fullText.includes('<Showoutput>')) {
               showOutputDetected = true;
@@ -3160,6 +3561,15 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
             let finalContinuation = '';
             if (maxPhase === 0 || maxPhase === 1) {
                finalContinuation = fullText.replace(/^[\s\n]+/, '');
+               if (maxPhase === 1) {
+                 if (finalContinuation.toLowerCase().includes('<skipthinking>')) {
+                   skipThinkingDetected = true;
+                 }
+                 if (finalContinuation.toLowerCase().includes('<nointro>') || finalContinuation.toLowerCase().includes('<skipintro>')) {
+                   noIntroDetected = true;
+                 }
+                 finalContinuation = stripTagsAndPartials(finalContinuation, true);
+               }
             } else if (maxPhase >= 2) {
                if (fullText.includes('<Showoutput>')) {
                   showOutputDetected = true;
@@ -3179,8 +3589,12 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
             }
             
             if (maxPhase === 1) {
-              assistantEntry.content += '\n\n[[THINKING_BLOCK]]\n\n';
-              resolvePhase({ status: 'next_phase' });
+              if (skipThinkingDetected) {
+                resolvePhase({ status: 'done' });
+              } else {
+                assistantEntry.content = assistantEntry.content.trim() ? assistantEntry.content + '\n\n[[THINKING_BLOCK]]\n\n' : '[[THINKING_BLOCK]]\n\n';
+                resolvePhase({ status: 'next_phase' });
+              }
             } else {
               resolvePhase({ status: 'done' });
             }
@@ -3242,7 +3656,7 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
       } else if (result.status === 'next_phase') {
         maxPhase = 2;
       } else {
-        renderAssistantBubble(assistantEntry, bubbleEl, { cursor: false });
+        renderAssistantBubble(assistantEntry, bubbleEl, { cursor: false, animate: true });
         finishGeneration();
         break;
       }
@@ -3265,13 +3679,45 @@ async function handleActionDetected(assistantEntry, bubbleEl) {
     // Check if the action requires user approval before execution
     const name = tool.action.genai_action;
 
-    if (name === 'ImageRed' || name === 'analyze_image') {
+    if (name === 'viewimage') {
+      tool.state = 'working';
+      renderAssistantBubble(assistantEntry, bubbleEl);
+      scrollToBottom();
+
+      const viewImageId = tool.action.image_id;
+      let foundBase64 = null;
+      
+      const cached = imageSessionStore.get ? imageSessionStore.get(viewImageId) : null;
+      if (cached) {
+         foundBase64 = cached.dataUrl || cached.base64;
+      }
+      
+      if (foundBase64) {
+         tool.result = {
+           _type: 'vision_image',
+           image_id: viewImageId,
+           base64: foundBase64,
+           success: true
+         };
+      } else {
+         tool.result = { error: `Image ${viewImageId} not found in history.` };
+      }
+      
+      tool.state = 'done';
+      renderAssistantBubble(assistantEntry, bubbleEl);
+      saveHistory();
+      isGenerating = false;
+      continueAfterTool(tool.action, tool.result, assistantEntry, bubbleEl);
+      return;
+    }
+
+    if (name === 'ImageRed') {
       tool.state = 'working';
       renderAssistantBubble(assistantEntry, bubbleEl);
       scrollToBottom();
 
       try {
-        const { finalImageUrl, accumulatedMessages, finalMessage } = await handleImageRedAction(tool.action.task, bubbleEl);
+        const { finalImageUrl, accumulatedMessages, finalMessage } = await handleImageRedAction(tool.action.task, bubbleEl, name);
         tool.state = 'done';
         if (finalImageUrl) {
           tool.result = { 
@@ -3427,9 +3873,12 @@ async function handleActionDetected(assistantEntry, bubbleEl) {
   }
 }
 
-async function handleImageRedAction(task, messageEl) {
+async function handleImageRedAction(task, messageEl, actionName = 'ImageRed') {
   const container = messageEl.querySelector('.genai-msg-text-container');
   if (!container) return;
+
+  const isVision = actionName === 'analyze_image';
+  const startText = isVision ? 'Analyzing Image...' : 'Starting Image Editor...';
 
   const workingBlock = document.createElement('div');
   workingBlock.className = 'image-editor-working-block';
@@ -3437,7 +3886,7 @@ async function handleImageRedAction(task, messageEl) {
   
   const statusEl = document.createElement('div');
   statusEl.className = 'working-status';
-  statusEl.innerHTML = `<span style="animation: spin 1.5s linear infinite; display: inline-block; margin-right: 8px;">⚙️</span> <span class="text-content">Starting Image Editor...</span>`;
+  statusEl.innerHTML = `<span style="animation: spin 1.5s linear infinite; display: inline-block; margin-right: 8px;">⚙️</span> <span class="text-content">${startText}</span>`;
   workingBlock.appendChild(statusEl);
   
   const msgContainer = document.createElement('div');
@@ -3481,7 +3930,7 @@ async function handleImageRedAction(task, messageEl) {
       details.style = 'margin-top: 8px; font-size: 13px; color: var(--text-secondary);';
       const summary = document.createElement('summary');
       summary.style = 'cursor: pointer; padding: 4px; opacity: 0.8;';
-      summary.textContent = 'Показать лог работы';
+      summary.textContent = isVision ? 'Показать лог анализа' : 'Показать лог работы';
       details.appendChild(summary);
       
       const logWrapper = document.createElement('div');
@@ -3996,9 +4445,7 @@ function createNewGenaiChat() {
 
   saveHistory();
   renderMessages();
-  updateGenaiPlusButtonState();
-  renderSkillsList();
-  renderAllSkillsList();
+  window.dispatchEvent(new CustomEvent('genai-active-skills-changed'));
 }
 
 function switchGenaiChat(id) {
@@ -4037,9 +4484,7 @@ function switchGenaiChat(id) {
     }
     saveHistory();
     renderMessages();
-    updateGenaiPlusButtonState();
-    renderSkillsList();
-    renderAllSkillsList();
+    window.dispatchEvent(new CustomEvent('genai-active-skills-changed'));
   }
 }
 
@@ -4223,11 +4668,24 @@ async function sendUserMessage() {
   messagesEl.querySelector('.genai-empty-state')?.remove();
 
   // Add user entry
+  const session = getCurrentGenaiSession();
+  const enabledImages = session?.uploadedImages?.filter(img => img.enabled) || [];
+
   const userEntry = { role: 'user', content: text, timestamp: new Date().toISOString() };
+  if (enabledImages.length > 0) {
+    userEntry.images = enabledImages.map(img => img.base64);
+    session.uploadedImages = [];
+    updateGenAIImagePreviews();
+  }
+
   genaiHistory.push(userEntry);
   saveHistory(); // Save immediately so it's not lost if user refreshes during AI response
   appendMsgEl(userEntry);
   scrollToBottom();
+
+  if (enabledImages.length > 0 && window.renderFetchedData) {
+    window.renderFetchedData();
+  }
 
   await streamGenAI();
 }
@@ -4415,9 +4873,7 @@ export function initGenAIPanel() {
 
   loadHistory().then(() => {
     renderMessages();
-    updateGenaiPlusButtonState();
-    renderSkillsList();
-    renderAllSkillsList();
+    window.dispatchEvent(new CustomEvent('genai-active-skills-changed'));
   });
 
   // Listen to chat switches in main app to keep plus button and skills list in perfect sync
@@ -4425,30 +4881,74 @@ export function initGenAIPanel() {
     updateGenaiPlusButtonState();
     renderSkillsList();
     renderAllSkillsList();
+    updateGenAIImagePreviews();
+    syncWebSearchIndicator();
   });
   window.addEventListener('group-selected', () => {
     updateGenaiPlusButtonState();
     renderSkillsList();
     renderAllSkillsList();
+    updateGenAIImagePreviews();
+    syncWebSearchIndicator();
   });
   window.addEventListener('genai-active-skills-changed', () => {
     updateGenaiPlusButtonState();
     renderSkillsList();
     renderAllSkillsList();
+    updateGenAIImagePreviews();
+    syncWebSearchIndicator();
   });
 
   window.addEventListener('local-sync-applied', async () => {
     try {
       await loadHistory();
       renderMessages();
-      updateGenaiPlusButtonState();
-      renderSkillsList();
-      renderAllSkillsList();
+      window.dispatchEvent(new CustomEvent('genai-active-skills-changed'));
       if (window.refreshGenAIThinkingEffortUI) {
         window.refreshGenAIThinkingEffortUI();
       }
     } catch (e) {
       console.warn('GenAI reload after sync failed:', e);
+    }
+  });
+
+  // Multimodal Vision / Upload elements wiring
+  const btnUploadImage = document.getElementById('btn-genai-upload-image');
+  const imageUploadInput = document.getElementById('genai-image-upload-input');
+
+  if (btnUploadImage && imageUploadInput) {
+    btnUploadImage.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const popover = document.getElementById('genai-plus-popover');
+      if (popover) popover.classList.add('hidden'); // Close plus dropdown
+      imageUploadInput.click();
+    });
+  }
+
+  if (imageUploadInput) {
+    imageUploadInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        handleImageUpload(file);
+      }
+      imageUploadInput.value = ''; // Reset input
+    });
+  }
+
+  // Ctrl+V Paste handler for image upload
+  inputEl.addEventListener('paste', (e) => {
+    const items = e.clipboardData?.items;
+    if (items) {
+      for (const item of items) {
+        if (item.type.indexOf('image') !== -1) {
+          const file = item.getAsFile();
+          if (file) {
+            e.preventDefault(); // Prevent pasting raw file string/data into textarea
+            handleImageUpload(file);
+            break;
+          }
+        }
+      }
     }
   });
 
@@ -4911,7 +5411,6 @@ export function initGenAIPanel() {
 
   // ─── Image Gen toggle in GenAI plus popover ────────────────────────
   const btnGenaiToggleImageGen = document.getElementById('btn-genai-toggle-imagegen');
-  const genaiImageGenCheck = document.getElementById('genai-imagegen-toggle-check');
 
   function syncImageGenIndicators() {
     const chatEnabled = settingsStore.get().comfyui_enabled;
@@ -4928,6 +5427,7 @@ export function initGenAIPanel() {
     if (chatGear) chatGear.classList.toggle('hidden', !chatEnabled);
 
     // Sync GenAI checkbox in plus popover
+    const genaiImageGenCheck = document.getElementById('genai-imagegen-toggle-check');
     if (genaiImageGenCheck) genaiImageGenCheck.checked = !!genaiEnabled;
 
     // Sync GenAI button active state (swaps plus to image icon in CSS)
@@ -4958,13 +5458,16 @@ export function initGenAIPanel() {
 
   // ─── Web Search toggle in GenAI plus popover ────────────────────────
   const btnGenaiToggleWebSearch = document.getElementById('btn-genai-toggle-websearch');
-  const genaiWebSearchCheck = document.getElementById('genai-websearch-toggle-check');
 
   function syncWebSearchIndicator() {
     const activeSkills = getActiveSkillsForCurrentSession();
     const isAct = activeSkills.includes('Internet Browser.json');
+    const genaiWebSearchCheck = document.getElementById('genai-websearch-toggle-check');
     if (genaiWebSearchCheck) genaiWebSearchCheck.checked = !!isAct;
   }
+
+  // Expose globally
+  window.syncWebSearchIndicator = syncWebSearchIndicator;
 
   if (btnGenaiToggleWebSearch) {
     btnGenaiToggleWebSearch.addEventListener('click', async (e) => {
@@ -5274,7 +5777,94 @@ export function startVibeMode(goal) {
   showVibeBanner(goal);
 }
 
-// ─── Active Skills State Machine & UI Helpers ───────────────────────
+export function updateGenAIImagePreviews() {
+  const previewContainer = document.getElementById('genai-image-preview-container');
+  if (!previewContainer) return;
+
+  const session = getCurrentGenaiSession();
+  const images = session?.uploadedImages || [];
+
+  if (images.length === 0) {
+    previewContainer.classList.add('hidden');
+    previewContainer.innerHTML = '';
+    return;
+  }
+
+  previewContainer.classList.remove('hidden');
+  previewContainer.innerHTML = images.map(img => `
+    <div class="genai-img-preview-item" style="position: relative; width: 40px; height: 40px; flex-shrink: 0; opacity: ${img.enabled ? '1' : '0.5'}; transition: opacity var(--transition-fast);">
+      <img src="${img.base64}" style="width: 100%; height: 100%; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--border-light); cursor: pointer;" onclick="if(window.openLightbox){window.openLightbox('${img.base64}')}else{window.open('${img.base64}','_blank')}" />
+      <button class="btn-delete-preview-img" data-img-id="${img.id}" style="position: absolute; top: -4px; right: -4px; width: 14px; height: 14px; border-radius: 50%; background: var(--bg-tertiary); border: 1px solid var(--border-light); color: var(--text-secondary); display: flex; align-items: center; justify-content: center; font-size: 8px; cursor: pointer; padding: 0;">×</button>
+    </div>
+  `).join('');
+
+  previewContainer.querySelectorAll('.btn-delete-preview-img').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const imgId = btn.dataset.imgId;
+      deleteUploadedImage(imgId);
+    });
+  });
+}
+
+export function deleteUploadedImage(imgId) {
+  const session = getCurrentGenaiSession();
+  if (session && Array.isArray(session.uploadedImages)) {
+    session.uploadedImages = session.uploadedImages.filter(img => img.id !== imgId);
+    saveHistory();
+    updateGenAIImagePreviews();
+    if (window.renderFetchedData) {
+      window.renderFetchedData();
+    }
+    if (window.updateFetchedDataButtonVisibility) {
+      window.updateFetchedDataButtonVisibility();
+    }
+    showToast('Image removed');
+  }
+}
+
+function handleImageUpload(file) {
+  if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    showToast('Only image files are supported', 'error');
+    return;
+  }
+  
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const base64Data = e.target.result;
+    const session = getCurrentGenaiSession();
+    if (!session) {
+      showToast('No active session found', 'error');
+      return;
+    }
+    
+    if (!session.uploadedImages) {
+      session.uploadedImages = [];
+    }
+    
+    session.uploadedImages.push({
+      id: 'img_' + Date.now(),
+      name: file.name || `Pasted Image ${session.uploadedImages.length + 1}`,
+      base64: base64Data,
+      enabled: true
+    });
+    
+    saveHistory();
+    updateGenAIImagePreviews();
+    if (window.renderFetchedData) {
+      window.renderFetchedData();
+    }
+    if (window.updateFetchedDataButtonVisibility) {
+      window.updateFetchedDataButtonVisibility();
+    }
+    showToast('Image added to context');
+  };
+  reader.readAsDataURL(file);
+}
+
+window.updateGenAIImagePreviews = updateGenAIImagePreviews;
+window.deleteUploadedImage = deleteUploadedImage;
 
 export function getCurrentGenaiSession() {
   if (!currentGenaiSessionId) return null;
@@ -5629,19 +6219,17 @@ export async function renderAllSkillsList() {
 }
 
 export function getActiveSkillsForCurrentSession() {
-  let chatSession = appState.currentChat;
-  if (!chatSession) {
-    const groupViewEl = document.getElementById('group-chat-view-container');
-    const isGroupViewOpen = groupViewEl && !groupViewEl.classList.contains('hidden') && groupViewEl.style.display !== 'none';
-    
-    if (isGroupViewOpen) {
-      const activeGroupId = groupChatStore.getActiveGroupId();
-      if (activeGroupId) {
-        chatSession = groupChatStore.getCurrentSession ? groupChatStore.getCurrentSession() : null;
-      }
-    } else {
-      chatSession = chatStore.getCurrentSession();
+  const groupViewEl = document.getElementById('group-chat-view-container');
+  const isGroupViewOpen = groupViewEl && !groupViewEl.classList.contains('hidden') && groupViewEl.style.display !== 'none';
+  
+  let chatSession = null;
+  if (isGroupViewOpen) {
+    const activeGroupId = groupChatStore.getActiveGroupId();
+    if (activeGroupId) {
+      chatSession = groupChatStore.getCurrentSession ? groupChatStore.getCurrentSession() : null;
     }
+  } else {
+    chatSession = appState.currentChat || chatStore.getCurrentSession();
   }
 
   if (chatSession) {
@@ -5658,24 +6246,21 @@ export function getActiveSkillsForCurrentSession() {
 }
 
 export async function setActiveSkillsForCurrentSession(skills) {
-  let chatSession = appState.currentChat;
-  let isGroup = false;
-
   const groupViewEl = document.getElementById('group-chat-view-container');
   const isGroupViewOpen = groupViewEl && !groupViewEl.classList.contains('hidden') && groupViewEl.style.display !== 'none';
+  
+  let chatSession = null;
+  let isGroup = false;
 
-  if (!chatSession) {
-    if (isGroupViewOpen) {
-      const activeGroupId = groupChatStore.getActiveGroupId();
-      if (activeGroupId) {
-        chatSession = groupChatStore.getCurrentSession ? groupChatStore.getCurrentSession() : null;
-      }
-      isGroup = true;
-    } else {
-      chatSession = chatStore.getCurrentSession();
+  if (isGroupViewOpen) {
+    const activeGroupId = groupChatStore.getActiveGroupId();
+    if (activeGroupId) {
+      chatSession = groupChatStore.getCurrentSession ? groupChatStore.getCurrentSession() : null;
     }
+    isGroup = true;
   } else {
-    isGroup = isGroupViewOpen;
+    chatSession = appState.currentChat || chatStore.getCurrentSession();
+    isGroup = false;
   }
 
   if (chatSession) {

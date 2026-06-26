@@ -602,13 +602,14 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
 
 .thinking-toggle-header {
   cursor: pointer;
-  opacity: 0.45;
+  color: var(--text-secondary);
+  opacity: 0.6;
   transition: opacity 0.2s ease;
   font-style: italic;
   letter-spacing: 0.02em;
 }
 .thinking-toggle-header:hover {
-  opacity: 0.7;
+  opacity: 0.85;
 }
 
 .thinking-chevron {

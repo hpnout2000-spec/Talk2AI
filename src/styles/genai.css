@@ -646,7 +646,6 @@ body.genai-fullscreen .genai-fullscreen-placeholder {
 }
 
 .genai-msg.genai-assistant .genai-msg-bubble.thinking-only {
-  max-width: 320px;
   width: fit-content;
   line-height: 1;
 }
@@ -691,7 +690,6 @@ body.genai-fullscreen .genai-msg.genai-assistant .genai-msg-bubble {
 }
 
 body.genai-fullscreen .genai-msg.genai-assistant .genai-msg-bubble.thinking-only {
-  max-width: 320px;
   width: fit-content;
   padding: 6px 14px;
   border-radius: 16px;
@@ -883,9 +881,22 @@ body.genai-fullscreen .genai-empty-state {
 }
 
 .genai-action-badge.result-data {
-  background: rgba(6, 182, 212, 0.08);
-  border-color: rgba(6, 182, 212, 0.2);
-  color: var(--accent-secondary);
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  color: var(--text-secondary) !important;
+  font-style: italic !important;
+  font-weight: normal !important;
+  opacity: 0.6;
+  box-shadow: none !important;
+  transition: opacity 0.2s ease;
+  letter-spacing: 0.02em;
+  margin-top: var(--space-1);
+  margin-bottom: var(--space-2);
+}
+
+.genai-action-badge.result-data:hover {
+  opacity: 0.85;
 }
 
 .genai-action-badge.result-setting {
@@ -1528,13 +1539,14 @@ body:not(.genai-fullscreen) #genai-thinking-effort-wrapper .thinking-icon-bulb {
   }
 }
 
-/* Show GenAI Fetched Data button ONLY in fullscreen mode */
-body.genai-fullscreen .btn-fetched-data {
+/* Show GenAI Fetched Data button in fullscreen or when it has .visible class */
+body.genai-fullscreen .btn-fetched-data,
+.btn-fetched-data.visible {
   display: inline-flex !important;
 }
 
 .btn-fetched-data {
-  display: none !important; /* hidden by default */
+  display: none; /* hidden by default */
   align-items: center;
   justify-content: center;
   gap: 6px;

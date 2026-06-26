@@ -173,6 +173,7 @@ export function loadGroupSession(session) {
   }
   scrollGroupToBottom();
   renderGroupHistoryInPanel();
+  window.dispatchEvent(new CustomEvent('genai-active-skills-changed'));
 }
 
 export function startNewGroupChat(group) {
@@ -181,6 +182,7 @@ export function startNewGroupChat(group) {
   clearGroupMessages();
   groupChatStore.saveSession(session);
   renderGroupHistoryInPanel();
+  window.dispatchEvent(new CustomEvent('genai-active-skills-changed'));
 }
 
 // ─── Send message ────────────────────────────────────────────────────

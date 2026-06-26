@@ -1046,6 +1046,7 @@ export function startNewChat(character = null) {
     if (window.updateUserNameDisplay) {
       window.updateUserNameDisplay();
     }
+    window.dispatchEvent(new CustomEvent('genai-active-skills-changed'));
   }
 }
 
@@ -1079,6 +1080,7 @@ export function loadChat(session) {
   updateContextIndicator();
   scrollToBottom();
   updateChatHistory();
+  window.dispatchEvent(new CustomEvent('genai-active-skills-changed'));
 }
 
 // ─── Select Character ───────────────────────────────────────────────

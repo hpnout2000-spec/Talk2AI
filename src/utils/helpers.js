@@ -413,7 +413,7 @@ export function parseStreamThinking(text) {
 export function createThinkingBlockHTML(thinkingText, isActive) {
   if (isActive) {
     const escapedThoughts = escapeHtml(thinkingText || '');
-    return `<div class="thinking-inline thinking-inline-active"><div class="thinking-inline-header"><thinking-snippets thoughts="${escapedThoughts}"></thinking-snippets></div></div>`;
+    return `<div class="thinking-inline thinking-inline-active"><div class="thinking-inline-header"><thinking-snippets id="genai-thinking-snippets" thoughts="${escapedThoughts}"></thinking-snippets></div></div>`;
   }
   return '<div class="thinking-inline"><div class="thinking-inline-header thinking-toggle-header" onclick="this.closest(\'.thinking-inline\').classList.toggle(\'thinking-expanded\')"><span class="thinking-done-text">Done</span><span class="thinking-chevron"> ▸</span></div><div class="thinking-inline-content">' + escapeHtml(thinkingText) + '</div></div>';
 }
@@ -455,7 +455,6 @@ class ThinkingSnippets extends HTMLElement {
     }
     
     this.intervalId = setInterval(() => {
-
       const activeList = this.extractedSnippets.length > 0 ? this.extractedSnippets : this.placeholderPhrases;
       if (activeList.length === 0) return;
       
@@ -474,6 +473,7 @@ class ThinkingSnippets extends HTMLElement {
 
     this.adjustBubbleWidth();
   }
+
 
   attributeChangedCallback(name, oldValue, newValue) {
     if (name === 'thoughts' && newValue !== oldValue) {
@@ -498,7 +498,7 @@ class ThinkingSnippets extends HTMLElement {
       if (!hadRealThoughts) {
         this.currentIndex = 0;
         this.transitionToSnippet(this.extractedSnippets[0]);
-      } else if (addedNew && Math.random() > 0.6) {
+      } else if (addedNew) {
         const latestIdx = this.extractedSnippets.length - 1;
         this.currentIndex = latestIdx;
         this.transitionToSnippet(this.extractedSnippets[latestIdx]);
@@ -507,21 +507,35 @@ class ThinkingSnippets extends HTMLElement {
   }
 
   adjustBubbleWidth() {
-    const run = () => {
+    const run = (retry) => {
       const bubble = this.closest('.genai-msg-bubble');
-      if (bubble && bubble.classList.contains('thinking-only')) {
-        const activeLayer = this.querySelector('.thinking-snippet-layer:not(.layer-leaving)');
-        if (activeLayer) {
-          const rect = activeLayer.getBoundingClientRect();
-          if (rect.width > 0) {
-            bubble.style.width = (rect.width + 34) + 'px';
-          } else {
-            requestAnimationFrame(run);
-          }
-        }
+      if (!bubble || !bubble.classList.contains('thinking-only')) return;
+
+      const activeLayer = this.querySelector('.thinking-snippet-layer:not(.layer-leaving)');
+      if (!activeLayer) return;
+
+      // offsetWidth is more reliable than getBoundingClientRect inside inline-grid
+      const layerWidth = activeLayer.offsetWidth;
+      if (layerWidth === 0) {
+        if (retry < 3) requestAnimationFrame(() => run(retry + 1));
+        return;
+      }
+
+      const style = window.getComputedStyle(bubble);
+      const padH = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
+      const borderH = (parseFloat(style.borderLeftWidth) || 0) + (parseFloat(style.borderRightWidth) || 0);
+      const targetWidth = layerWidth + padH + borderH + 2; // +2 for subpixel safety
+
+      const leavingLayer = this.querySelector('.thinking-snippet-layer.layer-leaving');
+      if (leavingLayer) {
+        // During transition: only grow, never shrink — leaving text is still visible
+        const current = parseFloat(bubble.style.width) || 0;
+        if (targetWidth > current) bubble.style.width = targetWidth + 'px';
+      } else {
+        bubble.style.width = targetWidth + 'px';
       }
     };
-    requestAnimationFrame(run);
+    requestAnimationFrame(() => run(0));
   }
 
   transitionToSnippet(text) {
@@ -546,11 +560,13 @@ class ThinkingSnippets extends HTMLElement {
       currentLayer.classList.add('layer-leaving');
       currentLayer.classList.remove('layer-entering');
       
-      // Remove old layer after animation completes (800ms)
+      // Remove old layer after animation completes, then re-settle bubble width
       setTimeout(() => {
         if (currentLayer.parentNode === this) {
           this.removeChild(currentLayer);
         }
+        // Re-run width adjustment now that the leaving layer is gone (allows shrinking)
+        this.adjustBubbleWidth();
       }, 800);
     }
 

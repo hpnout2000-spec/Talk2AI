@@ -184,6 +184,8 @@ function loadSettingsToUI() {
   setRangeValue('setting-genai-max-tokens', 'genai-max-tokens-value', settings.genai_max_tokens || 2048);
   checkField('setting-genai-duo-suggestions', settings.genai_duo_suggestions !== false);
   checkField('setting-genai-safe-mode', settings.genai_safe_mode);
+  checkField('setting-genai-viewimage-enabled', settings.genai_viewimage_enabled);
+  checkField('setting-genai-imagered-enabled', settings.genai_imagered_enabled !== false);
 
   // Image Gen settings
   checkField('setting-comfyui-enabled', settings.comfyui_enabled);
@@ -284,6 +286,8 @@ async function saveSettings() {
     genai_max_tokens: parseInt(getVal('setting-genai-max-tokens')) || current.genai_max_tokens || 2048,
     genai_duo_suggestions: getChecked('setting-genai-duo-suggestions'),
     genai_safe_mode: getChecked('setting-genai-safe-mode'),
+    genai_viewimage_enabled: getChecked('setting-genai-viewimage-enabled'),
+    genai_imagered_enabled: getChecked('setting-genai-imagered-enabled'),
     game_prompt_presets: currentSettings.game_prompt_presets,
     active_game_prompt_preset_id: currentSettings.active_game_prompt_preset_id,
     game_system_prompt: getVal('setting-game-system-prompt') || 'You are a Game Master in an interactive text RPG.',

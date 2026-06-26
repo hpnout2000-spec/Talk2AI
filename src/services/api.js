@@ -817,8 +817,16 @@ Focus ONLY on what is known or can be directly inferred from the history. Keep t
     let formattedText = '';
     for (const msg of messages) {
       const role = msg.role || 'user';
-      const content = msg.content || '';
-      formattedText += `<|im_start|>${role}\n${content}<|im_end|>\n`;
+      let contentText = '';
+      if (Array.isArray(msg.content)) {
+        contentText = msg.content.map(part => {
+          if (part && part.type === 'text') return part.text || '';
+          return '';
+        }).join(' ');
+      } else {
+        contentText = msg.content || '';
+      }
+      formattedText += `<|im_start|>${role}\n${contentText}<|im_end|>\n`;
     }
     formattedText += `<|im_start|>assistant\n`;
     

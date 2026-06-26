@@ -1108,6 +1108,10 @@
         </div>
         <div id="genai-messages" class="sidebar-section"></div>
         <div class="genai-input-area" style="position: relative;">
+          <!-- Hidden File Input for Image Upload -->
+          <input type="file" id="genai-image-upload-input" accept="image/*" style="display: none;">
+          <!-- Image Preview Row -->
+          <div id="genai-image-preview-container" class="hidden" style="display: flex; gap: 8px; padding: 6px 12px; border-bottom: 1px solid var(--border-light); background: var(--bg-secondary); overflow-x: auto;"></div>
           <!-- Smart Context In-Progress Warning Popup -->
           <div id="genai-smart-context-warning" class="hidden" style="position: absolute; bottom: calc(100% - 4px); left: 12px; right: 12px; background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 12px; box-shadow: var(--shadow-lg); z-index: 110; display: flex; flex-direction: column; gap: 8px;">
             <div style="font-size: var(--text-xs); color: var(--text-primary); font-weight: 500; line-height: 1.4;">
@@ -1133,13 +1137,17 @@
                 </svg>
                 <span id="genai-skills-badge" class="genai-skills-badge hidden">0</span>
               </button>
-              <div id="genai-plus-popover" class="popover hidden" style="bottom: 100%; left: 0; margin-bottom: 8px; width: 220px; padding: 0; overflow: hidden; display: block; z-index: 100; transition: height 0.3s cubic-bezier(0.2, 1, 0.1, 1); height: 142px; position: absolute;">
+              <div id="genai-plus-popover" class="popover hidden" style="bottom: 100%; left: 0; margin-bottom: 8px; width: 220px; padding: 0; overflow: hidden; display: block; z-index: 100; transition: height 0.3s cubic-bezier(0.2, 1, 0.1, 1); height: 186px; position: absolute;">
                 <div id="genai-plus-slider" data-page="0" style="display: flex; align-items: flex-start; width: 300%; transition: transform 0.3s cubic-bezier(0.2, 1, 0.1, 1); transform: translateX(0);">
                   <!-- Main Actions View -->
                   <div id="genai-plus-main" style="width: 33.333%; padding: 6px; flex-shrink: 0; box-sizing: border-box;">
                     <button id="btn-genai-create-char" class="dropdown-option" style="display: flex; flex-direction: column; align-items: flex-start; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; width: 100%; text-align: left;">
                       <span style="font-weight: 500; font-size: var(--text-sm); color: var(--text-primary);">Create character</span>
                       <span style="font-size: 11px; color: var(--text-tertiary);">Enhanced</span>
+                    </button>
+                    <button id="btn-genai-upload-image" class="dropdown-option" style="display: flex; flex-direction: column; align-items: flex-start; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; width: 100%; text-align: left;">
+                      <span style="font-weight: 500; font-size: var(--text-sm); color: var(--text-primary);">Upload image</span>
+                      <span style="font-size: 11px; color: var(--text-tertiary);">Vision · Multimodal</span>
                     </button>
                     <button id="btn-genai-toggle-imagegen" class="dropdown-option" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; width: 100%; text-align: left;">
                       <span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
@@ -2226,6 +2234,26 @@
               </div>
               <label class="toggle-switch small">
                 <input type="checkbox" id="setting-genai-safe-mode" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="form-group-row">
+              <div style="display: flex; flex-direction: column; gap: 4px;">
+                <label>Allow vision analysis (viewimage)</label>
+                <span style="font-size: var(--text-xs); color: var(--text-tertiary);">Allows GenAI to trigger image analysis using the viewimage command.</span>
+              </div>
+              <label class="toggle-switch small">
+                <input type="checkbox" id="setting-genai-viewimage-enabled" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="form-group-row">
+              <div style="display: flex; flex-direction: column; gap: 4px;">
+                <label>Enable Image Editor (ImageRed) <span style="font-size: var(--text-xs); color: var(--text-tertiary); font-weight: bold;">(In development)</span></label>
+                <span style="font-size: var(--text-xs); color: var(--text-tertiary);">Allows GenAI to edit images using ImageRed command.</span>
+              </div>
+              <label class="toggle-switch small">
+                <input type="checkbox" id="setting-genai-imagered-enabled" />
                 <span class="toggle-slider"></span>
               </label>
             </div>

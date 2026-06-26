@@ -129,6 +129,8 @@ pub struct AppSettings {
     pub thinking_enabled: bool,
     pub memory_enabled: bool,
     pub font_size: u32,
+    pub genai_viewimage_enabled: bool,
+    pub genai_imagered_enabled: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -177,6 +179,8 @@ impl Default for AppSettings {
             thinking_enabled: false,
             memory_enabled: true,
             font_size: 15,
+            genai_viewimage_enabled: false,
+            genai_imagered_enabled: true,
         }
     }
 }
