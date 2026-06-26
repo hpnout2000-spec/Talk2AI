@@ -168,6 +168,7 @@ function loadSettingsToUI() {
   setRangeValue('adv-setting-rep-penalty', 'adv-rep-penalty-value', settings.rep_penalty?.toFixed(2));
   checkField('setting-memory', settings.memory_enabled);
   checkField('setting-gemma4-support', settings.gemma4_support);
+  checkField('setting-change-gemma4-thinking-style', settings.change_gemma4_thinking_style);
   checkField('setting-auto-translate', settings.auto_translate);
   checkField('setting-translate-user', settings.translate_user_messages);
   checkField('setting-italic-asterisks', settings.italic_asterisks);
@@ -272,6 +273,7 @@ async function saveSettings() {
     prompt_token_limit: parseInt(getVal('setting-prompt-token-limit')) || current.prompt_token_limit,
     memory_enabled: getChecked('setting-memory'),
     gemma4_support: getChecked('setting-gemma4-support'),
+    change_gemma4_thinking_style: getChecked('setting-change-gemma4-thinking-style'),
     auto_translate: getChecked('setting-auto-translate'),
     translate_user_messages: getChecked('setting-translate-user'),
     italic_asterisks: getChecked('setting-italic-asterisks'),

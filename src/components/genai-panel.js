@@ -1075,6 +1075,11 @@ Do NOT attempt to run any of the corresponding JSON commands for these features,
     }
   }
 
+  // Apply Gemma 4 thinking style directive if experimental toggle is enabled and reasoning is active
+  if (settings.change_gemma4_thinking_style && settings.reasoning_effort && settings.reasoning_effort !== 'none') {
+    systemContent += `\n\nWhen reasoning internally, your thought process must be brief, natural, and strictly in the first person (e.g., "I need to check...", "Let me think..."). Emulate a concise "thinking out loud" style similar to Claude. Avoid overly verbose, rigid step-by-step lists. Keep your internal monologue efficient and directly focused on solving the problem.`;
+  }
+
   // Prepend <|think|> for Gemma 4 thinking models when reasoning effort is active
   if (settings.gemma4_support && settings.reasoning_effort && settings.reasoning_effort !== 'none') {
     systemContent = '<|think|>\n' + systemContent;

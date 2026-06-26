@@ -18,6 +18,7 @@ const DEFAULTS = {
   reasoning_effort: 'none',
   previous_reasoning_effort: 'medium',
   gemma4_support: false,
+  change_gemma4_thinking_style: false,
   extended_thinking: false,
   memory_enabled: true,
   font_size: 15,
