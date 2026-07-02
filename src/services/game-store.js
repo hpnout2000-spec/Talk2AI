@@ -122,6 +122,7 @@ export const gameStore = {
     if (!game) return;
     if (settings.title !== undefined) game.title = settings.title || 'Untitled Game';
     if (settings.story_prompt !== undefined) game.story_prompt = settings.story_prompt;
+    if (settings.reasoning_effort !== undefined) game.reasoning_effort = settings.reasoning_effort;
     game.updated_at = new Date().toISOString();
     this.save();
   },

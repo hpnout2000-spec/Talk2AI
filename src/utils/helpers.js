@@ -194,15 +194,17 @@ export function renderMarkdown(text) {
       }
       
       const type = (marker === '-' || marker === '*' || marker === '+') ? 'ul' : 'ol';
+      const startNum = type === 'ol' ? parseInt(marker, 10) : null;
+      const startAttr = (type === 'ol' && !isNaN(startNum) && startNum !== 1) ? ` start="${startNum}"` : '';
       
       if (listStack.length === 0) {
         listStack.push({ indent, type });
-        resultListLines.push(`<${type}><li>${content}`);
+        resultListLines.push(`<${type}${startAttr}><li>${content}`);
       } else {
         let top = listStack[listStack.length - 1];
         if (indent > top.indent) {
           listStack.push({ indent, type });
-          resultListLines.push(`<${type}><li>${content}`);
+          resultListLines.push(`<${type}${startAttr}><li>${content}`);
         } else if (indent < top.indent) {
           while (listStack.length > 0 && listStack[listStack.length - 1].indent > indent) {
             const closed = listStack.pop();
@@ -211,12 +213,12 @@ export function renderMarkdown(text) {
           
           if (listStack.length === 0) {
             listStack.push({ indent, type });
-            resultListLines.push(`<${type}><li>${content}`);
+            resultListLines.push(`<${type}${startAttr}><li>${content}`);
           } else {
             top = listStack[listStack.length - 1];
             if (top.type !== type) {
               listStack.pop();
-              resultListLines.push(`</li></${top.type}><${type}><li>${content}`);
+              resultListLines.push(`</li></${top.type}><${type}${startAttr}><li>${content}`);
               listStack.push({ indent, type });
             } else {
               resultListLines.push(`</li><li>${content}`);
@@ -225,7 +227,7 @@ export function renderMarkdown(text) {
         } else {
           if (top.type !== type) {
             listStack.pop();
-            resultListLines.push(`</li></${top.type}><${type}><li>${content}`);
+            resultListLines.push(`</li></${top.type}><${type}${startAttr}><li>${content}`);
             listStack.push({ indent, type });
           } else {
             resultListLines.push(`</li><li>${content}`);
@@ -233,9 +235,25 @@ export function renderMarkdown(text) {
         }
       }
     } else {
-      while (listStack.length > 0) {
-        const closed = listStack.pop();
-        resultListLines.push(`</li></${closed.type}>`);
+      let shouldClose = true;
+      if (line.trim() === '') {
+        let nextNonEmpty = null;
+        for (let j = i + 1; j < listLines.length; j++) {
+          if (listLines[j].trim() !== '') {
+            nextNonEmpty = listLines[j];
+            break;
+          }
+        }
+        if (nextNonEmpty && listItemRegex.test(nextNonEmpty)) {
+          shouldClose = false;
+        }
+      }
+
+      if (shouldClose) {
+        while (listStack.length > 0) {
+          const closed = listStack.pop();
+          resultListLines.push(`</li></${closed.type}>`);
+        }
       }
       resultListLines.push(line);
     }

@@ -31,6 +31,75 @@ function notifyGenAI(response, characterName) {
   import('../components/genai-panel.js').then(m => m.notifyGenAIResponse(response, characterName)).catch(() => { });
 }
 
+const ANIMA_BETTER_PROMPT_TEXT = `[IMAGE GENERATION RULES & GUIDELINES]
+Prompting
+The model is trained on Danbooru-style tags, natural language captions, and combinations of tags and captions.
+
+Use lowercase for tags, and spaces instead of underscores. Score tags are the only tags that use underscores.
+Recommended positive prefix: "masterpiece, best quality, score_7, [safety tag], "
+Recommended negative: "worst quality, low quality, score_1, score_2, score_3, artist name"
+When using a tag that is different between Danbooru and Gelbooru, prefer the Gelbooru version.
+Prompt weighting works, but needs a weight higher than typically used for SDXL. Example: "(chibi:2)"
+Tag order
+[quality/meta/year/safety tags] [1girl/1boy/1other etc] [character] [series] [artist] [general tags]
+
+Within each tag section, the tags can be in arbitrary order.
+
+Quality tags
+Human score based: masterpiece, best quality, good quality, normal quality, low quality, worst quality
+
+PonyV7 aesthetic model based: score_9, score_8, ..., score_1
+
+You can use either the human score quality tags, the aesthetic model tags, both together, or neither. All combinations work.
+
+Time period tags
+Specific year: year 2025, year 2024, ...
+
+Period: newest, recent, mid, early, old
+
+Meta tags
+highres, absurdres, anime screenshot, jpeg artifacts, official art, etc
+
+Safety tags
+safe, sensitive, nsfw, explicit
+
+MANDATORY RULE FOR SAFETY TAGS:
+- You MUST select EXACTLY ONE safety tag based on the user's request.
+- Use "safe" only for clean/SFW content.
+- Use "nsfw" or "explicit" for adult, 18+, nudity, or NSFW requests.
+- Replace the "[safety tag]" placeholder in the recommended positive prefix with your chosen tag (e.g., "masterpiece, best quality, score_7, nsfw, " for adult requests).
+- NEVER use the "safe" tag if the user requests NSFW/explicit content, and never use "nsfw"/"explicit" if the user requests clean content.
+
+Artist tags
+Prefix artist with @. E.g. "@big chungus". You must put @ in front of the artist. The effect will be very weak if you don't.
+
+Full tag example
+year 2025, newest, normal quality, score_5, highres, safe, 1girl, oomuro sakurako, yuru yuri, @nnn yryr, smile, brown hair, hat, solo, fur-trimmed gloves, open mouth, long hair, gift box, fang, skirt, red gloves, blunt bangs, gloves, one eye closed, shirt, brown eyes, santa costume, red hat, skin fang, twitter username, white background, holding bag, fur trim, simple background, brown skirt, bag, gift bag, looking at viewer, santa hat, ;d, red shirt, box, gift, fur-trimmed headwear, holding, red capelet, holding box, capelet
+
+Tag dropout
+The model was trained with random tag dropout. You don't need to include every single relevant tag for the image.
+
+Dataset tags
+To improve style and content diversity, the model was additionally trained on two non-anime datasets: LAION-POP (specifically the ye-pop version) and DeviantArt. Both were filtered to exclude photos. Because these datasets are qualitatively different from anime datasets, captions from them have been labeled with a "dataset tag". This occurs at the very beginning of a prompt followed by a newline. Optionally, the second line can contain either the image alt-text (ye-pop) or the title of the work (DeviantArt). Examples:
+
+ye-pop
+For Sale: Others by Arun Prem
+Abstract, oil painting of three faceless, blue-skinned figures. Left: white, draped figure; center: yellow-shirted, dark-haired figure; right: red-veiled, dark-haired figure carrying another. Bold, textured colors, minimalist style.
+
+deviantart
+Flame
+Digital painting of a fiery dragon with glowing yellow eyes, black horns, and a long, sinuous tail, perched on a glowing, molten rock formation. The background is a gradient of dark purple to orange.
+
+Natural language prompting tips
+Follow standard English capitalization rules for character and series names.
+If using pure natural langauge, more descriptive is better. Aim for at least 2 sentences. Extremely short prompts can give unexpected results.
+You can mix tags and natural language in arbitrary order.
+You can put quality / artist tags at the beginning of a natural language prompt.
+"masterpiece, best quality, @big chungus. An anime girl with medium-length blonde hair is..."
+Name a character, then describe their basic appearance.
+"Digital artwork of Fern from Sousou no Frieren, with long purple hair and purple eyes, wearing a black coat over a white dress with puffy sleeves..."
+This is extra important when prompting for multiple characters. If you just list off character names with no description of appearance, the model can get confused.`;
+
 // ─── DOM Elements ───────────────────────────────────────────────────
 
 let messagesContainer;
@@ -105,6 +174,7 @@ function getHistorySignature(session) {
 
 const tokenCountCache = new Map();
 let contextDebounceTimer = null;
+let activeContextCalculationController = null;
 
 // ─── Suggestions Explorer State ──────────────────────────────────────
 let moreSuggestionsAbortController = null;
@@ -1277,6 +1347,12 @@ async function sendMessage() {
     appState.suggestionsAbortController = null;
   }
 
+  // Abort any pending context calculations to prevent concurrent API requests
+  if (activeContextCalculationController) {
+    activeContextCalculationController.abort();
+    activeContextCalculationController = null;
+  }
+
   const settings = settingsStore.get();
   const character = appState.currentCharacter;
   if (!character) {
@@ -1316,7 +1392,6 @@ async function sendMessage() {
   // Clear input
   messageInput.value = '';
   autoResizeTextarea(messageInput);
-  updateContextIndicator();
 
   // If outgoing translation is enabled, translate first
   if (settings.translate_user_messages) {
@@ -1342,6 +1417,9 @@ async function sendMessage() {
 
   // Build messages array for API (will use translated_content for user messages if available)
   const apiMessages = await buildApiMessages(character, session);
+
+  // Update UI context indicator instantly using the now-warmed cache
+  updateContextIndicator(true);
 
   // Add placeholder assistant message
   const assistantMsg = chatStore.addMessage('assistant', '', null, session);
@@ -1640,7 +1718,7 @@ async function extractAndShowMemory(character, session, userMessage, assistantRe
 
 // ─── Compute Context And Trim History (Sliding Window) ──────────────
 
-async function computeContextAndTrimHistory(character, session) {
+async function computeContextAndTrimHistory(character, session, signal = null) {
   const settings = settingsStore.get();
   const userName = session.user_name || settings.user_name || 'User';
   const personaId = session.persona_id || settings.active_persona_id || 'default';
@@ -1658,20 +1736,26 @@ async function computeContextAndTrimHistory(character, session) {
   const charText = [charData.description, charData.personality, charData.scenario].filter(Boolean).join('\n\n') || `You are ${character.name}.`;
 
   const charKey = `char_${character.id}_${charText.length}`;
-  let charTokens = tokenCountCache.get(charKey);
-  if (charTokens === undefined) {
-    charTokens = await api.countTokens(charText);
-    tokenCountCache.set(charKey, charTokens);
+  let charTokensObj = tokenCountCache.get(charKey);
+  if (charTokensObj === undefined) {
+    charTokensObj = await api.countTokensDetailed(charText, signal);
+    tokenCountCache.set(charKey, charTokensObj);
   }
+  const charTokens = charTokensObj.value;
 
   // 3. Count tokens for Memory Context
   const memoryText = memoryService.getMemoryContext(character.id) || '';
   const memoryKey = `mem_${character.id}_${memoryText.length}`;
-  let memoryTokens = tokenCountCache.get(memoryKey);
-  if (memoryTokens === undefined) {
-    memoryTokens = memoryText ? await api.countTokens(memoryText) : 0;
-    tokenCountCache.set(memoryKey, memoryTokens);
+  let memoryTokensObj = tokenCountCache.get(memoryKey);
+  if (memoryTokensObj === undefined) {
+    if (memoryText) {
+      memoryTokensObj = await api.countTokensDetailed(memoryText, signal);
+    } else {
+      memoryTokensObj = { value: 0, precise: true };
+    }
+    tokenCountCache.set(memoryKey, memoryTokensObj);
   }
+  const memoryTokens = memoryTokensObj.value;
 
   // 4. Count tokens for System Prompt (Preset instructions, replaced placeholders, user persona, formatting, indicators)
   let systemBasePure = '';
@@ -1737,24 +1821,27 @@ async function computeContextAndTrimHistory(character, session) {
   }
 
   const systemKey = `sys_${character.id}_${session.id}_${systemContentPure.length}`;
-  let systemTokens = tokenCountCache.get(systemKey);
-  if (systemTokens === undefined) {
-    systemTokens = await api.countTokens(systemContentPure);
-    tokenCountCache.set(systemKey, systemTokens);
+  let systemTokensObj = tokenCountCache.get(systemKey);
+  if (systemTokensObj === undefined) {
+    systemTokensObj = await api.countTokensDetailed(systemContentPure, signal);
+    tokenCountCache.set(systemKey, systemTokensObj);
   }
+  const systemTokens = systemTokensObj.value;
 
   // 5. Count tokens for Auto Summary
   let summaryTokens = 0;
   let summaryText = "";
+  let summaryTokensObj = { value: 0, precise: true };
   if (session.autoSummary && session.autoSummary.text) {
     summaryText = session.autoSummary.text;
     const summaryKey = `sum_${session.id}_${summaryText.length}`;
-    summaryTokens = tokenCountCache.get(summaryKey);
-    if (summaryTokens === undefined) {
-      summaryTokens = await api.countTokens(`[Auto Summary of previous conversation:\n${summaryText}]`);
-      tokenCountCache.set(summaryKey, summaryTokens);
+    summaryTokensObj = tokenCountCache.get(summaryKey);
+    if (summaryTokensObj === undefined) {
+      summaryTokensObj = await api.countTokensDetailed(`[Auto Summary of previous conversation:\n${summaryText}]`, signal);
+      tokenCountCache.set(summaryKey, summaryTokensObj);
     }
   }
+  summaryTokens = summaryTokensObj.value;
 
   // 6. Sliding Window Calculation
   const maxTokensSetting = settings.max_tokens || 2048;
@@ -1790,8 +1877,8 @@ async function computeContextAndTrimHistory(character, session) {
   for (let i = 0; i < uncachedList.length; i += batchSize) {
     const batch = uncachedList.slice(i, i + batchSize);
     await Promise.all(batch.map(async (item) => {
-      const tokens = await api.countTokens(item.contentText);
-      tokenCountCache.set(item.msgKey, tokens);
+      const res = await api.countTokensDetailed(item.contentText, signal);
+      tokenCountCache.set(item.msgKey, res);
     }));
   }
 
@@ -1802,7 +1889,8 @@ async function computeContextAndTrimHistory(character, session) {
 
   for (let i = messagesMeta.length - 1; i >= 0; i--) {
     const item = messagesMeta[i];
-    const tokens = tokenCountCache.get(item.msgKey) || 0;
+    const cachedItem = tokenCountCache.get(item.msgKey);
+    const tokens = cachedItem ? cachedItem.value : 0;
     const tokensWithOverhead = tokens + 4; // Add message wrapper overhead (~4 tokens)
 
     if (basePromptTokens + estimatedHistoryTokens + tokensWithOverhead <= estimatedBudget) {
@@ -1836,24 +1924,36 @@ async function computeContextAndTrimHistory(character, session) {
 
   // Call the precise token counting endpoint on the constructed message list
   let testMsgs = buildTestMessages(trimmedMessages);
-  let exactTokens = await api.countMessagesTokens(testMsgs);
+  let exactTokensObj = await api.countMessagesTokensDetailed(testMsgs, signal);
 
   // Prune further if the server token count exceeds the limit (leaving 15 tokens free)
-  while (exactTokens > maxContext - maxTokensSetting - 15 && trimmedMessages.length > 0) {
+  while (exactTokensObj.value > maxContext - maxTokensSetting - 15 && trimmedMessages.length > 0) {
     trimmedMessages.shift(); // Remove the oldest message
     testMsgs = buildTestMessages(trimmedMessages);
-    exactTokens = await api.countMessagesTokens(testMsgs);
+    exactTokensObj = await api.countMessagesTokensDetailed(testMsgs, signal);
   }
 
   const historyItems = trimmedMessages.map(msg => {
     const contentText = msg.role === 'user' ? (msg.translated_content || msg.content) : (msg.original_text || msg.content);
-    const tokens = tokenCountCache.get(`msg_${msg.id}_${contentText.length}`) || 0;
+    const cachedItem = tokenCountCache.get(`msg_${msg.id}_${contentText.length}`);
+    const tokens = cachedItem ? cachedItem.value : 0;
     return {
       role: msg.role,
       text: contentText,
       tokens: tokens
     };
   });
+
+  const allPrecise = charTokensObj.precise &&
+                     memoryTokensObj.precise &&
+                     systemTokensObj.precise &&
+                     summaryTokensObj.precise &&
+                     trimmedMessages.every(msg => {
+                       const contentText = msg.role === 'user' ? (msg.translated_content || msg.content) : (msg.original_text || msg.content);
+                       const cachedItem = tokenCountCache.get(`msg_${msg.id}_${contentText.length}`);
+                       return cachedItem ? cachedItem.precise : false;
+                     }) &&
+                     exactTokensObj.precise;
 
   return {
     maxContext,
@@ -1865,10 +1965,11 @@ async function computeContextAndTrimHistory(character, session) {
     memoryText,
     summaryTokens,
     summaryText,
-    historyTokens: exactTokens - basePromptTokens,
+    historyTokens: exactTokensObj.value - basePromptTokens,
     historyItems,
     trimmedMessages,
-    baseTokens: exactTokens
+    baseTokens: exactTokensObj.value,
+    precise: allPrecise
   };
 }
 
@@ -2441,6 +2542,12 @@ async function triggerAssistantGeneration() {
   if (appState.suggestionsAbortController) {
     appState.suggestionsAbortController.abort();
     appState.suggestionsAbortController = null;
+  }
+
+  // Abort any pending context calculations to prevent concurrent API requests
+  if (activeContextCalculationController) {
+    activeContextCalculationController.abort();
+    activeContextCalculationController = null;
   }
 
   const character = appState.currentCharacter;
@@ -3766,10 +3873,7 @@ async function triggerAutomaticImageGeneration(character, session, assistantRepl
     contextText += mandatoryTags;
   }
   
-  const messages = [
-    {
-      role: 'system',
-      content: `You are an expert prompt engineer and scenic narrator for AI image generators.
+  let systemPromptContent = `You are an expert prompt engineer and scenic narrator for AI image generators.
 Analyze the character profile and the entire conversation history context carefully.
 CRITICAL DIRECTIVE: You MUST pay close attention to all visual and narrative context clues, details, and progression in the conversation history (such as the character's attire/clothing, physical pose, emotions, facial expressions, weapons or objects held, background environment, lighting, time of day, and active setting). Do NOT miss or ignore these details! Your generated Stable Diffusion prompt must accurately reflect the CURRENT state and context of the scene.
 
@@ -3781,7 +3885,18 @@ You MUST respond strictly in the following JSON format. Output ONLY raw JSON, do
 {
   "statuses": ["creative message 1", "creative message 2", "creative message 3"],
   "prompt": "detailed stable diffusion keywords in English"
-}`
+}`;
+
+  const isBetterPromptsActive = !!settings.comfyui_better_prompts;
+  console.log('[Main Chat ImageGen] Generating prompt. Better prompts:', isBetterPromptsActive);
+  if (isBetterPromptsActive) {
+    systemPromptContent += '\n\n' + ANIMA_BETTER_PROMPT_TEXT;
+  }
+
+  const messages = [
+    {
+      role: 'system',
+      content: systemPromptContent
     },
     {
       role: 'user',
@@ -4081,6 +4196,94 @@ window.initStatusRotation = function(container) {
 
 // ─── Update Context Indicator ────────────────────────────────────────
 
+function getContextSignature(character, session, settings) {
+  const userName = session.user_name || settings.user_name || 'User';
+  const personaId = session.persona_id || settings.active_persona_id || 'default';
+  const activePersona = (settings.personas || []).find(p => p.id === personaId);
+
+  const charData = {
+    description: character.description || '',
+    personality: character.personality ? `Personality: ${character.personality}` : '',
+    scenario: character.scenario ? `Scenario: ${character.scenario}` : ''
+  };
+  const charText = [charData.description, charData.personality, charData.scenario].filter(Boolean).join('\n\n') || `You are ${character.name}.`;
+
+  const memoryText = memoryService.getMemoryContext(character.id) || '';
+  
+  let systemBasePure = '';
+  if (character.system_prompt) {
+    systemBasePure = character.system_prompt;
+    systemBasePure = systemBasePure.replace(/\{\{description\}\}/gi, '');
+    systemBasePure = systemBasePure.replace(/\{\{personality\}\}/gi, '');
+    systemBasePure = systemBasePure.replace(/\{\{scenario\}\}/gi, '');
+  } else {
+    const activePresetId = settings.active_system_prompt_preset_id;
+    const presets = settings.system_prompt_presets || [];
+    const activePreset = presets.find(p => p.id === activePresetId);
+    if (activePreset) {
+      systemBasePure = activePreset.content;
+      systemBasePure = systemBasePure.replace(/\{\{description\}\}/gi, '');
+      systemBasePure = systemBasePure.replace(/\{\{personality\}\}/gi, '');
+      systemBasePure = systemBasePure.replace(/\{\{scenario\}\}/gi, '');
+    }
+  }
+
+  systemBasePure = systemBasePure.replace(/\{\{user\}\}/gi, userName);
+  systemBasePure = systemBasePure.replace(/\{\{char\}\}/gi, character.name);
+
+  if (character.message_examples && character.message_examples.trim()) {
+    systemBasePure += `\n\nCharacter must talk in this style: ${character.message_examples.trim()}`;
+  }
+
+  let systemContentPure = systemBasePure;
+  if (activePersona && activePersona.description) {
+    let personaStr = activePersona.description.replace(/\{\{user\}\}/gi, userName).replace(/\{\{char\}\}/gi, character.name);
+    systemContentPure += `\n\n[USER PERSONA]\nThe user's persona is as follows. Treat the user as this persona:\n${personaStr}`;
+  }
+
+  const formattingInstructions = [];
+  if (settings.response_length === 'short') {
+    formattingInstructions.push("Write extremely short, brief, and concise responses. Limit yourself to 1-2 sentences maximum. No fluff.");
+  } else if (settings.response_length === 'medium') {
+    formattingInstructions.push("Write balanced, moderately detailed responses. Strictly limit your response to about 650 characters (letters and spaces) maximum.");
+  } else if (settings.response_length === 'long') {
+    formattingInstructions.push("Write very long, detailed, and expansive responses. Elaborate on everything and be as verbose as possible.");
+  }
+
+  if (settings.description_depth > 0) {
+    const depthPrompts = [
+      "",
+      "Add brief descriptions of the scene.",
+      "Include vivid and clear descriptions of the environment and atmosphere.",
+      "Provide highly detailed and immersive scene descriptions with sensory details.",
+      "Describe every scene with extreme detail and atmosphere, focusing on deep sensory information, textures, sounds, and intense character introspection. Be extremely descriptive."
+    ];
+    formattingInstructions.push(depthPrompts[settings.description_depth]);
+  }
+
+  if (formattingInstructions.length > 0) {
+    systemContentPure += `\n\n[MANDATORY FORMATTING RULES]\n${formattingInstructions.join("\n")}`;
+  }
+
+  if (session.indicators?.enabled && session.indicators.list?.length > 0) {
+    const statusStr = session.indicators.list.map(ind => `${ind.name}: ${ind.value}%`).join('\n');
+    systemContentPure += `\n\n[CURRENT MOOD STATUS]\n${statusStr}`;
+  }
+
+  let summaryText = "";
+  if (session.autoSummary && session.autoSummary.text) {
+    summaryText = session.autoSummary.text;
+  }
+
+  const messagesToCount = session.messages || [];
+  const msgsSig = messagesToCount.map(m => {
+    const contentText = m.role === 'user' ? (m.translated_content || m.content) : (m.original_text || m.content);
+    return `${m.id}:${contentText ? contentText.length : 0}`;
+  }).join(',');
+
+  return `${charText.length}_${memoryText.length}_${systemContentPure.length}_${summaryText.length}_[${msgsSig}]`;
+}
+
 export async function updateContextIndicator(debounce = false, forceRecalculate = false) {
   const character = appState.currentCharacter;
   const session = appState.currentChat;
@@ -4092,8 +4295,96 @@ export async function updateContextIndicator(debounce = false, forceRecalculate 
 
   if (contextIndicator) contextIndicator.classList.remove('hidden');
 
-  currentIndicatorCalcId++;
-  const myCalcId = currentIndicatorCalcId;
+  const settings = settingsStore.get();
+  const currentSignature = getContextSignature(character, session, settings);
+
+  // If we already have a saved breakdown with matching signature, we can restore from it
+  if (!forceRecalculate && session._contextBreakdown && session._contextBreakdown.signature === currentSignature) {
+    // Populate sessionBaseTokensCache if missing (e.g. after restart)
+    if (!sessionBaseTokensCache.has(session.id)) {
+      sessionBaseTokensCache.set(session.id, {
+        baseTokens: session._contextBreakdown.baseTokens || (session._contextBreakdown.totalUsed - session._contextBreakdown.inputTokens),
+        maxContext: session._contextBreakdown.maxContext,
+        precise: session._contextBreakdown.precise
+      });
+    }
+    
+    // Update UI instantly using the saved breakdown
+    const currentInputText = messageInput ? messageInput.value.trim() : '';
+    let inputTokens = 0;
+    if (currentInputText) {
+      inputTokens = Math.ceil(currentInputText.length / (/[а-яА-ЯёЁ]/.test(currentInputText) ? 2.3 : 3.3));
+    }
+    
+    const baseTokens = session._contextBreakdown.baseTokens || (session._contextBreakdown.totalUsed - session._contextBreakdown.inputTokens);
+    const totalUsed = baseTokens + inputTokens;
+    const usedPercent = Math.min(100, Math.max(0, (totalUsed / session._contextBreakdown.maxContext) * 100));
+    const freePercent = Math.max(0, 100 - usedPercent);
+    const freePercentRounded = Math.round(freePercent);
+
+    if (donutSegment) {
+      donutSegment.setAttribute('stroke-dasharray', `${usedPercent} 100`);
+    }
+    if (contextIndicator) {
+      contextIndicator.setAttribute('data-tooltip', `${freePercentRounded}% free context`);
+
+      contextIndicator.classList.remove('state-normal', 'state-warning', 'state-danger');
+      if (freePercent < 5) {
+        contextIndicator.classList.add('state-danger');
+      } else if (freePercent < 20) {
+        contextIndicator.classList.add('state-warning');
+      } else {
+        contextIndicator.classList.add('state-normal');
+      }
+    }
+
+    session._contextBreakdown.inputTokens = inputTokens;
+    session._contextBreakdown.inputText = currentInputText;
+    session._contextBreakdown.totalUsed = totalUsed;
+    return;
+  }
+
+  // Safety check: if currently generating, do not request token counting from the LLM backend
+  // to avoid overloading/crashing KoboldCpp. Update UI instantly using cache if available.
+  if (appState.isGenerating) {
+    const cached = sessionBaseTokensCache.get(session.id);
+    if (cached) {
+      const currentInputText = messageInput ? messageInput.value.trim() : '';
+      let inputTokens = 0;
+      if (currentInputText) {
+        inputTokens = Math.ceil(currentInputText.length / (/[а-яА-ЯёЁ]/.test(currentInputText) ? 2.3 : 3.3));
+      }
+
+      const totalUsed = cached.baseTokens + inputTokens;
+      const usedPercent = Math.min(100, Math.max(0, (totalUsed / cached.maxContext) * 100));
+      const freePercent = Math.max(0, 100 - usedPercent);
+      const freePercentRounded = Math.round(freePercent);
+
+      if (donutSegment) {
+        donutSegment.setAttribute('stroke-dasharray', `${usedPercent} 100`);
+      }
+      if (contextIndicator) {
+        contextIndicator.setAttribute('data-tooltip', `${freePercentRounded}% free context`);
+
+        contextIndicator.classList.remove('state-normal', 'state-warning', 'state-danger');
+        if (freePercent < 5) {
+          contextIndicator.classList.add('state-danger');
+        } else if (freePercent < 20) {
+          contextIndicator.classList.add('state-warning');
+        } else {
+          contextIndicator.classList.add('state-normal');
+        }
+      }
+
+      if (session._contextBreakdown) {
+        session._contextBreakdown.inputTokens = inputTokens;
+        session._contextBreakdown.inputText = currentInputText;
+        session._contextBreakdown.totalUsed = totalUsed;
+        session._contextBreakdown.precise = false; // Mark as approximate during active generation
+      }
+    }
+    return;
+  }
 
   // Handle typing mode (instantly update donut based on cached base context tokens)
   if (debounce) {
@@ -4130,18 +4421,43 @@ export async function updateContextIndicator(debounce = false, forceRecalculate 
         session._contextBreakdown.inputTokens = inputTokens;
         session._contextBreakdown.inputText = currentInputText;
         session._contextBreakdown.totalUsed = totalUsed;
+        session._contextBreakdown.precise = cached.precise;
       }
       return;
     }
-    // If no cache is found, fall through to full recalculation
+    
+    // If no cache is found, debounce the full recalculation to avoid spamming the API on every keypress
+    if (contextDebounceTimer) clearTimeout(contextDebounceTimer);
+    contextDebounceTimer = setTimeout(() => {
+      contextDebounceTimer = null;
+      updateContextIndicator(false, forceRecalculate);
+    }, 1000);
+    return;
+  }
+
+  // Clear debounce timer if a full recalculation is run directly
+  if (contextDebounceTimer) {
+    clearTimeout(contextDebounceTimer);
+    contextDebounceTimer = null;
   }
 
   if (forceRecalculate) {
     sessionBaseTokensCache.delete(session.id);
+    tokenCountCache.clear();
   }
 
+  // Abort any previous calculations that are still running!
+  if (activeContextCalculationController) {
+    activeContextCalculationController.abort();
+  }
+  activeContextCalculationController = new AbortController();
+  const signal = activeContextCalculationController.signal;
+
+  currentIndicatorCalcId++;
+  const myCalcId = currentIndicatorCalcId;
+
   // Call the helper to do sliding window calculation and get accurate tokens
-  const result = await computeContextAndTrimHistory(character, session);
+  const result = await computeContextAndTrimHistory(character, session, signal);
   if (myCalcId !== currentIndicatorCalcId) return;
 
   // Live input tokens
@@ -4154,7 +4470,8 @@ export async function updateContextIndicator(debounce = false, forceRecalculate 
   // Save base tokens in memory cache
   sessionBaseTokensCache.set(session.id, {
     baseTokens: result.baseTokens,
-    maxContext: result.maxContext
+    maxContext: result.maxContext,
+    precise: result.precise
   });
 
   // Total Used and Free percentage
@@ -4206,7 +4523,10 @@ export async function updateContextIndicator(debounce = false, forceRecalculate 
     historyItems: result.historyItems,
     inputTokens,
     inputText: currentInputText,
-    totalUsed
+    totalUsed,
+    precise: result.precise,
+    signature: currentSignature,
+    baseTokens: result.baseTokens
   };
 }
 
@@ -4214,6 +4534,22 @@ export function populateContextDetailsModal(session) {
   if (!session || !session._contextBreakdown) return;
 
   const breakdown = session._contextBreakdown;
+
+  // Update accuracy badge status
+  const accuracyBadge = document.getElementById('context-accuracy-badge');
+  if (accuracyBadge) {
+    if (breakdown.precise) {
+      accuracyBadge.textContent = 'Precise';
+      accuracyBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+      accuracyBadge.style.color = '#10b981';
+      accuracyBadge.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+    } else {
+      accuracyBadge.textContent = 'Approximate';
+      accuracyBadge.style.background = 'rgba(245, 158, 11, 0.15)';
+      accuracyBadge.style.color = '#f59e0b';
+      accuracyBadge.style.border = '1px solid rgba(245, 158, 11, 0.3)';
+    }
+  }
 
   // 1. Populate summary totals
   if (contextTotalInfo) {

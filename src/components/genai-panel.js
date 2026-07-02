@@ -57,14 +57,86 @@ const creatorTabsList = ['Name', 'Description', 'Personality', 'Scenario', 'Syst
 let creatorState = {};
 creatorTabsList.forEach(tab => { creatorState[tab] = { facts: [], text: '' }; });
 
+// ─── Skill Creator State ─────────────────────────────────────────────
+let isSkillCreatorMode = false;
+
 // ─── DOM refs ───────────────────────────────────────────────────────
 let messagesEl, inputEl, sendBtn, stopBtn, clearBtn, closeBtn, fullscreenBtn, brushBtn;
 
 // ─── System Prompt ──────────────────────────────────────────────────
+const ANIMA_BETTER_PROMPT_TEXT = `[IMAGE GENERATION RULES & GUIDELINES]
+Prompting
+The model is trained on Danbooru-style tags, natural language captions, and combinations of tags and captions.
+
+Use lowercase for tags, and spaces instead of underscores. Score tags are the only tags that use underscores.
+Recommended positive prefix: "masterpiece, best quality, score_7, [safety tag], "
+Recommended negative: "worst quality, low quality, score_1, score_2, score_3, artist name"
+When using a tag that is different between Danbooru and Gelbooru, prefer the Gelbooru version.
+Prompt weighting works, but needs a weight higher than typically used for SDXL. Example: "(chibi:2)"
+Tag order
+[quality/meta/year/safety tags] [1girl/1boy/1other etc] [character] [series] [artist] [general tags]
+
+Within each tag section, the tags can be in arbitrary order.
+
+Quality tags
+Human score based: masterpiece, best quality, good quality, normal quality, low quality, worst quality
+
+PonyV7 aesthetic model based: score_9, score_8, ..., score_1
+
+You can use either the human score quality tags, the aesthetic model tags, both together, or neither. All combinations work.
+
+Time period tags
+Specific year: year 2025, year 2024, ...
+
+Period: newest, recent, mid, early, old
+
+Meta tags
+highres, absurdres, anime screenshot, jpeg artifacts, official art, etc
+
+Safety tags
+safe, sensitive, nsfw, explicit
+
+MANDATORY RULE FOR SAFETY TAGS:
+- You MUST select EXACTLY ONE safety tag based on the user's request.
+- Use "safe" only for clean/SFW content.
+- Use "nsfw" or "explicit" for adult, 18+, nudity, or NSFW requests.
+- Replace the "[safety tag]" placeholder in the recommended positive prefix with your chosen tag (e.g., "masterpiece, best quality, score_7, nsfw, " for adult requests).
+- NEVER use the "safe" tag if the user requests NSFW/explicit content, and never use "nsfw"/"explicit" if the user requests clean content.
+
+Artist tags
+Prefix artist with @. E.g. "@big chungus". You must put @ in front of the artist. The effect will be very weak if you don't.
+
+Full tag example
+year 2025, newest, normal quality, score_5, highres, safe, 1girl, oomuro sakurako, yuru yuri, @nnn yryr, smile, brown hair, hat, solo, fur-trimmed gloves, open mouth, long hair, gift box, fang, skirt, red gloves, blunt bangs, gloves, one eye closed, shirt, brown eyes, santa costume, red hat, skin fang, twitter username, white background, holding bag, fur trim, simple background, brown skirt, bag, gift bag, looking at viewer, santa hat, ;d, red shirt, box, gift, fur-trimmed headwear, holding, red capelet, holding box, capelet
+
+Tag dropout
+The model was trained with random tag dropout. You don't need to include every single relevant tag for the image.
+
+Dataset tags
+To improve style and content diversity, the model was additionally trained on two non-anime datasets: LAION-POP (specifically the ye-pop version) and DeviantArt. Both were filtered to exclude photos. Because these datasets are qualitatively different from anime datasets, captions from them have been labeled with a "dataset tag". This occurs at the very beginning of a prompt followed by a newline. Optionally, the second line can contain either the image alt-text (ye-pop) or the title of the work (DeviantArt). Examples:
+
+ye-pop
+For Sale: Others by Arun Prem
+Abstract, oil painting of three faceless, blue-skinned figures. Left: white, draped figure; center: yellow-shirted, dark-haired figure; right: red-veiled, dark-haired figure carrying another. Bold, textured colors, minimalist style.
+
+deviantart
+Flame
+Digital painting of a fiery dragon with glowing yellow eyes, black horns, and a long, sinuous tail, perched on a glowing, molten rock formation. The background is a gradient of dark purple to orange.
+
+Natural language prompting tips
+Follow standard English capitalization rules for character and series names.
+If using pure natural langauge, more descriptive is better. Aim for at least 2 sentences. Extremely short prompts can give unexpected results.
+You can mix tags and natural language in arbitrary order.
+You can put quality / artist tags at the beginning of a natural language prompt.
+"masterpiece, best quality, @big chungus. An anime girl with medium-length blonde hair is..."
+Name a character, then describe their basic appearance.
+"Digital artwork of Fern from Sousou no Frieren, with long purple hair and purple eyes, wearing a black coat over a white dress with puffy sleeves..."
+This is extra important when prompting for multiple characters. If you just list off character names with no description of appearance, the model can get confused.`;
+
 const BASE_SYSTEM_PROMPT = `You are GenAI — an advanced, direct, and adaptive assistant built into VibeChatting.
 Today is {{TODAY_DATE_TIME}}
 You are an adaptive assistant and must seamlessly adapt to the user's behavior, preferences, and conversational style.
-You have deep, direct access to all application data, settings, and features via custom tools. Use the "👉" emoji ONLY for bullet lists — never use this emoji in regular paragraphs.
+You have deep, direct access to all application data, settings, and features via custom tools.
 
 PERSONALITY & TONE:
 - You have a distinct personality: direct, occasionally sarcastic — but never cold.
@@ -209,6 +281,38 @@ MANDATORY BEHAVIORAL PROTOCOL:
 7. WRITE MONOLITHICALLY: You must output your JSON actions (e.g. {"genai_action":"add_char_fact",...} or {"genai_action":"show_char_tab",...}) and then IMMEDIATELY continue writing your creative dialogue, conversational thoughts, suggestions, and further tool calls on the very next lines within the same response bubble. Do NOT stop generating after a JSON block! Keep writing fluidly.
 
 Remember: Record first, then ask! Write monolithically and continue dialogue. Always preserve details. You are GenAI Creator.
+`;
+
+const SKILL_CREATOR_SYSTEM_PROMPT = `You are GenAI Skill Editor — a specialized AI designed to help the user create, refine, and improve custom skill documents for the VibeChatting application.
+
+A "skill" is a text file that gives the AI additional context, instructions, or capabilities for a chat session. Skills can describe personas, knowledge domains, behavior guidelines, or any custom instructions.
+
+The user is editing a numbered-line skill document visible in the left panel. Each line is independently editable and numbered.
+
+YOUR AVAILABLE ACTIONS:
+You can modify the skill document by writing JSON commands on a separate line. Use these commands when the user asks you to edit, add, or reorganize content:
+
+1. Edit an existing line:
+   {"genai_action":"edit_skill_line","line":<number>,"text":"<new line content>"}
+   - Use when: User asks to change, improve, rewrite, or fix a specific line.
+
+2. Add new lines after a position:
+   {"genai_action":"add_skill_lines","after":<line_number>,"lines":["line text 1","line text 2"]}
+   - Use when: User asks to add new content. "after":0 adds at the very beginning.
+
+3. Set the skill name:
+   {"genai_action":"set_skill_name","name":"<skill name>"}
+   - Use when: User asks to rename the skill or when you suggest a better name.
+
+BEHAVIORAL RULES:
+1. Always reference lines by their number (e.g. "Line 3 currently says...").
+2. After making changes, briefly describe what you changed and why.
+3. Write monolithically: emit your JSON commands and IMMEDIATELY continue with conversational text in the same response.
+4. When the user asks for suggestions, show them the current skill context and offer concrete improvements.
+5. Do NOT use character creation tools (add_char_fact, etc.) — you are in Skill Editor mode only.
+6. Be concise and precise. Skill documents should be clear, structured, and actionable.
+
+The current skill content will be provided in the user's context.
 `;
 
 // ─── Settings metadata is imported from settings-store.js or dynamically built in skills-store ───
@@ -698,7 +802,20 @@ async function buildApiMessages(extraUserInstruction = null, skipSmartContextOve
     stylePrompt += '\nIMPORTANT: You are now an official, smart AI assistant. Do NOT use emojis. Maintain a formal, professional tone. Do NOT act like a "best friend".';
   }
 
-  let finalBasePrompt = isCharacterCreationMode ? CREATOR_SYSTEM_PROMPT : BASE_SYSTEM_PROMPT;
+  if (settings.genai_emoji_preferences === 'more') {
+    stylePrompt += '\nIMPORTANT: Add emojis that you deem appropriate to match the tone of the response, but do not overdo it.';
+  }
+
+  let finalBasePrompt = isCharacterCreationMode ? CREATOR_SYSTEM_PROMPT
+    : isSkillCreatorMode ? SKILL_CREATOR_SYSTEM_PROMPT
+    : BASE_SYSTEM_PROMPT;
+
+  // Inject current skill document context for Skill Creator mode
+  if (isSkillCreatorMode && window.getSkillCreatorContext) {
+    const skillCtx = window.getSkillCreatorContext();
+    finalBasePrompt += `\n\n---\nCURRENT SKILL DOCUMENT STATE:\n${skillCtx}\n---`;
+  }
+
   if (!settings.genai_duo_suggestions && !isCharacterCreationMode) {
     const targetTextTargetBlock = `   * "target": "genai" - VERY IMPORTANT: This targets the CURRENT OPEN CHAT with YOU (the GenAI assistant). When clicked, the message will be sent directly to your own GenAI chat. Use this to provide convenient follow-up options, continuation flows, or control buttons for the user.\n   * "target": "character" (default if omitted) - VERY IMPORTANT: This targets a COMPLETELY DIFFERENT CHAT with a roleplay character in the application. When clicked, the message will be sent to that active roleplay character chat on behalf of the user, NOT to your chat. Use this to suggest creative, witty, or plot-driving replies for the user.`;
     const replacementTextTargetBlock = `   * NOTE: All suggestion buttons will be automatically sent to the CURRENT OPEN CHAT with YOU (the GenAI assistant). Use this to provide convenient follow-up options, continuation flows, or control buttons for the user.`;
@@ -749,8 +866,8 @@ async function buildApiMessages(extraUserInstruction = null, skipSmartContextOve
     const year = now.getFullYear();
     const day = String(now.getDate()).padStart(2, '0');
     const month = String(now.getMonth() + 1).padStart(2, '0');
-    const time = now.toTimeString().split(' ')[0]; // HH:MM:SS
-    const todayStr = `${year}, ${day}/${month} ${time}`;
+    const hour = String(now.getHours()).padStart(2, '0');
+    const todayStr = `${year}, ${day}/${month} ${hour}:00`;
     finalBasePrompt = finalBasePrompt.replace('{{TODAY_DATE_TIME}}', todayStr);
   }
 
@@ -759,7 +876,13 @@ async function buildApiMessages(extraUserInstruction = null, skipSmartContextOve
   }
 
   // Build static base (never truncated — always needed for instructions & tools)
-  const staticBase = finalBasePrompt + stylePrompt + '\n\n';
+  let staticBase = finalBasePrompt + stylePrompt;
+  const isBetterPromptsActive = !!(settings.comfyui_enabled_genai && settings.comfyui_better_prompts);
+  console.log('[GenAI] System prompt building. Image Gen:', !!settings.comfyui_enabled_genai, 'Better prompts:', !!settings.comfyui_better_prompts, 'Active:', isBetterPromptsActive);
+  if (settings.genai_system_prompt_addition) {
+    staticBase += '\n\n' + settings.genai_system_prompt_addition;
+  }
+  staticBase += '\n\n';
 
   // Build static context (tools description + settings - never truncated to ensure core capabilities)
   const staticContext = buildStaticContext();
@@ -1011,24 +1134,24 @@ ${skill.content}
   // ─── Build dynamic notice for disabled system skills ─────────────────
   let disabledSkillsList = [];
   if (!settings.comfyui_enabled_genai) {
-    disabledSkillsList.push("Image Gen (using generate_image)");
+    disabledSkillsList.push("Image Generation");
   }
   if (!activeSkills.includes('Internet Browser.json')) {
-    disabledSkillsList.push("Web Search (using web_search, web_fetch)");
+    disabledSkillsList.push("Web Search");
   }
   if (!activeSkills.includes('gelbooru')) {
-    disabledSkillsList.push("gelbooru (using gelbooru_search_posts, gelbooru_get_image, gelbooru_get_random_post, etc.)");
+    disabledSkillsList.push("Gelbooru");
   }
   if (!activeSkills.includes('nhentai')) {
-    disabledSkillsList.push("nhentai (using nhentai_search_galleries, nhentai_get_gallery, nhentai_get_page, etc.)");
+    disabledSkillsList.push("nHentai");
   }
 
   let disabledSkillsNotice = "";
   if (disabledSkillsList.length > 0) {
-    disabledSkillsNotice = `\n\n[DISABLED SYSTEM SKILLS & TOOLS NOTICE]
-IMPORTANT: You have special built-in capabilities and tools for the following features, but they are currently DISABLED by the user:
+    disabledSkillsNotice = `\n\n[DISABLED SYSTEM SKILLS NOTICE]
+IMPORTANT: The following features/skills are currently DISABLED by the user:
 ${disabledSkillsList.map(item => `- ${item}`).join('\n')}
-Do NOT attempt to run any of the corresponding JSON commands for these features, and do not pretend you can call them, because they are currently turned off. If the user asks for these features, politely let them know that these features are currently disabled in their GenAI settings and they can enable them in the GenAI plus menu (at the bottom left of the panel).`;
+If the user asks for these features, politely let them know that they are currently disabled in the GenAI settings and can be enabled in the GenAI plus menu (at the bottom left of the panel).`;
   }
 
   // Initial state: maximum context
@@ -1106,6 +1229,14 @@ ${activeSkillsBlock.trim()}
 To call a tool/command, you MUST output the JSON block on its own line in your response. For example:
 {"genai_action":"nhentai_search_galleries","query":"parody"}
 Always output the JSON action block on its own line. Stop generating immediately after outputting the JSON block. Do not write text promising to call a tool without actually outputting it.`;
+
+  // Inject Better Prompts rules if active
+  if (isBetterPromptsActive) {
+    skillsInjection += `\n\n========================================================================
+[MANDATORY SYSTEM DIRECTIVE: BETTER PROMPTS & SAFETY TAGS]
+========================================================================
+${ANIMA_BETTER_PROMPT_TEXT}`;
+  }
 
   // Inject Smart Context summaries of other chats
   if (settings.genai_smart_context && !skipSmartContextOverride) {
@@ -1219,6 +1350,31 @@ async function executeTool(action, onStatus = null, onPreview = null, onComplete
     switchCreatorTab(action.tab);
     saveCreatorState();
     return { success: true, info: `Switched UI to ${action.tab} tab.` };
+  }
+
+  // ─── Skill Creator Actions ─────────────────────────────────────────
+  if (name === 'edit_skill_line') {
+    if (!isSkillCreatorMode) return { error: 'Not in Skill Creator mode.' };
+    const lineNum = parseInt(action.line, 10);
+    const text = action.text || '';
+    if (window.aiEditSkillLine) window.aiEditSkillLine(lineNum, text);
+    return { success: true, info: `Updated line ${lineNum}.` };
+  }
+
+  if (name === 'add_skill_lines') {
+    if (!isSkillCreatorMode) return { error: 'Not in Skill Creator mode.' };
+    const after = parseInt(action.after, 10) || 0;
+    const lines = Array.isArray(action.lines) ? action.lines : (action.text ? [action.text] : []);
+    if (lines.length === 0) return { error: 'No lines provided.' };
+    if (window.aiAddSkillLines) window.aiAddSkillLines(after, lines);
+    return { success: true, info: `Added ${lines.length} line(s) after position ${after}.` };
+  }
+
+  if (name === 'set_skill_name') {
+    if (!isSkillCreatorMode) return { error: 'Not in Skill Creator mode.' };
+    const skillName = action.name || '';
+    if (window.aiSetSkillName) window.aiSetSkillName(skillName);
+    return { success: true, info: `Skill name set to "${skillName}".` };
   }
 
   if (name === 'get_all_characters') {
@@ -2920,6 +3076,7 @@ function renderMessages() {
 
 function appendMsgEl(entry) {
   if (entry.role === 'system') return;
+  if (entry.isHidden) return;
   const isUser = entry.role === 'user';
   const el = document.createElement('div');
   el.className = `genai-msg ${isUser ? 'genai-user' : 'genai-assistant'}`;
@@ -2953,7 +3110,25 @@ function appendMsgEl(entry) {
       });
       htmlContent += `</div>`;
     }
-    htmlContent += renderMarkdown(entry.content || '');
+    let textToRender = entry.content || '';
+    const urlRegex = /(?<!\]\()(https?:\/\/[^\s]+)/gi;
+    const urlBadges = [];
+    textToRender = textToRender.replace(urlRegex, (url) => {
+      try {
+        const urlObj = new URL(url);
+        const badge = `<a href="${url}" target="_blank" style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; background:var(--bg-tertiary, #2c2c2e); border:1px solid var(--border-light, #444); border-radius:6px; text-decoration:none; color:var(--text-primary, #fff); font-size:0.9em; font-weight:500; vertical-align:middle; cursor:pointer; margin: 2px;">🌐 ${urlObj.hostname}</a>`;
+        const placeholder = `__URL_BADGE_PLACEHOLDER_${urlBadges.length}__`;
+        urlBadges.push(badge);
+        return placeholder;
+      } catch(e) { return url; }
+    });
+    
+    let renderedHTML = renderMarkdown(textToRender);
+    for (let i = 0; i < urlBadges.length; i++) {
+      renderedHTML = renderedHTML.split(`__URL_BADGE_PLACEHOLDER_${i}__`).join(urlBadges[i]);
+    }
+    htmlContent += renderedHTML;
+    
     bubbleEl.innerHTML = htmlContent;
     bubbleEl.classList.remove('thinking-only');
     bubbleEl.style.width = '';
@@ -3623,8 +3798,11 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
           resolvePhase({ status: 'done' });
         },
         {
-          temperature: 0.85,
-          top_p: 0.99,
+          temperature: settingsStore.get().genai_temperature ?? 0.85,
+          top_p: settingsStore.get().genai_top_p ?? 0.99,
+          top_k: settingsStore.get().genai_top_k ?? 40,
+          rep_penalty: settingsStore.get().genai_rep_penalty ?? 1.0,
+          smoothing_factor: settingsStore.get().genai_smoothing_factor ?? 0,
           max_tokens: settingsStore.get().genai_max_tokens || 2048,
           reasoning_effort: effortToUse
         },
@@ -4180,7 +4358,7 @@ function finishGeneration() {
   isGenerating = false;
   abortController = null;
   if (sendBtn) sendBtn.disabled = false;
-  if (sendBtn) sendBtn.classList.add('hidden');
+  if (sendBtn) sendBtn.classList.remove('hidden');
   if (stopBtn) stopBtn.classList.add('hidden');
 
   // Remove generating class from all messages to show timestamps
@@ -4219,6 +4397,8 @@ function saveCreatorState() {
       session.creatorPanelClosedByUser = creatorPanelClosedByUser;
       session.currentCreatorTab = currentCreatorTab;
       session.creatorState = creatorState;
+      session.isSkillCreatorMode = isSkillCreatorMode;
+      session.skillCreatorState = isSkillCreatorMode && window.getSkillCreatorState ? window.getSkillCreatorState() : null;
       localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(genaiSessions));
     }
     const data = {
@@ -4270,7 +4450,9 @@ function saveHistory() {
         isCharacterCreationMode: isCharacterCreationMode,
         creatorPanelClosedByUser: creatorPanelClosedByUser,
         currentCreatorTab: currentCreatorTab,
-        creatorState: creatorState
+        creatorState: creatorState,
+        isSkillCreatorMode: isSkillCreatorMode,
+        skillCreatorState: isSkillCreatorMode && window.getSkillCreatorState ? window.getSkillCreatorState() : null
       });
     } else {
       const session = genaiSessions.find(s => s.id === currentGenaiSessionId);
@@ -4281,6 +4463,8 @@ function saveHistory() {
         session.creatorPanelClosedByUser = creatorPanelClosedByUser;
         session.currentCreatorTab = currentCreatorTab;
         session.creatorState = creatorState;
+        session.isSkillCreatorMode = isSkillCreatorMode;
+        session.skillCreatorState = isSkillCreatorMode && window.getSkillCreatorState ? window.getSkillCreatorState() : null;
         if (session.title === 'New Chat' && toSave.length > 0) {
           const firstUser = toSave.find(m => m.role === 'user');
           if (firstUser) {
@@ -4368,6 +4552,11 @@ async function loadHistory() {
       currentCreatorTab = session.currentCreatorTab || 'Name';
       creatorState = session.creatorState || {};
       
+      isSkillCreatorMode = !!session.isSkillCreatorMode;
+      if (isSkillCreatorMode && window.setSkillCreatorState) {
+        window.setSkillCreatorState(session.skillCreatorState);
+      }
+
       creatorTabsList.forEach(tab => {
         if (!creatorState[tab]) {
           creatorState[tab] = { facts: [], text: '' };
@@ -4474,7 +4663,20 @@ function switchGenaiChat(id) {
       }
     });
 
+    isSkillCreatorMode = !!session.isSkillCreatorMode;
+    if (isSkillCreatorMode && window.setSkillCreatorState) {
+      window.setSkillCreatorState(session.skillCreatorState);
+    }
+
     syncCreatorUI();
+    if (window.syncSkillCreatorUI) window.syncSkillCreatorUI();
+    if (isSkillCreatorMode) {
+      if (window.renderSkillEditor) window.renderSkillEditor();
+      const nameInput = document.getElementById('skill-creator-name-input');
+      if (nameInput && window.getSkillCreatorState) {
+        nameInput.value = window.getSkillCreatorState().name || '';
+      }
+    }
 
     // Move to top of list if unpinned
     if (!session.pinned) {
@@ -4690,6 +4892,31 @@ async function sendUserMessage() {
 
   if (enabledImages.length > 0 && window.renderFetchedData) {
     window.renderFetchedData();
+  }
+
+  const urlRegex = /(https?:\/\/[^\s]+)/gi;
+  const urls = [];
+  let match;
+  while ((match = urlRegex.exec(text)) !== null) {
+    urls.push(match[1]);
+  }
+
+  if (urls.length > 0) {
+    for (const url of urls) {
+      try {
+        const content = await invokeTauri('web_fetch', { url });
+        const fetchSystemEntry = { 
+          role: 'user', 
+          content: `[Auto Web Fetch Result for ${url}]\n${content}`,
+          timestamp: new Date().toISOString(),
+          isHidden: true
+        };
+        genaiHistory.push(fetchSystemEntry);
+      } catch (err) {
+        console.error('Auto web fetch failed:', err);
+      }
+    }
+    saveHistory();
   }
 
   await streamGenAI();
@@ -5187,6 +5414,8 @@ export function initGenAIPanel() {
     const isFullscreen = document.body.classList.toggle('genai-fullscreen');
     fullscreenBtn.title = isFullscreen ? 'Collapse from fullscreen' : 'Expand to fullscreen';
     syncCreatorUI();
+    if (window.syncSkillCreatorUI) window.syncSkillCreatorUI();
+    window.dispatchEvent(new CustomEvent('genai-fullscreen-changed', { detail: { isFullscreen } }));
   });
 
   // ─── Reverse (Undo) Button Logic ───
@@ -5662,6 +5891,148 @@ export function initGenAIPanel() {
     syncCreatorUI();
   }
 
+  // ─── Skill Creator Event Listeners ───────────────────────────────────
+  const btnCreateSkill = document.getElementById('btn-genai-create-skill');
+  const skillCreatorWarningModal = document.getElementById('genai-skill-creator-warning-modal');
+  const btnCancelSkillCreator = document.getElementById('btn-cancel-skill-creator-mode');
+  const btnConfirmSkillCreator = document.getElementById('btn-confirm-skill-creator-mode');
+
+  function startSkillCreatorFlow(content = null, filename = null) {
+    plusPopover.classList.add('hidden');
+
+    if (!document.body.classList.contains('genai-fullscreen')) {
+      document.body.classList.add('genai-fullscreen');
+      if (fullscreenBtn) fullscreenBtn.title = 'Collapse from fullscreen';
+    }
+
+    // If editing existing skill, no need for "new chat" warning
+    if (content !== null) {
+      isSkillCreatorMode = true;
+      if (window.openSkillCreator) window.openSkillCreator(content, filename);
+
+      // Start fresh chat session for AI
+      createNewGenaiChat();
+      isSkillCreatorMode = true; // restore after createNewGenaiChat
+      if (window.syncSkillCreatorUI) window.syncSkillCreatorUI();
+
+      const skillName = filename ? filename.replace(/\.(txt|json)$/i, '') : 'the skill';
+      
+      // Inject the actual skill content into the chat history invisibly
+      const hiddenContextEntry = {
+        role: 'user',
+        content: `[System Context: The user has opened the skill "${skillName}" in the editor. Here is the current content of the skill:\n\n${content}\n\nPlease acknowledge that you have loaded it and are ready to help edit it.]`,
+        timestamp: new Date().toISOString(),
+        isHidden: true
+      };
+      genaiHistory.push(hiddenContextEntry);
+
+      // Kickoff message
+      const msg = `I've loaded your skill "${skillName}" into the editor. I can see all ${(content.split('\n').length)} lines. Ask me to edit any line, add new content, or suggest improvements!`;
+      const entry = { role: 'assistant', content: msg, tools: [], timestamp: new Date().toISOString() };
+      genaiHistory.push(entry);
+      saveHistory();
+      appendMsgEl(entry);
+      scrollToBottom();
+      return;
+    }
+
+    // New skill — show confirmation modal
+    if (skillCreatorWarningModal) skillCreatorWarningModal.classList.remove('hidden');
+    // Store pending content
+    skillCreatorWarningModal._pendingContent = content;
+    skillCreatorWarningModal._pendingFilename = filename;
+  }
+
+  if (btnCreateSkill) {
+    btnCreateSkill.addEventListener('click', () => {
+      startSkillCreatorFlow(null, null);
+    });
+  }
+
+  if (btnCancelSkillCreator && skillCreatorWarningModal) {
+    btnCancelSkillCreator.addEventListener('click', () => {
+      skillCreatorWarningModal.classList.add('hidden');
+    });
+  }
+
+  if (btnConfirmSkillCreator && skillCreatorWarningModal) {
+    btnConfirmSkillCreator.addEventListener('click', async () => {
+      skillCreatorWarningModal.classList.add('hidden');
+
+      isSkillCreatorMode = true;
+      if (window.openSkillCreator) window.openSkillCreator(null, null);
+
+      createNewGenaiChat();
+      isSkillCreatorMode = true;
+      if (window.syncSkillCreatorUI) window.syncSkillCreatorUI();
+
+      const msg = `Welcome to Skill Creator! I'm here to help you build a custom skill document.\n\nTell me what kind of skill you want to create — for example: a persona description, domain-specific knowledge, behavior guidelines, or any custom instructions. I can write new lines, edit existing ones, and help you refine the content.`;
+      const entry = { role: 'assistant', content: msg, tools: [], timestamp: new Date().toISOString() };
+      genaiHistory.push(entry);
+      saveHistory();
+      appendMsgEl(entry);
+      scrollToBottom();
+    });
+  }
+
+  // Listen for skill-creator-mode-changed to sync isSkillCreatorMode here
+  window.addEventListener('skill-creator-mode-changed', (e) => {
+    isSkillCreatorMode = !!e.detail.active;
+  });
+
+  // Global function for genai-skills-mgr.js to open skill creator from the skills list
+  window.openSkillCreatorFromManager = (content, filename) => {
+    // Close the manage skills modal if open
+    const skillsModal = document.getElementById('modal-genai-skills');
+    if (skillsModal) closeWindow(skillsModal);
+
+    // Also close the parent GenAI settings modal if open
+    const genaiSettingsModal = document.getElementById('modal-settings-genai');
+    if (genaiSettingsModal) closeWindow(genaiSettingsModal);
+
+    // And close the root settings panel itself so it doesn't obscure the left half of the screen!
+    const settingsPanel = document.getElementById('settings-panel');
+    if (settingsPanel) closeWindow(settingsPanel);
+
+    // Open GenAI panel properly using helper to setup body classes and animations
+    openGenAIPanel();
+
+    // Look for an existing GenAI session that was editing this skill
+    const existingSession = genaiSessions.find(s => 
+      s.isSkillCreatorMode && 
+      s.skillCreatorState && 
+      s.skillCreatorState.filename === filename
+    );
+
+    if (existingSession) {
+      // Ensure we are in fullscreen mode since Skill Creator panel requires it
+      if (!document.body.classList.contains('genai-fullscreen')) {
+        document.body.classList.add('genai-fullscreen');
+        const fsBtn = document.getElementById('btn-genai-fullscreen');
+        if (fsBtn) fsBtn.title = 'Collapse from fullscreen';
+      }
+      // Switch to the existing chat session where this skill was being edited
+      switchGenaiChat(existingSession.id);
+
+      // Update the UI and state with the fresh content from disk
+      if (window.openSkillCreator) window.openSkillCreator(content, filename);
+      
+      // Push an invisible update to the chat history so the AI knows the skill changed
+      const updateEntry = {
+        role: 'user',
+        content: `[System Context: The user has opened the skill. The current content of the skill is:\n\n${content}\n\nKeep this in mind for the next interactions.]`,
+        timestamp: new Date().toISOString(),
+        isHidden: true
+      };
+      genaiHistory.push(updateEntry);
+      saveHistory();
+
+    } else {
+      // Otherwise, start a fresh flow
+      startSkillCreatorFlow(content, filename);
+    }
+  };
+
   // Popover slider Transitions & Active Skills listeners
   const btnGenaiPlusSkills = document.getElementById('btn-genai-plus-skills');
   const btnGenaiSkillsBack = document.getElementById('btn-genai-skills-back');
@@ -5914,12 +6285,10 @@ export function ensureGenaiSession() {
 
 
 export function updateGenaiPlusButtonState() {
-  const btnGenaiPlus = document.getElementById('btn-genai-plus');
-  const badgeEl = document.getElementById('genai-skills-badge');
-  if (!btnGenaiPlus) return;
+  const activeToolsContainer = document.getElementById('genai-active-tools-container');
+  if (!activeToolsContainer) return;
 
-  const activeSkills = getActiveSkillsForCurrentSession();
-  const activeSkillsCount = activeSkills ? activeSkills.length : 0;
+  const activeSkills = getActiveSkillsForCurrentSession() || [];
   
   // Safe settings retrieve
   let imageGenEnabled = false;
@@ -5927,24 +6296,87 @@ export function updateGenaiPlusButtonState() {
     imageGenEnabled = settingsStore.get().comfyui_enabled_genai;
   } catch (e) {}
 
-  // Render Badge
-  if (badgeEl) {
-    if (activeSkillsCount > 0) {
-      badgeEl.textContent = activeSkillsCount;
-      badgeEl.classList.remove('hidden');
-    } else {
-      badgeEl.classList.add('hidden');
-    }
+  let capsulesHTML = '';
+
+  // 1. Image Gen
+  if (imageGenEnabled) {
+    capsulesHTML += `
+      <div class="genai-tool-capsule" data-tool="image-gen">
+        <span>Image Gen</span>
+        <div class="close-btn" title="Remove">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10">
+            <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </div>
+      </div>
+    `;
   }
 
-  // Determine State Priority
-  btnGenaiPlus.classList.remove('imagegen-active', 'skills-active');
-
-  if (activeSkillsCount > 0) {
-    btnGenaiPlus.classList.add('skills-active');
-  } else if (imageGenEnabled) {
-    btnGenaiPlus.classList.add('imagegen-active');
+  // 2. Web Search
+  const isWebSearchActive = activeSkills.includes('Internet Browser.json');
+  if (isWebSearchActive) {
+    capsulesHTML += `
+      <div class="genai-tool-capsule" data-tool="web-search">
+        <span>Web Search</span>
+        <div class="close-btn" title="Remove">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10">
+            <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </div>
+      </div>
+    `;
   }
+
+  // 3. Skills
+  const otherSkills = activeSkills.filter(s => s !== 'Internet Browser.json');
+  otherSkills.forEach(skill => {
+    capsulesHTML += `
+      <div class="genai-tool-capsule" data-tool="skill" data-skill-name="${escapeHtml(skill)}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12">
+          <line x1="4" y1="6" x2="20" y2="6"></line><line x1="4" y1="12" x2="20" y2="12"></line><line x1="4" y1="18" x2="20" y2="18"></line>
+        </svg>
+        <span>${escapeHtml(skill)}</span>
+        <div class="close-btn" title="Remove">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="10" height="10">
+            <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </div>
+      </div>
+    `;
+  });
+
+  if (capsulesHTML) {
+    activeToolsContainer.innerHTML = capsulesHTML;
+    activeToolsContainer.classList.remove('hidden');
+  } else {
+    activeToolsContainer.innerHTML = '';
+    activeToolsContainer.classList.add('hidden');
+  }
+
+  // Add event listeners to close buttons
+  activeToolsContainer.querySelectorAll('.genai-tool-capsule').forEach(capsule => {
+    const closeBtn = capsule.querySelector('.close-btn');
+    closeBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const tool = capsule.dataset.tool;
+      if (tool === 'image-gen') {
+        const current = settingsStore.get();
+        settingsStore.save({ ...current, comfyui_enabled_genai: false });
+        if (window.syncImageGenIndicators) window.syncImageGenIndicators();
+      } else if (tool === 'web-search') {
+        const updated = activeSkills.filter(id => id !== 'Internet Browser.json');
+        await setActiveSkillsForCurrentSession(updated);
+        if (window.syncWebSearchIndicator) window.syncWebSearchIndicator();
+        window.dispatchEvent(new CustomEvent('genai-active-skills-changed'));
+      } else if (tool === 'skill') {
+        const skillName = capsule.dataset.skillName;
+        const updated = activeSkills.filter(id => id !== skillName);
+        await setActiveSkillsForCurrentSession(updated);
+        window.dispatchEvent(new CustomEvent('genai-active-skills-changed'));
+      }
+      updateGenaiPlusButtonState();
+    });
+  });
 }
 
 export async function openNhentaiConfigModal() {

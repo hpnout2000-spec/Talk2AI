@@ -1686,9 +1686,11 @@ function openGameSettingsModal(gameId) {
   const modal = document.getElementById('game-settings-modal');
   const titleInput = document.getElementById('game-settings-title');
   const promptInput = document.getElementById('game-settings-story-prompt');
+  const effortSelect = document.getElementById('game-settings-reasoning-effort');
   
   if (titleInput) titleInput.value = game.title || '';
   if (promptInput) promptInput.value = game.story_prompt || '';
+  if (effortSelect) effortSelect.value = game.reasoning_effort || 'none';
   
   modal.setAttribute('data-game-id', gameId);
   uiManager.open('game-settings-modal');
@@ -1705,16 +1707,18 @@ function saveGameSettings() {
 
   const titleInput = document.getElementById('game-settings-title');
   const promptInput = document.getElementById('game-settings-story-prompt');
+  const effortSelect = document.getElementById('game-settings-reasoning-effort');
   
   const title = titleInput ? titleInput.value.trim() : '';
   const storyPrompt = promptInput ? promptInput.value.trim() : '';
+  const reasoningEffort = effortSelect ? effortSelect.value : 'none';
   
   if (!title) {
     alert("Game title cannot be empty.");
     return;
   }
   
-  gameStore.updateGameSettings(gameId, { title, story_prompt: storyPrompt });
+  gameStore.updateGameSettings(gameId, { title, story_prompt: storyPrompt, reasoning_effort: reasoningEffort });
   
   // Re-render games list and potentially update start screen if it's the active game
   renderGamesList();

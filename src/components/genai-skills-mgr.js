@@ -15,6 +15,7 @@ export function initGenAISkillsMgr() {
   const backdrop = modal ? modal.querySelector('.modal-backdrop') : null;
   const btnImport = document.getElementById('btn-import-genai-skill');
   const inputImport = document.getElementById('input-import-genai-skill');
+  const btnOpenFolder = document.getElementById('btn-open-skills-folder');
 
   if (!modal) {
     console.error('modal-genai-skills element not found');
@@ -51,6 +52,21 @@ export function initGenAISkillsMgr() {
     });
 
     inputImport.addEventListener('change', handleFileImport);
+  }
+
+  // Open skills folder
+  if (btnOpenFolder) {
+    btnOpenFolder.addEventListener('click', async () => {
+      try {
+        if (window.__TAURI_INTERNALS__) {
+          await window.__TAURI_INTERNALS__.invoke('open_skills_folder');
+        } else {
+          showToast('Not running in Tauri environment', 'error');
+        }
+      } catch (err) {
+        showToast(`Failed to open folder: ${err.message || err}`, 'error');
+      }
+    });
   }
 }
 
@@ -145,8 +161,25 @@ export async function renderSkills() {
               <polyline points="6 9 12 15 18 9"/>
             </svg>
           </button>
-          <button class="skill-entry-activate btn-icon small" data-filename="${entry.filename}" title="Toggle activate" style="background: none; border: none; cursor: pointer; padding: 4px 6px; display: flex; align-items: center; justify-content: center;">
-            <label class="toggle-switch small" style="pointer-events: none; flex-shrink: 0;">
+          
+          ${!isDefault ? `
+            <button class="skill-entry-edit" data-filename="${entry.filename}" data-content="${escapeHtml(entry.content)}" title="Edit in Skill Creator">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+              Edit
+            </button>
+            <button class="skill-entry-delete btn-icon small" data-filename="${entry.filename}" title="Delete skill" style="background: none; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; color: var(--text-tertiary);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+            </button>
+          ` : ''}
+
+          <button class="skill-entry-activate" data-filename="${entry.filename}" title="Toggle activate" style="background: none; border: none; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center; width: 44px; height: 24px; flex-shrink: 0;">
+            <label class="toggle-switch small" style="pointer-events: none; flex-shrink: 0; margin: 0;">
               <input type="checkbox" ${(() => {
                 try {
                   const active = window.getGenAiActiveSkills ? window.getGenAiActiveSkills() : [];
@@ -158,15 +191,6 @@ export async function renderSkills() {
               <span class="toggle-slider"></span>
             </label>
           </button>
-          
-          ${!isDefault ? `
-            <button class="skill-entry-delete btn-icon small" data-filename="${entry.filename}" title="Delete skill" style="background: none; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 4px; color: var(--text-tertiary);">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;">
-                <polyline points="3 6 5 6 21 6"></polyline>
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-              </svg>
-            </button>
-          ` : ''}
         </div>
       </div>
     `;
@@ -175,8 +199,8 @@ export async function renderSkills() {
   // Click on row toggles expansion (unless clicking delete button)
   container.querySelectorAll('.skill-entry').forEach(row => {
     row.addEventListener('click', (e) => {
-      // Ignore click if it's on a delete button, inside content view, or inside an input/button
-      if (e.target.closest('.skill-entry-delete') || e.target.closest('.skill-content-view') || e.target.closest('.skill-entry-toggle') || e.target.closest('.skill-entry-activate')) {
+      // Ignore click if it's on a delete/edit button, inside content view, or inside an input/button
+      if (e.target.closest('.skill-entry-delete') || e.target.closest('.skill-content-view') || e.target.closest('.skill-entry-toggle') || e.target.closest('.skill-entry-activate') || e.target.closest('.skill-entry-edit')) {
         return;
       }
       
@@ -236,6 +260,26 @@ export async function renderSkills() {
         } catch (err) {
           showToast(`Failed to delete skill: ${err.message}`, 'error');
         }
+      }
+    });
+  });
+
+  // Handle edit click — open in Skill Creator
+  container.querySelectorAll('.skill-entry-edit').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const filename = btn.dataset.filename;
+      // Fetch fresh content from store (data-content may be truncated by escapeHtml)
+      const skill = await skillsStore.getSkill(filename);
+      if (!skill) {
+        showToast('Skill not found', 'error');
+        return;
+      }
+
+      if (window.openSkillCreatorFromManager) {
+        window.openSkillCreatorFromManager(skill.content, skill.filename);
+      } else {
+        showToast('Skill Creator not available', 'error');
       }
     });
   });

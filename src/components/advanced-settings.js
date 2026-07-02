@@ -76,7 +76,7 @@ export function initAdvancedSettings() {
     if (activeTab) activeTab.classList.add('active');
   }
 
-  // Preset management
+  // System Prompt Preset management
   btnAddPreset.addEventListener('click', createNewPreset);
 
   // Generation setting sync
@@ -85,6 +85,28 @@ export function initAdvancedSettings() {
   setupRangeInput('adv-setting-top-p', 'adv-top-p-value');
   setupRangeInput('adv-setting-top-k', 'adv-top-k-value');
   setupRangeInput('adv-setting-rep-penalty', 'adv-rep-penalty-value');
+  setupRangeInput('adv-setting-smoothing-factor', 'adv-smoothing-factor-value');
+
+  // GenAI Generation setting sync
+  setupRangeInput('adv-setting-genai-max-tokens', 'adv-genai-max-tokens-value');
+  setupRangeInput('adv-setting-genai-temperature', 'adv-genai-temperature-value');
+  setupRangeInput('adv-setting-genai-top-p', 'adv-genai-top-p-value');
+  setupRangeInput('adv-setting-genai-top-k', 'adv-genai-top-k-value');
+  setupRangeInput('adv-setting-genai-rep-penalty', 'adv-genai-rep-penalty-value');
+  setupRangeInput('adv-setting-genai-smoothing-factor', 'adv-genai-smoothing-factor-value');
+
+  // Generation Presets Management
+  document.getElementById('generation-preset-select')?.addEventListener('change', (e) => applyGenerationPreset(e.target.value, false));
+  document.getElementById('genai-preset-select')?.addEventListener('change', (e) => applyGenerationPreset(e.target.value, true));
+  
+  document.getElementById('btn-add-generation-preset')?.addEventListener('click', () => saveAsNewGenerationPreset(false));
+  document.getElementById('btn-add-genai-preset')?.addEventListener('click', () => saveAsNewGenerationPreset(true));
+  
+  document.getElementById('btn-reset-generation-preset')?.addEventListener('click', () => resetGenerationPreset(false));
+  document.getElementById('btn-reset-genai-preset')?.addEventListener('click', () => resetGenerationPreset(true));
+
+  document.getElementById('btn-delete-generation-preset')?.addEventListener('click', () => deleteGenerationPreset(false));
+  document.getElementById('btn-delete-genai-preset')?.addEventListener('click', () => deleteGenerationPreset(true));
 
   // Live save for preset editor
   presetNameInput.addEventListener('input', updateEditingPreset);
@@ -122,6 +144,20 @@ function loadSettingsToUI() {
   setRangeValue('adv-setting-top-p', 'adv-top-p-value', currentSettings.top_p);
   setRangeValue('adv-setting-top-k', 'adv-top-k-value', currentSettings.top_k);
   setRangeValue('adv-setting-rep-penalty', 'adv-rep-penalty-value', currentSettings.rep_penalty);
+  setRangeValue('adv-setting-smoothing-factor', 'adv-smoothing-factor-value', currentSettings.smoothing_factor || 0);
+
+  // Load GenAI generation settings
+  setRangeValue('adv-setting-genai-max-tokens', 'adv-genai-max-tokens-value', currentSettings.genai_max_tokens);
+  setRangeValue('adv-setting-genai-temperature', 'adv-genai-temperature-value', currentSettings.genai_temperature);
+  setRangeValue('adv-setting-genai-top-p', 'adv-genai-top-p-value', currentSettings.genai_top_p);
+  setRangeValue('adv-setting-genai-top-k', 'adv-genai-top-k-value', currentSettings.genai_top_k);
+  setRangeValue('adv-setting-genai-rep-penalty', 'adv-genai-rep-penalty-value', currentSettings.genai_rep_penalty);
+  setRangeValue('adv-setting-genai-smoothing-factor', 'adv-genai-smoothing-factor-value', currentSettings.genai_smoothing_factor || 0);
+
+  const genaiSystemPromptInput = document.getElementById('adv-setting-genai-system-prompt');
+  if (genaiSystemPromptInput) {
+    genaiSystemPromptInput.value = currentSettings.genai_system_prompt_addition || "";
+  }
 
   if (aiCommentsPromptInput) {
     aiCommentsPromptInput.value = currentSettings.ai_comments_prompt || "";
@@ -134,6 +170,7 @@ function loadSettingsToUI() {
 
   // Load presets
   renderPresets();
+  renderGenerationPresetsUI();
 
   // Select active preset
   editingPresetId = currentSettings.active_system_prompt_preset_id;
@@ -146,6 +183,130 @@ function loadSettingsToUI() {
     const isDefault = editingPresetId.startsWith('default-');
     presetNameInput.disabled = isDefault;
     presetContentInput.disabled = isDefault;
+  }
+}
+
+function renderGenerationPresetsUI() {
+  const genSelect = document.getElementById('generation-preset-select');
+  const genaiSelect = document.getElementById('genai-preset-select');
+  if (!genSelect || !genaiSelect) return;
+
+  genSelect.innerHTML = '';
+  genaiSelect.innerHTML = '';
+
+  currentSettings.generation_presets.forEach(p => {
+    const opt1 = document.createElement('option');
+    opt1.value = p.id;
+    opt1.textContent = p.name;
+    genSelect.appendChild(opt1);
+
+    const opt2 = document.createElement('option');
+    opt2.value = p.id;
+    opt2.textContent = p.name;
+    genaiSelect.appendChild(opt2);
+  });
+
+  genSelect.value = currentSettings.active_generation_preset_id || 'default';
+  genaiSelect.value = currentSettings.active_genai_generation_preset_id || 'default';
+}
+
+function applyGenerationPreset(presetId, isGenAI) {
+  const preset = currentSettings.generation_presets.find(p => p.id === presetId);
+  if (!preset) return;
+  
+  if (isGenAI) {
+    currentSettings.active_genai_generation_preset_id = presetId;
+    setRangeValue('adv-setting-genai-max-tokens', 'adv-genai-max-tokens-value', preset.max_tokens);
+    setRangeValue('adv-setting-genai-temperature', 'adv-genai-temperature-value', preset.temperature);
+    setRangeValue('adv-setting-genai-top-p', 'adv-genai-top-p-value', preset.top_p);
+    setRangeValue('adv-setting-genai-top-k', 'adv-genai-top-k-value', preset.top_k);
+    setRangeValue('adv-setting-genai-rep-penalty', 'adv-genai-rep-penalty-value', preset.rep_penalty);
+    setRangeValue('adv-setting-genai-smoothing-factor', 'adv-genai-smoothing-factor-value', preset.smoothing_factor || 0);
+  } else {
+    currentSettings.active_generation_preset_id = presetId;
+    setRangeValue('adv-setting-max-tokens', 'adv-max-tokens-value', preset.max_tokens);
+    setRangeValue('adv-setting-temperature', 'adv-temperature-value', preset.temperature);
+    setRangeValue('adv-setting-top-p', 'adv-top-p-value', preset.top_p);
+    setRangeValue('adv-setting-top-k', 'adv-top-k-value', preset.top_k);
+    setRangeValue('adv-setting-rep-penalty', 'adv-rep-penalty-value', preset.rep_penalty);
+    setRangeValue('adv-setting-smoothing-factor', 'adv-smoothing-factor-value', preset.smoothing_factor || 0);
+  }
+}
+
+function saveAsNewGenerationPreset(isGenAI) {
+  const name = window.prompt("Enter name for new preset:", "Custom Preset");
+  if (!name) return;
+  
+  const id = 'custom_gen_' + Date.now();
+  const preset = { id, name };
+  
+  if (isGenAI) {
+    preset.max_tokens = parseInt(document.getElementById('adv-setting-genai-max-tokens').value);
+    preset.temperature = parseFloat(document.getElementById('adv-setting-genai-temperature').value);
+    preset.top_p = parseFloat(document.getElementById('adv-setting-genai-top-p').value);
+    preset.top_k = parseInt(document.getElementById('adv-setting-genai-top-k').value);
+    preset.rep_penalty = parseFloat(document.getElementById('adv-setting-genai-rep-penalty').value);
+    preset.smoothing_factor = parseFloat(document.getElementById('adv-setting-genai-smoothing-factor').value);
+    currentSettings.active_genai_generation_preset_id = id;
+  } else {
+    preset.max_tokens = parseInt(document.getElementById('adv-setting-max-tokens').value);
+    preset.temperature = parseFloat(document.getElementById('adv-setting-temperature').value);
+    preset.top_p = parseFloat(document.getElementById('adv-setting-top-p').value);
+    preset.top_k = parseInt(document.getElementById('adv-setting-top-k').value);
+    preset.rep_penalty = parseFloat(document.getElementById('adv-setting-rep-penalty').value);
+    preset.smoothing_factor = parseFloat(document.getElementById('adv-setting-smoothing-factor').value);
+    currentSettings.active_generation_preset_id = id;
+  }
+  
+  currentSettings.generation_presets.push(preset);
+  renderGenerationPresetsUI();
+}
+
+async function deleteGenerationPreset(isGenAI) {
+  const activeId = isGenAI ? currentSettings.active_genai_generation_preset_id : currentSettings.active_generation_preset_id;
+  if (!activeId || activeId.startsWith('default') || activeId.startsWith('glm')) {
+    showToast("Cannot delete default presets");
+    return;
+  }
+  
+  const confirm = await showConfirm('Delete Preset', 'Delete this generation preset?');
+  if (confirm) {
+    currentSettings.generation_presets = currentSettings.generation_presets.filter(p => p.id !== activeId);
+    if (isGenAI) {
+      currentSettings.active_genai_generation_preset_id = 'default';
+      applyGenerationPreset('default', true);
+    } else {
+      currentSettings.active_generation_preset_id = 'default';
+      applyGenerationPreset('default', false);
+    }
+    renderGenerationPresetsUI();
+  }
+}
+
+async function resetGenerationPreset(isGenAI) {
+  const activeId = isGenAI ? currentSettings.active_genai_generation_preset_id : currentSettings.active_generation_preset_id;
+  if (!activeId || (!activeId.startsWith('default') && !activeId.startsWith('glm'))) {
+    showToast("Only standard presets can be reset to default");
+    return;
+  }
+
+  const defaultPresets = [
+    { id: 'default', name: 'Default', max_tokens: 2048, temperature: 0.7, top_p: 0.9, top_k: 40, rep_penalty: 1.0, smoothing_factor: 0 },
+    { id: 'glm47flash', name: 'GLM 4.7 Flash (Creative)', max_tokens: 2048, temperature: 1.0, top_p: 0.95, top_k: 40, rep_penalty: 1.1, smoothing_factor: 1.5 },
+    { id: 'glm46', name: 'GLM 4.6 (Unsloth)', max_tokens: 2048, temperature: 0.8, top_p: 0.6, top_k: 2, rep_penalty: 1.0, smoothing_factor: 0 }
+  ];
+
+  const originalPreset = defaultPresets.find(p => p.id === activeId);
+  if (originalPreset) {
+    const confirm = await showConfirm('Reset Preset', 'Reset this preset to its standard values?');
+    if (confirm) {
+      const presetIndex = currentSettings.generation_presets.findIndex(p => p.id === activeId);
+      if (presetIndex !== -1) {
+        currentSettings.generation_presets[presetIndex] = { ...originalPreset };
+        applyGenerationPreset(activeId, isGenAI);
+        showToast('Preset reset to defaults');
+      }
+    }
   }
 }
 
@@ -268,6 +429,20 @@ async function saveAll() {
     top_p: parseFloat(document.getElementById('adv-setting-top-p').value),
     top_k: parseInt(document.getElementById('adv-setting-top-k').value),
     rep_penalty: parseFloat(document.getElementById('adv-setting-rep-penalty').value),
+    smoothing_factor: parseFloat(document.getElementById('adv-setting-smoothing-factor').value),
+    active_generation_preset_id: currentSettings.active_generation_preset_id,
+
+    genai_max_tokens: parseInt(document.getElementById('adv-setting-genai-max-tokens').value),
+    genai_temperature: parseFloat(document.getElementById('adv-setting-genai-temperature').value),
+    genai_top_p: parseFloat(document.getElementById('adv-setting-genai-top-p').value),
+    genai_top_k: parseInt(document.getElementById('adv-setting-genai-top-k').value),
+    genai_rep_penalty: parseFloat(document.getElementById('adv-setting-genai-rep-penalty').value),
+    genai_smoothing_factor: parseFloat(document.getElementById('adv-setting-genai-smoothing-factor').value),
+    active_genai_generation_preset_id: currentSettings.active_genai_generation_preset_id,
+    genai_system_prompt_addition: document.getElementById('adv-setting-genai-system-prompt') ? document.getElementById('adv-setting-genai-system-prompt').value.trim() : (currentSettings.genai_system_prompt_addition || ""),
+    
+    generation_presets: currentSettings.generation_presets,
+
     ai_comments_prompt: aiCommentsPromptInput ? aiCommentsPromptInput.value.trim() : currentSettings.ai_comments_prompt,
     ai_comments_history_enabled: historyToggle ? historyToggle.checked : currentSettings.ai_comments_history_enabled,
   };
@@ -287,7 +462,7 @@ async function saveAll() {
     }
   }
   
-  // Sync sidebar settings if it's open (though generation is removed, other sync might be needed)
+  // Sync sidebar settings if it's open
   window.dispatchEvent(new CustomEvent('settings-updated'));
   
   closeWindow(modal);

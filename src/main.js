@@ -26,6 +26,7 @@ import { initGameView } from './components/game-view.js';
 import { initGenAIMemoriesMgr } from './components/genai-memories-mgr.js';
 import { initSmartContextMgr } from './components/genai-smart-context-mgr.js';
 import { initGenAISkillsMgr } from './components/genai-skills-mgr.js';
+import { initGenAISkillCreator } from './components/genai-skill-creator.js';
 import { initWebSearchSettingsMgr } from './components/genai-web-search-mgr.js';
 import { initGenAIFetchedDataMgr } from './components/genai-fetched-data-mgr.js';
 import { initLightbox } from './utils/lightbox.js';
@@ -352,6 +353,7 @@ async function init() {
   initGenAIMemoriesMgr();
   initSmartContextMgr();
   initGenAISkillsMgr();
+  initGenAISkillCreator();
   initWebSearchSettingsMgr();
   initGenAIFetchedDataMgr();
   initGroupChatPanel();

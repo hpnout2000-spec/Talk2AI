@@ -81,5 +81,7 @@ To run a fast, private, and unlimited search engine on your local machine:
 - **Advanced Animations:** I'll improve the streaming animations soon.
 
 ## System Requirements
-- **Model:** **Gemma 4 31B (RP fine-tune recommended)** (Gemma 4 26B is okay, but has troubles sometimes.)
+- **Supported Models:**
+  - **Fully Supported:** Gemma 4 31B (RP fine-tune recommended), Gemma 4 26B
+  - **Partially Supported:** GLM 4.7 flash
 - **Performance:** Generation speed of at least **20 tokens per second**.

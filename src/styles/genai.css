@@ -98,7 +98,279 @@ body.genai-fullscreen .main-content {
   border-width: 0 !important;
 }
 
+/* ─── Skill Creator Mode (Split Screen) ─────────────────────────── */
+
+body.genai-skill-creator-active #genai-sidebar {
+  width: calc(50vw - 18px) !important;
+  flex-basis: calc(50vw - 18px) !important;
+  margin-left: 12px !important;
+}
+
+.genai-skill-creator-panel {
+  display: flex;
+  flex-direction: column;
+  width: 0;
+  flex-basis: 0;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+  background: var(--bg-secondary);
+  border: 1px solid transparent;
+  border-radius: var(--radius-xl);
+  box-shadow: none;
+  margin: 0 !important;
+  transition: width 0.8s cubic-bezier(0.2, 1, 0.1, 1),
+              flex-basis 0.8s cubic-bezier(0.2, 1, 0.1, 1),
+              opacity 0.6s ease,
+              border-color 0.6s ease,
+              box-shadow 0.6s ease;
+}
+
+body.genai-skill-creator-active .genai-skill-creator-panel {
+  width: calc(50vw - 18px) !important;
+  flex-basis: calc(50vw - 18px) !important;
+  opacity: 1;
+  pointer-events: all;
+  padding: var(--space-4);
+  padding-left: var(--space-5);
+  border-color: var(--border-light);
+  box-shadow: var(--shadow-lg);
+  z-index: 10;
+  margin: 0 !important;
+}
+
+/* ─── Skill Creator Name Input ─── */
+
+.skill-creator-name-input {
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  font-weight: 600;
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  box-sizing: border-box;
+}
+
+.skill-creator-name-input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px var(--accent-primary-glow);
+}
+
+.skill-creator-name-input::placeholder {
+  font-weight: 400;
+  color: var(--text-tertiary);
+}
+
+/* ─── Skill Creator Lines Container ─── */
+
+.skill-creator-lines-container {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 0;
+  padding-right: 4px;
+  margin-bottom: 6px;
+}
+
+.skill-creator-lines-container::-webkit-scrollbar {
+  width: 4px;
+}
+
+.skill-creator-lines-container::-webkit-scrollbar-thumb {
+  background: var(--border-light);
+  border-radius: 2px;
+}
+
+/* ─── Individual Line Row ─── */
+
+.skill-line-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 4px 6px 4px 0;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+  position: relative;
+}
+
+.skill-line-row:hover {
+  background: rgba(255,255,255,0.03);
+}
+
+.skill-line-row:hover .skill-line-delete-btn {
+  opacity: 1;
+}
+
+.skill-line-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 36px;
+  background: transparent;
+  color: var(--text-accent);
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  flex-shrink: 0;
+  user-select: none;
+  opacity: 0.8;
+  padding-top: 10px;
+}
+
+.skill-line-input {
+  flex: 1;
+  padding: 8px 10px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  resize: none;
+  outline: none;
+  overflow: hidden;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+  min-height: 36px;
+}
+
+.skill-line-input:focus {
+  border-color: var(--border-accent);
+  background: rgba(255,255,255,0.05);
+}
+
+.skill-line-input::placeholder {
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+.skill-line-delete-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  opacity: 0;
+  transition: opacity var(--transition-fast), color var(--transition-fast);
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  margin-top: 7px;
+}
+
+.skill-line-delete-btn:hover {
+  color: var(--danger, #ef4444);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* AI highlight animation for edited lines */
+.skill-line-row.skill-line-highlight {
+  animation: skillLineHighlight 1.5s ease forwards;
+}
+
+@keyframes skillLineHighlight {
+  0% { background: rgba(99, 102, 241, 0.18); }
+  60% { background: rgba(99, 102, 241, 0.12); }
+  100% { background: transparent; }
+}
+
+/* ─── Add Line Button ─── */
+
+.skill-creator-add-line-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 6px 38px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition-fast), background var(--transition-fast);
+  width: 100%;
+  text-align: left;
+  margin-top: 2px;
+}
+
+.skill-creator-add-line-btn:hover {
+  color: var(--text-accent);
+  background: rgba(99, 102, 241, 0.06);
+}
+
+/* ─── Skill Creator Footer ─── */
+
+.skill-creator-footer {
+  display: flex;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-light);
+  flex-shrink: 0;
+}
+
+.skill-creator-btn-discard {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.skill-creator-btn-save {
+  flex: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-weight: 600;
+  background: linear-gradient(135deg, var(--accent-primary), #8b5cf6) !important;
+}
+
+.skill-creator-btn-save:hover {
+  filter: brightness(1.1);
+  box-shadow: 0 0 18px rgba(99, 102, 241, 0.35);
+}
+
+/* ─── Edit Skill Button in Skills List ─── */
+
+.skill-entry-edit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 7px;
+  gap: 4px;
+  background: transparent;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  transition: all var(--transition-fast);
+}
+
+.skill-entry-edit:hover {
+  background: var(--accent-primary);
+  color: #212121;
+  border-color: var(--accent-primary);
+}
+
 /* ─── Character Creation Mode (Split Screen) ───────────────────────── */
+
 
 body.genai-char-creation-active #genai-sidebar {
   width: calc(50vw - 18px) !important;
@@ -945,27 +1217,79 @@ body.genai-fullscreen .genai-empty-state {
 /* ─── Input Area — mirrors .chat-input-area / .input-container ───────── */
 
 .genai-input-area {
+  position: relative;
   padding: var(--space-3) var(--space-4) var(--space-4);
   border-top: 1px solid var(--border-subtle);
   flex-shrink: 0;
+  background: var(--bg-secondary);
 }
 
-.genai-input-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-light);
-  border-radius: 22px;
-  padding: var(--space-2) var(--space-3);
-  transition: all var(--transition-fast);
+body.genai-fullscreen #genai-sidebar {
+  position: relative;
 }
 
-body.genai-fullscreen .genai-input-row {
+body.genai-fullscreen #genai-messages {
+  padding-bottom: 160px !important;
+}
+
+body.genai-fullscreen .genai-input-area {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  background: transparent !important;
+  border-top: none !important;
+  padding: 24px 16px !important;
+  z-index: 10;
+}
+
+/* Continuous/gradient blur overlay at the bottom */
+body.genai-fullscreen .genai-input-area::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  
+  /* Dark overlay fading upwards */
+  background: linear-gradient(
+    to top,
+    rgba(15, 15, 15, 0.95) 0%,
+    rgba(15, 15, 15, 0.8) 40%,
+    rgba(15, 15, 15, 0.2) 75%,
+    transparent 100%
+  );
+  
+  /* Blur backdrop filter */
+  backdrop-filter: blur(16px);
+  
+  /* Progressive/gradient mask for the blur and background fade */
+  -webkit-mask-image: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 1) 0%,
+    rgba(0, 0, 0, 0.8) 40%,
+    rgba(0, 0, 0, 0.3) 75%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 1) 0%,
+    rgba(0, 0, 0, 0.8) 40%,
+    rgba(0, 0, 0, 0.3) 75%,
+    transparent 100%
+  );
+  
+  pointer-events: none;
+}
+
+body.genai-fullscreen .genai-input-area .input-container {
   max-width: 960px;
   margin-left: auto;
   margin-right: auto;
   width: 100%;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 
 body:not(.genai-fullscreen) #genai-thinking-effort-wrapper {
@@ -1022,70 +1346,52 @@ body:not(.genai-fullscreen) #genai-thinking-effort-wrapper .thinking-icon-bulb {
   color: var(--text-secondary);
 }
 
-/* Custom swap effect for GenAI plus / image / skills icon toggle */
-#btn-genai-plus .icon-image,
-#btn-genai-plus .icon-skills {
-  display: none !important;
+/* Active Tools Capsules */
+.active-tools-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-left: 4px;
 }
 
-#btn-genai-plus.imagegen-active .icon-image {
-  display: block !important;
+.genai-tool-capsule {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 16px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: default;
+  transition: all 0.2s;
 }
 
-#btn-genai-plus.imagegen-active .icon-plus {
-  display: none !important;
+.genai-tool-capsule:hover {
+  background: var(--bg-hover);
 }
 
-#btn-genai-plus.imagegen-active:hover .icon-image {
-  display: none !important;
-}
-
-#btn-genai-plus.imagegen-active:hover .icon-plus {
-  display: block !important;
-  transform: rotate(90deg);
-}
-
-#btn-genai-plus.skills-active .icon-skills {
-  display: block !important;
-}
-
-#btn-genai-plus.skills-active .icon-plus,
-#btn-genai-plus.skills-active .icon-image {
-  display: none !important;
-}
-
-#btn-genai-plus.skills-active:hover .icon-skills {
-  display: none !important;
-}
-
-#btn-genai-plus.skills-active:hover .icon-plus {
-  display: block !important;
-  transform: rotate(90deg);
-}
-
-#btn-genai-plus svg {
-  transition: transform 0.2s ease, color 0.2s ease;
-}
-
-/* Skills Badge */
-.genai-skills-badge {
-  position: absolute;
-  top: -4px;
-  right: -4px;
-  background: var(--warning, #f59e0b);
-  color: #000 !important;
-  font-size: 9px;
-  font-weight: 700;
-  height: 14px;
-  min-width: 14px;
-  padding: 0 3px;
-  border-radius: 50%;
+.genai-tool-capsule .close-btn {
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 6px var(--warning, #f59e0b);
-  pointer-events: none;
-  z-index: 10;
+  border-radius: 50%;
+  width: 14px;
+  height: 14px;
+}
+
+.genai-tool-capsule:hover .close-btn {
+  opacity: 1;
+}
+
+.genai-tool-capsule .close-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 #btn-genai-brush {

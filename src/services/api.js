@@ -4,6 +4,7 @@
 
 import { settingsStore } from './settings-store.js';
 import { localSyncService } from './local-sync-service.js';
+import { appState } from '../state.js';
 
 class RequestQueue {
   constructor() {
@@ -151,11 +152,16 @@ export const api = {
         messages,
         stream: true,
         max_tokens: options.max_tokens || settings.max_tokens,
-        temperature: options.temperature || settings.temperature,
-        top_p: options.top_p || settings.top_p,
-        top_k: options.top_k || settings.top_k,
-        repeat_penalty: options.rep_penalty || settings.rep_penalty,
+        temperature: options.temperature ?? settings.temperature,
+        top_p: options.top_p ?? settings.top_p,
+        top_k: options.top_k ?? settings.top_k,
+        repeat_penalty: options.rep_penalty ?? settings.rep_penalty,
       };
+
+      const sf = options.smoothing_factor ?? settings.smoothing_factor ?? 0;
+      if (sf > 0) {
+        body.smoothing_factor = sf;
+      }
 
       // Add reasoning_effort parameter (KoboldCpp parameter for thinking budget)
       const effort = options.reasoning_effort ?? settings.reasoning_effort ?? 'none';
@@ -752,17 +758,44 @@ Focus ONLY on what is known or can be directly inferred from the history. Keep t
 
   /**
    * Count tokens for a given text using KoboldCpp's or llama.cpp's native token counter,
-   * falling back to Cyrillic-aware character estimation if both fail.
+   * returning both the value and whether the calculation was precise (via API) or approximate.
    * @param {string} text
-   * @returns {Promise<number>}
+   * @param {AbortSignal} signal - Optional abort signal
+   * @returns {Promise<{value: number, precise: boolean}>}
    */
-  async countTokens(text) {
-    if (!text) return 0;
+  async countTokensDetailed(text, signal = null) {
+    if (!text) return { value: 0, precise: true };
+
+    // Safety check: if currently generating, do not request token counting from the LLM backend
+    // to avoid overloading or crashing KoboldCpp. Use local character-based estimation instead.
+    if (appState.isGenerating || (llmQueue && llmQueue.currentActive)) {
+      return {
+        value: Math.ceil(text.length / (/[а-яА-ЯёЁ]/.test(text) ? 2.3 : 3.3)),
+        precise: false
+      };
+    }
+
     const settings = settingsStore.get();
     
     // Extract base URL (remove trailing /v1 or /v1/)
     let baseUrl = settings.api_url || 'http://localhost:5001';
     baseUrl = baseUrl.replace(/\/v1\/?$/, '');
+
+    // Setup signal with timeout
+    let fetchSignal = AbortSignal.timeout(2000);
+    if (signal) {
+      if (typeof AbortSignal.any === 'function') {
+        fetchSignal = AbortSignal.any([signal, AbortSignal.timeout(2000)]);
+      } else {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        signal.addEventListener('abort', () => {
+          clearTimeout(timeoutId);
+          controller.abort();
+        });
+        fetchSignal = controller.signal;
+      }
+    }
 
     // 1. Try KoboldCpp's native tokencount
     try {
@@ -770,12 +803,12 @@ Focus ONLY on what is known or can be directly inferred from the history. Keep t
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: text }),
-        signal: AbortSignal.timeout(2000),
+        signal: fetchSignal,
       });
       if (resp.ok) {
         const data = await resp.json();
         if (typeof data.value === 'number') {
-          return data.value;
+          return { value: data.value, precise: true };
         }
       }
     } catch (e) {
@@ -788,12 +821,12 @@ Focus ONLY on what is known or can be directly inferred from the history. Keep t
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: text }),
-        signal: AbortSignal.timeout(2000),
+        signal: fetchSignal,
       });
       if (resp.ok) {
         const data = await resp.json();
         if (data.tokens && Array.isArray(data.tokens)) {
-          return data.tokens.length;
+          return { value: data.tokens.length, precise: true };
         }
       }
     } catch (e) {
@@ -802,16 +835,31 @@ Focus ONLY on what is known or can be directly inferred from the history. Keep t
 
     // Fallback to modern token characters-per-token ratio (Llama 3, Gemma 2, Qwen 2, Gemini)
     // English: ~3.3 chars/token. Cyrillic: ~2.3 chars/token.
-    return Math.ceil(text.length / (/[а-яА-ЯёЁ]/.test(text) ? 2.3 : 3.3));
+    return {
+      value: Math.ceil(text.length / (/[а-яА-ЯёЁ]/.test(text) ? 2.3 : 3.3)),
+      precise: false
+    };
   },
 
   /**
-   * Count tokens for a messages array by formatting it into a single prompt string
-   * @param {Array} messages
+   * Count tokens for a given text (compatibility wrapper)
+   * @param {string} text
    * @returns {Promise<number>}
    */
-  async countMessagesTokens(messages) {
-    if (!messages || messages.length === 0) return 0;
+  async countTokens(text) {
+    const res = await this.countTokensDetailed(text);
+    return res.value;
+  },
+
+  /**
+   * Count tokens for a messages array by formatting it into a ChatML prompt
+   * returning both the value and whether the calculation was precise or approximate.
+   * @param {Array} messages
+   * @param {AbortSignal} signal - Optional abort signal
+   * @returns {Promise<{value: number, precise: boolean}>}
+   */
+  async countMessagesTokensDetailed(messages, signal = null) {
+    if (!messages || messages.length === 0) return { value: 0, precise: true };
     
     // Format the messages array into a single ChatML-like string
     let formattedText = '';
@@ -830,7 +878,17 @@ Focus ONLY on what is known or can be directly inferred from the history. Keep t
     }
     formattedText += `<|im_start|>assistant\n`;
     
-    return await this.countTokens(formattedText);
+    return await this.countTokensDetailed(formattedText, signal);
+  },
+
+  /**
+   * Count tokens for a messages array (compatibility wrapper)
+   * @param {Array} messages
+   * @returns {Promise<number>}
+   */
+  async countMessagesTokens(messages) {
+    const res = await this.countMessagesTokensDetailed(messages);
+    return res.value;
   },
 
   /**
@@ -839,6 +897,12 @@ Focus ONLY on what is known or can be directly inferred from the history. Keep t
    */
   async getMaxContextLength() {
     const settings = settingsStore.get();
+    
+    // Safety check: if currently generating, do not request config settings from the LLM backend
+    // to avoid overloading/crashing KoboldCpp. Use local settings fallback.
+    if (appState.isGenerating || (llmQueue && llmQueue.currentActive)) {
+      return settings.prompt_token_limit || 4096;
+    }
     
     // Extract base URL (remove trailing /v1 or /v1/)
     let baseUrl = settings.api_url || 'http://localhost:5001';

@@ -80,7 +80,7 @@ export function initSettingsPanel() {
   setupRangeInput('adv-setting-top-p', 'adv-top-p-value', v => parseFloat(v).toFixed(2));
   setupRangeInput('adv-setting-top-k', 'adv-top-k-value', v => v);
   setupRangeInput('adv-setting-rep-penalty', 'adv-rep-penalty-value', v => parseFloat(v).toFixed(2));
-  setupRangeInput('setting-genai-max-tokens', 'genai-max-tokens-value', v => v);
+  setupRangeInput('setting-music-volume', 'music-volume-value', v => v + '%');
 
   const syncToggles = [];
 
@@ -144,6 +144,20 @@ function setupRangeInput(inputId, valueId, formatter) {
 function loadSettingsToUI() {
   const settings = settingsStore.get();
 
+  const btnOpenGenaiAdvanced = document.getElementById('btn-open-genai-advanced-settings');
+  if (btnOpenGenaiAdvanced) {
+    btnOpenGenaiAdvanced.addEventListener('click', () => {
+      import('../main.js').then(({ closeModal }) => {
+        closeModal(document.getElementById('settings-modal'));
+        window.dispatchEvent(new CustomEvent('open-advanced-settings'));
+        setTimeout(() => {
+          const genaiTabBtn = document.querySelector('.nav-item[data-tab="genai-generation"]');
+          if (genaiTabBtn) genaiTabBtn.click();
+        }, 50);
+      });
+    });
+  }
+
   const apiUrlInput = document.getElementById('setting-api-url');
   if (apiUrlInput) apiUrlInput.value = settings.api_url;
 
@@ -182,7 +196,8 @@ function loadSettingsToUI() {
   
   setField('setting-genai-response-length', settings.genai_response_length || 'default');
   setField('setting-genai-speech-style', settings.genai_speech_style || 'default');
-  setRangeValue('setting-genai-max-tokens', 'genai-max-tokens-value', settings.genai_max_tokens || 2048);
+  setField('setting-genai-emoji-preferences', settings.genai_emoji_preferences || 'default');
+  const speechStyleDropdown = document.getElementById('setting-genai-speech-style');
   checkField('setting-genai-duo-suggestions', settings.genai_duo_suggestions !== false);
   checkField('setting-genai-safe-mode', settings.genai_safe_mode);
   checkField('setting-genai-viewimage-enabled', settings.genai_viewimage_enabled);
@@ -192,6 +207,7 @@ function loadSettingsToUI() {
   checkField('setting-comfyui-enabled', settings.comfyui_enabled);
   checkField('setting-comfyui-auto-chat', settings.comfyui_auto_chat);
   checkField('setting-comfyui-auto-scale', settings.comfyui_auto_scale);
+  checkField('setting-comfyui-better-prompts', settings.comfyui_better_prompts);
   setField('setting-comfyui-url', settings.comfyui_url || 'http://localhost:8188');
   setField('setting-comfyui-neg-prompt', settings.comfyui_negative_prompt || '');
   setField('setting-comfyui-sampler', settings.comfyui_sampler || 'euler');
@@ -285,7 +301,7 @@ async function saveSettings() {
     ai_comments_language: getVal('setting-ai-comments-lang'),
     genai_response_length: getVal('setting-genai-response-length'),
     genai_speech_style: getVal('setting-genai-speech-style'),
-    genai_max_tokens: parseInt(getVal('setting-genai-max-tokens')) || current.genai_max_tokens || 2048,
+    genai_emoji_preferences: getVal('setting-genai-emoji-preferences'),
     genai_duo_suggestions: getChecked('setting-genai-duo-suggestions'),
     genai_safe_mode: getChecked('setting-genai-safe-mode'),
     genai_viewimage_enabled: getChecked('setting-genai-viewimage-enabled'),
@@ -298,6 +314,7 @@ async function saveSettings() {
     comfyui_enabled: getChecked('setting-comfyui-enabled'),
     comfyui_auto_chat: getChecked('setting-comfyui-auto-chat'),
     comfyui_auto_scale: getChecked('setting-comfyui-auto-scale'),
+    comfyui_better_prompts: getChecked('setting-comfyui-better-prompts'),
     comfyui_url: getVal('setting-comfyui-url') || current.comfyui_url,
     comfyui_steps: parseInt(document.getElementById('setting-comfyui-steps')?.value || current.comfyui_steps),
     comfyui_cfg: parseFloat(document.getElementById('setting-comfyui-cfg')?.value || current.comfyui_cfg),

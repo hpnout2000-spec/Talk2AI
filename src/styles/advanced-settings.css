@@ -242,3 +242,102 @@
     max-height: 200px;
   }
 }
+
+/* Presets Row Consistent Alignment */
+.presets-row-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-4);
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  width: 100%;
+}
+
+.presets-row-container h3 {
+  margin: 0 !important;
+  flex-shrink: 0;
+}
+
+.preset-controls-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.preset-select-control {
+  flex: 1;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md) !important;
+  color: var(--text-primary);
+  outline: none;
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  height: 36px !important;
+  max-width: 250px;
+  box-sizing: border-box;
+  transition: border-color var(--transition-fast);
+}
+
+.preset-select-control:hover {
+  border-color: var(--border-accent);
+}
+
+.preset-btn-add {
+  height: 36px !important;
+  padding: 0 var(--space-4) !important;
+  border-radius: var(--radius-md) !important;
+  font-size: var(--text-xs) !important;
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 1 !important;
+  margin: 0 !important;
+}
+
+.preset-btn-delete {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: var(--radius-md) !important;
+  box-sizing: border-box !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  color: var(--text-secondary) !important;
+}
+
+.preset-btn-delete:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-error) !important;
+}
+
+/* Custom System Prompt Textarea */
+.textarea-premium {
+  width: 100%;
+  min-height: 110px;
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  padding: 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.textarea-premium:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 6px var(--accent-primary-glow);
+}
+

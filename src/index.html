@@ -1019,8 +1019,60 @@
         </div>
       </aside>
 
+
+      <!-- ─── GenAI Skill Creator Panel ──────────────────────────────── -->
+      <aside id="genai-skill-creator-panel" class="genai-skill-creator-panel hidden">
+        <div class="sidebar-header" style="border-bottom: 1px solid var(--border-light); padding-bottom: 12px; margin-bottom: 0; flex-shrink: 0;">
+          <h2 style="font-size: var(--text-base); font-weight: 600; display: flex; align-items: center; gap: 8px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-accent)" stroke-width="2" style="width: 18px; height: 18px; flex-shrink: 0;">
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </svg>
+            Skill Creator
+          </h2>
+          <button class="btn-icon" id="btn-close-skill-creator" title="Close panel" style="flex-shrink: 0;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Skill Name -->
+        <div style="padding: 14px 0 10px; flex-shrink: 0;">
+          <input
+            type="text"
+            id="skill-creator-name-input"
+            class="skill-creator-name-input"
+            placeholder="Skill name..."
+            autocomplete="off"
+          />
+        </div>
+
+        <!-- Lines editor -->
+        <div id="skill-creator-lines-container" class="skill-creator-lines-container">
+          <!-- Lines injected by JS -->
+        </div>
+
+        <!-- Footer actions -->
+        <div class="skill-creator-footer">
+          <button id="btn-skill-creator-discard" class="btn-secondary skill-creator-btn-discard">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+            Discard
+          </button>
+          <button id="btn-skill-creator-save" class="btn-primary skill-creator-btn-save">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;">
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </svg>
+            Save to Skills
+          </button>
+        </div>
+      </aside>
+
       <!-- ─── GenAI Assistant Panel ────────────────────────────── -->
       <aside id="genai-sidebar" class="right-sidebar hidden">
+
         <div class="sidebar-header" style="overflow: visible;">
           <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
             <button id="btn-genai-fullscreen" class="btn-icon genai-fullscreen-btn genai-header-btn" title="Expand to fullscreen">
@@ -1107,7 +1159,7 @@
           </div>
         </div>
         <div id="genai-messages" class="sidebar-section"></div>
-        <div class="genai-input-area" style="position: relative;">
+        <div class="genai-input-area">
           <!-- Hidden File Input for Image Upload -->
           <input type="file" id="genai-image-upload-input" accept="image/*" style="display: none;">
           <!-- Image Preview Row -->
@@ -1122,151 +1174,165 @@
               <button id="btn-genai-sc-warning-proceed" class="btn-primary small" style="padding: 2px 10px; font-size: 11px; border-radius: var(--radius-sm); background: var(--accent-primary); color: #212121; border: none; font-weight: 600; cursor: pointer;" type="button">Proceed</button>
             </div>
           </div>
-          <div class="genai-input-row">
-            <div class="genai-plus-wrapper" style="position: relative; display: flex; align-items: flex-end;">
-              <button id="btn-genai-plus" class="btn-icon" title="More options" style="margin-bottom: 2px; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; background: transparent; transition: all var(--transition-fast);">
-                <svg class="icon-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;">
-                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-                </svg>
-                <svg class="icon-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px; color: #a78bfa;">
-                  <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>
-                </svg>
-                <svg class="icon-skills" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px; color: #f59e0b;">
-                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path>
-                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path>
-                </svg>
-                <span id="genai-skills-badge" class="genai-skills-badge hidden">0</span>
-              </button>
-              <div id="genai-plus-popover" class="popover hidden" style="bottom: 100%; left: 0; margin-bottom: 8px; width: 220px; padding: 0; overflow: hidden; display: block; z-index: 100; transition: height 0.3s cubic-bezier(0.2, 1, 0.1, 1); height: 186px; position: absolute;">
-                <div id="genai-plus-slider" data-page="0" style="display: flex; align-items: flex-start; width: 300%; transition: transform 0.3s cubic-bezier(0.2, 1, 0.1, 1); transform: translateX(0);">
-                  <!-- Main Actions View -->
-                  <div id="genai-plus-main" style="width: 33.333%; padding: 6px; flex-shrink: 0; box-sizing: border-box;">
-                    <button id="btn-genai-create-char" class="dropdown-option" style="display: flex; flex-direction: column; align-items: flex-start; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; width: 100%; text-align: left;">
-                      <span style="font-weight: 500; font-size: var(--text-sm); color: var(--text-primary);">Create character</span>
-                      <span style="font-size: 11px; color: var(--text-tertiary);">Enhanced</span>
-                    </button>
-                    <button id="btn-genai-upload-image" class="dropdown-option" style="display: flex; flex-direction: column; align-items: flex-start; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; width: 100%; text-align: left;">
-                      <span style="font-weight: 500; font-size: var(--text-sm); color: var(--text-primary);">Upload image</span>
-                      <span style="font-size: 11px; color: var(--text-tertiary);">Vision · Multimodal</span>
-                    </button>
-                    <button id="btn-genai-toggle-imagegen" class="dropdown-option" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; width: 100%; text-align: left;">
-                      <span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
-                        <span style="font-weight: 500; font-size: var(--text-sm); color: var(--text-primary);">Image Gen</span>
-                        <span style="font-size: 11px; color: var(--text-tertiary);">Anima · ComfyUI</span>
+          <div class="input-container">
+            <textarea id="genai-input" class="message-input" placeholder="Ask GenAI anything..." rows="1"></textarea>
+
+            <div class="input-bottom-row">
+              <div class="input-bottom-left">
+                <div class="genai-plus-wrapper" style="position: relative; display: flex; align-items: flex-end;">
+                  <button id="btn-genai-plus" class="btn-icon" title="More options" style="margin-bottom: 2px; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; background: transparent; transition: all var(--transition-fast);">
+                    <svg class="icon-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;">
+                      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                  </button>
+                  <div id="genai-plus-popover" class="popover hidden" style="bottom: 100%; left: 0; margin-bottom: 8px; width: 220px; padding: 0; overflow: hidden; display: block; z-index: 100; transition: height 0.3s cubic-bezier(0.2, 1, 0.1, 1); height: 186px; position: absolute;">
+                    <div id="genai-plus-slider" data-page="0" style="display: flex; align-items: flex-start; width: 300%; transition: transform 0.3s cubic-bezier(0.2, 1, 0.1, 1); transform: translateX(0);">
+                      <!-- Main Actions View -->
+                      <div id="genai-plus-main" style="width: 33.333%; padding: 6px; flex-shrink: 0; box-sizing: border-box;">
+                        <button id="btn-genai-create-char" class="dropdown-option" style="display: flex; flex-direction: column; align-items: flex-start; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; width: 100%; text-align: left;">
+                          <span style="font-weight: 500; font-size: var(--text-sm); color: var(--text-primary);">Create character</span>
+                          <span style="font-size: 11px; color: var(--text-tertiary);">Enhanced</span>
+                        </button>
+                        <button id="btn-genai-create-skill" class="dropdown-option" style="display: flex; flex-direction: column; align-items: flex-start; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; width: 100%; text-align: left;">
+                          <span style="font-weight: 500; font-size: var(--text-sm); color: var(--text-primary);">Create Skill</span>
+                          <span style="font-size: 11px; color: var(--text-tertiary);">AI-assisted editor</span>
+                        </button>
+                        <button id="btn-genai-upload-image" class="dropdown-option" style="display: flex; flex-direction: column; align-items: flex-start; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; width: 100%; text-align: left;">
+                          <span style="font-weight: 500; font-size: var(--text-sm); color: var(--text-primary);">Upload image</span>
+                          <span style="font-size: 11px; color: var(--text-tertiary);">Vision · Multimodal</span>
+                        </button>
+                        <button id="btn-genai-toggle-imagegen" class="dropdown-option" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; width: 100%; text-align: left;">
+                          <span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
+                            <span style="font-weight: 500; font-size: var(--text-sm); color: var(--text-primary);">Image Gen</span>
+                            <span style="font-size: 11px; color: var(--text-tertiary);">Anima · ComfyUI</span>
+                          </span>
+                          <label class="toggle-switch small" style="pointer-events: none; flex-shrink: 0;">
+                            <input type="checkbox" id="genai-imagegen-toggle-check" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </button>
+                        <button id="btn-genai-toggle-websearch" class="dropdown-option" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; width: 100%; text-align: left;">
+                          <span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
+                            <span style="font-weight: 500; font-size: var(--text-sm); color: var(--text-primary);">Web Search</span>
+                            <span style="font-size: 11px; color: var(--text-tertiary);">Internet Browser</span>
+                          </span>
+                          <label class="toggle-switch small" style="pointer-events: none; flex-shrink: 0;">
+                            <input type="checkbox" id="genai-websearch-toggle-check" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </button>
+                        <button id="btn-genai-plus-skills" class="dropdown-option" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; width: 100%; text-align: left;">
+                          <span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
+                            <span style="font-weight: 500; font-size: var(--text-sm); color: var(--text-primary);">Skills</span>
+                            <span style="font-size: 11px; color: var(--text-tertiary);">Active skills list</span>
+                          </span>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polyline points="9 18 15 12 9 6"/></svg>
+                        </button>
+                      </div>
+                      <!-- Skills List View -->
+                      <div id="genai-plus-skills" style="width: 33.333%; padding: 0; flex-shrink: 0; display: flex; flex-direction: column; box-sizing: border-box;">
+                        <div style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border-light); cursor: pointer; background: var(--bg-tertiary);" id="btn-genai-skills-back" class="hover-bg-light">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polyline points="15 18 9 12 15 6"/></svg>
+                          <span style="font-weight: 600; font-size: var(--text-xs); color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Back</span>
+                        </div>
+                        <div style="padding: 6px; display: flex; flex-direction: column; gap: 2px;" id="genai-skills-list">
+                          <!-- Skills list items will be injected here -->
+                        </div>
+                        <div style="padding: 6px; border-top: 1px solid var(--border-light);" id="genai-skills-show-all-container">
+                          <button id="btn-genai-show-all-skills" class="dropdown-option" style="width: 100%; text-align: center; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; padding: 8px 12px; display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 600; color: var(--text-accent);">
+                            <span>Show All</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polyline points="9 18 15 12 9 6"/></svg>
+                          </button>
+                        </div>
+                      </div>
+                      <!-- All Skills List View (Page 3) -->
+                      <div id="genai-plus-all-skills" style="width: 33.333%; padding: 0; flex-shrink: 0; display: flex; flex-direction: column; box-sizing: border-box;">
+                        <div style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border-light); cursor: pointer; background: var(--bg-tertiary);" id="btn-genai-all-skills-back" class="hover-bg-light">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polyline points="15 18 9 12 15 6"/></svg>
+                          <span style="font-weight: 600; font-size: var(--text-xs); color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Back</span>
+                        </div>
+                        <div style="padding: 6px; display: flex; flex-direction: column; gap: 2px; max-height: 250px; overflow-y: auto;" id="genai-all-skills-list">
+                          <!-- All loaded skills list items will be injected here -->
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Active tools capsules container -->
+                <div id="genai-active-tools-container" class="active-tools-container hidden"></div>
+
+                <!-- Thinking Effort Button (GenAI) -->
+                <div id="genai-thinking-effort-wrapper" class="thinking-effort-wrapper">
+                  <button id="btn-genai-thinking-effort-main" class="btn-thinking-effort" title="Reasoning effort">
+                    <svg class="thinking-icon-bulb" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:14px;height:14px;flex-shrink:0;display:none;">
+                      <path d="M9 18h6"/><path d="M10 22h4"/>
+                      <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/>
+                    </svg>
+                    <span class="thinking-btn-short">T</span>
+                    <span class="thinking-btn-label">Thinking</span>
+                    <span class="effort-level-label"></span>
+                  </button>
+                  <button id="btn-genai-thinking-effort-arrow" class="btn-thinking-effort-arrow" title="Select effort level">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:10px;height:10px;">
+                      <polyline points="9 18 15 12 9 6"/>
+                    </svg>
+                  </button>
+                  <div id="genai-thinking-effort-dropdown" class="thinking-effort-dropdown hidden">
+                    <div class="effort-option" data-value="none">None</div>
+                    <div class="effort-option" data-value="minimal">Minimal</div>
+                    <div class="effort-option" data-value="low">Low</div>
+                    <div class="effort-option" data-value="medium">Medium</div>
+                    <div class="effort-option" data-value="high">High</div>
+                    <div style="height: 1px; background: var(--border-light); margin: 4px 0;"></div>
+                    <div id="genai-extended-thinking-toggle-row" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; cursor: pointer;" class="hover-bg-light">
+                      <span style="display: flex; align-items: center; gap: 4px; font-size: var(--text-sm); font-weight: 500;">
+                        Extended
+                        <span data-tooltip="Включает режим расширенного мышления: нейросеть сначала напишет короткий ответ, а затем перейдет к скрытым рассуждениям перед окончательным ответом." style="color: var(--text-tertiary); cursor: help; display: flex; align-items: center;">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+                        </span>
                       </span>
-                      <label class="toggle-switch small" style="pointer-events: none; flex-shrink: 0;">
-                        <input type="checkbox" id="genai-imagegen-toggle-check" />
+                      <label class="toggle-switch small" style="pointer-events: none;">
+                        <input type="checkbox" id="genai-extended-thinking-toggle-check" />
                         <span class="toggle-slider"></span>
                       </label>
-                    </button>
-                    <button id="btn-genai-toggle-websearch" class="dropdown-option" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; width: 100%; text-align: left;">
-                      <span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
-                        <span style="font-weight: 500; font-size: var(--text-sm); color: var(--text-primary);">Web Search</span>
-                        <span style="font-size: 11px; color: var(--text-tertiary);">Internet Browser</span>
-                      </span>
-                      <label class="toggle-switch small" style="pointer-events: none; flex-shrink: 0;">
-                        <input type="checkbox" id="genai-websearch-toggle-check" />
-                        <span class="toggle-slider"></span>
-                      </label>
-                    </button>
-                    <button id="btn-genai-plus-skills" class="dropdown-option" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; width: 100%; text-align: left;">
-                      <span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
-                        <span style="font-weight: 500; font-size: var(--text-sm); color: var(--text-primary);">Skills</span>
-                        <span style="font-size: 11px; color: var(--text-tertiary);">Active skills list</span>
-                      </span>
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polyline points="9 18 15 12 9 6"/></svg>
-                    </button>
-                  </div>
-                  <!-- Skills List View -->
-                  <div id="genai-plus-skills" style="width: 33.333%; padding: 0; flex-shrink: 0; display: flex; flex-direction: column; box-sizing: border-box;">
-                    <div style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border-light); cursor: pointer; background: var(--bg-tertiary);" id="btn-genai-skills-back" class="hover-bg-light">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polyline points="15 18 9 12 15 6"/></svg>
-                      <span style="font-weight: 600; font-size: var(--text-xs); color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Back</span>
-                    </div>
-                    <div style="padding: 6px; display: flex; flex-direction: column; gap: 2px;" id="genai-skills-list">
-                      <!-- Skills list items will be injected here -->
-                    </div>
-                    <div style="padding: 6px; border-top: 1px solid var(--border-light);" id="genai-skills-show-all-container">
-                      <button id="btn-genai-show-all-skills" class="dropdown-option" style="width: 100%; text-align: center; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; padding: 8px 12px; display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 600; color: var(--text-accent);">
-                        <span>Show All</span>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polyline points="9 18 15 12 9 6"/></svg>
-                      </button>
-                    </div>
-                  </div>
-                  <!-- All Skills List View (Page 3) -->
-                  <div id="genai-plus-all-skills" style="width: 33.333%; padding: 0; flex-shrink: 0; display: flex; flex-direction: column; box-sizing: border-box;">
-                    <div style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border-light); cursor: pointer; background: var(--bg-tertiary);" id="btn-genai-all-skills-back" class="hover-bg-light">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polyline points="15 18 9 12 15 6"/></svg>
-                      <span style="font-weight: 600; font-size: var(--text-xs); color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Back</span>
-                    </div>
-                    <div style="padding: 6px; display: flex; flex-direction: column; gap: 2px; max-height: 250px; overflow-y: auto;" id="genai-all-skills-list">
-                      <!-- All loaded skills list items will be injected here -->
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
-            <textarea id="genai-input" placeholder="Ask GenAI anything..." rows="1"></textarea>
-            <!-- Thinking Effort Button (GenAI) -->
-            <div id="genai-thinking-effort-wrapper" class="thinking-effort-wrapper">
-              <button id="btn-genai-thinking-effort-main" class="btn-thinking-effort" title="Reasoning effort">
-                <svg class="thinking-icon-bulb" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:14px;height:14px;flex-shrink:0;display:none;">
-                  <path d="M9 18h6"/><path d="M10 22h4"/>
-                  <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/>
-                </svg>
-                <span class="thinking-btn-short">T</span>
-                <span class="thinking-btn-label">Thinking</span>
-                <span class="effort-level-label"></span>
-              </button>
-              <button id="btn-genai-thinking-effort-arrow" class="btn-thinking-effort-arrow" title="Select effort level">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:10px;height:10px;">
-                  <polyline points="9 18 15 12 9 6"/>
-                </svg>
-              </button>
-              <div id="genai-thinking-effort-dropdown" class="thinking-effort-dropdown hidden">
-                <div class="effort-option" data-value="none">None</div>
-                <div class="effort-option" data-value="minimal">Minimal</div>
-                <div class="effort-option" data-value="low">Low</div>
-                <div class="effort-option" data-value="medium">Medium</div>
-                <div class="effort-option" data-value="high">High</div>
-                <div style="height: 1px; background: var(--border-light); margin: 4px 0;"></div>
-                <div id="genai-extended-thinking-toggle-row" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; cursor: pointer;" class="hover-bg-light">
-                  <span style="display: flex; align-items: center; gap: 4px; font-size: var(--text-sm); font-weight: 500;">
-                    Extended
-                    <span data-tooltip="Включает режим расширенного мышления: нейросеть сначала напишет короткий ответ, а затем перейдет к скрытым рассуждениям перед окончательным ответом." style="color: var(--text-tertiary); cursor: help; display: flex; align-items: center;">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-                    </span>
-                  </span>
-                  <label class="toggle-switch small" style="pointer-events: none;">
-                    <input type="checkbox" id="genai-extended-thinking-toggle-check" />
-                    <span class="toggle-slider"></span>
-                  </label>
-                </div>
+
+              <div class="input-actions">
+                <button id="btn-genai-brush" class="btn-icon hidden" title="Generate image only">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m12 22 1-1c1.4-1.4 2.4-3.2 3-5.2L18 9l-5-5-7 2-5 5 5 5z"/>
+                    <path d="m19 9 1-1c1.1-1.1 2.9-1.1 4 0s1.1 2.9 0 4l-1 1"/>
+                    <path d="M5 16c.2-.4.4-.8.7-1.1l1.1-1.1c.3-.3.7-.5 1.1-.7"/>
+                  </svg>
+                </button>
+                <button id="btn-genai-send" class="btn-icon" title="Send">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
+                  </svg>
+                </button>
+                <button id="btn-genai-stop" class="btn-icon hidden" title="Stop generation">
+                  <svg viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="6" y="6" width="12" height="12" rx="2"/>
+                  </svg>
+                </button>
               </div>
             </div>
-            <button id="btn-genai-brush" class="hidden" title="Generate image only">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="m12 22 1-1c1.4-1.4 2.4-3.2 3-5.2L18 9l-5-5-7 2-5 5 5 5z"/>
-                <path d="m19 9 1-1c1.1-1.1 2.9-1.1 4 0s1.1 2.9 0 4l-1 1"/>
-                <path d="M5 16c.2-.4.4-.8.7-1.1l1.1-1.1c.3-.3.7-.5 1.1-.7"/>
-              </svg>
-            </button>
-            <button id="btn-genai-send" title="Send">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
-              </svg>
-            </button>
-            <button id="btn-genai-stop" class="hidden" title="Stop generation">
-              <svg viewBox="0 0 24 24" fill="currentColor">
-                <rect x="6" y="6" width="12" height="12" rx="2"/>
-              </svg>
-            </button>
           </div>
           <button id="btn-genai-expand-creation" class="btn-primary hidden" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 26px; height: 42px; margin-top: 0; font-weight: 600; cursor: pointer;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 16px; height: 16px;">
               <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
             </svg>
             Expand to Full Screen
+          </button>
+          <button id="btn-genai-expand-skill-creation" class="btn-primary hidden" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 26px; height: 42px; margin-top: 0; font-weight: 600; cursor: pointer; background: linear-gradient(135deg, var(--accent-primary), #8b5cf6);">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 16px; height: 16px;">
+              <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+            </svg>
+            Open Skill Editor
           </button>
         </div>
       </aside>
@@ -1374,6 +1440,26 @@
           <div class="modal-footer" style="justify-content: center; gap: 12px; border: none; padding-top: 8px;">
             <button id="btn-cancel-creator-mode" class="btn-secondary">Cancel</button>
             <button id="btn-confirm-creator-mode" class="btn-primary" style="background: var(--warning); color: #000;">Proceed</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── GenAI Skill Creator Warning Modal ────────────── -->
+      <div id="genai-skill-creator-warning-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content" style="max-width: 400px; text-align: center;">
+          <div class="modal-header" style="justify-content: center; border: none; padding-bottom: 0;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-accent)" stroke-width="2" style="width: 48px; height: 48px; margin: 0 auto 16px;">
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </svg>
+          </div>
+          <div class="modal-body" style="padding-top: 0;">
+            <h2 style="font-size: 1.25rem; font-weight: 600; margin-bottom: 8px;">Open Skill Creator?</h2>
+            <p style="color: var(--text-secondary); font-size: var(--text-sm); line-height: 1.5;">This will start a new GenAI session to help you create a skill. Your current GenAI conversation will be cleared.</p>
+          </div>
+          <div class="modal-footer" style="justify-content: center; gap: 12px; border: none; padding-top: 8px;">
+            <button id="btn-cancel-skill-creator-mode" class="btn-secondary">Cancel</button>
+            <button id="btn-confirm-skill-creator-mode" class="btn-primary">Proceed</button>
           </div>
         </div>
       </div>
@@ -2221,8 +2307,26 @@
               </div>
             </div>
             <div class="form-group">
-              <label for="setting-genai-max-tokens">Generation Token Limit: <span id="genai-max-tokens-value">2048</span></label>
-              <input type="range" id="setting-genai-max-tokens" min="1500" max="8000" step="50" value="2048" />
+              <label for="setting-genai-emoji-preferences">Emoji Preferences</label>
+              <div class="vibe-dropdown" id="dropdown-genai-emoji-preferences">
+                <div class="vibe-dropdown-trigger" data-value="default">Default</div>
+                <div class="vibe-dropdown-menu">
+                  <div class="vibe-dropdown-item" data-value="default">Default</div>
+                  <div class="vibe-dropdown-item" data-value="more">More</div>
+                </div>
+                <select id="setting-genai-emoji-preferences" class="hidden">
+                  <option value="default">Default</option>
+                  <option value="more">More</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <button id="btn-open-genai-advanced-settings" class="btn-secondary" style="width: 100%; margin-top: 10px;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px; margin-right: 8px;">
+                  <path d="M12 20V10M18 20V4M6 20v-4"/>
+                </svg>
+                Generation settings
+              </button>
             </div>
             <div class="form-group-row">
               <div style="display: flex; flex-direction: column; gap: 4px;">
@@ -2516,13 +2620,21 @@
                 <h3 style="font-size: var(--text-sm); font-weight: 600; color: var(--text-primary); margin: 0;">Import Skills</h3>
                 <span style="font-size: var(--text-xs); color: var(--text-tertiary);">Upload custom .txt or .json files containing background information.</span>
               </div>
-              <input type="file" id="input-import-genai-skill" accept=".txt,.json" class="hidden" />
-              <button id="btn-import-genai-skill" class="btn-primary" type="button" style="padding: 8px 16px; font-weight: 600; border-radius: var(--radius-md); display: flex; align-items: center; gap: 8px; background: var(--accent-primary); color: #212121; border: none; cursor: pointer;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 16px; height: 16px;">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
-                </svg>
-                Import File
-              </button>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <button id="btn-open-skills-folder" class="btn-secondary" type="button" style="padding: 8px 16px; font-weight: 600; border-radius: var(--radius-md); display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 16px; height: 16px;">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                  </svg>
+                  Open Folder
+                </button>
+                <input type="file" id="input-import-genai-skill" accept=".txt,.json" class="hidden" />
+                <button id="btn-import-genai-skill" class="btn-primary" type="button" style="padding: 8px 16px; font-weight: 600; border-radius: var(--radius-md); display: flex; align-items: center; gap: 8px; background: var(--accent-primary); color: #212121; border: none; cursor: pointer;">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 16px; height: 16px;">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+                  </svg>
+                  Import File
+                </button>
+              </div>
             </div>
 
             <!-- Skills List Section -->
@@ -2639,6 +2751,18 @@
               </div>
               <label class="toggle-switch small">
                 <input type="checkbox" id="setting-comfyui-auto-scale" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+
+            <!-- Better Prompts toggle -->
+            <div class="form-group-row" style="margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border-subtle);">
+              <div>
+                <label style="font-size: var(--text-sm); font-weight: 600; color: var(--text-primary);">Better prompts</label>
+                <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px;">Improves prompt quality at the cost of consuming more context tokens</div>
+              </div>
+              <label class="toggle-switch small">
+                <input type="checkbox" id="setting-comfyui-better-prompts" />
                 <span class="toggle-slider"></span>
               </label>
             </div>
@@ -2900,6 +3024,17 @@
             </div>
             
             <div class="form-group">
+              <label for="game-settings-reasoning-effort" style="font-size: var(--text-sm); font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; display: block;">Reasoning Effort</label>
+              <select id="game-settings-reasoning-effort" style="width: 100%; padding: 10px; background: var(--bg-tertiary); border: 1px solid var(--border-light); border-radius: var(--radius-sm); color: var(--text-primary); font-family: var(--font-sans); font-size: var(--text-sm); outline: none;">
+                <option value="none">None</option>
+                <option value="minimal">Minimal</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+            
+            <div class="form-group">
               <label for="game-settings-story-prompt" style="font-size: var(--text-sm); font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; display: block;">Story Premise</label>
               <p style="font-size: 0.8rem; color: var(--text-tertiary); margin: 0 0 8px 0; line-height: 1.4;">Describe the game world, genre, rules, and story context. This is added to the AI Game Master's system prompt for every scene.</p>
               <textarea id="game-settings-story-prompt" rows="6" placeholder="A dark fantasy world where magic is forbidden. The player is a fugitive mage trying to survive..." style="width: 100%; padding: 12px; background: var(--bg-tertiary); border: 1px solid var(--border-light); border-radius: var(--radius-sm); color: var(--text-primary); font-family: var(--font-sans); font-size: var(--text-sm); resize: vertical; outline: none; min-height: 120px;"></textarea>
@@ -3036,6 +3171,14 @@
                   </svg>
                   <span>Generation</span>
                 </button>
+                <button class="nav-item" data-tab="genai-generation">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M11.5 12.5 C 14 10, 17.5 5.5, 23 1 C 18.5 6.5, 14 11, 13 14" />
+                    <path d="M10 11 C 12.5 8.5, 16 4, 23 1" />
+                    <path d="M9 4 Q9 15 20 15 Q9 15 9 23 Q9 15 1 15 Q9 15 9 4 Z" />
+                  </svg>
+                  <span>GenAI Gen</span>
+                </button>
                 <button class="nav-item" id="nav-tab-ai-comments" data-tab="ai-comments">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>
@@ -3079,6 +3222,20 @@
                 <div id="tab-generation" class="tab-content">
                   <div class="settings-grid">
                     <div class="settings-section">
+                      <div class="presets-row-container">
+                        <h3>Presets</h3>
+                        <div class="preset-controls-group">
+                          <select id="generation-preset-select" class="form-control preset-select-control">
+                          </select>
+                          <button id="btn-add-generation-preset" class="btn-secondary small preset-btn-add" title="Save current settings as a new preset">Save As New</button>
+                          <button id="btn-reset-generation-preset" class="btn-secondary small preset-btn-reset" title="Reset current default preset to original values">Reset</button>
+                          <button id="btn-delete-generation-preset" class="btn-icon small text-error preset-btn-delete" title="Delete current preset">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                          </button>
+                        </div>
+                      </div>
+                      <hr style="border: none; border-top: 1px solid var(--border-light); margin-bottom: 16px;">
+                      
                       <h3>Model Parameters</h3>
                       <div class="form-group">
                         <label for="adv-setting-max-tokens">Max Tokens: <span id="adv-max-tokens-value">2048</span></label>
@@ -3098,7 +3255,66 @@
                       </div>
                       <div class="form-group">
                         <label for="adv-setting-rep-penalty">Repetition Penalty: <span id="adv-rep-penalty-value">1.0</span></label>
-                        <input type="range" id="adv-setting-rep-penalty" min="1" max="2" step="0.05" value="1.0" />
+                        <input type="range" id="adv-setting-rep-penalty" min="1" max="2" step="0.01" value="1.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="adv-setting-smoothing-factor">Smoothing Factor: <span id="adv-smoothing-factor-value">0</span></label>
+                        <input type="range" id="adv-setting-smoothing-factor" min="0" max="5" step="0.05" value="0" />
+                        <p class="form-hint" style="margin-top: 4px; font-size: 11px;">Quadratic sampling. High values (1.5 - 2.5) stabilize high temperature generations.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- GenAI Generation Tab -->
+                <div id="tab-genai-generation" class="tab-content">
+                  <div class="settings-grid">
+                    <div class="settings-section">
+                      <div class="presets-row-container">
+                        <h3>GenAI Presets</h3>
+                        <div class="preset-controls-group">
+                          <select id="genai-preset-select" class="form-control preset-select-control">
+                          </select>
+                          <button id="btn-add-genai-preset" class="btn-secondary small preset-btn-add" title="Save current settings as a new preset">Save As New</button>
+                          <button id="btn-reset-genai-preset" class="btn-secondary small preset-btn-reset" title="Reset current default preset to original values">Reset</button>
+                          <button id="btn-delete-genai-preset" class="btn-icon small text-error preset-btn-delete" title="Delete current preset">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                          </button>
+                        </div>
+                      </div>
+                      <hr style="border: none; border-top: 1px solid var(--border-light); margin-bottom: 16px;">
+                      
+                      <h3>GenAI Parameters</h3>
+                      <div class="form-group">
+                        <label for="adv-setting-genai-max-tokens">Max Tokens: <span id="adv-genai-max-tokens-value">2048</span></label>
+                        <input type="range" id="adv-setting-genai-max-tokens" min="150" max="8000" step="50" value="2048" />
+                      </div>
+                      <div class="form-group">
+                        <label for="adv-setting-genai-temperature">Temperature: <span id="adv-genai-temperature-value">0.7</span></label>
+                        <input type="range" id="adv-setting-genai-temperature" min="0" max="2" step="0.05" value="0.7" />
+                      </div>
+                      <div class="form-group">
+                        <label for="adv-setting-genai-top-p">Top-P: <span id="adv-genai-top-p-value">0.90</span></label>
+                        <input type="range" id="adv-setting-genai-top-p" min="0" max="1" step="0.01" value="0.9" />
+                      </div>
+                      <div class="form-group">
+                        <label for="adv-setting-genai-top-k">Top-K: <span id="adv-genai-top-k-value">40</span></label>
+                        <input type="range" id="adv-setting-genai-top-k" min="0" max="200" step="1" value="40" />
+                      </div>
+                      <div class="form-group">
+                        <label for="adv-setting-genai-rep-penalty">Repetition Penalty: <span id="adv-genai-rep-penalty-value">1.0</span></label>
+                        <input type="range" id="adv-setting-genai-rep-penalty" min="1" max="2" step="0.01" value="1.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="adv-setting-genai-smoothing-factor">Smoothing Factor: <span id="adv-genai-smoothing-factor-value">0</span></label>
+                        <input type="range" id="adv-setting-genai-smoothing-factor" min="0" max="5" step="0.05" value="0" />
+                        <p class="form-hint" style="margin-top: 4px; font-size: 11px;">Quadratic sampling for GenAI requests.</p>
+                      </div>
+
+                      <div class="form-group" style="margin-top: var(--space-4); display: flex; flex-direction: column;">
+                        <label for="adv-setting-genai-system-prompt">Change System Prompt</label>
+                        <textarea id="adv-setting-genai-system-prompt" class="textarea-premium" placeholder="Enter custom instructions to append to the system prompt..."></textarea>
+                        <p class="form-hint" style="margin-top: 4px; font-size: 11px;">This text will be appended to the end of the GenAI system prompt.</p>
                       </div>
                     </div>
                   </div>
@@ -3182,6 +3398,7 @@
                 <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
               </svg>
               Context Breakdown
+              <span id="context-accuracy-badge" style="margin-left: 8px; font-size: 11px; padding: 2px 6px; border-radius: 4px; font-weight: 500; display: inline-block;">Precise</span>
             </h2>
             <button class="btn-icon" id="btn-refresh-context" title="Force recalculate context via API" style="margin-left: auto; margin-right: 8px;">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;">

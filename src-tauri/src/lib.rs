@@ -1522,6 +1522,37 @@ fn delete_skill(filename: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn open_skills_folder() -> Result<(), String> {
+    ensure_default_skills();
+    let dir = get_app_dir().join("skills");
+    ensure_dir(&dir);
+    
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(&dir)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&dir)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&dir)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    
+    Ok(())
+}
+
+#[tauri::command]
 fn save_credential(provider: String, key: String) -> Result<(), String> {
     let dir = get_app_dir().join("credentials");
     ensure_dir(&dir);
@@ -2336,6 +2367,7 @@ pub fn run() {
             load_skills,
             save_skill,
             delete_skill,
+            open_skills_folder,
             save_credential,
             load_credential,
             nhentai_request,
