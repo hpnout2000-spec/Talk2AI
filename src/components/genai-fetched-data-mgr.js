@@ -154,7 +154,7 @@ export function renderFetchedData() {
   container.innerHTML = dataList.map(entry => {
     if (entry.isUploadedImage) {
       const activeText = entry.enabled ? 'Enabled' : 'Disabled';
-      const sizeBadge = `<span class="memory-entry-category" style="background: rgba(167, 139, 250, 0.1); color: #a78bfa; border: 1px solid rgba(167, 139, 250, 0.2);">${(entry.size / 1024).toFixed(1)} KB (${activeText})</span>`;
+      const sizeBadge = `<span class="memory-entry-category" style="background: rgba(167, 139, 250, 0.1); color: #38bdf8; border: 1px solid rgba(167, 139, 250, 0.2);">${(entry.size / 1024).toFixed(1)} KB (${activeText})</span>`;
       return `
         <div class="memory-entry" style="align-items: center; justify-content: space-between;">
           <div class="memory-entry-icon" style="font-size: 16px; margin-top: 0; cursor: pointer; display: flex; align-items: center;" onclick="if(window.openLightbox){window.openLightbox('${entry.base64}')}else{window.open('${entry.base64}','_blank')}">
@@ -186,7 +186,7 @@ export function renderFetchedData() {
 
     const sizeBadge = entry.isCleared
       ? `<span class="memory-entry-category" style="background: rgba(255, 255, 255, 0.05); color: var(--text-tertiary); border: 1px solid var(--border-light);">0 bytes (Cleared)</span>`
-      : `<span class="memory-entry-category" style="background: rgba(99, 102, 241, 0.1); color: var(--text-accent); border: 1px solid rgba(99, 102, 241, 0.2);">${entry.size.toLocaleString()} chars</span>`;
+      : `<span class="memory-entry-category" style="background: rgba(14, 165, 233, 0.1); color: var(--text-accent); border: 1px solid rgba(14, 165, 233, 0.2);">${entry.size.toLocaleString()} chars</span>`;
 
     return `
       <div class="memory-entry" style="align-items: center; justify-content: space-between;">

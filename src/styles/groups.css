@@ -294,7 +294,7 @@
 .group-char-checkbox-item.selected {
   background: var(--bg-secondary);
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 2px rgba(var(--accent-primary-rgb, 99, 102, 241), 0.2);
+  box-shadow: 0 0 0 2px rgba(var(--accent-primary-rgb, 14, 165, 233), 0.2);
 }
 
 .group-char-check {
@@ -401,7 +401,7 @@
 }
 
 .dropdown-option.active {
-  background: rgba(99, 102, 241, 0.1);
+  background: rgba(14, 165, 233, 0.1);
   color: var(--accent-primary);
   font-weight: 600;
 }
@@ -483,7 +483,7 @@
 .group-mode-select:hover {
   background: rgba(255, 255, 255, 0.1);
   border-color: var(--accent-primary);
-  box-shadow: 0 0 15px rgba(99, 102, 241, 0.2);
+  box-shadow: 0 0 15px rgba(14, 165, 233, 0.2);
 }
 
 .group-mode-select:focus {

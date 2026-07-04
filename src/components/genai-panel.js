@@ -2547,8 +2547,13 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
   }
 
   // Parse inline text suggestions: <suggest target="..." message="...">...</suggest>
+  const suggestData = [];
+  let suggestIndex = 0;
   let processedText = content.replace(/<suggest\s+target="([^"]+)"\s+message="([^"]+)">([\s\S]*?)<\/suggest>/gi, (match, target, message, innerText) => {
-    return `<span class="genai-inline-text-suggest" data-target="${escapeHtml(target)}" data-message="${escapeHtml(message)}">${innerText}</span>`;
+    const token = `__GENAI_INLINE_SUGGEST_PLACEHOLDER_${suggestIndex}__`;
+    suggestData.push({ target, message, innerText });
+    suggestIndex++;
+    return token;
   });
 
   // Remove consecutive web tool markers and any whitespace between them to prevent empty paragraphs
@@ -2588,7 +2593,12 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
     html += renderMarkdown(processedText);
   }
 
-
+  // Restore inline text suggestions AFTER markdown rendering
+  suggestData.forEach((data, idx) => {
+    const token = `__GENAI_INLINE_SUGGEST_PLACEHOLDER_${idx}__`;
+    const spanHtml = `<span class="genai-inline-text-suggest" data-target="${escapeHtml(data.target)}" data-message="${escapeHtml(data.message)}">${data.innerText}</span>`;
+    html = html.split(token).join(spanHtml);
+  });
 
   // Replace tool markers with badges or specialized views
   if (entry.tools && entry.tools.length > 0) {

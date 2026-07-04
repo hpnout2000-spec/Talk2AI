@@ -143,7 +143,7 @@ export async function renderSkills() {
           <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
             <span class="memory-entry-content" style="font-weight: 600; color: var(--text-primary); font-size: var(--text-sm);">${escapeHtml(entry.name)}</span>
             ${isDefault ? `
-              <span style="font-size: 10px; background: rgba(99, 102, 241, 0.15); color: var(--text-accent); padding: 2px 6px; border-radius: 20px; font-weight: 600; letter-spacing: 0.02em;">Default</span>
+              <span style="font-size: 10px; background: rgba(14, 165, 233, 0.15); color: var(--text-accent); padding: 2px 6px; border-radius: 20px; font-weight: 600; letter-spacing: 0.02em;">Default</span>
             ` : ''}
           </div>
           <div class="memory-entry-meta" style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px;">

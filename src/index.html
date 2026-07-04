@@ -1392,7 +1392,7 @@
             </svg>
             Expand to Full Screen
           </button>
-          <button id="btn-genai-expand-skill-creation" class="btn-primary hidden" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 26px; height: 42px; margin-top: 0; font-weight: 600; cursor: pointer; background: linear-gradient(135deg, var(--accent-primary), #8b5cf6);">
+          <button id="btn-genai-expand-skill-creation" class="btn-primary hidden" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 26px; height: 42px; margin-top: 0; font-weight: 600; cursor: pointer; background: linear-gradient(135deg, var(--accent-primary), #0ea5e9);">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 16px; height: 16px;">
               <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
             </svg>
@@ -3014,7 +3014,7 @@
               <br><strong style="color: var(--text-accent);">Note:</strong> This will summarize all scenes up to (but excluding) the last two narrative steps.
             </p>
             
-            <div id="summary-info-block" style="background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.2); padding: 12px; border-radius: 10px; font-size: 0.85rem; color: #e2e8f0; font-weight: 500;">
+            <div id="summary-info-block" style="background: rgba(14, 165, 233, 0.08); border: 1px solid rgba(14, 165, 233, 0.2); padding: 12px; border-radius: 10px; font-size: 0.85rem; color: #e2e8f0; font-weight: 500;">
               <!-- Details on scenes to summarize -->
             </div>
 
@@ -3039,7 +3039,7 @@
               </div>
               
               <!-- Loader for AI summary generation -->
-              <div id="ai-summary-loader" style="display: none; align-items: center; gap: 10px; background: rgba(99, 102, 241, 0.05); padding: 10px; border-radius: var(--radius-md); border: 1px dashed rgba(99, 102, 241, 0.3);">
+              <div id="ai-summary-loader" style="display: none; align-items: center; gap: 10px; background: rgba(14, 165, 233, 0.05); padding: 10px; border-radius: var(--radius-md); border: 1px dashed rgba(14, 165, 233, 0.3);">
                 <span class="spinner-small" style="width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.1); border-top-color: var(--text-accent); border-radius: 50%; display: inline-block; animation: spin 1s linear infinite;"></span>
                 <span style="font-size: 0.8rem; color: #cbd5e1; font-style: italic;">The Chronicler is drafting the summary...</span>
               </div>
@@ -3074,7 +3074,7 @@
             </p>
 
             <!-- Loading overlay inside the modal body -->
-            <div id="game-characters-loader" style="display: none; align-items: center; justify-content: center; flex-direction: column; gap: 12px; padding: 30px; background: rgba(99, 102, 241, 0.05); border-radius: 10px; border: 1px dashed var(--border-light);">
+            <div id="game-characters-loader" style="display: none; align-items: center; justify-content: center; flex-direction: column; gap: 12px; padding: 30px; background: rgba(14, 165, 233, 0.05); border-radius: 10px; border: 1px dashed var(--border-light);">
               <span class="spinner-small" style="width: 24px; height: 24px; border: 2.5px solid rgba(255,255,255,0.1); border-top-color: var(--text-accent); border-radius: 50%; display: inline-block; animation: spin 1s linear infinite;"></span>
               <span style="font-size: 0.85rem; color: #cbd5e1; font-style: italic;">AI is analyzing the history and searching for characters...</span>
             </div>
@@ -3510,16 +3510,16 @@
               </div>
               <div class="context-bar-bg" style="height: 10px; background: rgba(255,255,255,0.05); border-radius: 5px; overflow: hidden; border: 1px solid var(--border-light); display: flex;">
                 <div id="bar-char-card" style="height: 100%; background: #06b6d4; width: 0%; transition: width 0.3s;" title="Character Card"></div>
-                <div id="bar-system-prompt" style="height: 100%; background: #a78bfa; width: 0%; transition: width 0.3s;" title="System Prompt"></div>
+                <div id="bar-system-prompt" style="height: 100%; background: #38bdf8; width: 0%; transition: width 0.3s;" title="System Prompt"></div>
                 <div id="bar-memory-context" style="height: 100%; background: #f472b6; width: 0%; transition: width 0.3s;" title="Memory Context"></div>
-                <div id="bar-auto-summary" style="height: 100%; background: #818cf8; width: 0%; transition: width 0.3s;" title="Auto Summary"></div>
+                <div id="bar-auto-summary" style="height: 100%; background: #38bdf8; width: 0%; transition: width 0.3s;" title="Auto Summary"></div>
                 <div id="bar-chat-history" style="height: 100%; background: #34d399; width: 0%; transition: width 0.3s;" title="Chat History"></div>
               </div>
               <div class="context-legend" style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; font-size: 11px; color: var(--text-tertiary);">
                 <div style="display: flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; background: #06b6d4; border-radius: 50%;"></span> Character Card: <span id="legend-char-card" style="color:var(--text-secondary);">0t</span></div>
-                <div style="display: flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; background: #a78bfa; border-radius: 50%;"></span> System Prompt: <span id="legend-system-prompt" style="color:var(--text-secondary);">0t</span></div>
+                <div style="display: flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; background: #38bdf8; border-radius: 50%;"></span> System Prompt: <span id="legend-system-prompt" style="color:var(--text-secondary);">0t</span></div>
                 <div style="display: flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; background: #f472b6; border-radius: 50%;"></span> Memory Context: <span id="legend-memory-context" style="color:var(--text-secondary);">0t</span></div>
-                <div style="display: flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; background: #818cf8; border-radius: 50%;"></span> Auto Summary: <span id="legend-auto-summary" style="color:var(--text-secondary);">0t</span></div>
+                <div style="display: flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; background: #38bdf8; border-radius: 50%;"></span> Auto Summary: <span id="legend-auto-summary" style="color:var(--text-secondary);">0t</span></div>
                 <div style="display: flex; align-items: center; gap: 4px;"><span style="width: 8px; height: 8px; background: #34d399; border-radius: 50%;"></span> Chat History: <span id="legend-chat-history" style="color:var(--text-secondary);">0t</span></div>
               </div>
             </div>
@@ -3564,7 +3564,7 @@
                   <div style="display: flex; align-items: center; gap: 8px;" onclick="event.stopPropagation();">
                     <button id="btn-make-auto-summary" class="btn-primary small" style="padding: 2px 8px; font-size: 11px; margin: 0; cursor: pointer; border-radius: 4px; background: var(--accent-primary); border: none; color: #212121; font-weight: 600;">Make summary</button>
                     <button id="btn-revert-auto-summary" class="btn-secondary small" style="padding: 2px 8px; font-size: 11px; margin: 0; cursor: pointer; border-radius: 4px; display: none;">Revert</button>
-                    <span id="badge-details-summary" class="badge" style="background: rgba(99, 102, 241, 0.15); color: #818cf8; padding: 2px 6px; border-radius: 4px; font-size: 11px;">0 tokens</span>
+                    <span id="badge-details-summary" class="badge" style="background: rgba(14, 165, 233, 0.15); color: #38bdf8; padding: 2px 6px; border-radius: 4px; font-size: 11px;">0 tokens</span>
                   </div>
                 </div>
                 <div class="context-panel-content hidden" id="content-details-summary" style="padding: 12px; border-top: 1px solid var(--border-light); max-height: 250px; overflow-y: auto; font-family: var(--font-sans); font-size: var(--text-sm); line-height: 1.5; color: var(--text-secondary); background: rgba(0,0,0,0.25); white-space: pre-wrap;">

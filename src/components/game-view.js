@@ -587,8 +587,8 @@ function openSummarizeHistoryModal() {
   } else {
     if (infoBlock) {
       infoBlock.innerHTML = `<strong>Action Ready:</strong> This will compress <strong>${newScenesToSummarize.length}</strong> past scene(s) into your adventure summary. The latest 2 steps will remain fully detailed.`;
-      infoBlock.style.background = 'rgba(99, 102, 241, 0.08)';
-      infoBlock.style.borderColor = 'rgba(99, 102, 241, 0.2)';
+      infoBlock.style.background = 'rgba(14, 165, 233, 0.08)';
+      infoBlock.style.borderColor = 'rgba(14, 165, 233, 0.2)';
       infoBlock.style.color = '#cbd5e1';
     }
     if (generateBtn) generateBtn.disabled = false;
@@ -755,7 +755,7 @@ function renderGameCharacters() {
             <div style="font-weight: 600; color: #f8fafc; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
               <span>${char.name}</span>
               ${char.system_prompt ? `
-                <span style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.65rem; color: #818cf8; background: rgba(99, 102, 241, 0.15); padding: 1px 6px; border-radius: 10px; border: 1px solid rgba(99, 102, 241, 0.3); font-weight: 500;" title="Individual AI behavior directive is configured">
+                <span style="display: inline-flex; align-items: center; gap: 4px; font-size: 0.65rem; color: #38bdf8; background: rgba(14, 165, 233, 0.15); padding: 1px 6px; border-radius: 10px; border: 1px solid rgba(14, 165, 233, 0.3); font-weight: 500;" title="Individual AI behavior directive is configured">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 8px; height: 8px;">
                     <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
                     <polyline points="2 17 12 22 22 17"></polyline>

@@ -281,8 +281,8 @@ body.genai-skill-creator-active .genai-skill-creator-panel {
 }
 
 @keyframes skillLineHighlight {
-  0% { background: rgba(99, 102, 241, 0.18); }
-  60% { background: rgba(99, 102, 241, 0.12); }
+  0% { background: rgba(14, 165, 233, 0.18); }
+  60% { background: rgba(14, 165, 233, 0.12); }
   100% { background: transparent; }
 }
 
@@ -308,7 +308,7 @@ body.genai-skill-creator-active .genai-skill-creator-panel {
 
 .skill-creator-add-line-btn:hover {
   color: var(--text-accent);
-  background: rgba(99, 102, 241, 0.06);
+  background: rgba(14, 165, 233, 0.06);
 }
 
 /* ─── Skill Creator Footer ─── */
@@ -337,12 +337,12 @@ body.genai-skill-creator-active .genai-skill-creator-panel {
   justify-content: center;
   gap: 6px;
   font-weight: 600;
-  background: linear-gradient(135deg, var(--accent-primary), #8b5cf6) !important;
+  background: linear-gradient(135deg, var(--accent-primary), #0ea5e9) !important;
 }
 
 .skill-creator-btn-save:hover {
   filter: brightness(1.1);
-  box-shadow: 0 0 18px rgba(99, 102, 241, 0.35);
+  box-shadow: 0 0 18px rgba(14, 165, 233, 0.35);
 }
 
 /* ─── Edit Skill Button in Skills List ─── */
@@ -1196,9 +1196,9 @@ body.genai-fullscreen .genai-empty-state {
 }
 
 .genai-action-badge.result-character {
-  background: rgba(139, 92, 246, 0.1);
-  border-color: rgba(139, 92, 246, 0.3);
-  color: #a78bfa; /* Violet accent */
+  background: rgba(14, 165, 233, 0.1);
+  border-color: rgba(14, 165, 233, 0.3);
+  color: #38bdf8; /* Violet accent */
 }
 
 .genai-action-badge.result-error {
@@ -1700,7 +1700,7 @@ body:not(.genai-fullscreen) #genai-thinking-effort-wrapper .thinking-icon-bulb {
 
 /* Inline Text Suggestions */
 .genai-inline-text-suggest {
-  color: var(--accent, #6a74ff);
+  color: #38bdf8;
   text-decoration: underline;
   text-decoration-style: dashed;
   text-decoration-thickness: 1px;
@@ -1715,7 +1715,7 @@ body:not(.genai-fullscreen) #genai-thinking-effort-wrapper .thinking-icon-bulb {
 .genai-inline-text-suggest:hover {
   color: var(--text-primary);
   text-decoration-style: solid;
-  background-color: rgba(106, 116, 255, 0.15);
+  background-color: rgba(56, 189, 248, 0.15);
   border-radius: 4px;
   padding: 0 4px;
   margin: 0 -4px;
@@ -1816,7 +1816,7 @@ body:not(.genai-fullscreen) #genai-thinking-effort-wrapper .thinking-icon-bulb {
 .flying-text-clone {
   position: fixed;
   z-index: 999999;
-  background: var(--accent-primary, #a78bfa);
+  background: var(--accent-primary, #38bdf8);
   color: #ffffff;
   border-radius: var(--radius-full, 24px);
   padding: 8px 16px;

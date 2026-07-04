@@ -531,15 +531,15 @@
 }
 
 .btn-local-net.primary {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 0.85), rgba(109, 40, 217, 0.85));
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.85), rgba(3, 105, 161, 0.85));
   color: #fff;
-  box-shadow: 0 2px 12px rgba(139, 92, 246, 0.35);
+  box-shadow: 0 2px 12px rgba(14, 165, 233, 0.35);
 }
 
 .btn-local-net.primary:hover {
-  background: linear-gradient(135deg, rgba(139, 92, 246, 1), rgba(109, 40, 217, 1));
+  background: linear-gradient(135deg, rgba(14, 165, 233, 1), rgba(3, 105, 161, 1));
   transform: translateY(-1px);
-  box-shadow: 0 4px 16px rgba(139, 92, 246, 0.45);
+  box-shadow: 0 4px 16px rgba(14, 165, 233, 0.45);
 }
 
 .btn-local-net.secondary {
