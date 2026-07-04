@@ -175,24 +175,13 @@ SPEECH & FORMAT RULES:
 4. Do NOT write or mention about ID to user.
 5. Do not adress to the user with his RP name. Use the user's real name if he asked you to remember it, or just say "you" instead.
 6. DYNAMIC LANGUAGE MATCHING: You MUST converse and respond in the same language as the user's latest query or the active dialogue context. If the user addresses you in English, respond in English. If in Russian, respond in Russian. All conversational text, headings, button labels, and status/loading messages MUST match this language. Never output Russian text (including loading messages or headings) when the dialogue is in English, and vice-versa.
-7. OPTIONAL SUGGESTION BUTTONS: You may rarely output inline suggestion buttons using JSON blocks:
-   \`\`\`json
-   {
-     "label": "Button Text (max 4 words)",
-     "message": "The message sent to the chat ON BEHALF OF THE USER",
-     "target": "character" | "genai"
-   }
-   \`\`\`
-   * DEFAULT BEHAVIOR: DO NOT generate buttons. Ask a text question directly instead.
-   * Only use them for concrete, specific choices where a button is vastly superior to a normal text question. Limit to 1-3 buttons.
-   * Never use buttons for simple answers, greetings, or explanations.
-   * "message" MUST be written in the FIRST PERSON (e.g. "Yes, I want to try this..."). Never write AI prompts here.
+7. INLINE TEXT SUGGESTIONS: You can embed clickable suggestions directly into your sentences! When you mention a choice or option, wrap it in a <suggest> tag. When the user clicks the wrapped text, they will send a pre-written message on their own behalf.
+   Format: <suggest target="character" message="The message sent by the user">visible highlighted text</suggest>
+   * "message": MUST be written in the FIRST PERSON (e.g. "Yes, I want to see more drama!"). Never write AI prompts here.
    * "target": "genai" sends the message to you (the assistant). "target": "character" sends it to the active roleplay chat.
+   * Do not create buttons or JSON blocks. Embed the suggestion directly into your conversational flow.
    * Example:
-     - Good (When a concrete choice exists):
-       {"label": "Explain in detail", "message": "Yes, please explain this setup in more detail!", "target": "genai"}
-     - Bad (When you can just ask a question instead):
-       DO NOT ADD A BUTTON. Just write text like "What would you like to do next?".
+     "In the end, we have a great story! By the way, would you like to see more <suggest target="character" message="I want more drama!">drama</suggest>, or perhaps more <suggest target="character" message="Let's make it a comedy.">comedy</suggest>?"
 
 
 SPECIAL Directives:
@@ -2557,119 +2546,9 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
     isInThinking = parsed.isInThinking;
   }
 
-  // Custom Inline Buttons Parsing
-  const blockRegex = /```(?:json)?\s*([\s\S]*?)```/g;
-  let processedText = content;
-  const matches = [...content.matchAll(blockRegex)];
-  const buttonBlocksData = [];
-  let blockIndex = 0;
-  let globalButtonIndex = 0;
-  const blockRanges = [];
-
-  matches.forEach(m => {
-    const fullBlock = m[0];
-    const innerContent = m[1].trim();
-    const startIdx = m.index;
-    const endIdx = startIdx + fullBlock.length;
-    blockRanges.push([startIdx, endIdx]);
-
-    try {
-      const json = healAndParseJsonAction(innerContent);
-      if (Array.isArray(json)) {
-        const validButtons = json.filter(item => item && (item.label || item.message) && !item.genai_action);
-        if (validButtons.length > 0) {
-          const token = `__GENAI_BUTTON_BLOCK_PLACEHOLDER_${blockIndex}__`;
-          processedText = processedText.replace(fullBlock, token);
-          buttonBlocksData.push({
-            type: 'array',
-            buttons: validButtons.map(btn => ({
-              label: btn.label || 'Select option',
-              message: btn.message || '',
-              target: btn.target || 'character'
-            }))
-          });
-          blockIndex++;
-        }
-      } else if (json && (json.label || json.message) && !json.genai_action) {
-        const token = `__GENAI_BUTTON_BLOCK_PLACEHOLDER_${blockIndex}__`;
-        processedText = processedText.replace(fullBlock, token);
-        buttonBlocksData.push({
-          type: 'single',
-          buttons: [{
-            label: json.label || 'Select option',
-            message: json.message || '',
-            target: json.target || 'character'
-          }]
-        });
-        blockIndex++;
-      }
-    } catch (e) {
-      // Ignore incomplete / invalid JSON
-    }
-  });
-
-  // Parse raw JSON lines (not inside code blocks)
-  const lines = content.split('\n');
-  let currentPos = 0;
-
-  lines.forEach(line => {
-    const lineStart = currentPos;
-    const lineEnd = currentPos + line.length;
-    currentPos = lineEnd + 1; // +1 for newline
-
-    // Skip if this line is part of a markdown code block we already processed
-    const isInsideCodeBlock = blockRanges.some(([start, end]) => lineStart >= start && lineEnd <= end);
-    if (isInsideCodeBlock) return;
-
-    const trimmedLine = line.trim();
-    const firstBrace = trimmedLine.indexOf('{');
-    const firstBracket = trimmedLine.indexOf('[');
-    const startIdx = (firstBrace !== -1 && firstBracket !== -1)
-      ? Math.min(firstBrace, firstBracket)
-      : (firstBrace !== -1 ? firstBrace : firstBracket);
-
-    if (startIdx !== -1) {
-      const lastBrace = trimmedLine.lastIndexOf('}');
-      const lastBracket = trimmedLine.lastIndexOf(']');
-      const endIdx = Math.max(lastBrace, lastBracket);
-
-      if (endIdx !== -1 && endIdx > startIdx) {
-        const candidate = trimmedLine.substring(startIdx, endIdx + 1);
-        try {
-          const json = healAndParseJsonAction(candidate);
-          if (Array.isArray(json)) {
-            const validButtons = json.filter(item => item && (item.label || item.message) && !item.genai_action);
-            if (validButtons.length > 0) {
-              const token = `__GENAI_BUTTON_BLOCK_PLACEHOLDER_${blockIndex}__`;
-              processedText = processedText.replace(candidate, token);
-              buttonBlocksData.push({
-                type: 'array',
-                buttons: validButtons.map(btn => ({
-                  label: btn.label || 'Select option',
-                  message: btn.message || '',
-                  target: btn.target || 'character'
-                }))
-              });
-              blockIndex++;
-            }
-          } else if (json && (json.label || json.message) && !json.genai_action) {
-            const token = `__GENAI_BUTTON_BLOCK_PLACEHOLDER_${blockIndex}__`;
-            processedText = processedText.replace(candidate, token);
-            buttonBlocksData.push({
-              type: 'single',
-              buttons: [{
-                label: json.label || 'Select option',
-                message: json.message || '',
-                target: json.target || 'character'
-              }]
-            });
-            blockIndex++;
-          }
-        } catch (e) {
-          // Ignore non-JSON lines
-        }
-      }
-    }
+  // Parse inline text suggestions: <suggest target="..." message="...">...</suggest>
+  let processedText = content.replace(/<suggest\s+target="([^"]+)"\s+message="([^"]+)">([\s\S]*?)<\/suggest>/gi, (match, target, message, innerText) => {
+    return `<span class="genai-inline-text-suggest" data-target="${escapeHtml(target)}" data-message="${escapeHtml(message)}">${innerText}</span>`;
   });
 
   // Remove consecutive web tool markers and any whitespace between them to prevent empty paragraphs
@@ -2709,34 +2588,7 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
     html += renderMarkdown(processedText);
   }
 
-  buttonBlocksData.forEach((block, bIdx) => {
-    const placeholder = `__GENAI_BUTTON_BLOCK_PLACEHOLDER_${bIdx}__`;
-    let blockHtml = '';
 
-    if (block.type === 'single') {
-      const btnData = block.buttons[0];
-      blockHtml = `<div class="inline-suggestion-btn-container" id="genai-btn-container-${globalButtonIndex}" style="margin: var(--space-2) 0;">
-        <button class="continuation-option-btn genai-inline-suggest-btn" id="genai-inline-btn-${globalButtonIndex}" data-message="${escapeHtml(btnData.message)}" data-target="${escapeHtml(btnData.target)}" style="animation-delay: 0s;">
-          ${escapeHtml(btnData.label)}
-        </button>
-      </div>`;
-      globalButtonIndex++;
-    } else {
-      // Array of buttons: display side-by-side using horizontal flex layout
-      const buttonsHtml = block.buttons.map((btnData, btnIdx) => {
-        const idx = globalButtonIndex++;
-        return `<button class="continuation-option-btn genai-inline-suggest-btn" id="genai-inline-btn-${idx}" data-message="${escapeHtml(btnData.message)}" data-target="${escapeHtml(btnData.target)}" style="animation-delay: ${btnIdx * 0.1}s;">
-          ${escapeHtml(btnData.label)}
-        </button>`;
-      }).join('\n');
-
-      blockHtml = `<div class="inline-suggestion-buttons-row" style="display: flex; flex-wrap: wrap; gap: 8px; margin: var(--space-3) 0;">
-        ${buttonsHtml}
-      </div>`;
-    }
-
-    html = html.split(placeholder).join(blockHtml);
-  });
 
   // Replace tool markers with badges or specialized views
   if (entry.tools && entry.tools.length > 0) {
@@ -2927,8 +2779,8 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
   }
 
 
-  // Attach click listeners to GenAI inline suggestion buttons
-  textCont.querySelectorAll('.genai-inline-suggest-btn').forEach(btn => {
+  // Attach click listeners to GenAI inline suggestion texts
+  textCont.querySelectorAll('.genai-inline-text-suggest').forEach(btn => {
     if (btn._listenerBound) return;
     btn._listenerBound = true;
     btn.addEventListener('click', () => {

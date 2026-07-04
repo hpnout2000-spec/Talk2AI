@@ -1698,6 +1698,29 @@ body:not(.genai-fullscreen) #genai-thinking-effort-wrapper .thinking-icon-bulb {
   will-change: transform, opacity, filter;
 }
 
+/* Inline Text Suggestions */
+.genai-inline-text-suggest {
+  color: var(--accent, #6a74ff);
+  text-decoration: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 500;
+  position: relative;
+  display: inline-block;
+}
+
+.genai-inline-text-suggest:hover {
+  color: var(--text-primary);
+  text-decoration-style: solid;
+  background-color: rgba(106, 116, 255, 0.15);
+  border-radius: 4px;
+  padding: 0 4px;
+  margin: 0 -4px;
+}
+
 @keyframes genaiPopInBlur {
   0% {
     opacity: 0;
