@@ -2550,7 +2550,7 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
   const suggestData = [];
   let suggestIndex = 0;
   let processedText = content.replace(/<suggest\s+target="([^"]+)"\s+message="([^"]+)">([\s\S]*?)<\/suggest>/gi, (match, target, message, innerText) => {
-    const token = `__GENAI_INLINE_SUGGEST_PLACEHOLDER_${suggestIndex}__`;
+    const token = `@@GENAI_INLINE_SUGGEST_PLACEHOLDER_${suggestIndex}@@`;
     suggestData.push({ target, message, innerText });
     suggestIndex++;
     return token;
@@ -2595,7 +2595,7 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
 
   // Restore inline text suggestions AFTER markdown rendering
   suggestData.forEach((data, idx) => {
-    const token = `__GENAI_INLINE_SUGGEST_PLACEHOLDER_${idx}__`;
+    const token = `@@GENAI_INLINE_SUGGEST_PLACEHOLDER_${idx}@@`;
     const spanHtml = `<span class="genai-inline-text-suggest" data-target="${escapeHtml(data.target)}" data-message="${escapeHtml(data.message)}">${data.innerText}</span>`;
     html = html.split(token).join(spanHtml);
   });

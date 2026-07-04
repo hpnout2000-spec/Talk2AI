@@ -1709,7 +1709,7 @@ body:not(.genai-fullscreen) #genai-thinking-effort-wrapper .thinking-icon-bulb {
   transition: all 0.2s ease;
   font-weight: 500;
   position: relative;
-  display: inline-block;
+  display: inline;
 }
 
 .genai-inline-text-suggest:hover {
