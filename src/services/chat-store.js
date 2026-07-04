@@ -141,7 +141,7 @@ export const chatStore = {
     return message;
   },
 
-  updateLastAssistantMessage(content, thinking = null, session = null, translatedContent = null) {
+  updateLastAssistantMessage(content, thinking = null, session = null, translatedContent = null, thinkingTime = null) {
     const targetSession = session || currentSession;
     if (!targetSession) return;
     const msgs = targetSession.messages;
@@ -149,6 +149,7 @@ export const chatStore = {
       if (msgs[i].role === 'assistant') {
         msgs[i].content = content;
         if (thinking !== null) msgs[i].thinking = thinking;
+        if (thinkingTime !== null) msgs[i].thinking_time = thinkingTime;
         if (translatedContent !== null) {
           msgs[i].translated_content = translatedContent;
           msgs[i].show_original = false;

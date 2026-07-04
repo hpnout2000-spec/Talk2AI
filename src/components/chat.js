@@ -14,6 +14,7 @@ import {
   renderMarkdown,
   parseThinking,
   parseStreamThinking,
+  parseGLMThinking,
   createThinkingBlockHTML,
   autoResizeTextarea,
   formatTime,
@@ -1431,6 +1432,8 @@ async function sendMessage() {
   let isStreaming = true;   // true while generation is in progress
   let hasReceivedFirstChunk = false; // tracks if anything has arrived yet
   let thinkingActive = false; // true during thinking phase, false once content starts
+  let thinkingStartTime = Date.now();
+  let thinkingTime = 0;
 
   // Dynamic options override
   const apiOptions = {};
@@ -1472,14 +1475,15 @@ async function sendMessage() {
           currentIsInThinking = thinkingActive;
           displayContent = fullResponse;
         } else {
-          // Inline <think> tag path
-          const parsed = parseStreamThinking(fullResponse);
+          // Inline tag or GLM 4.7 path
+          const parsed = settings.glm47_support ? parseGLMThinking(fullResponse) : parseStreamThinking(fullResponse);
           currentThinking = parsed.thinking;
           displayContent = parsed.content;
           currentIsInThinking = parsed.isInThinking;
           // Detect thinking→done transition for inline tags
           if (thinkingActive && !parsed.isInThinking && parsed.thinking) {
             thinkingActive = false;
+            thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
           }
         }
 
@@ -1493,7 +1497,7 @@ async function sendMessage() {
         let html = '';
         const showThinking = currentIsInThinking || currentThinking;
         if (showThinking) {
-          html += createThinkingBlockHTML(currentThinking, currentIsInThinking);
+          html += createThinkingBlockHTML(currentThinking, currentIsInThinking, settings.glm47_support, typeof thinkingTime !== "undefined" ? thinkingTime : 0);
         }
         const cleaned = stripJsonBlocks(displayContent, true);
         let formatted = renderMarkdown(cleaned);
@@ -1526,20 +1530,26 @@ async function sendMessage() {
         fullResponse += chunk;
         hasReceivedFirstChunk = true;
         // If thinking was active and we now have content, thinking phase is done
-        if (thinkingActive) thinkingActive = false;
+        if (thinkingActive) {
+          thinkingActive = false;
+          if (thinkingTime === 0) thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
+        }
         scheduleUpdate();
       },
       // onDone
       async () => {
         isStreaming = false;
-        thinkingActive = false;
+        if (thinkingActive) {
+          thinkingActive = false;
+          if (thinkingTime === 0) thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
+        }
         let parsedThinking, parsedContent;
         try {
           if (thinkingText) {
             parsedThinking = thinkingText;
             parsedContent = fullResponse;
           } else {
-            const parsed = parseThinking(fullResponse);
+            const parsed = settings.glm47_support ? parseGLMThinking(fullResponse) : parseThinking(fullResponse);
             parsedThinking = parsed.thinking;
             parsedContent = parsed.content;
           }
@@ -1547,7 +1557,8 @@ async function sendMessage() {
           removeChatCursor();
           let finalHtml = '';
           if (parsedThinking) {
-            finalHtml += createThinkingBlockHTML(parsedThinking, false);
+            if (thinkingTime === 0) thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
+            finalHtml += createThinkingBlockHTML(parsedThinking, false, settings.glm47_support, thinkingTime);
           }
           const cleaned = stripJsonBlocks(parsedContent, false);
           let formatted = renderMarkdown(cleaned);
@@ -1580,7 +1591,7 @@ async function sendMessage() {
           translatedContent = await performStreamingTranslation(contentEl, originalContent, settings.target_language);
         }
 
-        chatStore.updateLastAssistantMessage(originalContent, parsedThinking, session, translatedContent);
+        chatStore.updateLastAssistantMessage(originalContent, parsedThinking, session, translatedContent, thinkingTime);
         await chatStore.saveSession(session);
         updateContextIndicator();
 
@@ -1778,12 +1789,12 @@ async function computeContextAndTrimHistory(character, session, signal = null) {
     }
   }
 
-  systemBasePure = systemBasePure.replace(/\{\{user\}\}/gi, userName);
-  systemBasePure = systemBasePure.replace(/\{\{char\}\}/gi, character.name);
-
   if (character.message_examples && character.message_examples.trim()) {
     systemBasePure += `\n\nCharacter must talk in this style: ${character.message_examples.trim()}`;
   }
+
+  systemBasePure = systemBasePure.replace(/\{\{user\}\}/gi, userName);
+  systemBasePure = systemBasePure.replace(/\{\{char\}\}/gi, character.name);
 
   let systemContentPure = systemBasePure;
   if (activePersona && activePersona.description) {
@@ -2045,14 +2056,14 @@ async function buildApiMessages(character, session) {
     }
   }
 
-  // Replace placeholders
-  systemContent = systemContent.replace(/\{\{user\}\}/gi, userName);
-  systemContent = systemContent.replace(/\{\{char\}\}/gi, character.name);
-
   // Inject style examples
   if (character.message_examples && character.message_examples.trim()) {
     systemContent += `\n\nCharacter must talk in this style: ${character.message_examples.trim()}`;
   }
+
+  // Replace placeholders
+  systemContent = systemContent.replace(/\{\{user\}\}/gi, userName);
+  systemContent = systemContent.replace(/\{\{char\}\}/gi, character.name);
 
   // Inject memory context
   const memoryContext = memoryService.getMemoryContext(character.id);
@@ -2152,6 +2163,7 @@ function clearMessages() {
 }
 
 function appendMessage(msg, isStreaming = false, character = null) {
+  const settings = settingsStore.get();
   // Remove empty state if present
   const empty = messagesContainer.querySelector('.empty-state');
   if (empty) empty.remove();
@@ -2179,7 +2191,7 @@ function appendMessage(msg, isStreaming = false, character = null) {
 
   let contentHtml = '';
   if (msg.thinking) {
-    contentHtml += createThinkingBlockHTML(msg.thinking, false);
+    contentHtml += createThinkingBlockHTML(msg.thinking, false, settings.glm47_support, msg.thinking_time || 0);
   }
 
   // Persistence: use translated content if it exists and we're not showing original
@@ -2274,7 +2286,7 @@ function appendMessage(msg, isStreaming = false, character = null) {
       contentEl.classList.add('block-replacing-out');
       setTimeout(() => {
         let html = '';
-        if (msg.thinking) html += createThinkingBlockHTML(msg.thinking, false);
+        if (msg.thinking) html += createThinkingBlockHTML(msg.thinking, false, settings.glm47_support, msg.thinking_time || 0);
         const cleaned = stripJsonBlocks(newDisplayContent, false);
         let formatted = renderMarkdown(cleaned);
         formatted = processCharacterMentions(formatted);
@@ -2580,6 +2592,8 @@ async function triggerAssistantGeneration() {
   let isStreaming2 = true;
   let hasReceivedFirstChunk2 = false;
   let thinkingActive2 = false;
+  let thinkingStartTime = Date.now();
+  let thinkingTime = 0;
   const apiOptions = {};
 
   // Show Working... immediately while waiting for API response
@@ -2610,12 +2624,13 @@ async function triggerAssistantGeneration() {
         currentIsInThinking = thinkingActive2;
         displayContent = fullResponse;
       } else {
-        const parsed = parseStreamThinking(fullResponse);
+        const parsed = settings.glm47_support ? parseGLMThinking(fullResponse) : parseStreamThinking(fullResponse);
         currentThinking = parsed.thinking;
         displayContent = parsed.content;
         currentIsInThinking = parsed.isInThinking;
         if (thinkingActive2 && !parsed.isInThinking && parsed.thinking) {
           thinkingActive2 = false;
+          thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
         }
       }
 
@@ -2627,7 +2642,7 @@ async function triggerAssistantGeneration() {
       if (!hasReceivedFirstChunk2) return;
 
       let html = '';
-      if (currentIsInThinking || currentThinking) html += createThinkingBlockHTML(currentThinking, currentIsInThinking);
+      if (currentIsInThinking || currentThinking) html += createThinkingBlockHTML(currentThinking, currentIsInThinking, settings.glm47_support, typeof thinkingTime !== "undefined" ? thinkingTime : 0);
       html += wrapWordsInSpans(renderMarkdown(displayContent));
 
       const temp = document.createElement('div');
@@ -2649,25 +2664,34 @@ async function triggerAssistantGeneration() {
       (chunk) => {
         fullResponse += chunk;
         hasReceivedFirstChunk2 = true;
-        if (thinkingActive2) thinkingActive2 = false;
+        if (thinkingActive2) {
+          thinkingActive2 = false;
+          if (thinkingTime === 0) thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
+        }
         scheduleUpdate2();
       },
       async () => {
         isStreaming2 = false;
-        thinkingActive2 = false;
+        if (thinkingActive2) {
+          thinkingActive2 = false;
+          if (thinkingTime === 0) thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
+        }
         let parsedThinking2, parsedContent2;
         if (thinkingText2) {
           parsedThinking2 = thinkingText2;
           parsedContent2 = fullResponse;
         } else {
-          const parsed = parseThinking(fullResponse);
+          const parsed = settings.glm47_support ? parseGLMThinking(fullResponse) : parseThinking(fullResponse);
           parsedThinking2 = parsed.thinking;
           parsedContent2 = parsed.content;
         }
 
         removeChatCursor();
         let finalHtml = '';
-        if (parsedThinking2) finalHtml += createThinkingBlockHTML(parsedThinking2, false);
+        if (parsedThinking2) {
+            if (thinkingTime === 0) thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
+            finalHtml += createThinkingBlockHTML(parsedThinking2, false, settings.glm47_support, thinkingTime);
+        }
         finalHtml += wrapWordsInSpans(renderMarkdown(parsedContent2));
 
         const tempFinal = document.createElement('div');
@@ -2683,7 +2707,7 @@ async function triggerAssistantGeneration() {
           translatedContent = await performStreamingTranslation(contentEl, originalContent, settings.target_language);
         }
 
-        chatStore.updateLastAssistantMessage(originalContent, parsedThinking2, session, translatedContent);
+        chatStore.updateLastAssistantMessage(originalContent, parsedThinking2, session, translatedContent, thinkingTime);
         await chatStore.saveSession(session);
 
         appState.isGenerating = false;
@@ -4228,12 +4252,12 @@ function getContextSignature(character, session, settings) {
     }
   }
 
-  systemBasePure = systemBasePure.replace(/\{\{user\}\}/gi, userName);
-  systemBasePure = systemBasePure.replace(/\{\{char\}\}/gi, character.name);
-
   if (character.message_examples && character.message_examples.trim()) {
     systemBasePure += `\n\nCharacter must talk in this style: ${character.message_examples.trim()}`;
   }
+
+  systemBasePure = systemBasePure.replace(/\{\{user\}\}/gi, userName);
+  systemBasePure = systemBasePure.replace(/\{\{char\}\}/gi, character.name);
 
   let systemContentPure = systemBasePure;
   if (activePersona && activePersona.description) {

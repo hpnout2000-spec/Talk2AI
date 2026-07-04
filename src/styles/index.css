@@ -85,7 +85,7 @@
   --panel-width: 340px;
   --header-height: 60px;
   --input-area-min: 72px;
-  --chat-bottom-padding: clamp(180px, 32vh, 450px);
+  --chat-bottom-padding: clamp(160px, 18vh, 240px);
 }
 
 /* ─── Reset & Base ───────────────────────────────────────────────── */

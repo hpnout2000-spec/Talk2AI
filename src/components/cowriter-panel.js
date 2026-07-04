@@ -1,8 +1,8 @@
 /* ════════════════════════════════════════════════════════════════════
-   Book Panel Component — Sidebar and Modal logic
+   CoWriter Panel Component — Sidebar and Modal logic
    ════════════════════════════════════════════════════════════════════ */
 
-import { bookStore } from '../services/book-store.js';
+import { cowriterStore } from '../services/cowriter-store.js';
 import { appState } from '../state.js';
 import { closeModal, showToast, openWindow, closeWindow } from '../main.js';
 
@@ -26,8 +26,6 @@ let btnSaveBook;
 let bookListContainer;
 
 let titleInput;
-let charCountInput;
-let allowNewCharsInput;
 let initialPromptInput;
 
 // Helper: set active tab style
@@ -69,8 +67,6 @@ export function initBookPanel() {
   bookListContainer = document.getElementById('book-list');
 
   titleInput = document.getElementById('book-title');
-  charCountInput = document.getElementById('book-char-count');
-  allowNewCharsInput = document.getElementById('book-allow-new-chars');
   initialPromptInput = document.getElementById('book-initial-prompt');
 
   tabCharacters.addEventListener('click', () => {
@@ -96,7 +92,6 @@ export function initBookPanel() {
     bookViewContainer.style.display = 'none';
 
     if (isAlreadyActive) {
-      // Expand GenAI to fullscreen and open it if closed
       import('./genai-panel.js').then(m => {
         m.openGenAIPanel();
         document.body.classList.add('genai-fullscreen');
@@ -104,14 +99,13 @@ export function initBookPanel() {
         if (fullscreenBtn) fullscreenBtn.title = 'Collapse from fullscreen';
       });
 
-      // Pass nothing instead of character (deselect)
       import('./chat.js').then(m => {
         m.selectCharacter(null);
       });
     }
   });
 
-  // ─── Tab: Books ───────────────────────────────────────────────
+  // ─── Tab: Books / CoWriter ───────────────────────────────────────────
   tabBooks.addEventListener('click', () => {
     setTabActive(tabBooks, [tabCharacters, tabGroups, document.getElementById('tab-game'), document.getElementById('tab-album')]);
     booksSection.classList.remove('hidden'); booksSection.style.display = 'flex';
@@ -131,7 +125,7 @@ export function initBookPanel() {
     chatViewContainer.style.display = 'none';
     bookViewContainer.classList.remove('hidden');
     bookViewContainer.style.display = 'flex';
-    renderBookList();
+    renderStoryList();
   });
 
   // ─── Tab: Groups ──────────────────────────────────────────────
@@ -154,19 +148,11 @@ export function initBookPanel() {
       bookViewContainer.classList.add('hidden');
       bookViewContainer.style.display = 'none';
       if (gameViewContainer) { gameViewContainer.classList.add('hidden'); gameViewContainer.style.display = 'none'; }
-      // Group view visibility is typically managed by selectGroup() in group-chat-view.js
-      // but we ensure it's at least visible if there's an active group
     });
   }
 
-  // Allow other modules to programmatically switch to Groups tab
-  window.switchToGroupsTab = () => { if (tabGroups) tabGroups.click(); };
-
-
   btnAddBook.addEventListener('click', () => {
     titleInput.value = '';
-    charCountInput.value = '2';
-    allowNewCharsInput.checked = true;
     initialPromptInput.value = '';
     openWindow(bookModal);
   });
@@ -176,55 +162,57 @@ export function initBookPanel() {
 
   btnSaveBook.addEventListener('click', async () => {
     const title = titleInput.value.trim();
-    const charCount = charCountInput.value;
-    const allowNewChars = allowNewCharsInput.checked;
-    const initialPrompt = initialPromptInput.value.trim();
+    const initialText = initialPromptInput.value.trim();
 
-    if (!title || !initialPrompt) {
-      showToast('Title and Initial Scenario are required', 'error');
+    if (!title) {
+      showToast('Story Title is required', 'error');
       return;
     }
 
-    const book = await bookStore.createBook(title, charCount, allowNewChars, initialPrompt);
+    const story = await cowriterStore.createStory(title, initialText);
     closeWindow(bookModal);
-    renderBookList();
-    selectBook(book.id);
+    renderStoryList();
+    selectStory(story.id);
   });
 
-  window.addEventListener('books-updated', renderBookList);
+  window.addEventListener('stories-updated', renderStoryList);
   
   // Initial render
-  renderBookList();
+  renderStoryList();
 }
 
-function renderBookList() {
+export function renderStoryList() {
   if (!bookListContainer) return;
   bookListContainer.innerHTML = '';
   
-  const books = bookStore.getAllBooks();
-  if (books.length === 0) {
-    bookListContainer.innerHTML = '<div class="empty-state small"><p>No books yet</p></div>';
+  const stories = cowriterStore.getAllStories();
+  if (stories.length === 0) {
+    bookListContainer.innerHTML = '<div class="empty-state small"><p>No stories yet</p></div>';
     return;
   }
 
-  books.forEach(book => {
+  stories.forEach(story => {
     const el = document.createElement('div');
-    el.className = `character-item ${bookStore.activeBookId === book.id ? 'active' : ''}`;
+    el.className = `character-item ${cowriterStore.activeStoryId === story.id ? 'active' : ''}`;
+    
+    // Estimate word count for preview
+    const wordCount = story.content ? story.content.trim().split(/\s+/).filter(Boolean).length : 0;
+    
     el.innerHTML = `
       <div class="character-info" style="margin-left: 0;">
-        <div class="character-name">${book.title}</div>
-        <div class="character-preview">${book.chapters.length} chapters</div>
+        <div class="character-name">${story.title}</div>
+        <div class="character-preview">${wordCount} words</div>
       </div>
     `;
-    el.addEventListener('click', () => selectBook(book.id));
+    el.addEventListener('click', () => selectStory(story.id));
     bookListContainer.appendChild(el);
   });
 }
 
-function selectBook(id) {
-  bookStore.activeBookId = id;
-  renderBookList();
+function selectStory(id) {
+  cowriterStore.activeStoryId = id;
+  renderStoryList();
   
-  // Dispatch event so book-view can update
-  window.dispatchEvent(new CustomEvent('book-selected', { detail: { id } }));
+  // Dispatch event so cowriter-view can update
+  window.dispatchEvent(new CustomEvent('story-selected', { detail: { id } }));
 }

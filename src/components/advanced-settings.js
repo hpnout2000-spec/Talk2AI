@@ -80,20 +80,20 @@ export function initAdvancedSettings() {
   btnAddPreset.addEventListener('click', createNewPreset);
 
   // Generation setting sync
-  setupRangeInput('adv-setting-max-tokens', 'adv-max-tokens-value');
-  setupRangeInput('adv-setting-temperature', 'adv-temperature-value');
-  setupRangeInput('adv-setting-top-p', 'adv-top-p-value');
-  setupRangeInput('adv-setting-top-k', 'adv-top-k-value');
-  setupRangeInput('adv-setting-rep-penalty', 'adv-rep-penalty-value');
-  setupRangeInput('adv-setting-smoothing-factor', 'adv-smoothing-factor-value');
+  setupRangeInput('adv-setting-max-tokens', 'adv-max-tokens-value', false);
+  setupRangeInput('adv-setting-temperature', 'adv-temperature-value', false);
+  setupRangeInput('adv-setting-top-p', 'adv-top-p-value', false);
+  setupRangeInput('adv-setting-top-k', 'adv-top-k-value', false);
+  setupRangeInput('adv-setting-rep-penalty', 'adv-rep-penalty-value', false);
+  setupRangeInput('adv-setting-smoothing-factor', 'adv-smoothing-factor-value', false);
 
   // GenAI Generation setting sync
-  setupRangeInput('adv-setting-genai-max-tokens', 'adv-genai-max-tokens-value');
-  setupRangeInput('adv-setting-genai-temperature', 'adv-genai-temperature-value');
-  setupRangeInput('adv-setting-genai-top-p', 'adv-genai-top-p-value');
-  setupRangeInput('adv-setting-genai-top-k', 'adv-genai-top-k-value');
-  setupRangeInput('adv-setting-genai-rep-penalty', 'adv-genai-rep-penalty-value');
-  setupRangeInput('adv-setting-genai-smoothing-factor', 'adv-genai-smoothing-factor-value');
+  setupRangeInput('adv-setting-genai-max-tokens', 'adv-genai-max-tokens-value', true);
+  setupRangeInput('adv-setting-genai-temperature', 'adv-genai-temperature-value', true);
+  setupRangeInput('adv-setting-genai-top-p', 'adv-genai-top-p-value', true);
+  setupRangeInput('adv-setting-genai-top-k', 'adv-genai-top-k-value', true);
+  setupRangeInput('adv-setting-genai-rep-penalty', 'adv-genai-rep-penalty-value', true);
+  setupRangeInput('adv-setting-genai-smoothing-factor', 'adv-genai-smoothing-factor-value', true);
 
   // Generation Presets Management
   document.getElementById('generation-preset-select')?.addEventListener('change', (e) => applyGenerationPreset(e.target.value, false));
@@ -391,7 +391,7 @@ function updateEditingPreset() {
   }
 }
 
-function setupRangeInput(inputId, valueId) {
+function setupRangeInput(inputId, valueId, isGenAI = null) {
   const input = document.getElementById(inputId);
   const valueEl = document.getElementById(valueId);
   if (!input || !valueEl) return;
@@ -403,7 +403,55 @@ function setupRangeInput(inputId, valueId) {
     const val = parseFloat(input.value);
     const pct = ((val - min) / (max - min)) * 100;
     input.style.setProperty('--range-fill', `${pct}%`);
+    
+    if (isGenAI !== null) {
+      updateActiveGenerationPreset(isGenAI);
+    }
   });
+}
+
+function updateActiveGenerationPreset(isGenAI) {
+  const activeId = isGenAI ? currentSettings.active_genai_generation_preset_id : currentSettings.active_generation_preset_id;
+  if (!activeId || activeId.startsWith('default') || activeId.startsWith('glm')) return;
+
+  const preset = currentSettings.generation_presets.find(p => p.id === activeId);
+  if (!preset) return;
+
+  if (isGenAI) {
+    preset.max_tokens = parseInt(document.getElementById('adv-setting-genai-max-tokens').value);
+    preset.temperature = parseFloat(document.getElementById('adv-setting-genai-temperature').value);
+    preset.top_p = parseFloat(document.getElementById('adv-setting-genai-top-p').value);
+    preset.top_k = parseInt(document.getElementById('adv-setting-genai-top-k').value);
+    preset.rep_penalty = parseFloat(document.getElementById('adv-setting-genai-rep-penalty').value);
+    preset.smoothing_factor = parseFloat(document.getElementById('adv-setting-genai-smoothing-factor').value);
+    
+    // Sync to other tab if it uses the same custom preset
+    if (currentSettings.active_generation_preset_id === activeId) {
+      setRangeValue('adv-setting-max-tokens', 'adv-max-tokens-value', preset.max_tokens);
+      setRangeValue('adv-setting-temperature', 'adv-temperature-value', preset.temperature);
+      setRangeValue('adv-setting-top-p', 'adv-top-p-value', preset.top_p);
+      setRangeValue('adv-setting-top-k', 'adv-top-k-value', preset.top_k);
+      setRangeValue('adv-setting-rep-penalty', 'adv-rep-penalty-value', preset.rep_penalty);
+      setRangeValue('adv-setting-smoothing-factor', 'adv-smoothing-factor-value', preset.smoothing_factor || 0);
+    }
+  } else {
+    preset.max_tokens = parseInt(document.getElementById('adv-setting-max-tokens').value);
+    preset.temperature = parseFloat(document.getElementById('adv-setting-temperature').value);
+    preset.top_p = parseFloat(document.getElementById('adv-setting-top-p').value);
+    preset.top_k = parseInt(document.getElementById('adv-setting-top-k').value);
+    preset.rep_penalty = parseFloat(document.getElementById('adv-setting-rep-penalty').value);
+    preset.smoothing_factor = parseFloat(document.getElementById('adv-setting-smoothing-factor').value);
+    
+    // Sync to other tab if it uses the same custom preset
+    if (currentSettings.active_genai_generation_preset_id === activeId) {
+      setRangeValue('adv-setting-genai-max-tokens', 'adv-genai-max-tokens-value', preset.max_tokens);
+      setRangeValue('adv-setting-genai-temperature', 'adv-genai-temperature-value', preset.temperature);
+      setRangeValue('adv-setting-genai-top-p', 'adv-genai-top-p-value', preset.top_p);
+      setRangeValue('adv-setting-genai-top-k', 'adv-genai-top-k-value', preset.top_k);
+      setRangeValue('adv-setting-genai-rep-penalty', 'adv-genai-rep-penalty-value', preset.rep_penalty);
+      setRangeValue('adv-setting-genai-smoothing-factor', 'adv-genai-smoothing-factor-value', preset.smoothing_factor || 0);
+    }
+  }
 }
 
 function setRangeValue(inputId, valueId, value) {

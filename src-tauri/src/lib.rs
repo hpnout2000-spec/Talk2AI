@@ -2329,8 +2329,8 @@ async fn web_fetch(url: String) -> Result<String, String> {
     let text = strip_html_tags(&cleaned_html);
     
     let char_count = text.chars().count();
-    if char_count > 4000 {
-        let truncated: String = text.chars().take(4000).collect();
+    if char_count > 100000 {
+        let truncated: String = text.chars().take(100000).collect();
         Ok(format!("{}... [TRUNCATED]", truncated))
     } else {
         Ok(text)

@@ -428,12 +428,52 @@ export function parseStreamThinking(text) {
 /**
  * Generate thinking block HTML structure
  */
-export function createThinkingBlockHTML(thinkingText, isActive) {
+export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, thinkingTime = 0) {
+  if (isGLM) {
+    if (isActive) {
+      const escapedThoughts = escapeHtml(thinkingText || '');
+      return `<div class="thinking-inline thinking-inline-active"><glm-thinking-snippets thoughts="${escapedThoughts}"></glm-thinking-snippets></div>`;
+    }
+    const sections = parseGLMThinkingSections(thinkingText);
+    const timeText = thinkingTime > 0 ? `Thought for ${thinkingTime} seconds` : 'Thought finished';
+    
+    const sectionsHtml = sections.map((sec) => {
+      const hasContent = sec.content.length > 0;
+      const escapedTitle = escapeHtml(sec.title);
+      const formattedContent = renderMarkdown(sec.content);
+      
+      if (hasContent) {
+        return `<div class="glm-nested-item">
+                  <div class="glm-nested-toggle" onclick="this.closest('.glm-nested-item').classList.toggle('glm-nested-expanded')">
+                    <span class="glm-nested-title">${sec.number}. ${escapedTitle}</span>
+                    <span class="glm-nested-chevron">▸</span>
+                  </div>
+                  <div class="glm-nested-content">${formattedContent}</div>
+                </div>`;
+      } else {
+        return `<div class="glm-nested-item no-content">
+                  <div class="glm-nested-toggle">
+                    <span class="glm-nested-title">${sec.number}. ${escapedTitle}</span>
+                  </div>
+                </div>`;
+      }
+    }).join('\n');
+
+    return `<div class="thinking-inline glm-thinking-expanded-container">
+              <div class="glm-thinking-toggle" onclick="this.closest('.glm-thinking-expanded-container').classList.toggle('glm-thinking-expanded')">
+                <span class="thinking-done-text">${timeText}</span><span class="thinking-chevron">▸</span>
+              </div>
+              <div class="glm-thinking-content">
+                <div class="glm-nested-accordion">${sectionsHtml}</div>
+              </div>
+            </div>`;
+  }
+
   if (isActive) {
     const escapedThoughts = escapeHtml(thinkingText || '');
     return `<div class="thinking-inline thinking-inline-active"><div class="thinking-inline-header"><thinking-snippets id="genai-thinking-snippets" thoughts="${escapedThoughts}"></thinking-snippets></div></div>`;
   }
-  return '<div class="thinking-inline"><div class="thinking-inline-header thinking-toggle-header" onclick="this.closest(\'.thinking-inline\').classList.toggle(\'thinking-expanded\')"><span class="thinking-done-text">Done</span><span class="thinking-chevron"> ▸</span></div><div class="thinking-inline-content">' + escapeHtml(thinkingText) + '</div></div>';
+  return '<div class="thinking-inline"><div class="thinking-inline-header thinking-toggle-header" onclick="this.closest(\'.thinking-inline\').classList.toggle(\'thinking-expanded\')"><span class="thinking-done-text">Done</span><span class="thinking-chevron"> ▸</span></div><div class="thinking-inline-content">' + escapeHtml(thinkingText).replace(/\n/g, '<br>') + '</div></div>';
 }
 
 /**
@@ -677,4 +717,183 @@ export function injectCursor(html) {
     return html.replace(/(<\/[a-z0-9]+>\s*)+$/i, (match) => cursorHtml + match);
   }
   return html + cursorHtml;
+}
+
+
+export function extractGLMThinkingSnippets(text) {
+  if (typeof text !== 'string' || !text) return [];
+  const lines = text.split('\n');
+  const snippets = [];
+  for (let line of lines) {
+    line = line.trim();
+    const match = line.match(/^\d+\.\s*(.*)/);
+    if (match) {
+      let snippetText = match[1].replace(/[*_~`]/g, '').trim();
+      if (snippetText.endsWith(':')) {
+        snippetText = snippetText.slice(0, -1) + '.';
+      }
+      if (snippetText) snippets.push(snippetText);
+    }
+  }
+  return snippets;
+}
+
+export function parseGLMThinkingSections(thinkingText) {
+  if (!thinkingText) return [];
+  
+  const lines = thinkingText.split('\n');
+  const sections = [];
+  let currentSection = null;
+  
+  for (let line of lines) {
+    const trimmed = line.trim();
+    const match = trimmed.match(/^(\d+)\.\s*(.*)/);
+    
+    if (match) {
+      if (currentSection) {
+        sections.push(currentSection);
+      }
+      
+      let title = match[2].replace(/[*_~`]/g, '').trim();
+      if (title.endsWith(':')) {
+        title = title.slice(0, -1) + '.';
+      }
+      
+      currentSection = {
+        number: match[1],
+        title: title,
+        contentLines: []
+      };
+    } else {
+      if (currentSection) {
+        currentSection.contentLines.push(line);
+      }
+    }
+  }
+  
+  if (currentSection) {
+    sections.push(currentSection);
+  }
+  
+  return sections.map(sec => {
+    let rawContent = sec.contentLines.join('\n').trim();
+    return {
+      number: sec.number,
+      title: sec.title,
+      content: rawContent
+    };
+  });
+}
+
+export function parseGLMThinking(text) {
+  if (typeof text !== 'string' || !text) {
+    return { thinking: '', content: '', isInThinking: false };
+  }
+  
+  const lines = text.split('\n');
+  const thinkingLines = [];
+  const contentLines = [];
+  let inContent = false;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    
+    if (inContent) {
+      contentLines.push(line);
+      continue;
+    }
+    
+    const isNumbered = /^\d+\.\s/.test(trimmed);
+    
+    if (isNumbered) {
+      thinkingLines.push(line);
+    } else if (trimmed === '') {
+      let hasMoreNumberedAhead = false;
+      for (let j = i + 1; j < lines.length; j++) {
+        if (lines[j].trim() !== '') {
+          if (/^\d+\.\s/.test(lines[j].trim())) {
+            hasMoreNumberedAhead = true;
+          }
+          break;
+        }
+      }
+      if (hasMoreNumberedAhead) {
+        thinkingLines.push(line);
+      } else {
+        if (i === lines.length - 1) {
+          thinkingLines.push(line);
+        } else {
+          inContent = true;
+          contentLines.push(line);
+        }
+      }
+    } else {
+      inContent = true;
+      contentLines.push(line);
+    }
+  }
+  
+  const thinking = thinkingLines.join('\n');
+  const content = contentLines.join('\n');
+  const isInThinking = !inContent;
+  
+  return { thinking, content, isInThinking };
+}
+
+class GLMThinkingSnippets extends HTMLElement {
+  constructor() {
+    super();
+    this.extractedSnippets = [];
+  }
+
+  static get observedAttributes() {
+    return ['thoughts'];
+  }
+
+  connectedCallback() {
+    this.innerHTML = '';
+    const initialThoughts = this.getAttribute('thoughts') || '';
+    this.updateThoughts(initialThoughts);
+  }
+
+  attributeChangedCallback(name, oldValue, newValue) {
+    if (name === 'thoughts' && newValue !== oldValue) {
+      this.updateThoughts(newValue);
+    }
+  }
+
+  updateThoughts(thoughtsText) {
+    if (!thoughtsText) return;
+    const newSnippets = extractGLMThinkingSnippets(thoughtsText);
+    
+    let addedNew = false;
+    for (const snip of newSnippets) {
+      if (!this.extractedSnippets.includes(snip)) {
+        this.extractedSnippets.push(snip);
+        addedNew = true;
+      }
+    }
+
+    this.render();
+  }
+
+  render() {
+    if (this.extractedSnippets.length === 0) {
+      this.innerHTML = '<span class="glm-snippet active">Thinking...</span>';
+      return;
+    }
+
+    const html = this.extractedSnippets.map((snip, index) => {
+      const isActive = index === this.extractedSnippets.length - 1;
+      const activeClass = isActive ? 'active' : '';
+      return `<span class="glm-snippet ${activeClass}">${index + 1}. ${escapeHtml(snip)}</span>`;
+    }).join('\n');
+
+    this.innerHTML = html;
+  }
+}
+
+if (!customElements.get('glm-thinking-snippets')) {
+  customElements.define('glm-thinking-snippets', GLMThinkingSnippets);
 }

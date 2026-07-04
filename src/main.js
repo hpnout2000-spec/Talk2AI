@@ -14,9 +14,9 @@ import { initSettingsPanel } from './components/settings-panel.js';
 import { initStorageSettings } from './components/storage-panel.js';
 import { initMemoryViewer } from './components/memory-viewer.js';
 import { initAdvancedSettings } from './components/advanced-settings.js';
-import { bookStore } from './services/book-store.js';
-import { initBookPanel } from './components/book-panel.js';
-import { initBookView } from './components/book-view.js';
+import { cowriterStore } from './services/cowriter-store.js';
+import { initBookPanel } from './components/cowriter-panel.js';
+import { initBookView } from './components/cowriter-view.js';
 import { uiManager } from './utils/ui-manager.js';
 import { initGenAIPanel, openGenAIPanel, closeGenAIPanel } from './components/genai-panel.js';
 import { initGroupChatPanel } from './components/group-chat-panel.js';
@@ -336,7 +336,7 @@ async function init() {
 
   // Load characters and books
   const characters = await characterStore.load();
-  await bookStore.load();
+  await cowriterStore.load();
   await groupChatStore.loadGroups();
 
 

@@ -26,6 +26,7 @@ const DEFAULTS = {
   previous_reasoning_effort: 'medium',
   gemma4_support: false,
   change_gemma4_thinking_style: false,
+  glm47_support: false,
   extended_thinking: false,
   memory_enabled: true,
   font_size: 15,
@@ -120,7 +121,11 @@ const DEFAULTS = {
   web_search_searxng_url: 'http://localhost:8080',
   web_search_tavily_key: '',
   web_search_clean_pages: false,
-  web_search_auto_approve: false
+  web_search_auto_approve: false,
+  cowriter_prompt_auto: "You're a professional writer. Analyze, match the tone and adapt to previous writing then write a continuetion of the story.",
+  cowriter_prompt_manual: "You're a professional writer. Analyze, match the tone and adapt to previous writing then write a continuetion of the story. IMPORTANT: Write exactly {wordCount} words.",
+  cowriter_prompt_instruction: "You're a professional writer. Analyze, match the tone and adapt to previous writing then write a continuation of the story. Incorporate the direction: \"{instruction}\". Write a continuation of length: {lengthConstraint}.",
+  cowriter_stories: []
 };
 
 let settings = { ...DEFAULTS };
