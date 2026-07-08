@@ -455,6 +455,11 @@ function cancelManualComplete() {
 // ─── LLM Completion Core ─────────────────────────────────────────────
 
 async function executeStreamedGeneration(messages) {
+  const settings = settingsStore.get();
+  if (settings.force_reasoning && settings.reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') {
+    messages.push({ role: 'assistant', content: settings.reasoning_tag_open + '\n' });
+  }
+
   if (isGenerating) return;
   isGenerating = true;
   currentAbortController = new AbortController();
@@ -501,10 +506,9 @@ async function executeStreamedGeneration(messages) {
   selection.removeAllRanges();
   selection.addRange(nextRange);
   
-  let fullText = '';
+  let fullText = (settings.force_reasoning && settings.reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') ? settings.reasoning_tag_open + '\n' : '';
   
   try {
-    const settings = settingsStore.get();
     const options = {
       max_tokens: settings.max_tokens || 2048,
       temperature: settings.temperature || 0.7

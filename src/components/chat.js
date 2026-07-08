@@ -1427,13 +1427,14 @@ async function sendMessage() {
   const msgElement = appendMessage(assistantMsg, true, character);
   const contentEl = msgElement.querySelector('.message-text');
 
-  let fullResponse = '';
+  let fullResponse = (settings.force_reasoning && settings.reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') ? settings.reasoning_tag_open + '\n' : '';
   let thinkingText = '';    // accumulated thinking from delta.reasoning_content
   let isStreaming = true;   // true while generation is in progress
   let hasReceivedFirstChunk = false; // tracks if anything has arrived yet
   let thinkingActive = false; // true during thinking phase, false once content starts
   let thinkingStartTime = Date.now();
   let thinkingTime = 0;
+  let thinkingActiveInline = false;
 
   // Dynamic options override
   const apiOptions = {};
@@ -1451,6 +1452,17 @@ async function sendMessage() {
       if (from.nodeName === 'THINKING-SNIPPETS' && to.nodeName === 'THINKING-SNIPPETS') {
         if (to.hasAttribute('thoughts')) {
           from.setAttribute('thoughts', to.getAttribute('thoughts'));
+        }
+        return false;
+      }
+      // Force clearing of display: none style when elements should no longer be hidden
+      if (from.style && from.style.display === 'none' && to.style.display !== 'none') {
+        from.style.display = '';
+      }
+      // For table elements: replace innerHTML directly to avoid morphdom flickering
+      if (from.nodeName === 'TABLE') {
+        if (from.innerHTML !== to.innerHTML) {
+          from.innerHTML = to.innerHTML;
         }
         return false;
       }
@@ -1473,16 +1485,23 @@ async function sendMessage() {
           // delta.reasoning_content path: thinking comes separately
           currentThinking = thinkingText;
           currentIsInThinking = thinkingActive;
-          displayContent = fullResponse;
+          const parsed = settings.glm47_support ? parseGLMThinking(fullResponse) : parseStreamThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
+          displayContent = parsed.content;
         } else {
           // Inline tag or GLM 4.7 path
-          const parsed = settings.glm47_support ? parseGLMThinking(fullResponse) : parseStreamThinking(fullResponse);
+          const parsed = settings.glm47_support ? parseGLMThinking(fullResponse) : parseStreamThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
           currentThinking = parsed.thinking;
           displayContent = parsed.content;
           currentIsInThinking = parsed.isInThinking;
+          
+          if (parsed.isInThinking && !thinkingActiveInline) {
+            thinkingActiveInline = true;
+            thinkingStartTime = Date.now();
+          }
+
           // Detect thinking→done transition for inline tags
-          if (thinkingActive && !parsed.isInThinking && parsed.thinking) {
-            thinkingActive = false;
+          if (thinkingActiveInline && !parsed.isInThinking && parsed.thinking) {
+            thinkingActiveInline = false;
             thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
           }
         }
@@ -1547,9 +1566,10 @@ async function sendMessage() {
         try {
           if (thinkingText) {
             parsedThinking = thinkingText;
-            parsedContent = fullResponse;
+            const parsed = settings.glm47_support ? parseGLMThinking(fullResponse) : parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
+            parsedContent = parsed.content;
           } else {
-            const parsed = settings.glm47_support ? parseGLMThinking(fullResponse) : parseThinking(fullResponse);
+            const parsed = settings.glm47_support ? parseGLMThinking(fullResponse) : parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
             parsedThinking = parsed.thinking;
             parsedContent = parsed.content;
           }
@@ -1575,7 +1595,7 @@ async function sendMessage() {
         } catch (err) {
           console.error("ON DONE ERROR:", err);
           showToast("Final UI render error: " + err.message, "error");
-          const fallback = parseThinking(fullResponse);
+          const fallback = parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
           parsedThinking = fallback.thinking;
           parsedContent = fallback.content;
         }
@@ -2144,6 +2164,11 @@ async function buildApiMessages(character, session) {
     messages.push({ role: msg.role, content: content });
   }
 
+  // FORCE REASONING PREFILL
+  if (settings.force_reasoning && settings.reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') {
+    messages.push({ role: 'assistant', content: settings.reasoning_tag_open + '\n' });
+  }
+
   return messages;
 }
 
@@ -2587,13 +2612,14 @@ async function triggerAssistantGeneration() {
   const msgElement = appendMessage(assistantMsg, true, character);
   const contentEl = msgElement.querySelector('.message-text');
 
-  let fullResponse = '';
+  let fullResponse = (settings.force_reasoning && settings.reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') ? settings.reasoning_tag_open + '\n' : '';
   let thinkingText2 = '';  // accumulated from delta.reasoning_content
   let isStreaming2 = true;
   let hasReceivedFirstChunk2 = false;
   let thinkingActive2 = false;
   let thinkingStartTime = Date.now();
   let thinkingTime = 0;
+  let thinkingActiveInline2 = false;
   const apiOptions = {};
 
   // Show Working... immediately while waiting for API response
@@ -2605,6 +2631,17 @@ async function triggerAssistantGeneration() {
     onBeforeElUpdated: (from, to) => {
       if (from.nodeName === 'THINKING-SNIPPETS' && to.nodeName === 'THINKING-SNIPPETS') {
         if (to.hasAttribute('thoughts')) from.setAttribute('thoughts', to.getAttribute('thoughts'));
+        return false;
+      }
+      // Force clearing of display: none style when elements should no longer be hidden
+      if (from.style && from.style.display === 'none' && to.style.display !== 'none') {
+        from.style.display = '';
+      }
+      // For table elements: replace innerHTML directly to avoid morphdom flickering
+      if (from.nodeName === 'TABLE') {
+        if (from.innerHTML !== to.innerHTML) {
+          from.innerHTML = to.innerHTML;
+        }
         return false;
       }
       return true;
@@ -2622,14 +2659,21 @@ async function triggerAssistantGeneration() {
       if (thinkingText2) {
         currentThinking = thinkingText2;
         currentIsInThinking = thinkingActive2;
-        displayContent = fullResponse;
+        const parsed = settings.glm47_support ? parseGLMThinking(fullResponse) : parseStreamThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
+        displayContent = parsed.content;
       } else {
-        const parsed = settings.glm47_support ? parseGLMThinking(fullResponse) : parseStreamThinking(fullResponse);
+        const parsed = settings.glm47_support ? parseGLMThinking(fullResponse) : parseStreamThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
         currentThinking = parsed.thinking;
         displayContent = parsed.content;
         currentIsInThinking = parsed.isInThinking;
-        if (thinkingActive2 && !parsed.isInThinking && parsed.thinking) {
-          thinkingActive2 = false;
+        
+        if (parsed.isInThinking && !thinkingActiveInline2) {
+          thinkingActiveInline2 = true;
+          thinkingStartTime = Date.now();
+        }
+
+        if (thinkingActiveInline2 && !parsed.isInThinking && parsed.thinking) {
+          thinkingActiveInline2 = false;
           thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
         }
       }
@@ -2679,9 +2723,10 @@ async function triggerAssistantGeneration() {
         let parsedThinking2, parsedContent2;
         if (thinkingText2) {
           parsedThinking2 = thinkingText2;
-          parsedContent2 = fullResponse;
+          const parsed = settings.glm47_support ? parseGLMThinking(fullResponse) : parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
+          parsedContent2 = parsed.content;
         } else {
-          const parsed = settings.glm47_support ? parseGLMThinking(fullResponse) : parseThinking(fullResponse);
+          const parsed = settings.glm47_support ? parseGLMThinking(fullResponse) : parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
           parsedThinking2 = parsed.thinking;
           parsedContent2 = parsed.content;
         }

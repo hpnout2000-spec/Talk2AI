@@ -82,6 +82,6 @@ To run a fast, private, and unlimited search engine on your local machine:
 
 ## System Requirements
 - **Supported Models:**
-  - **Fully Supported:** Gemma 4 31B (RP fine-tune recommended), Gemma 4 26B
+  - **Fully Supported:** Qwen 3.5 35B MoE (performs better than GLM 4.7 and Gemma), Gemma 4 31B (RP fine-tune recommended), Gemma 4 26B
   - **Partially Supported:** GLM 4.7 flash
 - **Performance:** Generation speed of at least **20 tokens per second**.

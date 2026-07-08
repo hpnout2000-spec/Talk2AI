@@ -131,6 +131,8 @@ pub struct AppSettings {
     pub font_size: u32,
     pub genai_viewimage_enabled: bool,
     pub genai_imagered_enabled: bool,
+    pub genai_faster_actions: bool,
+    pub genai_smart_context: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -181,6 +183,8 @@ impl Default for AppSettings {
             font_size: 15,
             genai_viewimage_enabled: false,
             genai_imagered_enabled: true,
+            genai_faster_actions: false,
+            genai_smart_context: false,
         }
     }
 }

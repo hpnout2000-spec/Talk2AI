@@ -156,11 +156,22 @@ export const api = {
         top_p: options.top_p ?? settings.top_p,
         top_k: options.top_k ?? settings.top_k,
         repeat_penalty: options.rep_penalty ?? settings.rep_penalty,
+        presence_penalty: options.presence_penalty ?? settings.presence_penalty ?? 0.0,
       };
 
       const sf = options.smoothing_factor ?? settings.smoothing_factor ?? 0;
       if (sf > 0) {
         body.smoothing_factor = sf;
+      }
+      
+      if (options.min_p_enabled ?? settings.min_p_enabled ?? true) {
+        body.min_p = options.min_p ?? settings.min_p ?? 0.05;
+      }
+      if (options.adaptive_target_enabled ?? settings.adaptive_target_enabled ?? true) {
+        body.adaptive_target = options.adaptive_target ?? settings.adaptive_target ?? 0.8;
+      }
+      if (options.adaptive_decay_enabled ?? settings.adaptive_decay_enabled ?? true) {
+        body.adaptive_decay = options.adaptive_decay ?? settings.adaptive_decay ?? 0.9;
       }
 
       // Add reasoning_effort parameter (KoboldCpp parameter for thinking budget)

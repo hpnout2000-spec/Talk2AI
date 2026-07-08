@@ -245,18 +245,32 @@ body {
   width: 100%;
 }
 
-/* Toggle Switch */
 .toggle-switch {
   position: relative;
   display: inline-block;
   width: 52px;
   height: 28px;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 .toggle-switch.small {
   width: 44px;
   height: 24px;
+}
+
+.toggle-switch.tiny {
+  width: 32px;
+  height: 18px;
+}
+
+.toggle-switch.tiny .toggle-slider::before {
+  width: 14px;
+  height: 14px;
+}
+
+.toggle-switch.tiny input:checked+.toggle-slider::before {
+  transform: translateX(14px);
 }
 
 .toggle-switch input {
@@ -834,4 +848,144 @@ body {
 #genai-imagegen-indicator {
   margin-left: 2px;
   align-self: center;
+}
+
+/* ─── Lora UI Styles ───────────────────────────────────────── */
+.lora-item {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.lora-item.enabled {
+  /* No special outline border when active, keep it clean */
+}
+
+.lora-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--bg-tertiary);
+  cursor: pointer;
+  user-select: none;
+  gap: 8px;
+  transition: background 0.15s;
+}
+
+.lora-item-header:hover {
+  background: var(--bg-hover);
+}
+
+.lora-item-details {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-primary);
+}
+
+
+
+/* Slider row */
+.lora-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lora-slider-row label {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  min-width: 52px;
+}
+
+/* Custom range slider */
+.lora-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1;
+  height: 4px;
+  background: var(--border-light) !important;
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.lora-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  border: 2px solid var(--bg-primary);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  cursor: pointer;
+  transition: transform 0.12s;
+}
+
+.lora-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+.lora-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent-primary);
+  border: 2px solid var(--bg-primary);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  cursor: pointer;
+}
+
+.lora-slider-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-primary);
+  min-width: 36px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Force Lora row */
+.lora-force-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.lora-force-row label {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+/* Delete button */
+.lora-btn-delete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 4px;
+  color: var(--text-tertiary);
+  transition: color 0.15s, background 0.15s;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.lora-btn-delete:hover {
+  color: var(--error);
+  background: rgba(239, 68, 68, 0.1);
 }

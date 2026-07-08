@@ -1270,10 +1270,15 @@
                             <span style="font-weight: 500; font-size: var(--text-sm); color: var(--text-primary);">Image Gen</span>
                             <span style="font-size: 11px; color: var(--text-tertiary);">Anima · ComfyUI</span>
                           </span>
-                          <label class="toggle-switch small" style="pointer-events: none; flex-shrink: 0;">
-                            <input type="checkbox" id="genai-imagegen-toggle-check" />
-                            <span class="toggle-slider"></span>
-                          </label>
+                          <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                            <div id="btn-genai-imagegen-settings" title="Image Gen Settings" style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 4px; background: var(--bg-tertiary); cursor: pointer; pointer-events: auto; color: var(--text-secondary);" class="hover-bg-light">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                            </div>
+                            <label class="toggle-switch small" style="pointer-events: none;">
+                              <input type="checkbox" id="genai-imagegen-toggle-check" />
+                              <span class="toggle-slider"></span>
+                            </label>
+                          </div>
                         </button>
                         <button id="btn-genai-toggle-websearch" class="dropdown-option" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; width: 100%; text-align: left;">
                           <span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
@@ -2139,7 +2144,7 @@
               </label>
             </div>
             <div class="form-group-row">
-              <label>GLM 4.7 Support</label>
+              <label>GLM 4.7 & Qwen 3.5 Support</label>
               <label class="toggle-switch small">
                 <input type="checkbox" id="setting-glm47-support" />
                 <span class="toggle-slider"></span>
@@ -2346,6 +2351,17 @@
                 <span class="toggle-slider"></span>
               </label>
             </div>
+            <div class="form-group-row">
+              <label>New Streaming Animation (Constant Speed)</label>
+              <label class="toggle-switch small">
+                <input type="checkbox" id="setting-new-streaming-animation" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="form-group" id="streaming-speed-group">
+              <label for="setting-streaming-speed">Streaming Speed: <span id="streaming-speed-value">45</span> chars/sec</label>
+              <input type="range" id="setting-streaming-speed" min="10" max="100" step="5" value="45" />
+            </div>
             <div class="form-group">
               <label for="setting-font-size">Font Size: <span id="font-size-value">15</span>px</label>
               <input type="range" id="setting-font-size" min="12" max="22" step="1" value="15" />
@@ -2455,6 +2471,16 @@
               </div>
               <label class="toggle-switch small">
                 <input type="checkbox" id="setting-genai-imagered-enabled" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="form-group-row">
+              <div style="display: flex; flex-direction: column; gap: 4px;">
+                <label>Faster Actions</label>
+                <span style="font-size: var(--text-xs); color: var(--text-tertiary);">If activated, GenAI will not generate a second response after generating images or saving facts.</span>
+              </div>
+              <label class="toggle-switch small">
+                <input type="checkbox" id="setting-genai-faster-actions" />
                 <span class="toggle-slider"></span>
               </label>
             </div>
@@ -2918,6 +2944,26 @@
               </button>
             </div>
 
+            <!-- Loras Section -->
+            <div class="form-group" style="margin-top: 16px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; cursor: pointer; padding: 8px 0; border-top: 1px solid var(--border-subtle);" id="setting-comfyui-lora-header">
+                <div>
+                  <label style="font-size: var(--text-sm); font-weight: 600; color: var(--text-primary); pointer-events: none; cursor: pointer;">Loras</label>
+                  <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 2px; pointer-events: none;">Manage ComfyUI Loras</div>
+                </div>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;transition: transform 0.2s;" id="setting-comfyui-lora-chevron"><polyline points="6 9 12 15 18 9"/></svg>
+              </div>
+              <div id="setting-comfyui-lora-container" class="hidden" style="display: flex; flex-direction: column; gap: 12px; margin-top: 8px;">
+                <div style="display: flex; gap: 8px;">
+                  <input type="text" id="setting-comfyui-lora-input" placeholder="Lora name (e.g. style_model.safetensors)" style="flex:1; padding:8px 10px; background:var(--bg-primary); border:1px solid var(--border-light); border-radius:var(--radius-sm); color:var(--text-primary); font-size:var(--text-sm);" />
+                  <button id="btn-add-comfyui-lora" class="btn-secondary small" style="white-space: nowrap;">Add</button>
+                </div>
+                <div id="comfyui-loras-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto;">
+                  <!-- Lora items will be injected here -->
+                </div>
+              </div>
+            </div>
+
             <!-- Advanced (collapsed) -->
             <details style="margin-top:4px;">
               <summary style="cursor:pointer;font-size:var(--text-sm);color:var(--text-tertiary);padding:6px 0;user-select:none;">▸ Advanced (Sampler &amp; Model Files)</summary>
@@ -3352,6 +3398,61 @@
                         <input type="range" id="adv-setting-smoothing-factor" min="0" max="5" step="0.05" value="0" />
                         <p class="form-hint" style="margin-top: 4px; font-size: 11px;">Quadratic sampling. High values (1.5 - 2.5) stabilize high temperature generations.</p>
                       </div>
+                      <hr style="border: none; border-top: 1px solid var(--border-light); margin-bottom: 16px;">
+                      
+                      <h3>Advanced Samplers</h3>
+                      <div class="form-group">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                          <label for="adv-setting-min-p" style="margin-bottom: 0;">Min-P: <span id="adv-min-p-value">0.05</span></label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-min-p-enabled" checked />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <input type="range" id="adv-setting-min-p" min="0" max="1" step="0.01" value="0.05" />
+                      </div>
+                      <div class="form-group">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                          <label for="adv-setting-adaptive-target" style="margin-bottom: 0;">Adaptive Target: <span id="adv-adaptive-target-value">0.80</span></label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-adaptive-target-enabled" checked />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <input type="range" id="adv-setting-adaptive-target" min="0" max="1" step="0.01" value="0.80" />
+                      </div>
+                      <div class="form-group">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                          <label for="adv-setting-adaptive-decay" style="margin-bottom: 0;">Adaptive Decay: <span id="adv-adaptive-decay-value">0.90</span></label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-adaptive-decay-enabled" checked />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <input type="range" id="adv-setting-adaptive-decay" min="0" max="1" step="0.01" value="0.90" />
+                      </div>
+                      <div class="form-group">
+                        <label for="adv-setting-presence-penalty">Presence Penalty: <span id="adv-presence-penalty-value">0.00</span></label>
+                        <input type="range" id="adv-setting-presence-penalty" min="-2.0" max="2.0" step="0.05" value="0.00" />
+                      </div>
+                      <hr style="border: none; border-top: 1px solid var(--border-light); margin-bottom: 16px;">
+                      
+                      <h3>Reasoning Formatting</h3>
+                      <div class="form-group-row">
+                        <label>Force Reasoning</label>
+                        <label class="toggle-switch">
+                          <input type="checkbox" id="adv-setting-force-reasoning" />
+                          <span class="toggle-slider"></span>
+                        </label>
+                      </div>
+                      <div class="form-group">
+                        <label for="adv-setting-reasoning-open">Open Tag</label>
+                        <input type="text" id="adv-setting-reasoning-open" class="form-control" placeholder="<think>" />
+                      </div>
+                      <div class="form-group">
+                        <label for="adv-setting-reasoning-close">Close Tag</label>
+                        <input type="text" id="adv-setting-reasoning-close" class="form-control" placeholder="</think>" />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -3400,11 +3501,67 @@
                         <input type="range" id="adv-setting-genai-smoothing-factor" min="0" max="5" step="0.05" value="0" />
                         <p class="form-hint" style="margin-top: 4px; font-size: 11px;">Quadratic sampling for GenAI requests.</p>
                       </div>
+                      <hr style="border: none; border-top: 1px solid var(--border-light); margin-bottom: 16px;">
+                      
+                      <h3>Advanced Samplers</h3>
+                      <div class="form-group">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                          <label for="adv-setting-genai-min-p" style="margin-bottom: 0;">Min-P: <span id="adv-genai-min-p-value">0.05</span></label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-genai-min-p-enabled" checked />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <input type="range" id="adv-setting-genai-min-p" min="0" max="1" step="0.01" value="0.05" />
+                      </div>
+                      <div class="form-group">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                          <label for="adv-setting-genai-adaptive-target" style="margin-bottom: 0;">Adaptive Target: <span id="adv-genai-adaptive-target-value">0.80</span></label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-genai-adaptive-target-enabled" checked />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <input type="range" id="adv-setting-genai-adaptive-target" min="0" max="1" step="0.01" value="0.80" />
+                      </div>
+                      <div class="form-group">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                          <label for="adv-setting-genai-adaptive-decay" style="margin-bottom: 0;">Adaptive Decay: <span id="adv-genai-adaptive-decay-value">0.90</span></label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-genai-adaptive-decay-enabled" checked />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <input type="range" id="adv-setting-genai-adaptive-decay" min="0" max="1" step="0.01" value="0.90" />
+                      </div>
+                      <div class="form-group">
+                        <label for="adv-setting-genai-presence-penalty">Presence Penalty: <span id="adv-genai-presence-penalty-value">0.00</span></label>
+                        <input type="range" id="adv-setting-genai-presence-penalty" min="-2.0" max="2.0" step="0.05" value="0.00" />
+                      </div>
 
                       <div class="form-group" style="margin-top: var(--space-4); display: flex; flex-direction: column;">
                         <label for="adv-setting-genai-system-prompt">Change System Prompt</label>
                         <textarea id="adv-setting-genai-system-prompt" class="textarea-premium" placeholder="Enter custom instructions to append to the system prompt..."></textarea>
                         <p class="form-hint" style="margin-top: 4px; font-size: 11px;">This text will be appended to the end of the GenAI system prompt.</p>
+                      </div>
+
+                      <hr style="border: none; border-top: 1px solid var(--border-light); margin: 16px 0;">
+                      
+                      <h3>Reasoning Formatting</h3>
+                      <div class="form-group-row">
+                        <label>Force Reasoning</label>
+                        <label class="toggle-switch">
+                          <input type="checkbox" id="adv-setting-genai-force-reasoning" />
+                          <span class="toggle-slider"></span>
+                        </label>
+                      </div>
+                      <div class="form-group">
+                        <label for="adv-setting-genai-reasoning-open">Open Tag</label>
+                        <input type="text" id="adv-setting-genai-reasoning-open" class="form-control" placeholder="<think>" />
+                      </div>
+                      <div class="form-group">
+                        <label for="adv-setting-genai-reasoning-close">Close Tag</label>
+                        <input type="text" id="adv-setting-genai-reasoning-close" class="form-control" placeholder="</think>" />
                       </div>
                     </div>
                   </div>

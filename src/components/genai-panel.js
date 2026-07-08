@@ -11,7 +11,7 @@ import { skillsStore } from '../services/skills-store.js';
 import { gameStore } from '../services/game-store.js';
 import { groupChatStore } from '../services/group-chat-store.js';
 import { appState } from '../state.js';
-import { renderMarkdown, autoResizeTextarea, formatTime, injectCursor, escapeHtml, parseThinking, parseStreamThinking, createThinkingBlockHTML } from '../utils/helpers.js';
+import { renderMarkdown, autoResizeTextarea, formatTime, injectCursor, escapeHtml, parseThinking, parseStreamThinking, createThinkingBlockHTML, wrapWordsInSpans } from '../utils/helpers.js';
 import morphdom from '../vendor/morphdom.js';
 import { generateImageComfyUI, checkComfyUIConnection, buildAutoPromptFromContext } from '../services/comfyui-service.js';
 import { loadChat } from './chat.js';
@@ -309,8 +309,7 @@ function buildStaticContext() {
   });
   const recentChars = sortedChars.slice(0, 3);
   recentChars.forEach(c => {
-    const ago = c.last_chat_at ? `last chat ${formatTime(c.last_chat_at)}` : 'no chats';
-    parts.push(`- "${c.name}" (id: ${c.id}) — ${ago}`);
+    parts.push(`- "${c.name}" (id: ${c.id})`);
   });
 
   // Group Chats
@@ -859,6 +858,18 @@ async function buildApiMessages(extraUserInstruction = null, skipSmartContextOve
   if (settings.genai_system_prompt_addition) {
     staticBase += '\n\n' + settings.genai_system_prompt_addition;
   }
+
+  if (settings.comfyui_enabled_genai && settings.comfyui_loras && settings.comfyui_loras.length > 0) {
+    const aiLoras = settings.comfyui_loras.filter(l => l.enabled && !l.force && l.comment);
+    if (aiLoras.length > 0) {
+      staticBase += '\n\nAVAILABLE IMAGE GENERATION LORAS:\n';
+      staticBase += 'You have access to the following Loras for image generation. To apply a Lora, simply include its tag `<lora:name:weight>` anywhere within your image generation prompt (e.g., {"genai_action":"generate_image","prompt":"A beautiful landscape <lora:nature:1.0>"}).\n';
+      aiLoras.forEach(l => {
+        staticBase += `- Tag: <lora:${l.name}:${l.strength}> | Description/Effect: ${l.comment}\n`;
+      });
+    }
+  }
+
   staticBase += '\n\n';
 
   // Build static context (tools description + settings - never truncated to ensure core capabilities)
@@ -1044,7 +1055,11 @@ ${skill.content}
       historyMsgs.push({ role: 'user', content: `[TOOL RESULT]\n${e.content}` });
       continue;
     }
-    let cleanContent = (e.content || '').replace(/\[\[GENAI_TOOL_\d+\]\]/g, '').trim();
+    let cleanContent = (e.content || '')
+      .replace(/\[\[GENAI_TOOL_\d+\]\]/g, '')
+      .replace(/\[\[THINKING_BLOCK\]\]/g, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
     if (e.role === 'assistant') {
       cleanContent = stripSuggestions(cleanContent);
     }
@@ -1131,63 +1146,7 @@ ${disabledSkillsList.map(item => `- ${item}`).join('\n')}
 If the user asks for these features, politely let them know that they are currently disabled in the GenAI settings and can be enabled in the GenAI plus menu (at the bottom left of the panel).`;
   }
 
-  // Initial state: maximum context
-  let activeChatMsgCount = 15;
-  let dynamicContext = buildDynamicContext(activeChatMsgCount);
-  let systemContent = staticBase + staticContext + '\n\n' + dynamicContext + activeSkillsBlock + disabledSkillsNotice;
-
-  const getExactPromptTokens = async (sysContent, histMsgs) => {
-    // Replicate finalMessages structure built in streamGenAI / buildApiMessages
-    const msgs = [{ role: 'system', content: sysContent }, ...histMsgs];
-    
-    // Add extra system prompt / assistant preamble if Extended Thinking is enabled
-    if (settings.extended_thinking && settings.reasoning_effort !== 'none') {
-      const p2 = 'You must now perform deep thinking. If you need to stop and think more (including if you need to gather more information or search the internet further) before finishing, output <thinkextended> instead of finishing. If you don\'t have enough information and web search is turned on, you can make another query or fetch sites. In that case, do not write the whole response; instead, make another short, informative status preamble/intro of 1-4 words in the EXACT same language that the user used in their last message, reflecting what exactly you are going to search for or find, and output the command you need. Use this only when it\'s really needed. Example:\n"Searching weather forecast...\n[Command for web search, fetching site or anything else what\'s needed]"\n\nAlso, pay close attention to any search queries performed in the previous message/turn: they were initiated by you (GenAI), not by the user, so you must not say "your search queries" when referring to them. Instead, refer to them as search queries that you performed.';
-      msgs.push({ role: 'system', content: p2 });
-      msgs.push({ role: 'assistant', content: 'Continuing...' }); // representative assistant preamble
-    }
-    return await api.countMessagesTokens(msgs);
-  };
-
-  let totalTokens = await getExactPromptTokens(systemContent, historyMsgs);
-  const targetLimit = tokenLimit - (settingsStore.get().genai_max_tokens || 2048) - 15; // Leave at least 15 tokens free as requested
-
-  // Pruning Stage A: Progressively reduce dynamic character chat context FIRST
-  if (totalTokens > targetLimit) {
-    const msgCounts = [10, 5, 2, 1, 0];
-    for (const count of msgCounts) {
-      activeChatMsgCount = count;
-      dynamicContext = buildDynamicContext(activeChatMsgCount);
-      systemContent = staticBase + staticContext + '\n\n' + dynamicContext + activeSkillsBlock + disabledSkillsNotice;
-      
-      totalTokens = await getExactPromptTokens(systemContent, historyMsgs);
-      if (totalTokens <= targetLimit) {
-        break;
-      }
-    }
-  }
-
-  // Pruning Stage B: Truncate history messages LAST (keep at least the last 2 messages as fallback)
-  if (totalTokens > targetLimit) {
-    while (totalTokens > targetLimit && historyMsgs.length > 2) {
-      historyMsgs.shift();
-      totalTokens = await getExactPromptTokens(systemContent, historyMsgs);
-    }
-  }
-
-  // Apply Gemma 4 thinking style directive if experimental toggle is enabled and reasoning is active
-  if (settings.change_gemma4_thinking_style && settings.reasoning_effort && settings.reasoning_effort !== 'none') {
-    systemContent += `\n\nWhen reasoning internally, your thought process must be brief, natural, and strictly in the first person (e.g., "I need to check...", "Let me think..."). Emulate a concise "thinking out loud" style similar to Claude. Avoid overly verbose, rigid step-by-step lists. Keep your internal monologue efficient and directly focused on solving the problem.`;
-  }
-
-  // Prepend <|think|> for Gemma 4 thinking models when reasoning effort is active
-  if (settings.gemma4_support && settings.reasoning_effort && settings.reasoning_effort !== 'none') {
-    systemContent = '<|think|>\n' + systemContent;
-  }
-
-  const finalMessages = [{ role: 'system', content: systemContent }, ...historyMsgs];
-
-  // Inject Skills, JSON Tool calling rules, and Memories directly into the last user message to guarantee it is NEVER truncated
+  // Construct skills and system instruction injection block (previously appended to the last user message)
   let skillsInjection = '';
   if (activeSkills && activeSkills.length > 0) {
     skillsInjection += `\n\n========================================================================
@@ -1200,12 +1159,6 @@ Active Skills Detailed Rules and Available JSON Commands:
 ${activeSkillsBlock.trim()}
 `;
   }
-  
-  // General JSON tool reminder
-  skillsInjection += `\n\n[MANDATORY SYSTEM REMINDER FOR TOOL CALLS]
-To call a tool/command, you MUST output the JSON block on its own line in your response. For example:
-{"genai_action":"nhentai_search_galleries","query":"parody"}
-Always output the JSON action block on its own line. Stop generating immediately after outputting the JSON block. Do not write text promising to call a tool without actually outputting it.`;
 
   // Inject Better Prompts rules if active
   if (isBetterPromptsActive) {
@@ -1248,29 +1201,72 @@ ${ANIMA_BETTER_PROMPT_TEXT}`;
     }
   }
 
-  // Inject GenAI Memories into the last user message of the payload to ensure they are present in every prompt
+  // Inject GenAI Memories
   const memories = genaiMemoryStore.getAll();
   if (memories.length > 0) {
     const memoriesStr = memories.map(m => `- ${m.content}`).join('\n');
     skillsInjection += `\n\n[GenAI Memories (Facts to consider for your response — You MUST take these into account and not contradict them):]\n${memoriesStr}`;
   }
 
-  // Find the last user message in finalMessages and append our complete injection payload to it
-  for (let i = finalMessages.length - 1; i >= 0; i--) {
-    if (finalMessages[i].role === 'user') {
-      if (Array.isArray(finalMessages[i].content)) {
-        // Content is an array (multimodal format), so append skillsInjection to the first element (the text block)
-        const textPart = finalMessages[i].content.find(p => p.type === 'text');
-        if (textPart) {
-          textPart.text += skillsInjection;
-        } else {
-          finalMessages[i].content.unshift({ type: 'text', text: skillsInjection });
-        }
-      } else {
-        finalMessages[i].content += skillsInjection;
-      }
-      break;
+  // Initial state: maximum context
+  let activeChatMsgCount = 15;
+  let dynamicContext = buildDynamicContext(activeChatMsgCount);
+  let systemContent = staticBase + staticContext + '\n\n' + dynamicContext + disabledSkillsNotice + skillsInjection;
+
+  const getExactPromptTokens = async (sysContent, histMsgs) => {
+    // Replicate finalMessages structure built in streamGenAI / buildApiMessages
+    const msgs = [{ role: 'system', content: sysContent }, ...histMsgs];
+    
+    // Add extra system prompt / assistant preamble if Extended Thinking is enabled
+    if (settings.extended_thinking && settings.reasoning_effort !== 'none') {
+      const p2 = 'You must now perform deep thinking. If you need to stop and think more (including if you need to gather more information or search the internet further) before finishing, output <thinkextended> instead of finishing. If you don\'t have enough information and web search is turned on, you can make another query or fetch sites. In that case, do not write the whole response; instead, make another short, informative status preamble/intro of 1-4 words in the EXACT same language that the user used in their last message, reflecting what exactly you are going to search for or find, and output the command you need. Use this only when it\'s really needed. Example:\n"Searching weather forecast...\n[Command for web search, fetching site or anything else what\'s needed]"\n\nAlso, pay close attention to any search queries performed in the previous message/turn: they were initiated by you (GenAI), not by the user, so you must not say "your search queries" when referring to them. Instead, refer to them as search queries that you performed.';
+      msgs.push({ role: 'system', content: p2 });
+      msgs.push({ role: 'assistant', content: 'Continuing...' }); // representative assistant preamble
     }
+    return await api.countMessagesTokens(msgs);
+  };
+
+  let totalTokens = await getExactPromptTokens(systemContent, historyMsgs);
+  const targetLimit = tokenLimit - (settingsStore.get().genai_max_tokens || 2048) - 15; // Leave at least 15 tokens free as requested
+
+  // Pruning Stage A: Progressively reduce dynamic character chat context FIRST
+  if (totalTokens > targetLimit) {
+    const msgCounts = [10, 5, 2, 1, 0];
+    for (const count of msgCounts) {
+      activeChatMsgCount = count;
+      dynamicContext = buildDynamicContext(activeChatMsgCount);
+      systemContent = staticBase + staticContext + '\n\n' + dynamicContext + disabledSkillsNotice + skillsInjection;
+      
+      totalTokens = await getExactPromptTokens(systemContent, historyMsgs);
+      if (totalTokens <= targetLimit) {
+        break;
+      }
+    }
+  }
+
+  // Pruning Stage B: Truncate history messages LAST (keep at least the last 2 messages as fallback)
+  if (totalTokens > targetLimit) {
+    while (totalTokens > targetLimit && historyMsgs.length > 2) {
+      historyMsgs.shift();
+      totalTokens = await getExactPromptTokens(systemContent, historyMsgs);
+    }
+  }
+
+  // Apply Gemma 4 thinking style directive if experimental toggle is enabled and reasoning is active
+  if (settings.change_gemma4_thinking_style && settings.reasoning_effort && settings.reasoning_effort !== 'none') {
+    systemContent += `\n\nWhen reasoning internally, your thought process must be brief, natural, and strictly in the first person (e.g., "I need to check...", "Let me think..."). Emulate a concise "thinking out loud" style similar to Claude. Avoid overly verbose, rigid step-by-step lists. Keep your internal monologue efficient and directly focused on solving the problem.`;
+  }
+
+  // Prepend <|think|> for Gemma 4 thinking models when reasoning effort is active
+  if (settings.gemma4_support && settings.reasoning_effort && settings.reasoning_effort !== 'none') {
+    systemContent = '<|think|>\n' + systemContent;
+  }
+
+  const finalMessages = [{ role: 'system', content: systemContent }, ...historyMsgs];
+
+  // FORCE REASONING PREFILL
+  if (settings.genai_force_reasoning && settings.genai_reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') {
+    finalMessages.push({ role: 'assistant', content: settings.genai_reasoning_tag_open + '\n' });
   }
 
   return finalMessages;
@@ -2318,15 +2314,10 @@ function resultBadgeForAction(action, result) {
   if (name === 'send_game_action') return actionBadgeHtml('result-message', '⚔️', `Game Action: "${action.action}"`);
   if (name === 'rename_game') return actionBadgeHtml('result-chat-action', '✍️', `Renamed Game to "${action.new_title}"`);
   if (name === 'generate_image') {
-    const badge = actionBadgeHtml('result-data', '🎨', 'Generated Image');
     if (result && result.success && result.image_url) {
-      let html = badge + renderMarkdown(`![${result.prompt || 'Generated image'}](${result.image_url})`);
-      if (result.image_id) {
-        html += `<div style="font-size:0.85em;color:var(--text-muted);margin-top:4px;text-align:center;">ID: <code>${result.image_id}</code></div>`;
-      }
-      return html;
+      return renderMarkdown(`![${result.prompt || 'Generated image'}](${result.image_url})`);
     }
-    return badge;
+    return actionBadgeHtml('result-data', '🎨', 'Generated Image');
   }
 
   return actionBadgeHtml('result-data', '', 'Action completed');
@@ -2373,14 +2364,17 @@ function wrapWordsInFirstParagraphSpans(htmlString, startIdx = 0) {
   const parts = htmlString.split(/(<[^>]+>)/g);
   let wordIndex = startIdx;
   let inSkipTag = false;
+  let inTableTag = false;
   const processedParts = parts.map(part => {
     if (part.startsWith('<')) {
       const lower = part.toLowerCase();
       if (lower.startsWith('<pre') || lower.startsWith('<code')) inSkipTag = true;
       if (lower.startsWith('</pre') || lower.startsWith('</code')) inSkipTag = false;
+      if (lower.startsWith('<table')) inTableTag = true;
+      if (lower.startsWith('</table')) inTableTag = false;
       return part;
     }
-    if (inSkipTag || !part.trim()) return part;
+    if (inSkipTag || inTableTag || !part.trim()) return part;
     return part.split(/(\s+)/).map(w => {
       if (!w || w.trim() === '') return w;
       return `<span class="word-blur" data-word-index="${wordIndex++}">${w}</span>`;
@@ -2393,14 +2387,17 @@ function wrapWordsInDiagonalSpans(htmlString) {
   if (!htmlString) return '';
   const parts = htmlString.split(/(<[^>]+>)/g);
   let inSkipTag = false;
+  let inTableTag = false;
   const processedParts = parts.map(part => {
     if (part.startsWith('<')) {
       const lower = part.toLowerCase();
       if (lower.startsWith('<pre') || lower.startsWith('<code')) inSkipTag = true;
       if (lower.startsWith('</pre') || lower.startsWith('</code')) inSkipTag = false;
+      if (lower.startsWith('<table')) inTableTag = true;
+      if (lower.startsWith('</table')) inTableTag = false;
       return part;
     }
-    if (inSkipTag || !part.trim()) return part;
+    if (inSkipTag || inTableTag || !part.trim()) return part;
     return part.split(/(\s+)/).map(w => {
       if (!w || w.trim() === '') return w;
       return `<span class="diagonal-word">${w}</span>`;
@@ -2449,20 +2446,33 @@ function processGenaiBubbleDom(container, streaming) {
   let hasHiddenParagraph = false;
 
   contentElements.forEach((node, contentIdx) => {
+    const tagName = node.tagName.toLowerCase();
+    const isTable = tagName === 'table';
+
     if (!firstContentFound) {
       firstContentFound = true;
-      const res = wrapWordsInFirstParagraphSpans(node.innerHTML, wordIndex);
-      node.innerHTML = res.html;
-      wordIndex = res.nextIdx;
+      node.style.display = ''; // Ensure display is cleared if previously hidden
+      if (!isTable) {
+        // Only wrap words in non-table elements to preserve table structure
+        const res = wrapWordsInFirstParagraphSpans(node.innerHTML, wordIndex);
+        node.innerHTML = res.html;
+        wordIndex = res.nextIdx;
+      }
     } else {
       const isLastContent = (contentIdx === contentElements.length - 1);
       if (streaming && isLastContent) {
-        // Hide subsequent incomplete paragraphs/list items during streaming
-        node.style.display = 'none';
-        node.classList.add('genai-incomplete-paragraph');
-        hasHiddenParagraph = true;
+        if (isTable) {
+          // Do not hide table elements during streaming so they render row-by-row
+          node.style.display = '';
+        } else {
+          // Hide subsequent incomplete paragraphs/list items during streaming
+          node.style.display = 'none';
+          node.classList.add('genai-incomplete-paragraph');
+          hasHiddenParagraph = true;
+        }
       } else {
-        if (!node.classList.contains('diagonal-animated-paragraph')) {
+        node.style.display = ''; // Ensure display is cleared/reset if it was hidden in a previous stream step
+        if (!isTable && !node.classList.contains('diagonal-animated-paragraph')) {
           node.classList.add('diagonal-animated-paragraph');
           let originalHtml = node.innerHTML;
           const incompleteSpan = node.querySelector('.genai-incomplete-text');
@@ -2523,8 +2533,73 @@ function applyDiagonalAnimation(container) {
   });
 }
 
+function getWebToolGroups(entry, processedText = null) {
+  const tools = entry.tools || [];
+  const webTools = tools.map((t, idx) => ({ tool: t, index: idx }))
+    .filter(({ tool }) => tool.action && (tool.action.genai_action === 'web_search' || tool.action.genai_action === 'web_fetch'));
+
+  if (webTools.length === 0) return [];
+
+  // Determine processedText from entry.content if not provided
+  if (!processedText) {
+    let text = entry.content || '';
+    const settings = settingsStore.get();
+    const openTag = settings?.genai_reasoning_tag_open || '<think>';
+    const closeTag = settings?.genai_reasoning_tag_close || '</think>';
+    const parsed = parseStreamThinking(text, openTag, closeTag);
+    let content = parsed.content;
+    processedText = content.replace(/<suggest\s+target="([^"]+)"\s+message="([^"]+)">([\s\S]*?)<\/suggest>/gi, '@@SUGGEST@@');
+  }
+
+  const groups = [];
+  let currentGroup = [webTools[0]];
+
+  for (let i = 1; i < webTools.length; i++) {
+    const prev = webTools[i - 1];
+    const curr = webTools[i];
+
+    const sameType = prev.tool.action.genai_action === curr.tool.action.genai_action;
+
+    let consecutive = false;
+    if (sameType) {
+      const prevMarker = `[[GENAI_TOOL_${prev.index}]]`;
+      const currMarker = `[[GENAI_TOOL_${curr.index}]]`;
+      const prevIdx = processedText.indexOf(prevMarker);
+      const currIdx = processedText.indexOf(currMarker);
+      
+      if (prevIdx !== -1 && currIdx !== -1 && currIdx > prevIdx) {
+        const middleText = processedText.substring(prevIdx + prevMarker.length, currIdx);
+        if (/^\s*$/.test(middleText)) {
+          consecutive = true;
+        }
+      }
+    }
+
+    if (consecutive) {
+      currentGroup.push(curr);
+    } else {
+      groups.push(currentGroup);
+      currentGroup = [curr];
+    }
+  }
+  groups.push(currentGroup);
+  return groups;
+}
+
+function getUiToolIdx(entry, toolIdx) {
+  const groups = getWebToolGroups(entry);
+  for (const group of groups) {
+    if (group.some(g => g.index === toolIdx)) {
+      return group[0].index;
+    }
+  }
+  return toolIdx;
+}
+
 function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWorking = false, streaming = false, animate = false } = {}) {
   if (!bubbleEl) return;
+
+  const settings = settingsStore.get();
 
   let textCont = bubbleEl.querySelector('.genai-msg-text-container');
   if (!textCont) {
@@ -2539,11 +2614,17 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
   let content = text;
   let isInThinking = entry.isInThinking || false;
 
-  if (!entry.thinking && (streaming || !thinking)) {
-    const parsed = parseStreamThinking(text);
-    thinking = parsed.thinking;
+  {
+    // Always strip raw thinking tags from content, even if thinking is already set (e.g. via delta.reasoning_content).
+    // This prevents the open tag from showing as plain text when force_reasoning prefill is used.
+    const parsed = parseStreamThinking(text, settings.genai_reasoning_tag_open, settings.genai_reasoning_tag_close);
+    // Only override thinking if we didn't already have it from a separate channel
+    if (!entry.thinking) {
+      thinking = parsed.thinking;
+      isInThinking = parsed.isInThinking;
+    }
+    // Always use the stripped content
     content = parsed.content;
-    isInThinking = parsed.isInThinking;
   }
 
   // Parse inline text suggestions: <suggest target="..." message="...">...</suggest>
@@ -2558,39 +2639,64 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
 
   // Remove consecutive web tool markers and any whitespace between them to prevent empty paragraphs
   if (entry.tools && entry.tools.length > 0) {
-    const webToolIndices = entry.tools
-      .map((t, idx) => ({ t, idx }))
-      .filter(({ t }) => t.action && (t.action.genai_action === 'web_search' || t.action.genai_action === 'web_fetch'))
-      .map(({ idx }) => idx);
+    const groups = getWebToolGroups(entry, processedText);
+    groups.forEach(group => {
+      if (group.length > 1) {
+        const firstIdx = group[0].index;
+        for (let j = 1; j < group.length; j++) {
+          const otherIdx = group[j].index;
+          const regex = new RegExp(`\\s*\\[\\[GENAI_TOOL_${otherIdx}\\]\\]\\s*`, 'g');
+          processedText = processedText.replace(regex, '\n');
+        }
 
-    if (webToolIndices.length > 1) {
-      const firstWebIdx = webToolIndices[0];
-      const otherWebIndices = webToolIndices.slice(1);
-
-      otherWebIndices.forEach(otherIdx => {
-        const regex = new RegExp(`\\s*\\[\\[GENAI_TOOL_${otherIdx}\\]\\]\\s*`, 'g');
-        processedText = processedText.replace(regex, '\n');
-      });
-
-      const firstMarker = `[[GENAI_TOOL_${firstWebIdx}]]`;
-      const regexPost = new RegExp(`(\\[\\[GENAI_TOOL_${firstWebIdx}\\]\\])\\s*\\n\\s*`, 'g');
-      processedText = processedText.replace(regexPost, '$1\n');
-    }
+        const firstMarker = `[[GENAI_TOOL_${firstIdx}]]`;
+        const regexPost = new RegExp(`(\\[\\[GENAI_TOOL_${firstIdx}\\]\\])\\s*\\n\\s*`, 'g');
+        processedText = processedText.replace(regexPost, '$1\n');
+      }
+    });
   }
 
   let html = '';
-  const splitIdx = processedText.indexOf('[[THINKING_BLOCK]]');
-  if (splitIdx !== -1) {
-    html += renderMarkdown(processedText.substring(0, splitIdx));
-    if (isInThinking || thinking) {
-      html += createThinkingBlockHTML(thinking, isInThinking);
+  if (entry.thinking_blocks && entry.thinking_blocks.length > 0) {
+    let tempText = processedText;
+    
+    // Render index 0 at the top by default if it is not explicitly marked in the text
+    if (entry.thinking_blocks[0] && !tempText.includes('[[THINKING_BLOCK_0]]')) {
+      const isBlock0Active = (entry.thinking_blocks.length === 1 && (isInThinking || entry.isInThinking));
+      html += createThinkingBlockHTML(entry.thinking_blocks[0], isBlock0Active, settings.glm47_support, entry.thinking_time || 0);
     }
-    html += renderMarkdown(processedText.substring(splitIdx + 18));
+    
+    let markdownHtml = renderMarkdown(tempText);
+    
+    for (let p = 0; p < entry.thinking_blocks.length; p++) {
+      const marker = `[[THINKING_BLOCK_${p}]]`;
+      if (markdownHtml.includes(marker)) {
+        const isThisBlockActive = (p === entry.thinking_blocks.length - 1) && (isInThinking || entry.isInThinking);
+        const blockHtml = createThinkingBlockHTML(
+          entry.thinking_blocks[p],
+          isThisBlockActive,
+          settings.glm47_support,
+          isThisBlockActive ? (entry.thinking_time || 0) : 0
+        );
+        markdownHtml = markdownHtml.split(marker).join(blockHtml);
+      }
+    }
+    
+    html += markdownHtml;
   } else {
-    if (isInThinking || thinking) {
-      html += createThinkingBlockHTML(thinking, isInThinking);
+    const splitIdx = processedText.indexOf('[[THINKING_BLOCK]]');
+    if (splitIdx !== -1) {
+      html += renderMarkdown(processedText.substring(0, splitIdx));
+      if (isInThinking || thinking) {
+        html += createThinkingBlockHTML(thinking, isInThinking, settings.glm47_support, entry.thinking_time || 0);
+      }
+      html += renderMarkdown(processedText.substring(splitIdx + 18));
+    } else {
+      if (isInThinking || thinking) {
+        html += createThinkingBlockHTML(thinking, isInThinking, settings.glm47_support, entry.thinking_time || 0);
+      }
+      html += renderMarkdown(processedText);
     }
-    html += renderMarkdown(processedText);
   }
 
   // Restore inline text suggestions AFTER markdown rendering
@@ -2609,22 +2715,25 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
       const isWebTool = tool.action && (tool.action.genai_action === 'web_search' || tool.action.genai_action === 'web_fetch');
 
       if (isWebTool) {
-        const webTools = entry.tools.filter(t => 
-          t.action && (t.action.genai_action === 'web_search' || t.action.genai_action === 'web_fetch')
-        );
-        const firstWebTool = webTools[0];
+        const groups = getWebToolGroups(entry, processedText);
+        const associatedGroup = groups.find(group => group.some(g => g.index === idx)) || [];
+        const firstWebTool = associatedGroup[0]?.tool;
         if (tool !== firstWebTool) {
           badgeHtml = '';
         } else {
-          const anyAwaiting = webTools.some(t => t.state === 'awaiting_approval');
-          const anyWorking = webTools.some(t => t.state === 'working');
+          const actionType = tool.action.genai_action;
+          const anyAwaiting = associatedGroup.some(g => g.tool.state === 'awaiting_approval');
+          const anyWorking = associatedGroup.some(g => g.tool.state === 'working');
           const onceSweepStyle = 'background: none; -webkit-background-clip: initial; background-clip: initial; color: var(--text-tertiary); -webkit-text-fill-color: var(--text-tertiary); animation: workingEnter 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;';
           
           if (anyAwaiting) {
-            const count = webTools.length;
+            const count = associatedGroup.length;
+            const text = actionType === 'web_search' 
+              ? `AI wants to use web search for ${count} ${count === 1 ? 'query' : 'queries'}.`
+              : `AI wants to read ${count} ${count === 1 ? 'webpage' : 'webpages'}.`;
             badgeHtml = `
               <div class="genai-inline-tool genai-tool-pending" id="genai-tool-${idx}" style="margin: var(--space-2) 0; width: 100%; display: flex; align-items: center; gap: var(--space-3); line-height: 1.2;">
-                <span class="genai-working-text" style="${onceSweepStyle} margin: 0; padding: 0;">AI wants to use web search for ${count} ${count === 1 ? 'query' : 'queries'}.</span>
+                <span class="genai-working-text" style="${onceSweepStyle} margin: 0; padding: 0;">${text}</span>
                 <div style="display: flex; gap: 8px; margin-left: auto;">
                   <button id="approve-tool-${idx}" class="continuation-option-btn" 
                           style="margin: 0; padding: 4px 12px; background: var(--primary); border: none; color: white; border-radius: 100px; cursor: pointer; font-size: 0.8em; font-weight: 500; opacity: 1; transform: none; animation: none; transition: transform 0.1s ease;">
@@ -2638,16 +2747,20 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
               </div>
             `;
           } else if (anyWorking) {
+            const text = actionType === 'web_search' ? 'Searching...' : 'Reading...';
             badgeHtml = `
               <div class="genai-inline-tool genai-tool-working" id="genai-tool-${idx}">
-                <span class="genai-working-text">Searching...</span>
+                <span class="genai-working-text">${text}</span>
               </div>
             `;
           } else {
-            const count = webTools.length;
+            const count = associatedGroup.length;
+            const text = actionType === 'web_search'
+              ? `Web Search completed for ${count} ${count === 1 ? 'query' : 'queries'}.`
+              : `Web Fetch completed for ${count} ${count === 1 ? 'webpage' : 'webpages'}.`;
             badgeHtml = `
               <div class="genai-inline-tool genai-tool-done" id="genai-tool-${idx}">
-                <span class="genai-working-text" style="${onceSweepStyle}">Web Search completed for ${count} ${count === 1 ? 'query' : 'queries'}.</span>
+                <span class="genai-working-text" style="${onceSweepStyle}">${text}</span>
               </div>
             `;
           }
@@ -2740,6 +2853,94 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
     bubbleEl.style.width = '';
   }
 
+  const isNewAnimation = settings.new_streaming_animation;
+  const streamingSpeed = settings.streaming_speed || 45;
+
+  if (isNewAnimation) {
+    if (streaming) {
+      if (!entry.revealInterval) {
+        entry.revealedWordsCount = 0;
+        entry.charsToWait = 0;
+        const charsPerTick = 33 * (streamingSpeed / 1000);
+
+        entry.isDraining = false;
+        entry.revealQueue = [];
+        entry.queuedNodes = new Set();
+
+        entry.processQueue = async () => {
+          if (entry.isDraining) return;
+          entry.isDraining = true;
+          
+          while (entry.revealQueue.length > 0) {
+            const word = entry.revealQueue.shift();
+            entry.queuedNodes.delete(word);
+            
+            if (word && word.isConnected && !word.classList.contains('revealed')) {
+              word.classList.add('revealed');
+              const idx = parseInt(word.getAttribute('data-word-index') || '0', 10);
+              entry.revealedWordsCount = Math.max(entry.revealedWordsCount || 0, idx + 1);
+            }
+            
+            await new Promise(r => requestAnimationFrame(r));
+          }
+          entry.isDraining = false;
+        };
+
+        entry.revealInterval = setInterval(() => {
+          if (!textCont || !textCont.isConnected) {
+            clearInterval(entry.revealInterval);
+            entry.revealInterval = null;
+            return;
+          }
+
+          if (entry.charsToWait > 0) {
+            entry.charsToWait -= charsPerTick;
+            if (entry.charsToWait > 0) return;
+          }
+          let availableChars = Math.abs(entry.charsToWait || 0);
+          entry.charsToWait = 0;
+
+          while (true) {
+            const unrevealed = textCont.querySelectorAll('.word-reveal:not(.revealed)');
+            if (unrevealed.length === 0) {
+              if (entry.streamFinished && entry.revealQueue.length === 0) {
+                clearInterval(entry.revealInterval);
+                entry.revealInterval = null;
+              }
+              break;
+            }
+            
+            const nextWord = unrevealed[0];
+            if (entry.queuedNodes.has(nextWord)) break;
+            
+            const wordLen = nextWord.textContent.length || 1;
+            entry.queuedNodes.add(nextWord);
+            entry.revealQueue.push(nextWord);
+
+            entry.charsToWait += wordLen;
+            if (entry.charsToWait > availableChars) {
+              entry.charsToWait -= availableChars;
+              break;
+            } else {
+              availableChars -= entry.charsToWait;
+              entry.charsToWait = 0;
+            }
+          }
+          
+          if (entry.revealQueue.length > 0) {
+            entry.processQueue();
+          }
+        }, 33);
+      }
+    } else {
+      entry.streamFinished = true;
+    }
+
+    if (streaming || entry.revealInterval) {
+      html = wrapWordsInSpans(html, true, entry.revealedWordsCount || 0, streamingSpeed);
+    }
+  }
+
   const temp = document.createElement('div');
   temp.className = 'genai-msg-text-container';
   temp.innerHTML = html;
@@ -2754,7 +2955,7 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
 
   const shouldAnimate = streaming || animate;
 
-  if (shouldAnimate) {
+  if (shouldAnimate && !isNewAnimation) {
     // Apply custom GenAI animations and paragraph buffering
     processGenaiBubbleDom(temp, streaming);
   }
@@ -2766,6 +2967,21 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
       if (from.nodeName === 'THINKING-SNIPPETS') {
         if (to.hasAttribute('thoughts')) {
           from.setAttribute('thoughts', to.getAttribute('thoughts'));
+        }
+        return false;
+      }
+      if (from.classList && from.classList.contains('word-reveal') && from.classList.contains('revealed')) {
+        to.classList.add('revealed');
+      }
+      // Force clearing of display: none style when elements should no longer be hidden
+      if (from.style && from.style.display === 'none' && to.style.display !== 'none') {
+        from.style.display = '';
+      }
+      // For table elements: replace innerHTML directly to avoid morphdom
+      // re-creating table rows which have no node keys, causing flicker/disappearance
+      if (from.nodeName === 'TABLE') {
+        if (from.innerHTML !== to.innerHTML) {
+          from.innerHTML = to.innerHTML;
         }
         return false;
       }
@@ -2788,6 +3004,17 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
     });
   }
 
+  // After final render, drain any remaining word-reveal spans
+  if (isNewAnimation && !streaming) {
+    const drain = setInterval(() => {
+      const unrevealed = textCont.querySelectorAll('.word-reveal:not(.revealed)');
+      if (unrevealed.length > 0) {
+        unrevealed[0].classList.add('revealed');
+      } else {
+        clearInterval(drain);
+      }
+    }, 33);
+  }
 
   // Attach click listeners to GenAI inline suggestion texts
   textCont.querySelectorAll('.genai-inline-text-suggest').forEach(btn => {
@@ -3236,23 +3463,32 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
     bubbleEl = _continuationBubble;
 
     // If Extended thinking mode is off but we are using model thinking (reasoning_effort !== 'none'),
-    // we want to transition to a new phase of generation by appending [[THINKING_BLOCK]]
+    // we want to transition to a new phase of generation by appending [[THINKING_BLOCK_p]]
     // at the end of the existing content. This ensures the active thinking snippets appear at the bottom
     // during thinking, but the final response is generated below it (so Done stays above the final response).
     if (!isMaxThinking && settingsStore.get().reasoning_effort !== 'none') {
+      if (!assistantEntry.thinking_blocks) {
+        assistantEntry.thinking_blocks = [];
+      }
+      if (assistantEntry.thinking && assistantEntry.thinking_blocks.length === 0) {
+        assistantEntry.thinking_blocks.push(assistantEntry.thinking);
+      }
+      // Remove deprecated [[THINKING_BLOCK]] markers just in case
       if (assistantEntry.content.includes('[[THINKING_BLOCK]]')) {
         assistantEntry.content = assistantEntry.content
           .replace(/\[\[THINKING_BLOCK\]\]/g, '')
           .replace(/\n{3,}/g, '\n\n')
           .trim();
       }
-      assistantEntry.content = assistantEntry.content.trim() ? assistantEntry.content + '\n\n[[THINKING_BLOCK]]\n\n' : '[[THINKING_BLOCK]]\n\n';
+      const nextBlockIdx = assistantEntry.thinking_blocks.length;
+      assistantEntry.content = assistantEntry.content.trim() ? assistantEntry.content + `\n\n[[THINKING_BLOCK_${nextBlockIdx}]]\n\n` : `[[THINKING_BLOCK_${nextBlockIdx}]]\n\n`;
     }
   } else {
     assistantEntry = {
       role: 'assistant',
       content: '',
       tools: [],
+      thinking_blocks: [],
       timestamp: new Date().toISOString()
     };
     genaiHistory.push(assistantEntry);
@@ -3264,6 +3500,7 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
 
   scrollToBottom();
 
+  let totalThinkingTime = assistantEntry.thinking_time || 0;
   let maxPhase = isMaxThinking ? (_continuationEntry ? 2 : 1) : 0;
   let actionDetected = null;
 
@@ -3303,7 +3540,13 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
         }
       }
       if (assistantEntry.content) {
-        currentApiMessages.push({ role: 'assistant', content: assistantEntry.content });
+        const cleanedContent = assistantEntry.content
+          .replace(/\[\[THINKING_BLOCK\]\]/g, '')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim();
+        if (cleanedContent) {
+          currentApiMessages.push({ role: 'assistant', content: cleanedContent });
+        }
       }
       currentApiMessages.push({
         role: 'system',
@@ -3311,9 +3554,13 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
       });
     }
 
-    let fullText = '';
+    const settings = settingsStore.get();
+    let fullText = (settings.genai_force_reasoning && settings.genai_reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') ? settings.genai_reasoning_tag_open + '\n' : '';
     let thinkingTextGenai = '';
     let thinkingActiveGenai = false;
+    let thinkingStartTime = Date.now();
+    let thinkingTime = 0;
+    let thinkingActiveInlineGenai = false;
     let showOutputDetected = false;
     let thinkExtendedDetected = false;
     let skipThinkingDetected = false;
@@ -3328,7 +3575,20 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
           if (actionDetected) return;
           fullText += chunk;
 
-          if (thinkingActiveGenai) thinkingActiveGenai = false;
+          if (thinkingActiveGenai) {
+            thinkingActiveGenai = false;
+            thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
+          } else {
+            const parsedInline = parseStreamThinking(fullText, settings.genai_reasoning_tag_open, settings.genai_reasoning_tag_close);
+            if (parsedInline.isInThinking && !thinkingActiveInlineGenai) {
+              thinkingActiveInlineGenai = true;
+              thinkingStartTime = Date.now();
+            }
+            if (thinkingActiveInlineGenai && !parsedInline.isInThinking && parsedInline.thinking) {
+              thinkingActiveInlineGenai = false;
+              thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
+            }
+          }
 
           if (maxPhase >= 2 && fullText.includes('<thinkextended>')) {
             thinkExtendedDetected = true;
@@ -3411,7 +3671,22 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
                    }
                 }
                 
-                assistantEntry.content = assistantEntry.content.substring(0, originalContentLength) + before + marker;
+                let parsedBefore = before;
+                let parsedThinking = '';
+                if (thinkingTextGenai) {
+                  parsedThinking = thinkingTextGenai;
+                  const parsed = parseThinking(before, settings.genai_reasoning_tag_open, settings.genai_reasoning_tag_close);
+                  parsedBefore = parsed.content;
+                } else {
+                  const parsed = parseThinking(before, settings.genai_reasoning_tag_open, settings.genai_reasoning_tag_close);
+                  parsedBefore = parsed.content;
+                  parsedThinking = parsed.thinking || '';
+                }
+                
+                assistantEntry.content = assistantEntry.content.substring(0, originalContentLength) + parsedBefore + marker;
+                if (parsedThinking) {
+                  assistantEntry.thinking = assistantEntry.thinking ? assistantEntry.thinking + '\n\n' + parsedThinking : parsedThinking;
+                }
                 originalContentLength = assistantEntry.content.length;
                 fullText = '';
                 renderAssistantBubble(assistantEntry, bubbleEl, { cursor: true, streaming: true });
@@ -3422,7 +3697,23 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
 
             const toolIdx = assistantEntry.tools.length;
             const marker = `[[GENAI_TOOL_${toolIdx}]]`;
-            assistantEntry.content = assistantEntry.content.substring(0, originalContentLength) + before + marker;
+            
+            let parsedBefore2 = before;
+            let parsedThinking2 = '';
+            if (thinkingTextGenai) {
+              parsedThinking2 = thinkingTextGenai;
+              const parsed = parseThinking(before, settings.genai_reasoning_tag_open, settings.genai_reasoning_tag_close);
+              parsedBefore2 = parsed.content;
+            } else {
+              const parsed = parseThinking(before, settings.genai_reasoning_tag_open, settings.genai_reasoning_tag_close);
+              parsedBefore2 = parsed.content;
+              parsedThinking2 = parsed.thinking || '';
+            }
+            
+            assistantEntry.content = assistantEntry.content.substring(0, originalContentLength) + parsedBefore2 + marker;
+            if (parsedThinking2) {
+              assistantEntry.thinking = assistantEntry.thinking ? assistantEntry.thinking + '\n\n' + parsedThinking2 : parsedThinking2;
+            }
             originalContentLength = assistantEntry.content.length;
 
             try {
@@ -3569,9 +3860,28 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
             }
           }
 
-          let assistantState = { ...assistantEntry, content: assistantEntry.content.substring(0, originalContentLength) + finalDisplay };
+          let assistantState = { 
+            ...assistantEntry, 
+            content: assistantEntry.content.substring(0, originalContentLength) + finalDisplay,
+            thinking_time: totalThinkingTime + thinkingTime
+          };
           if (thinkingTextGenai) {
-            assistantState.thinking = assistantEntry.thinking ? assistantEntry.thinking + '\n\n' + thinkingTextGenai : thinkingTextGenai;
+            if (!isMaxThinking) {
+              if (!assistantEntry.thinking_blocks) {
+                assistantEntry.thinking_blocks = [];
+              }
+              if (assistantEntry.thinking && assistantEntry.thinking_blocks.length === 0) {
+                assistantEntry.thinking_blocks.push(assistantEntry.thinking);
+              }
+              const activeIdx = assistantEntry.thinking_blocks.length;
+              const blocksCopy = [...assistantEntry.thinking_blocks];
+              blocksCopy[activeIdx] = thinkingTextGenai;
+              
+              assistantState.thinking_blocks = blocksCopy;
+              assistantState.thinking = blocksCopy.join('\n\n');
+            } else {
+              assistantState.thinking = assistantEntry.thinking ? assistantEntry.thinking + '\n\n' + thinkingTextGenai : thinkingTextGenai;
+            }
             assistantState.isInThinking = thinkingActiveGenai;
           }
 
@@ -3613,10 +3923,39 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
                }
             }
             
-            assistantEntry.content = assistantEntry.content.substring(0, originalContentLength) + finalContinuation;
+            let parsedContinuation = finalContinuation;
+            let parsedThinking = '';
             if (thinkingTextGenai) {
-              assistantEntry.thinking = assistantEntry.thinking ? assistantEntry.thinking + '\n\n' + thinkingTextGenai : thinkingTextGenai;
+              parsedThinking = thinkingTextGenai;
+              const parsed = parseThinking(finalContinuation, settings.genai_reasoning_tag_open, settings.genai_reasoning_tag_close);
+              parsedContinuation = parsed.content;
+            } else {
+              const parsed = parseThinking(finalContinuation, settings.genai_reasoning_tag_open, settings.genai_reasoning_tag_close);
+              parsedContinuation = parsed.content;
+              parsedThinking = parsed.thinking || '';
             }
+
+            assistantEntry.content = assistantEntry.content.substring(0, originalContentLength) + parsedContinuation;
+            if (parsedThinking) {
+              if (!isMaxThinking) {
+                if (!assistantEntry.thinking_blocks) {
+                  assistantEntry.thinking_blocks = [];
+                }
+                if (assistantEntry.thinking && assistantEntry.thinking_blocks.length === 0) {
+                  assistantEntry.thinking_blocks.push(assistantEntry.thinking);
+                }
+                const activeIdx = assistantEntry.thinking_blocks.length;
+                assistantEntry.thinking_blocks[activeIdx] = parsedThinking;
+                assistantEntry.thinking = assistantEntry.thinking_blocks.join('\n\n');
+              } else {
+                assistantEntry.thinking = assistantEntry.thinking ? assistantEntry.thinking + '\n\n' + parsedThinking : parsedThinking;
+              }
+              if (thinkingTime === 0) {
+                thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
+              }
+            }
+            totalThinkingTime += thinkingTime;
+            assistantEntry.thinking_time = totalThinkingTime;
             
             if (maxPhase === 1) {
               if (skipThinkingDetected) {
@@ -3653,14 +3992,47 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
           top_k: settingsStore.get().genai_top_k ?? 40,
           rep_penalty: settingsStore.get().genai_rep_penalty ?? 1.0,
           smoothing_factor: settingsStore.get().genai_smoothing_factor ?? 0,
+          min_p: settingsStore.get().genai_min_p ?? 0.05,
+          min_p_enabled: settingsStore.get().genai_min_p_enabled ?? true,
+          adaptive_target: settingsStore.get().genai_adaptive_target ?? 0.8,
+          adaptive_target_enabled: settingsStore.get().genai_adaptive_target_enabled ?? true,
+          adaptive_decay: settingsStore.get().genai_adaptive_decay ?? 0.9,
+          adaptive_decay_enabled: settingsStore.get().genai_adaptive_decay_enabled ?? true,
           max_tokens: settingsStore.get().genai_max_tokens || 2048,
+          presence_penalty: settingsStore.get().genai_presence_penalty ?? 0.0,
           reasoning_effort: effortToUse
         },
         (thinkChunk) => {
+          if (!thinkingActiveGenai) {
+            thinkingActiveGenai = true;
+            thinkingStartTime = Date.now();
+          }
           thinkingTextGenai += thinkChunk;
-          let currentThinking = assistantEntry.thinking ? assistantEntry.thinking + '\n\n' + thinkingTextGenai : thinkingTextGenai;
-          const displayState = { ...assistantEntry, thinking: currentThinking, isInThinking: true };
-          renderAssistantBubble(displayState, bubbleEl, { cursor: true, streaming: true });
+          
+          if (!isMaxThinking) {
+            if (!assistantEntry.thinking_blocks) {
+              assistantEntry.thinking_blocks = [];
+            }
+            if (assistantEntry.thinking && assistantEntry.thinking_blocks.length === 0) {
+              assistantEntry.thinking_blocks.push(assistantEntry.thinking);
+            }
+            const activeIdx = assistantEntry.thinking_blocks.length;
+            const blocksCopy = [...assistantEntry.thinking_blocks];
+            blocksCopy[activeIdx] = thinkingTextGenai;
+            
+            const displayState = { 
+              ...assistantEntry, 
+              thinking_blocks: blocksCopy,
+              thinking: blocksCopy.join('\n\n'),
+              isInThinking: true, 
+              thinking_time: totalThinkingTime + thinkingTime 
+            };
+            renderAssistantBubble(displayState, bubbleEl, { cursor: true, streaming: true });
+          } else {
+            let currentThinking = assistantEntry.thinking ? assistantEntry.thinking + '\n\n' + thinkingTextGenai : thinkingTextGenai;
+            const displayState = { ...assistantEntry, thinking: currentThinking, isInThinking: true, thinking_time: totalThinkingTime + thinkingTime };
+            renderAssistantBubble(displayState, bubbleEl, { cursor: true, streaming: true });
+          }
           scrollToBottom();
         }
       );
@@ -3710,7 +4082,9 @@ async function handleActionDetected(assistantEntry, bubbleEl) {
     if (!tool) return;
 
     // Check if the action requires user approval before execution
-    const name = tool.action.genai_action;
+    const name = tool.action.genai_action || tool.action.name;
+    const isWebTool = name === 'web_search' || name === 'web_fetch';
+    const uiToolIdx = isWebTool ? getUiToolIdx(assistantEntry, toolIdx) : toolIdx;
 
     if (name === 'viewimage') {
       tool.state = 'working';
@@ -3785,8 +4159,8 @@ async function handleActionDetected(assistantEntry, bubbleEl) {
 
       const approved = await new Promise((resolve) => {
         const checkInterval = setInterval(() => {
-          const approveBtn = bubbleEl.querySelector(`#approve-tool-${toolIdx}`);
-          const denyBtn = bubbleEl.querySelector(`#deny-tool-${toolIdx}`);
+          const approveBtn = bubbleEl.querySelector(`#approve-tool-${uiToolIdx}`);
+          const denyBtn = bubbleEl.querySelector(`#deny-tool-${uiToolIdx}`);
           if (approveBtn && denyBtn && !approveBtn._hasListener) {
             approveBtn._hasListener = true;
             approveBtn.addEventListener('click', () => {
@@ -3819,21 +4193,21 @@ async function handleActionDetected(assistantEntry, bubbleEl) {
     const result = await executeTool(
       tool.action,
       (status) => {
-        const loaderStatusEl = bubbleEl.querySelector(`#genai-tool-${toolIdx} .genai-working-text`);
+        const loaderStatusEl = bubbleEl.querySelector(`#genai-tool-${uiToolIdx} .genai-working-text`);
         if (loaderStatusEl) {
           loaderStatusEl.textContent = status;
         }
       },
       (previewUrl) => {
-        const container = bubbleEl.querySelector(`#genai-tool-${toolIdx} .live-preview-container`);
-        const img = bubbleEl.querySelector(`#genai-tool-${toolIdx} .live-preview-img`);
+        const container = bubbleEl.querySelector(`#genai-tool-${uiToolIdx} .live-preview-container`);
+        const img = bubbleEl.querySelector(`#genai-tool-${uiToolIdx} .live-preview-img`);
         if (container && img) {
           container.classList.remove('hidden');
           img.src = previewUrl;
         }
       },
       async (blobUrl) => {
-        const img = bubbleEl.querySelector(`#genai-tool-${toolIdx} .live-preview-img`);
+        const img = bubbleEl.querySelector(`#genai-tool-${uiToolIdx} .live-preview-img`);
         if (img) {
           img.style.filter = 'blur(0px)';
           img.src = blobUrl;
@@ -4027,23 +4401,24 @@ async function handleMultipleActions(pendingTools, assistantEntry, bubbleEl) {
       renderAssistantBubble(assistantEntry, bubbleEl);
       scrollToBottom();
 
-      const firstTool = pendingTools[0];
-      const firstToolIdx = assistantEntry.tools.indexOf(firstTool);
+      const uiToolIndices = [...new Set(pendingTools.map(t => getUiToolIdx(assistantEntry, assistantEntry.tools.indexOf(t))))];
 
       approved = await new Promise((resolve) => {
         const checkInterval = setInterval(() => {
-          const approveBtn = bubbleEl.querySelector(`#approve-tool-${firstToolIdx}`);
-          const denyBtn = bubbleEl.querySelector(`#deny-tool-${firstToolIdx}`);
-          if (approveBtn && denyBtn && !approveBtn._hasListener) {
-            approveBtn._hasListener = true;
-            approveBtn.addEventListener('click', () => {
-              clearInterval(checkInterval);
-              resolve(true);
-            });
-            denyBtn.addEventListener('click', () => {
-              clearInterval(checkInterval);
-              resolve(false);
-            });
+          for (const idx of uiToolIndices) {
+            const approveBtn = bubbleEl.querySelector(`#approve-tool-${idx}`);
+            const denyBtn = bubbleEl.querySelector(`#deny-tool-${idx}`);
+            if (approveBtn && denyBtn && !approveBtn._hasListener) {
+              approveBtn._hasListener = true;
+              approveBtn.addEventListener('click', () => {
+                clearInterval(checkInterval);
+                resolve(true);
+              });
+              denyBtn.addEventListener('click', () => {
+                clearInterval(checkInterval);
+                resolve(false);
+              });
+            }
           }
         }, 100);
       });
@@ -4071,25 +4446,26 @@ async function handleMultipleActions(pendingTools, assistantEntry, bubbleEl) {
 
     const executionPromises = pendingTools.map(async (tool) => {
       const toolIdx = assistantEntry.tools.indexOf(tool);
+      const uiToolIdxForThisTool = getUiToolIdx(assistantEntry, toolIdx);
       try {
         const result = await executeTool(
           tool.action,
           (status) => {
-            const loaderStatusEl = bubbleEl.querySelector(`#genai-tool-${toolIdx} .genai-working-text`);
+            const loaderStatusEl = bubbleEl.querySelector(`#genai-tool-${uiToolIdxForThisTool} .genai-working-text`);
             if (loaderStatusEl) {
               loaderStatusEl.textContent = status;
             }
           },
           (previewUrl) => {
-            const container = bubbleEl.querySelector(`#genai-tool-${toolIdx} .live-preview-container`);
-            const img = bubbleEl.querySelector(`#genai-tool-${toolIdx} .live-preview-img`);
+            const container = bubbleEl.querySelector(`#genai-tool-${uiToolIdxForThisTool} .live-preview-container`);
+            const img = bubbleEl.querySelector(`#genai-tool-${uiToolIdxForThisTool} .live-preview-img`);
             if (container && img) {
               container.classList.remove('hidden');
               img.src = previewUrl;
             }
           },
           async (blobUrl) => {
-            const img = bubbleEl.querySelector(`#genai-tool-${toolIdx} .live-preview-img`);
+            const img = bubbleEl.querySelector(`#genai-tool-${uiToolIdxForThisTool} .live-preview-img`);
             if (img) {
               img.style.filter = 'blur(0px)';
               img.src = blobUrl;
@@ -4155,6 +4531,14 @@ function continueAfterMultipleTools(toolResults, assistantEntry, bubbleEl) {
 }
 
 function continueAfterTool(action, result, assistantEntry, bubbleEl) {
+  if (settingsStore.get().genai_faster_actions === true) {
+    const skipActions = ['generate_image', 'add_char_fact', 'add_memory', 'set_char_final_text', 'remove_char_fact', 'save_character'];
+    if (skipActions.includes(action.genai_action)) {
+      finishGeneration();
+      return;
+    }
+  }
+
   // Strip binary/base64 data from tool results before sending to LLM.
   // This prevents megabytes of image data from polluting the LLM context.
   let resultForLlm = result;
@@ -5526,6 +5910,17 @@ export function initGenAIPanel() {
   window.syncImageGenIndicators = syncImageGenIndicators;
 
   if (btnGenaiToggleImageGen) {
+    // Gear button inside — intercept clicks to open settings modal instead of toggling
+    const gearBtn = document.getElementById('btn-genai-imagegen-settings');
+    if (gearBtn) {
+      gearBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        plusPopover.classList.add('hidden');
+        openWindow('modal-settings-imagegen');
+      });
+    }
+
     btnGenaiToggleImageGen.addEventListener('click', (e) => {
       e.stopPropagation();
       const current = settingsStore.get();

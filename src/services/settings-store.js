@@ -11,11 +11,20 @@ const DEFAULTS = {
   top_k: 40,
   rep_penalty: 1.0,
   smoothing_factor: 0,
+  min_p: 0.05,
+  min_p_enabled: true,
+  adaptive_target: 0.8,
+  adaptive_target_enabled: true,
+  adaptive_decay: 0.9,
+  adaptive_decay_enabled: true,
+  presence_penalty: 0.0,
   active_generation_preset_id: 'default',
   generation_presets: [
-    { id: 'default', name: 'Default', max_tokens: 2048, temperature: 0.7, top_p: 0.9, top_k: 40, rep_penalty: 1.0, smoothing_factor: 0 },
-    { id: 'glm47flash', name: 'GLM 4.7 Flash (Creative)', max_tokens: 2048, temperature: 1.0, top_p: 0.95, top_k: 40, rep_penalty: 1.1, smoothing_factor: 1.5 },
-    { id: 'glm46', name: 'GLM 4.6 (Unsloth)', max_tokens: 2048, temperature: 0.8, top_p: 0.6, top_k: 2, rep_penalty: 1.0, smoothing_factor: 0 }
+    { id: 'default', name: 'Default', max_tokens: 2048, temperature: 0.7, top_p: 0.9, top_k: 40, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: true, adaptive_decay: 0.9, adaptive_decay_enabled: true, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>' },
+    { id: 'glm47flash', name: 'GLM 4.7 Flash (Creative)', max_tokens: 2048, temperature: 1.0, top_p: 0.95, top_k: 40, rep_penalty: 1.1, smoothing_factor: 1.5, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: true, adaptive_decay: 0.9, adaptive_decay_enabled: true, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>' },
+    { id: 'glm46', name: 'GLM 4.6 (Unsloth)', max_tokens: 2048, temperature: 0.8, top_p: 0.6, top_k: 2, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: true, adaptive_decay: 0.9, adaptive_decay_enabled: true, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>' },
+    { id: 'qwen35stable', name: 'Qwen 3.5 MoE (stable)', max_tokens: 4000, temperature: 0.65, top_p: 0.95, top_k: 20, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: false, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 1.6, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>' },
+    { id: 'qwen35official', name: 'Qwen 3.5 MoE (Official)', max_tokens: 4000, temperature: 1.0, top_p: 0.95, top_k: 20, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: false, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 1.5, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>' }
   ],
   user_name: 'User',
   active_persona_id: 'default',
@@ -36,6 +45,13 @@ const DEFAULTS = {
   genai_top_k: 40,
   genai_rep_penalty: 1.0,
   genai_smoothing_factor: 0,
+  genai_min_p: 0.05,
+  genai_min_p_enabled: true,
+  genai_adaptive_target: 0.8,
+  genai_adaptive_target_enabled: true,
+  genai_adaptive_decay: 0.9,
+  genai_adaptive_decay_enabled: true,
+  genai_presence_penalty: 0.0,
   active_genai_generation_preset_id: 'default',
   response_length: 'auto',
   description_depth: 0,
@@ -59,8 +75,17 @@ const DEFAULTS = {
   genai_safe_mode: false,
   genai_viewimage_enabled: false,
   genai_imagered_enabled: true,
+  genai_faster_actions: false,
   genai_smart_context: false,
   genai_smart_context_token_limit: 1500,
+  force_reasoning: false,
+  reasoning_tag_open: '<think>',
+  reasoning_tag_close: '</think>',
+  genai_force_reasoning: false,
+  genai_reasoning_tag_open: '<think>',
+  genai_reasoning_tag_close: '</think>',
+  new_streaming_animation: false,
+  streaming_speed: 45,
   game_system_prompt: 'You are a Game Master in an interactive text RPG.',
   game_response_length: 'default',
   active_game_prompt_preset_id: 'default-game-1',
@@ -101,6 +126,7 @@ const DEFAULTS = {
   comfyui_unet_name: 'anima_baseV10.safetensors',
   comfyui_clip_name: 'qwen_3_06b_base.safetensors',
   comfyui_vae_name: 'qwen_image_vae.safetensors',
+  comfyui_loras: [],
   custom_indicator_presets: [],
   active_system_prompt_preset_id: 'default-1',
   system_prompt_presets: [
@@ -143,12 +169,30 @@ export const settingsStore = {
     try {
       const result = await invokeTauri('load_settings');
       if (result) {
-        settings = { ...DEFAULTS, ...JSON.parse(result) };
+        const parsed = JSON.parse(result);
+        if (parsed.generation_presets) {
+          const defaultIds = DEFAULTS.generation_presets.map(p => p.id);
+          const userPresets = parsed.generation_presets.filter(p => !defaultIds.includes(p.id));
+          parsed.generation_presets = [
+            ...DEFAULTS.generation_presets,
+            ...userPresets
+          ];
+        }
+        settings = { ...DEFAULTS, ...parsed };
       } else {
         // localStorage fallback
         const saved = localStorage.getItem('llmchat_settings');
         if (saved) {
-          settings = { ...DEFAULTS, ...JSON.parse(saved) };
+          const parsed = JSON.parse(saved);
+          if (parsed.generation_presets) {
+            const defaultIds = DEFAULTS.generation_presets.map(p => p.id);
+            const userPresets = parsed.generation_presets.filter(p => !defaultIds.includes(p.id));
+            parsed.generation_presets = [
+              ...DEFAULTS.generation_presets,
+              ...userPresets
+            ];
+          }
+          settings = { ...DEFAULTS, ...parsed };
         }
       }
     } catch (e) {
@@ -197,6 +241,7 @@ export const SETTING_META = {
   genai_safe_mode: { label: 'GenAI Safe Mode', type: 'bool' },
   genai_viewimage_enabled: { label: 'Allow Vision Analysis (viewimage)', type: 'bool' },
   genai_imagered_enabled: { label: 'Enable Image Editor (ImageRed) (In development)', type: 'bool' },
+  genai_faster_actions: { label: 'Faster Actions', type: 'bool' },
   genai_system_prompt_addition: { label: 'GenAI System Prompt Addition', type: 'string' },
   game_system_prompt: { label: 'Game Master Prompt', type: 'string' },
   game_response_length: { label: 'Game Response Length', type: 'enum', values: ['short', 'default', 'long'] },
@@ -206,10 +251,24 @@ export const SETTING_META = {
   top_k: { label: 'Top-K', type: 'number' },
   rep_penalty: { label: 'Repetition Penalty', type: 'number' },
   smoothing_factor: { label: 'Smoothing Factor', type: 'number' },
+  min_p: { label: 'Min-P', type: 'number' },
+  min_p_enabled: { label: 'Enable Min-P', type: 'bool' },
+  adaptive_target: { label: 'Adaptive Target', type: 'number' },
+  adaptive_target_enabled: { label: 'Enable Adaptive Target', type: 'bool' },
+  adaptive_decay: { label: 'Adaptive Decay', type: 'number' },
+  adaptive_decay_enabled: { label: 'Enable Adaptive Decay', type: 'bool' },
+  presence_penalty: { label: 'Presence Penalty', type: 'number' },
   genai_temperature: { label: 'GenAI Temperature', type: 'number' },
   genai_top_p: { label: 'GenAI Top-P', type: 'number' },
   genai_top_k: { label: 'GenAI Top-K', type: 'number' },
   genai_rep_penalty: { label: 'GenAI Repetition Penalty', type: 'number' },
   genai_smoothing_factor: { label: 'GenAI Smoothing Factor', type: 'number' },
+  genai_min_p: { label: 'GenAI Min-P', type: 'number' },
+  genai_min_p_enabled: { label: 'Enable GenAI Min-P', type: 'bool' },
+  genai_adaptive_target: { label: 'GenAI Adaptive Target', type: 'number' },
+  genai_adaptive_target_enabled: { label: 'Enable GenAI Adaptive Target', type: 'bool' },
+  genai_adaptive_decay: { label: 'GenAI Adaptive Decay', type: 'number' },
+  genai_adaptive_decay_enabled: { label: 'Enable GenAI Adaptive Decay', type: 'bool' },
+  genai_presence_penalty: { label: 'GenAI Presence Penalty', type: 'number' },
 };
 

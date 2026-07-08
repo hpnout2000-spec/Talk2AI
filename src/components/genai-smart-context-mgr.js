@@ -334,7 +334,8 @@ export async function updateSessionSummaryIfNeeded(session, force = false) {
 
         const summary = await api.chatCompletion(payload, { 
           priority: 'background',
-          temperature: 0.3
+          temperature: 0.3,
+          reasoning_effort: 'none'
         });
         
         if (summary && summary.trim().length > 0) {
@@ -360,7 +361,8 @@ export async function updateSessionSummaryIfNeeded(session, force = false) {
         
         const combined = await api.chatCompletion(payload, {
           priority: 'background',
-          temperature: 0.3
+          temperature: 0.3,
+          reasoning_effort: 'none'
         });
         
         finalSummary = combined ? combined.trim() : '';

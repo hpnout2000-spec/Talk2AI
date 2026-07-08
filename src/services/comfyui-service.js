@@ -7,7 +7,7 @@ import { settingsStore } from './settings-store.js';
 /**
  * Build the Anima workflow in ComfyUI API format
  */
-function buildAnimaWorkflow(prompt, negPrompt, settings) {
+function buildAnimaWorkflow(prompt, negPrompt, settings, loras = []) {
   const seed = Math.floor(Math.random() * 2 ** 32);
   const steps = settings.comfyui_steps ?? 30;
   const cfg = settings.comfyui_cfg ?? 4.5;
@@ -19,7 +19,10 @@ function buildAnimaWorkflow(prompt, negPrompt, settings) {
   const clipName = settings.comfyui_clip_name ?? 'qwen_3_06b_base.safetensors';
   const vaeName = settings.comfyui_vae_name ?? 'qwen_image_vae.safetensors';
 
-  return {
+  let currentModel = ["1", 0];
+  let currentClip = ["2", 0];
+
+  const workflow = {
     "1": {
       "class_type": "UNETLoader",
       "inputs": {
@@ -44,14 +47,14 @@ function buildAnimaWorkflow(prompt, negPrompt, settings) {
       "class_type": "CLIPTextEncode",
       "inputs": {
         "text": prompt,
-        "clip": ["2", 0]
+        "clip": null // Will be set after Loras
       }
     },
     "5": {
       "class_type": "CLIPTextEncode",
       "inputs": {
         "text": negPrompt || "lowres, bad anatomy, worst quality, blurry, watermark",
-        "clip": ["2", 0]
+        "clip": null // Will be set after Loras
       }
     },
     "6": {
@@ -65,7 +68,7 @@ function buildAnimaWorkflow(prompt, negPrompt, settings) {
     "7": {
       "class_type": "KSampler",
       "inputs": {
-        "model": ["1", 0],
+        "model": null, // Will be set after Loras
         "positive": ["4", 0],
         "negative": ["5", 0],
         "latent_image": ["6", 0],
@@ -92,6 +95,30 @@ function buildAnimaWorkflow(prompt, negPrompt, settings) {
       }
     }
   };
+
+  if (Array.isArray(loras) && loras.length > 0) {
+    loras.forEach((lora, idx) => {
+      const nodeId = String(100 + idx);
+      workflow[nodeId] = {
+        "class_type": "LoraLoader",
+        "inputs": {
+          "model": currentModel,
+          "clip": currentClip,
+          "lora_name": lora.name,
+          "strength_model": lora.strength,
+          "strength_clip": lora.strength
+        }
+      };
+      currentModel = [nodeId, 0];
+      currentClip = [nodeId, 1];
+    });
+  }
+
+  workflow["4"].inputs.clip = currentClip;
+  workflow["5"].inputs.clip = currentClip;
+  workflow["7"].inputs.model = currentModel;
+
+  return workflow;
 }
 
 /**
@@ -192,8 +219,36 @@ export async function generateImageComfyUI(prompt, arg2 = null, arg3 = null, arg
   }
 
   try {
+    let finalPrompt = prompt;
+    let finalLoras = [];
+
+    // Parse <lora:name:weight> tags
+    const loraRegex = /<lora:([^:]+)(?::([^>]+))?>/g;
+    let match;
+    while ((match = loraRegex.exec(prompt)) !== null) {
+      finalLoras.push({
+        name: match[1],
+        strength: parseFloat(match[2] || 1.0)
+      });
+    }
+    finalPrompt = finalPrompt.replace(loraRegex, '').replace(/\s{2,}/g, ' ').trim();
+
+    // Add forced Loras from settings
+    if (settings.comfyui_loras && Array.isArray(settings.comfyui_loras)) {
+      settings.comfyui_loras.forEach(l => {
+        if (l.enabled && l.force) {
+          const existing = finalLoras.find(x => x.name === l.name);
+          if (existing) {
+            existing.strength = l.strength;
+          } else {
+            finalLoras.push({ name: l.name, strength: l.strength });
+          }
+        }
+      });
+    }
+
     // 1. Build workflow
-    const workflow = buildAnimaWorkflow(prompt, negPrompt, settings);
+    const workflow = buildAnimaWorkflow(finalPrompt, negPrompt, settings, finalLoras);
 
     // 2. Queue the prompt
     const queueResp = await fetch(`${baseUrl}/prompt`, {

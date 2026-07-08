@@ -9,8 +9,9 @@ import { checkComfyUIConnection } from '../services/comfyui-service.js';
 import { localSyncService } from '../services/local-sync-service.js';
 import { escapeHtml } from '../utils/helpers.js';
 
-let currentSettings;
+let currentSettings = {};
 let editingGamePresetId = null;
+let editingLoras = [];
 
 export function initSettingsPanel() {
   const panel = document.getElementById('settings-panel');
@@ -187,6 +188,8 @@ function loadSettingsToUI() {
   checkField('setting-auto-translate', settings.auto_translate);
   checkField('setting-translate-user', settings.translate_user_messages);
   checkField('setting-italic-asterisks', settings.italic_asterisks);
+  checkField('setting-new-streaming-animation', settings.new_streaming_animation);
+  setRangeValue('setting-streaming-speed', 'streaming-speed-value', settings.streaming_speed || 45);
   checkField('setting-ai-comments', settings.ai_comments_enabled);
   checkField('setting-suggestions-enabled', settings.suggestions_enabled);
   
@@ -201,8 +204,9 @@ function loadSettingsToUI() {
   const speechStyleDropdown = document.getElementById('setting-genai-speech-style');
   checkField('setting-genai-duo-suggestions', settings.genai_duo_suggestions !== false);
   checkField('setting-genai-safe-mode', settings.genai_safe_mode);
-  checkField('setting-genai-viewimage-enabled', settings.genai_viewimage_enabled);
+  checkField('setting-genai-viewimage-enabled', settings.genai_viewimage_enabled === true);
   checkField('setting-genai-imagered-enabled', settings.genai_imagered_enabled !== false);
+  checkField('setting-genai-faster-actions', settings.genai_faster_actions === true);
 
   // Image Gen settings
   checkField('setting-comfyui-enabled', settings.comfyui_enabled);
@@ -216,17 +220,16 @@ function loadSettingsToUI() {
   setField('setting-comfyui-unet', settings.comfyui_unet_name || 'anima_baseV10.safetensors');
   setField('setting-comfyui-clip', settings.comfyui_clip_name || 'qwen_3_06b_base.safetensors');
   setField('setting-comfyui-vae', settings.comfyui_vae_name || 'qwen_image_vae.safetensors');
-  const stepsEl = document.getElementById('setting-comfyui-steps');
-  const stepsVal = document.getElementById('comfyui-steps-val');
-  if (stepsEl) { stepsEl.value = settings.comfyui_steps ?? 30; if (stepsVal) stepsVal.textContent = stepsEl.value; }
-  const cfgEl = document.getElementById('setting-comfyui-cfg');
-  const cfgVal = document.getElementById('comfyui-cfg-val');
-  if (cfgEl) { cfgEl.value = settings.comfyui_cfg ?? 4.5; if (cfgVal) cfgVal.textContent = parseFloat(cfgEl.value).toFixed(1); }
+  setRangeValue('setting-comfyui-steps', 'comfyui-steps-val', settings.comfyui_steps ?? 30);
+  setRangeValue('setting-comfyui-cfg', 'comfyui-cfg-val', parseFloat(settings.comfyui_cfg ?? 4.5).toFixed(1));
   const wEl = document.getElementById('setting-comfyui-width');
   const hEl = document.getElementById('setting-comfyui-height');
   if (wEl) wEl.value = settings.comfyui_width ?? 832;
   if (hEl) hEl.value = settings.comfyui_height ?? 1216;
   _updateResolutionButtons(settings.comfyui_width ?? 832, settings.comfyui_height ?? 1216);
+
+  editingLoras = JSON.parse(JSON.stringify(settings.comfyui_loras || []));
+  if (typeof renderLorasList === 'function') renderLorasList();
 
   currentSettings = settings;
   editingGamePresetId = settings.active_game_prompt_preset_id || 'default-game-1';
@@ -295,6 +298,8 @@ async function saveSettings() {
     auto_translate: getChecked('setting-auto-translate'),
     translate_user_messages: getChecked('setting-translate-user'),
     italic_asterisks: getChecked('setting-italic-asterisks'),
+    new_streaming_animation: getChecked('setting-new-streaming-animation'),
+    streaming_speed: parseFloat(document.getElementById('setting-streaming-speed')?.value || 45),
     ai_comments_enabled: getChecked('setting-ai-comments'),
     suggestions_enabled: getChecked('setting-suggestions-enabled'),
     target_language: getVal('setting-target-lang'),
@@ -308,6 +313,7 @@ async function saveSettings() {
     genai_safe_mode: getChecked('setting-genai-safe-mode'),
     genai_viewimage_enabled: getChecked('setting-genai-viewimage-enabled'),
     genai_imagered_enabled: getChecked('setting-genai-imagered-enabled'),
+    genai_faster_actions: getChecked('setting-genai-faster-actions'),
     game_prompt_presets: currentSettings.game_prompt_presets,
     active_game_prompt_preset_id: currentSettings.active_game_prompt_preset_id,
     game_system_prompt: getVal('setting-game-system-prompt') || 'You are a Game Master in an interactive text RPG.',
@@ -328,6 +334,7 @@ async function saveSettings() {
     comfyui_unet_name: getVal('setting-comfyui-unet') || current.comfyui_unet_name,
     comfyui_clip_name: getVal('setting-comfyui-clip') || current.comfyui_clip_name,
     comfyui_vae_name: getVal('setting-comfyui-vae') || current.comfyui_vae_name,
+    comfyui_loras: editingLoras
   };
 
   await settingsStore.save(newSettings);
@@ -731,6 +738,214 @@ function initImageGenSettings() {
       closeWindow('modal-settings-imagegen');
     });
   }
+
+  // --- Lora Logic ---
+  const loraHeader = document.getElementById('setting-comfyui-lora-header');
+  const loraContainer = document.getElementById('setting-comfyui-lora-container');
+  const loraChevron = document.getElementById('setting-comfyui-lora-chevron');
+  if (loraHeader && loraContainer && loraChevron) {
+    loraHeader.addEventListener('click', () => {
+      loraContainer.classList.toggle('hidden');
+      if (loraContainer.classList.contains('hidden')) {
+        loraChevron.style.transform = 'rotate(0deg)';
+      } else {
+        loraChevron.style.transform = 'rotate(180deg)';
+      }
+    });
+  }
+
+  const btnAddLora = document.getElementById('btn-add-comfyui-lora');
+  const inputLora = document.getElementById('setting-comfyui-lora-input');
+  if (btnAddLora && inputLora) {
+    btnAddLora.addEventListener('click', () => {
+      const name = inputLora.value.trim();
+      if (!name) return;
+      if (editingLoras.some(l => l.name === name)) {
+        showToast('Lora already exists', 'warning');
+        return;
+      }
+      editingLoras.push({
+        name: name,
+        enabled: true,
+        strength: 1.0,
+        force: false,
+        comment: ''
+      });
+      inputLora.value = '';
+      _persistLoras();
+      renderLorasList();
+    });
+    inputLora.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') btnAddLora.click();
+    });
+  }
+}
+
+/** Persist current editingLoras to settingsStore immediately */
+function _persistLoras() {
+  const current = settingsStore.get();
+  settingsStore.save({ ...current, comfyui_loras: editingLoras });
+}
+
+export function renderLorasList() {
+  const container = document.getElementById('comfyui-loras-list');
+  if (!container) return;
+  container.innerHTML = '';
+  
+  if (editingLoras.length === 0) {
+    const emptyMsg = document.createElement('div');
+    emptyMsg.style.cssText = 'text-align:center;padding:16px 8px;color:var(--text-tertiary);font-size:12px;';
+    emptyMsg.textContent = 'No Loras added yet. Type a name above and click Add.';
+    container.appendChild(emptyMsg);
+    return;
+  }
+  
+  editingLoras.forEach((lora, index) => {
+    const item = document.createElement('div');
+    item.className = `lora-item ${lora.enabled ? 'enabled' : ''}`;
+    
+    // ── Header ──
+    const header = document.createElement('div');
+    header.className = 'lora-item-header';
+    
+    // Left side: toggle + name
+    const leftHeader = document.createElement('div');
+    leftHeader.style.cssText = 'display:flex;align-items:center;gap:8px;min-width:0;flex:1;';
+    
+    // Small toggle switch for enabled
+    const toggleLabel = document.createElement('label');
+    toggleLabel.className = 'toggle-switch tiny';
+    toggleLabel.style.cssText = 'flex-shrink:0;cursor:pointer;';
+    const toggleInput = document.createElement('input');
+    toggleInput.type = 'checkbox';
+    toggleInput.checked = lora.enabled;
+    toggleInput.addEventListener('click', (e) => {
+      e.stopPropagation();
+      editingLoras[index].enabled = toggleInput.checked;
+      _persistLoras();
+      renderLorasList();
+    });
+    const toggleSlider = document.createElement('span');
+    toggleSlider.className = 'toggle-slider';
+    toggleLabel.appendChild(toggleInput);
+    toggleLabel.appendChild(toggleSlider);
+    
+    const title = document.createElement('span');
+    title.textContent = lora.name;
+    title.style.cssText = `font-weight:500;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:${lora.enabled ? 'var(--text-primary)' : 'var(--text-tertiary)'};`;
+    
+    leftHeader.appendChild(toggleLabel);
+    leftHeader.appendChild(title);
+    
+    // Right side: strength badge + force indicator + delete
+    const rightHeader = document.createElement('div');
+    rightHeader.style.cssText = 'display:flex;align-items:center;gap:6px;flex-shrink:0;';
+    
+    if (lora.force) {
+      const forceBadge = document.createElement('span');
+      forceBadge.textContent = 'FORCE';
+      forceBadge.style.cssText = 'font-size:9px;font-weight:700;letter-spacing:0.05em;color:var(--warning);background:rgba(234,179,8,0.12);padding:2px 5px;border-radius:3px;';
+      rightHeader.appendChild(forceBadge);
+    }
+    
+    const strengthBadge = document.createElement('span');
+    strengthBadge.textContent = lora.strength.toFixed(1);
+    strengthBadge.style.cssText = 'font-size:11px;font-weight:600;color:var(--accent-primary);background:rgba(14,165,233,0.1);padding:2px 6px;border-radius:4px;font-variant-numeric:tabular-nums;min-width:28px;text-align:center;';
+    
+    const btnDel = document.createElement('button');
+    btnDel.className = 'lora-btn-delete';
+    btnDel.title = 'Delete Lora';
+    btnDel.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+    btnDel.addEventListener('click', (e) => {
+      e.stopPropagation();
+      editingLoras.splice(index, 1);
+      _persistLoras();
+      renderLorasList();
+    });
+    
+    rightHeader.appendChild(strengthBadge);
+    rightHeader.appendChild(btnDel);
+    
+    header.appendChild(leftHeader);
+    header.appendChild(rightHeader);
+    item.appendChild(header);
+    
+    // ── Collapsible Details ──
+    const details = document.createElement('div');
+    details.className = 'lora-item-details hidden';
+    
+    header.addEventListener('click', () => {
+      details.classList.toggle('hidden');
+    });
+    
+    // Strength slider row
+    const sliderRow = document.createElement('div');
+    sliderRow.className = 'lora-slider-row';
+    
+    const sliderLabel = document.createElement('label');
+    sliderLabel.textContent = 'Strength';
+    
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = '-4';
+    slider.max = '4';
+    slider.step = '0.1';
+    slider.value = lora.strength;
+    slider.className = 'lora-slider';
+    
+    const sliderValue = document.createElement('span');
+    sliderValue.className = 'lora-slider-value';
+    sliderValue.textContent = lora.strength.toFixed(1);
+    
+    slider.addEventListener('input', () => {
+      const val = parseFloat(slider.value);
+      editingLoras[index].strength = val;
+      sliderValue.textContent = val.toFixed(1);
+      strengthBadge.textContent = val.toFixed(1);
+    });
+    slider.addEventListener('change', () => {
+      _persistLoras();
+    });
+    
+    sliderRow.appendChild(sliderLabel);
+    sliderRow.appendChild(slider);
+    sliderRow.appendChild(sliderValue);
+    details.appendChild(sliderRow);
+    
+    // Force Lora checkbox
+    const forceRow = document.createElement('div');
+    forceRow.className = 'lora-force-row';
+    const forceCheck = document.createElement('input');
+    forceCheck.type = 'checkbox';
+    forceCheck.checked = !!lora.force;
+    forceCheck.id = `lora-force-${index}`;
+    forceCheck.addEventListener('change', () => {
+      editingLoras[index].force = forceCheck.checked;
+      _persistLoras();
+      renderLorasList();
+    });
+    const forceLabel = document.createElement('label');
+    forceLabel.htmlFor = `lora-force-${index}`;
+    forceLabel.textContent = 'Force Lora (always applied, AI cannot control)';
+    forceRow.appendChild(forceCheck);
+    forceRow.appendChild(forceLabel);
+    details.appendChild(forceRow);
+    
+    // Comment textarea
+    const commentArea = document.createElement('textarea');
+    commentArea.placeholder = 'Comment for AI — describe what this Lora does (e.g. "makes images look like watercolor paintings")';
+    commentArea.value = lora.comment || '';
+    commentArea.rows = 2;
+    commentArea.style.cssText = 'width:100%;padding:8px 10px;background:var(--bg-secondary);border:1px solid var(--border-light);border-radius:6px;color:var(--text-primary);font-size:13px;resize:vertical;font-family:inherit;';
+    commentArea.addEventListener('change', () => {
+      editingLoras[index].comment = commentArea.value;
+      _persistLoras();
+    });
+    details.appendChild(commentArea);
+    
+    item.appendChild(details);
+    container.appendChild(item);
+  });
 }
 
 function _updateResolutionButtons(w, h) {

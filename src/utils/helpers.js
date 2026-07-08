@@ -343,11 +343,19 @@ export function escapeHtml(text) {
  * Parse thinking blocks from response
  * Returns { thinking: string|null, content: string }
  */
-export function parseThinking(text) {
+export function parseThinking(text, customOpen = null, customClose = null) {
   if (typeof text !== 'string') return { thinking: null, content: '' };
-  // Matches: <|channel>thought...</channel|>  OR  <thought>...</thought>
-  // AND legacy: <think>...</think>  <|think|>...</|think|>  <reasoning>...</reasoning>
-  const thinkRegex = /(?:<\|channel>thought|<\|?think\|?>|<thought>|<reasoning>)([\s\S]*?)(?:<channel\|>|<\|?\/think\|?>|<\/thought>|<\/reasoning>)/;
+  
+  const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const defaultOpen = '<\\|channel>thought|<\\|?think\\|?>|<thought>|<reasoning>';
+  const openPattern = customOpen ? escapeRegExp(customOpen) + '|' + defaultOpen : defaultOpen;
+  
+  const defaultClose = '<channel\\|>|<\\|?\\/think\\|?>|<\\/thought>|<\\/reasoning>';
+  const closePattern = customClose ? escapeRegExp(customClose) + '|' + defaultClose : defaultClose;
+
+  // Build the regex: match open tag, capture everything lazily, match close tag
+  // We use [\s\S]*? to capture across newlines
+  const thinkRegex = new RegExp(`(?:${openPattern})([\\s\\S]*?)(?:${closePattern})`);
   const match = text.match(thinkRegex);
 
   if (match) {
@@ -399,9 +407,14 @@ export function extractThinkingSnippets(text) {
 /**
  * Parse thinking block progress during streaming
  */
-export function parseStreamThinking(text) {
+export function parseStreamThinking(text, customOpen = null, customClose = null) {
   if (typeof text !== 'string') return { thinking: '', content: '', isInThinking: false };
-  const startMatch = text.match(/<think>|<reasoning>|<thought>/);
+  
+  const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const defaultOpen = '<think>|<reasoning>|<thought>';
+  const openPattern = customOpen ? escapeRegExp(customOpen) + '|' + defaultOpen : defaultOpen;
+  const startMatch = text.match(new RegExp(openPattern));
+  
   if (!startMatch) {
     return { thinking: '', content: text, isInThinking: false };
   }
@@ -410,7 +423,9 @@ export function parseStreamThinking(text) {
   const thinkStart = startMatch[0];
   const afterStart = startIdx + thinkStart.length;
 
-  const endMatch = text.substring(afterStart).match(/<channel\|>|<\|?\/think\|?>|<\/thought>|<\/reasoning>/);
+  const defaultClose = '<channel\\|>|<\\|?\\/think\\|?>|<\\/thought>|<\\/reasoning>';
+  const closePattern = customClose ? escapeRegExp(customClose) + '|' + defaultClose : defaultClose;
+  const endMatch = text.substring(afterStart).match(new RegExp(closePattern));
 
   if (!endMatch) {
     const thinking = text.substring(afterStart);
@@ -429,6 +444,11 @@ export function parseStreamThinking(text) {
  * Generate thinking block HTML structure
  */
 export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, thinkingTime = 0) {
+  const settings = settingsStore.get() || {};
+  if (settings.reasoning_effort === 'none') {
+    return '';
+  }
+
   if (isGLM) {
     if (isActive) {
       const escapedThoughts = escapeHtml(thinkingText || '');
@@ -473,7 +493,13 @@ export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, t
     const escapedThoughts = escapeHtml(thinkingText || '');
     return `<div class="thinking-inline thinking-inline-active"><div class="thinking-inline-header"><thinking-snippets id="genai-thinking-snippets" thoughts="${escapedThoughts}"></thinking-snippets></div></div>`;
   }
-  return '<div class="thinking-inline"><div class="thinking-inline-header thinking-toggle-header" onclick="this.closest(\'.thinking-inline\').classList.toggle(\'thinking-expanded\')"><span class="thinking-done-text">Done</span><span class="thinking-chevron"> ▸</span></div><div class="thinking-inline-content">' + escapeHtml(thinkingText).replace(/\n/g, '<br>') + '</div></div>';
+  let doneText = '';
+  if (thinkingTime >= 5) {
+    doneText = `Thought for ${thinkingTime}s`;
+  } else {
+    doneText = `thought for a few seconds.`;
+  }
+  return '<div class="thinking-inline"><div class="thinking-inline-header thinking-toggle-header" onclick="this.closest(\'.thinking-inline\').classList.toggle(\'thinking-expanded\')"><span class="thinking-done-text">' + escapeHtml(doneText) + '</span><span class="thinking-chevron"> ▸</span></div><div class="thinking-inline-content">' + escapeHtml(thinkingText).replace(/\n/g, '<br>') + '</div></div>';
 }
 
 /**
@@ -674,35 +700,39 @@ export function readFileAsDataURL(file) {
 }
 
 /**
- * Wraps words in text nodes with span.word-blur for streaming animations
+ * Wraps words in text nodes with span.word-blur or span.word-reveal for streaming animations
  */
-export function wrapWordsInSpans(htmlString) {
+export function wrapWordsInSpans(htmlString, useNewAnimation = false, revealedWordsCount = 0, streamingSpeed = 45) {
   if (!htmlString) return '';
-
-  // Split by tags: <...> vs everything else
   const parts = htmlString.split(/(<[^>]+>)/g);
   let wordIndex = 0;
   let inSkipTag = false;
-
+  let inTableTag = false;
   const processedParts = parts.map(part => {
-    if (part.startsWith('<')) {
+    if (part.startsWith('<')) { 
       const lower = part.toLowerCase();
-      // Handle skip tags (pre, code)
       if (lower.startsWith('<pre') || lower.startsWith('<code')) inSkipTag = true;
       if (lower.startsWith('</pre') || lower.startsWith('</code')) inSkipTag = false;
+      if (lower.startsWith('<table')) inTableTag = true;
+      if (lower.startsWith('</table')) inTableTag = false;
       return part;
     }
-
-    // If inside a tag that shouldn't have words wrapped, or it's just whitespace
-    if (inSkipTag || !part.trim()) return part;
-
-    // Split into words and whitespace, then wrap words in spans
+    if (inSkipTag || inTableTag || !part.trim()) return part;
+    
     return part.split(/(\s+)/).map(w => {
-      if (!w || w.trim() === '') return w;
-      return `<span class="word-blur" data-word-index="${wordIndex++}">${w}</span>`;
+      if (!w) return '';
+      const isRevealed = wordIndex < revealedWordsCount;
+      const duration = Math.round(w.length * (1000 / (streamingSpeed || 45)));
+      
+      if (useNewAnimation) {
+        const clazz = isRevealed ? 'word-reveal revealed' : 'word-reveal';
+        return `<span class="${clazz}" data-word-index="${wordIndex++}" style="--dur: ${duration}ms">${w}</span>`;
+      } else {
+        const clazz = isRevealed ? 'word-blur revealed' : 'word-blur';
+        return `<span class="${clazz}" data-word-index="${wordIndex++}" style="--dur: ${duration}ms">${w}</span>`;
+      }
     }).join('');
   });
-
   return processedParts.join('');
 }
 
