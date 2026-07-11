@@ -154,7 +154,7 @@ export const api = {
       if (settings.qwen35_thinking_support) {
         if (effort === 'high') {
           effort = 'medium';
-          if (finalMessages.length > 0 && finalMessages[finalMessages.length - 1].role === 'user') {
+          if (finalMessages.length > 0 && (finalMessages[finalMessages.length - 1].role === 'user' || finalMessages[finalMessages.length - 1].role === 'tool')) {
             finalMessages.push({
               role: 'assistant',
               content: "<think>Here's a thinking process:\n\n1.  **Analyze User Input:**"
@@ -169,7 +169,7 @@ export const api = {
         if (effort === 'high') {
           effort = 'medium';
         } else if (effort === 'medium') {
-          if (finalMessages.length > 0 && finalMessages[finalMessages.length - 1].role === 'user') {
+          if (finalMessages.length > 0 && (finalMessages[finalMessages.length - 1].role === 'user' || finalMessages[finalMessages.length - 1].role === 'tool')) {
             finalMessages.push({
               role: 'assistant',
               content: "<|channel>thought\nOkay,"
@@ -917,6 +917,9 @@ Focus ONLY on what is known or can be directly inferred from the history. Keep t
         }).join(' ');
       } else {
         contentText = msg.content || '';
+      }
+      if (msg.tool_calls) {
+        contentText += ' ' + JSON.stringify(msg.tool_calls);
       }
       formattedText += `<|im_start|>${role}\n${contentText}<|im_end|>\n`;
     }

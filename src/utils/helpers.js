@@ -760,33 +760,84 @@ export function wrapWordsInSpans(htmlString, useNewAnimation = false, revealedWo
   if (!htmlString) return '';
   const parts = htmlString.split(/(<[^>]+>)/g);
   let wordIndex = 0;
+  let charIndex = 0;
   let inSkipTag = false;
   let inTableTag = false;
+  let inSkipBlock = false;
+  let skipBlockTag = '';
+  let skipBlockDepth = 0;
+  const limit = useNewAnimation ? (revealedWordsCount + 10) : Infinity;
   const processedParts = parts.map(part => {
     if (part.startsWith('<')) { 
       const lower = part.toLowerCase();
+      
+      // If we are beyond the limit, only allow closing tags to keep HTML valid
+      if (useNewAnimation && charIndex >= limit) {
+        if (lower.startsWith('</')) {
+          return part;
+        }
+        return '';
+      }
+      
       if (lower.startsWith('<pre') || lower.startsWith('<code')) inSkipTag = true;
       if (lower.startsWith('</pre') || lower.startsWith('</code')) inSkipTag = false;
       if (lower.startsWith('<table')) inTableTag = true;
       if (lower.startsWith('</table')) inTableTag = false;
+      
+      if (lower.startsWith('<div') && (lower.includes('thinking-inline') || lower.includes('genai-tool-capsule'))) {
+        inSkipBlock = true;
+        skipBlockTag = 'div';
+        skipBlockDepth = 1;
+      } else if (inSkipBlock) {
+        if (lower.startsWith('<' + skipBlockTag)) {
+          skipBlockDepth++;
+        } else if (lower.startsWith('</' + skipBlockTag)) {
+          skipBlockDepth--;
+          if (skipBlockDepth <= 0) {
+            inSkipBlock = false;
+          }
+        }
+      }
       return part;
     }
-    if (inSkipTag || inTableTag || !part.trim()) return part;
+    if (inSkipTag || inTableTag || inSkipBlock) return part;
+    
+    
+    if (!part.trim()) {
+      charIndex += part.length;
+      return part;
+    }
     
     return part.split(/(\s+)/).map(w => {
       if (!w) return '';
-      const isRevealed = wordIndex < revealedWordsCount;
-      const duration = Math.round(w.length * (1000 / (streamingSpeed || 45)));
+      if (/^\s+$/.test(w)) {
+        charIndex += w.length;
+        return w;
+      }
+      
+      const charStart = charIndex;
+      const charLen = w.length;
+      charIndex += charLen;
+      
+      // If the word starts beyond the limit, don't render it
+      if (useNewAnimation && charStart >= limit) {
+        return '';
+      }
       
       if (useNewAnimation) {
+        // Here, revealedWordsCount represents the revealed characters count
+        const isRevealed = charStart < revealedWordsCount;
         const clazz = isRevealed ? 'word-reveal revealed' : 'word-reveal';
-        return `<span class="${clazz}" data-word-index="${wordIndex++}" style="--dur: ${duration}ms">${w}</span>`;
+        return `<span class="${clazz}" data-word-index="${wordIndex++}" style="--char-start: ${charStart}ch; --char-len: ${charLen}ch;">${w}</span>`;
       } else {
+        const isRevealed = wordIndex < revealedWordsCount;
+        const duration = Math.round(w.length * (1000 / (streamingSpeed || 45)));
         const clazz = isRevealed ? 'word-blur revealed' : 'word-blur';
         return `<span class="${clazz}" data-word-index="${wordIndex++}" style="--dur: ${duration}ms">${w}</span>`;
       }
     }).join('');
   });
+  wrapWordsInSpans.lastTotalChars = charIndex;
   return processedParts.join('');
 }
 

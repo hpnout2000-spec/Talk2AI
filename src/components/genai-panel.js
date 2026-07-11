@@ -1067,6 +1067,93 @@ ${skill.content}
     if (e.role === 'assistant') {
       cleanContent = stripSuggestions(cleanContent);
     }
+
+    if (settings.gemma4_support && e.role === 'assistant') {
+      const msgIdx = genaiHistory.indexOf(e);
+      let contentText = e.content || '';
+      let cleanedText = contentText
+        .replace(/\[\[THINKING_BLOCK(_\d+)?\]\]/g, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+      cleanedText = stripSuggestions(cleanedText);
+
+      const completedTools = (e.tools || []).filter(t => t.state === 'done' && t.result);
+      if (completedTools.length > 0) {
+        let currentIdx = 0;
+        
+        for (let tIdx = 0; tIdx < e.tools.length; tIdx++) {
+          const t = e.tools[tIdx];
+          const marker = `[[GENAI_TOOL_${tIdx}]]`;
+          const markerPos = cleanedText.indexOf(marker, currentIdx);
+          
+          if (t.state === 'done' && t.result) {
+            let partText = '';
+            if (markerPos !== -1) {
+              partText = cleanedText.substring(currentIdx, markerPos).trim();
+              currentIdx = markerPos + marker.length;
+            } else {
+              partText = cleanedText.substring(currentIdx).trim();
+              currentIdx = cleanedText.length;
+            }
+
+            const callId = `call_${msgIdx}_${tIdx}`;
+            historyMsgs.push({
+              role: 'assistant',
+              content: partText || null,
+              tool_calls: [{
+                id: callId,
+                type: 'function',
+                function: {
+                  name: t.action.genai_action || 'tool',
+                  arguments: JSON.stringify(t.action)
+                }
+              }]
+            });
+
+            let resultString = '';
+            if (t.result && typeof t.result === 'object') {
+              const cleanResult = Object.fromEntries(
+                Object.entries(t.result).filter(([k, v]) => {
+                  if (k === 'base64' || k === '_base64' || k === 'messages') return false;
+                  if (typeof v === 'string' && v.startsWith('data:') && v.length > 200) return false;
+                  return true;
+                })
+              );
+              resultString = JSON.stringify(cleanResult);
+            } else {
+              resultString = JSON.stringify(t.result);
+            }
+
+            historyMsgs.push({
+              role: 'tool',
+              tool_call_id: callId,
+              name: t.action.genai_action || 'tool',
+              content: resultString
+            });
+          } else {
+            if (markerPos !== -1) {
+              currentIdx = markerPos + marker.length;
+            }
+          }
+        }
+
+        const remainingText = cleanedText.substring(currentIdx).trim();
+        if (remainingText.length > 0) {
+          historyMsgs.push({
+            role: 'assistant',
+            content: remainingText
+          });
+        }
+      } else {
+        const finalText = cleanedText.replace(/\[\[GENAI_TOOL_\d+\]\]/g, '').trim();
+        historyMsgs.push({
+          role: 'assistant',
+          content: finalText || null
+        });
+      }
+      continue;
+    }
+
     if (e.role === 'user' && Array.isArray(e.images) && e.images.length > 0) {
       const enabledImgs = e.images.filter(img => {
         if (typeof img === 'object' && img !== null) {
@@ -1105,39 +1192,18 @@ ${skill.content}
           let resultDesc = '';
           if (t.result._type === 'image') {
             resultDesc = `[SYSTEM NOTE: The tool command "${t.action?.genai_action}" executed successfully. The requested image "${t.result.label || 'Image'}" has been loaded and displayed directly in the user's chat window. The user is now looking at it.]`;
-            if (settings.gemma4_support) {
-              historyMsgs.push({ role: 'tool', content: resultDesc });
-            } else {
-              historyMsgs.push({ role: 'user', content: resultDesc });
-            }
+            historyMsgs.push({ role: 'user', content: resultDesc });
           } else if (t.result._type === 'vision_image') {
-            if (settings.gemma4_support) {
-              historyMsgs.push({
-                role: 'tool',
-                content: `[SYSTEM NOTE: You requested to view image ID "${t.result.image_id}". Image has been loaded and attached to the user context.]`
-              });
-              historyMsgs.push({
-                role: 'user',
-                content: [
-                  { type: 'image_url', image_url: { url: t.result.base64 } }
-                ]
-              });
-            } else {
-              historyMsgs.push({
-                role: 'user',
-                content: [
-                  { type: 'text', text: `[SYSTEM NOTE: You requested to view image ID "${t.result.image_id}". The image is attached below. Please provide your analysis.]` },
-                  { type: 'image_url', image_url: { url: t.result.base64 } }
-                ]
-              });
-            }
+            historyMsgs.push({
+              role: 'user',
+              content: [
+                { type: 'text', text: `[SYSTEM NOTE: You requested to view image ID "${t.result.image_id}". The image is attached below. Please provide your analysis.]` },
+                { type: 'image_url', image_url: { url: t.result.base64 } }
+              ]
+            });
           } else {
             resultDesc = `[SYSTEM NOTE: The tool command "${t.action?.genai_action}" executed successfully. Result details:\n${JSON.stringify(t.result)}`;
-            if (settings.gemma4_support) {
-              historyMsgs.push({ role: 'tool', content: resultDesc });
-            } else {
-              historyMsgs.push({ role: 'user', content: resultDesc });
-            }
+            historyMsgs.push({ role: 'user', content: resultDesc });
           }
         }
       }
@@ -1146,21 +1212,7 @@ ${skill.content}
 
   if (extraUserInstruction) {
     if (settings.gemma4_support && extraUserInstruction.includes('[TOOL RESULT]')) {
-      const lines = extraUserInstruction.split('\n');
-      const toolResults = [];
-      const otherLines = [];
-      for (const line of lines) {
-        if (line.startsWith('[TOOL RESULT]')) {
-          toolResults.push(line);
-        } else if (line.trim().length > 0) {
-          otherLines.push(line);
-        }
-      }
-      let toolContent = toolResults.join('\n');
-      if (otherLines.length > 0) {
-        toolContent = toolContent ? toolContent + '\n\n' + otherLines.join('\n') : otherLines.join('\n');
-      }
-      historyMsgs.push({ role: 'tool', content: toolContent });
+      // In gemma4 mode, the tool result has already been processed inside the history loop as a structured tool message.
     } else {
       historyMsgs.push({ role: 'user', content: extraUserInstruction });
     }
@@ -2649,6 +2701,8 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
     bubbleEl.innerHTML = `<div class="genai-msg-text-container"></div>`;
     textCont = bubbleEl.querySelector('.genai-msg-text-container');
   }
+  textCont._latestEntry = entry;
+  textCont._isStreaming = streaming;
 
   const text = entry.content || '';
 
@@ -2901,86 +2955,58 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
 
   if (isNewAnimation) {
     if (streaming) {
-      if (!entry.revealInterval) {
-        entry.revealedWordsCount = 0;
-        entry.charsToWait = 0;
-        const charsPerTick = 33 * (streamingSpeed / 1000);
+      if (!textCont._revealInterval) {
+        textCont._revealProgress = textCont._revealProgress || 0;
+        textCont._lastRevealTime = performance.now();
 
-        entry.isDraining = false;
-        entry.revealQueue = [];
-        entry.queuedNodes = new Set();
-
-        entry.processQueue = async () => {
-          if (entry.isDraining) return;
-          entry.isDraining = true;
-          
-          while (entry.revealQueue.length > 0) {
-            const word = entry.revealQueue.shift();
-            entry.queuedNodes.delete(word);
-            
-            if (word && word.isConnected && !word.classList.contains('revealed')) {
-              word.classList.add('revealed');
-              const idx = parseInt(word.getAttribute('data-word-index') || '0', 10);
-              entry.revealedWordsCount = Math.max(entry.revealedWordsCount || 0, idx + 1);
-            }
-            
-            await new Promise(r => requestAnimationFrame(r));
-          }
-          entry.isDraining = false;
-        };
-
-        entry.revealInterval = setInterval(() => {
+        const animateReveal = () => {
           if (!textCont || !textCont.isConnected) {
-            clearInterval(entry.revealInterval);
-            entry.revealInterval = null;
+            textCont._revealInterval = null;
             return;
           }
 
-          if (entry.charsToWait > 0) {
-            entry.charsToWait -= charsPerTick;
-            if (entry.charsToWait > 0) return;
-          }
-          let availableChars = Math.abs(entry.charsToWait || 0);
-          entry.charsToWait = 0;
+          const rawLimit = textCont._rawCharCount || 0;
+          const isCurrentlyStreaming = textCont._isStreaming;
 
-          while (true) {
-            const unrevealed = textCont.querySelectorAll('.word-reveal:not(.revealed)');
-            if (unrevealed.length === 0) {
-              if (entry.streamFinished && entry.revealQueue.length === 0) {
-                clearInterval(entry.revealInterval);
-                entry.revealInterval = null;
-              }
-              break;
-            }
-            
-            const nextWord = unrevealed[0];
-            if (entry.queuedNodes.has(nextWord)) break;
-            
-            const wordLen = nextWord.textContent.length || 1;
-            entry.queuedNodes.add(nextWord);
-            entry.revealQueue.push(nextWord);
+          const now = performance.now();
+          const deltaMs = now - textCont._lastRevealTime;
+          textCont._lastRevealTime = now;
 
-            entry.charsToWait += wordLen;
-            if (entry.charsToWait > availableChars) {
-              entry.charsToWait -= availableChars;
-              break;
-            } else {
-              availableChars -= entry.charsToWait;
-              entry.charsToWait = 0;
-            }
+          const charsToAdd = deltaMs * (streamingSpeed / 1000);
+          const oldProgress = textCont._revealProgress;
+          textCont._revealProgress = Math.min(rawLimit, textCont._revealProgress + charsToAdd);
+
+          textCont.style.setProperty('--reveal-progress', textCont._revealProgress + 'ch');
+
+          if (Math.floor(textCont._revealProgress) > Math.floor(oldProgress)) {
+            const currentEntry = textCont._latestEntry || entry;
+            renderAssistantBubble(currentEntry, bubbleEl, { cursor: isCurrentlyStreaming, streaming: isCurrentlyStreaming });
           }
-          
-          if (entry.revealQueue.length > 0) {
-            entry.processQueue();
+
+          if (isCurrentlyStreaming || textCont._revealProgress < rawLimit) {
+            textCont._revealInterval = requestAnimationFrame(animateReveal);
+          } else {
+            textCont.style.setProperty('--reveal-progress', (rawLimit + 20) + 'ch');
+            textCont.classList.add('stream-finished');
+            const revealSpans = textCont.querySelectorAll('.word-reveal');
+            revealSpans.forEach(span => span.classList.add('revealed'));
+            textCont._revealInterval = null;
+            
+            // Re-render final state to restore normal HTML
+            const currentEntry = textCont._latestEntry || entry;
+            renderAssistantBubble(currentEntry, bubbleEl, { cursor: false, streaming: false });
           }
-        }, 33);
+        };
+
+        textCont._revealInterval = requestAnimationFrame(animateReveal);
       }
     } else {
       entry.streamFinished = true;
     }
 
-    if (streaming || entry.revealInterval) {
-      html = wrapWordsInSpans(html, true, entry.revealedWordsCount || 0, streamingSpeed);
+    if (streaming || textCont._revealInterval) {
+      html = wrapWordsInSpans(html, true, textCont._revealProgress || 0, streamingSpeed);
+      textCont._rawCharCount = wrapWordsInSpans.lastTotalChars || 0;
     }
   }
 
@@ -3047,17 +3073,7 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
     });
   }
 
-  // After final render, drain any remaining word-reveal spans
-  if (isNewAnimation && !streaming) {
-    const drain = setInterval(() => {
-      const unrevealed = textCont.querySelectorAll('.word-reveal:not(.revealed)');
-      if (unrevealed.length > 0) {
-        unrevealed[0].classList.add('revealed');
-      } else {
-        clearInterval(drain);
-      }
-    }, 33);
-  }
+
 
   // Attach click listeners to GenAI inline suggestion texts
   textCont.querySelectorAll('.genai-inline-text-suggest').forEach(btn => {
@@ -3325,6 +3341,54 @@ function isBraceUnclosed(text, startIndex) {
 // Robust character-by-character scanner to locate and extract a complete JSON action object.
 // Returns { json: string, startIdx: number, endIdx: number } or null if incomplete.
 function extractJsonAction(text) {
+  // Gemma 4 specific tool use format healing:
+  // e.g. <|tool_call|>call:web_search{genai_action:<|"|>web_search<|"|>,query:<|"|>Meli character<|"|>}<tool_call|>
+  if (text.includes('call:') && text.includes('{')) {
+    // Replace any <|"|> or <|/|"|> or <|" > with standard double quotes "
+    let normalizedText = text.replace(/<\|"\|?>/g, '"');
+    
+    // Check if we can find call:[name]{...}
+    const gemmaMatch = normalizedText.match(/(?:<\|tool_call>)?call:([a-zA-Z0-9_]+)\s*(\{[\s\S]*?\})/);
+    if (gemmaMatch) {
+      const jsonStr = gemmaMatch[2];
+      const rawMatch = text.match(/(?:<\|tool_call>)?call:([a-zA-Z0-9_]+)/);
+      const actualStartIdx = rawMatch ? text.indexOf(rawMatch[0]) : text.indexOf('call:');
+      
+      let braceCount = 0;
+      let inBraces = false;
+      let endIdx = -1;
+      for (let i = (actualStartIdx !== -1 ? actualStartIdx : text.indexOf('{')); i < text.length; i++) {
+        if (text[i] === '{') {
+          braceCount++;
+          inBraces = true;
+        } else if (text[i] === '}') {
+          braceCount--;
+          if (inBraces && braceCount === 0) {
+            endIdx = i + 1;
+            break;
+          }
+        }
+      }
+
+      if (endIdx !== -1) {
+        let finalEndIdx = endIdx;
+        const trailingText = text.substring(endIdx);
+        const trailingMatch = trailingText.match(/^\s*<tool_call\|?>/);
+        if (trailingMatch) {
+          finalEndIdx += trailingMatch[0].length;
+        }
+        
+        const cleanedJson = jsonStr.replace(/<\|"\|?>/g, '"');
+        return {
+          json: cleanedJson,
+          startIdx: actualStartIdx !== -1 ? actualStartIdx : text.indexOf('{'),
+          endIdx: finalEndIdx
+        };
+      }
+    }
+    return null;
+  }
+
   // Support variations like {"genai_action", {'genai_action', or genai_action (unquoted)
   const match = text.match(/\{[\s\n]*(?:"genai_action"|'genai_action'|genai_action)/);
   if (!match) return null;

@@ -660,19 +660,35 @@
 .word-reveal {
   display: inline;
   white-space: pre-wrap;
-  -webkit-mask-image: linear-gradient(to right, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 30%, rgba(0,0,0,0) 70%, rgba(0,0,0,0) 100%);
-  -webkit-mask-size: 300% 100%;
-  -webkit-mask-position: 100% 0;
-  mask-image: linear-gradient(to right, rgba(0,0,0,1) 0%, rgba(0,0,0,1) 30%, rgba(0,0,0,0) 70%, rgba(0,0,0,0) 100%);
-  mask-size: 300% 100%;
-  mask-position: 100% 0;
-  transition: -webkit-mask-position var(--dur, 100ms) linear, 
-              mask-position var(--dur, 100ms) linear;
+  
+  --stop-opaque: calc(var(--reveal-progress, 0ch) - var(--char-start, 0ch));
+  --stop-transparent: calc(var(--reveal-progress, 0ch) - var(--char-start, 0ch) + 10ch);
+  
+  -webkit-mask-image: linear-gradient(
+    to right,
+    rgba(0,0,0,1) 0%,
+    rgba(0,0,0,1) var(--stop-opaque),
+    rgba(0,0,0,0) var(--stop-transparent),
+    rgba(0,0,0,0) 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    rgba(0,0,0,1) 0%,
+    rgba(0,0,0,1) var(--stop-opaque),
+    rgba(0,0,0,0) var(--stop-transparent),
+    rgba(0,0,0,0) 100%
+  );
+  
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
 }
 
-.word-reveal.revealed {
-  -webkit-mask-position: 0% 0;
-  mask-position: 0% 0;
+.word-reveal.revealed,
+.genai-msg-text-container.stream-finished .word-reveal {
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
 }
 
 @keyframes textBlurIn {
