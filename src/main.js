@@ -470,6 +470,7 @@ export function applyGlobalSettingsStyles() {
   const settings = settingsStore.get();
   document.body.classList.toggle('settings-italic-asterisks', !!settings.italic_asterisks);
   document.body.classList.toggle('ai-comments-enabled', !!settings.ai_comments_enabled);
+  document.body.classList.toggle('advanced-animations-blur-enabled', !!settings.advanced_animations_blur);
 }
 
 // ─── Toast Notification ─────────────────────────────────────────────

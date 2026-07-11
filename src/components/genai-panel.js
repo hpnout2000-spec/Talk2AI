@@ -174,7 +174,7 @@ SPEECH & FORMAT RULES:
 3. Since you're an adaptive AI, embrace the character, if you think user wants you to, actions and descriptions in your given RP persona should be in asterisks. Do not forget that you're a GenAI - write 1-2 sentences before your RP persona output and 1-2 sentences after, making a subtle playful conclusion and follow-up for easy guiding to continue.
 4. Do NOT write or mention about ID to user.
 5. Do not adress to the user with his RP name. Use the user's real name if he asked you to remember it, or just say "you" instead.
-6. DYNAMIC LANGUAGE MATCHING: You MUST converse and respond in the same language as the user's latest query or the active dialogue context. If the user addresses you in English, respond in English. If in Russian, respond in Russian. All conversational text, headings, button labels, and status/loading messages MUST match this language. Never output Russian text (including loading messages or headings) when the dialogue is in English, and vice-versa.
+6. DYNAMIC LANGUAGE MATCHING: You MUST converse and respond in the same language as the user's latest query or the active dialogue context. If the user addresses you in English, respond in English. If in Russian, respond in Russian. All conversational text, headings, button labels, and status/loading messages MUST match this language.
 7. INLINE TEXT SUGGESTIONS: You can embed clickable suggestions directly into your sentences! When you mention a choice or option, wrap it in a <suggest> tag. When the user clicks the wrapped text, they will send a pre-written message on their own behalf.
    Format: <suggest target="character" message="The message sent by the user">visible highlighted text</suggest>
    * "message": MUST be written in the FIRST PERSON (e.g. "Yes, I want to see more drama!"). Never write AI prompts here.
@@ -1052,12 +1052,16 @@ ${skill.content}
   let historyMsgs = [];
   for (const e of genaiHistory) {
     if (e.role === 'tool') {
-      historyMsgs.push({ role: 'user', content: `[TOOL RESULT]\n${e.content}` });
+      if (settings.gemma4_support) {
+        historyMsgs.push({ role: 'tool', content: e.content });
+      } else {
+        historyMsgs.push({ role: 'user', content: `[TOOL RESULT]\n${e.content}` });
+      }
       continue;
     }
     let cleanContent = (e.content || '')
       .replace(/\[\[GENAI_TOOL_\d+\]\]/g, '')
-      .replace(/\[\[THINKING_BLOCK\]\]/g, '')
+      .replace(/\[\[THINKING_BLOCK(_\d+)?\]\]/g, '')
       .replace(/\n{3,}/g, '\n\n')
       .trim();
     if (e.role === 'assistant') {
@@ -1101,18 +1105,39 @@ ${skill.content}
           let resultDesc = '';
           if (t.result._type === 'image') {
             resultDesc = `[SYSTEM NOTE: The tool command "${t.action?.genai_action}" executed successfully. The requested image "${t.result.label || 'Image'}" has been loaded and displayed directly in the user's chat window. The user is now looking at it.]`;
-            historyMsgs.push({ role: 'user', content: resultDesc });
+            if (settings.gemma4_support) {
+              historyMsgs.push({ role: 'tool', content: resultDesc });
+            } else {
+              historyMsgs.push({ role: 'user', content: resultDesc });
+            }
           } else if (t.result._type === 'vision_image') {
-            historyMsgs.push({
-              role: 'user',
-              content: [
-                { type: 'text', text: `[SYSTEM NOTE: You requested to view image ID "${t.result.image_id}". The image is attached below. Please provide your analysis.]` },
-                { type: 'image_url', image_url: { url: t.result.base64 } }
-              ]
-            });
+            if (settings.gemma4_support) {
+              historyMsgs.push({
+                role: 'tool',
+                content: `[SYSTEM NOTE: You requested to view image ID "${t.result.image_id}". Image has been loaded and attached to the user context.]`
+              });
+              historyMsgs.push({
+                role: 'user',
+                content: [
+                  { type: 'image_url', image_url: { url: t.result.base64 } }
+                ]
+              });
+            } else {
+              historyMsgs.push({
+                role: 'user',
+                content: [
+                  { type: 'text', text: `[SYSTEM NOTE: You requested to view image ID "${t.result.image_id}". The image is attached below. Please provide your analysis.]` },
+                  { type: 'image_url', image_url: { url: t.result.base64 } }
+                ]
+              });
+            }
           } else {
             resultDesc = `[SYSTEM NOTE: The tool command "${t.action?.genai_action}" executed successfully. Result details:\n${JSON.stringify(t.result)}`;
-            historyMsgs.push({ role: 'user', content: resultDesc });
+            if (settings.gemma4_support) {
+              historyMsgs.push({ role: 'tool', content: resultDesc });
+            } else {
+              historyMsgs.push({ role: 'user', content: resultDesc });
+            }
           }
         }
       }
@@ -1120,7 +1145,25 @@ ${skill.content}
   }
 
   if (extraUserInstruction) {
-    historyMsgs.push({ role: 'user', content: extraUserInstruction });
+    if (settings.gemma4_support && extraUserInstruction.includes('[TOOL RESULT]')) {
+      const lines = extraUserInstruction.split('\n');
+      const toolResults = [];
+      const otherLines = [];
+      for (const line of lines) {
+        if (line.startsWith('[TOOL RESULT]')) {
+          toolResults.push(line);
+        } else if (line.trim().length > 0) {
+          otherLines.push(line);
+        }
+      }
+      let toolContent = toolResults.join('\n');
+      if (otherLines.length > 0) {
+        toolContent = toolContent ? toolContent + '\n\n' + otherLines.join('\n') : otherLines.join('\n');
+      }
+      historyMsgs.push({ role: 'tool', content: toolContent });
+    } else {
+      historyMsgs.push({ role: 'user', content: extraUserInstruction });
+    }
   }
 
   // ─── Build dynamic notice for disabled system skills ─────────────────
@@ -1218,7 +1261,7 @@ ${ANIMA_BETTER_PROMPT_TEXT}`;
     const msgs = [{ role: 'system', content: sysContent }, ...histMsgs];
     
     // Add extra system prompt / assistant preamble if Extended Thinking is enabled
-    if (settings.extended_thinking && settings.reasoning_effort !== 'none') {
+    if (settings.extended_thinking && settings.genai_reasoning_effort !== 'none') {
       const p2 = 'You must now perform deep thinking. If you need to stop and think more (including if you need to gather more information or search the internet further) before finishing, output <thinkextended> instead of finishing. If you don\'t have enough information and web search is turned on, you can make another query or fetch sites. In that case, do not write the whole response; instead, make another short, informative status preamble/intro of 1-4 words in the EXACT same language that the user used in their last message, reflecting what exactly you are going to search for or find, and output the command you need. Use this only when it\'s really needed. Example:\n"Searching weather forecast...\n[Command for web search, fetching site or anything else what\'s needed]"\n\nAlso, pay close attention to any search queries performed in the previous message/turn: they were initiated by you (GenAI), not by the user, so you must not say "your search queries" when referring to them. Instead, refer to them as search queries that you performed.';
       msgs.push({ role: 'system', content: p2 });
       msgs.push({ role: 'assistant', content: 'Continuing...' }); // representative assistant preamble
@@ -1253,20 +1296,20 @@ ${ANIMA_BETTER_PROMPT_TEXT}`;
   }
 
   // Apply Gemma 4 thinking style directive if experimental toggle is enabled and reasoning is active
-  if (settings.change_gemma4_thinking_style && settings.reasoning_effort && settings.reasoning_effort !== 'none') {
+  if (settings.change_gemma4_thinking_style && settings.genai_reasoning_effort && settings.genai_reasoning_effort !== 'none') {
     systemContent += `\n\nWhen reasoning internally, your thought process must be brief, natural, and strictly in the first person (e.g., "I need to check...", "Let me think..."). Emulate a concise "thinking out loud" style similar to Claude. Avoid overly verbose, rigid step-by-step lists. Keep your internal monologue efficient and directly focused on solving the problem.`;
   }
 
   // Prepend <|think|> for Gemma 4 thinking models when reasoning effort is active
-  if (settings.gemma4_support && settings.reasoning_effort && settings.reasoning_effort !== 'none') {
+  if (settings.gemma4_support && settings.genai_reasoning_effort && settings.genai_reasoning_effort !== 'none') {
     systemContent = '<|think|>\n' + systemContent;
   }
 
   const finalMessages = [{ role: 'system', content: systemContent }, ...historyMsgs];
 
   // FORCE REASONING PREFILL
-  if (settings.genai_force_reasoning && settings.genai_reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') {
-    finalMessages.push({ role: 'assistant', content: settings.genai_reasoning_tag_open + '\n' });
+  if (settings.genai_force_reasoning && settings.genai_reasoning_tag_open && (settings.genai_reasoning_effort || 'none') !== 'none') {
+    finalMessages.push({ role: 'assistant', content: settings.genai_reasoning_tag_open });
   }
 
   return finalMessages;
@@ -3449,7 +3492,7 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
   if (stopBtn) stopBtn.classList.remove('hidden');
 
   abortController = new AbortController();
-  const isMaxThinking = settingsStore.get().extended_thinking && settingsStore.get().reasoning_effort !== 'none';
+  const isMaxThinking = settingsStore.get().extended_thinking && settingsStore.get().genai_reasoning_effort !== 'none';
   
   // In Extended mode, Phase 1 (maxPhase = 1) is the initial command generation phase without deep thinking.
   // We want to skip Smart Context in Phase 1, but keep it in Phase 2.
@@ -3462,21 +3505,20 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
     assistantEntry = _continuationEntry;
     bubbleEl = _continuationBubble;
 
-    // If Extended thinking mode is off but we are using model thinking (reasoning_effort !== 'none'),
+    // If Extended thinking mode is off but we are using model thinking (genai_reasoning_effort !== 'none'),
     // we want to transition to a new phase of generation by appending [[THINKING_BLOCK_p]]
     // at the end of the existing content. This ensures the active thinking snippets appear at the bottom
     // during thinking, but the final response is generated below it (so Done stays above the final response).
-    if (!isMaxThinking && settingsStore.get().reasoning_effort !== 'none') {
+    if (!isMaxThinking && settingsStore.get().genai_reasoning_effort !== 'none') {
       if (!assistantEntry.thinking_blocks) {
         assistantEntry.thinking_blocks = [];
       }
       if (assistantEntry.thinking && assistantEntry.thinking_blocks.length === 0) {
         assistantEntry.thinking_blocks.push(assistantEntry.thinking);
       }
-      // Remove deprecated [[THINKING_BLOCK]] markers just in case
-      if (assistantEntry.content.includes('[[THINKING_BLOCK]]')) {
+      if (/\[\[THINKING_BLOCK(_\d+)?\]\]/.test(assistantEntry.content)) {
         assistantEntry.content = assistantEntry.content
-          .replace(/\[\[THINKING_BLOCK\]\]/g, '')
+          .replace(/\[\[THINKING_BLOCK(_\d+)?\]\]/g, '')
           .replace(/\n{3,}/g, '\n\n')
           .trim();
       }
@@ -3513,7 +3555,7 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
     } else {
       currentApiMessages = JSON.parse(JSON.stringify(baseApiMessagesWithSC || baseApiMessages));
     }
-    let effortToUse = settingsStore.get().reasoning_effort || 'none';
+    let effortToUse = settingsStore.get().genai_reasoning_effort || 'none';
 
     if (maxPhase === 1) {
       effortToUse = 'none';
@@ -3526,12 +3568,12 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
                  'If Web Search is active, you MUST immediately start a Web search by making 1 to 3 queries. Do NOT make explicit queries (do not output your search queries as plain text), just output the tool commands directly. Do NOT generate the actual answer yet. STOP generating immediately after these sentences and/or tool calls.'
       });
     } else if (maxPhase >= 2) {
-      effortToUse = settingsStore.get().reasoning_effort || 'high';
+      effortToUse = settingsStore.get().genai_reasoning_effort || 'high';
       if (effortToUse === 'none') effortToUse = 'high'; // Should not happen, but fallback
       if (isMaxThinking) {
-        if (assistantEntry.content.includes('[[THINKING_BLOCK]]')) {
+        if (/\[\[THINKING_BLOCK(_\d+)?\]\]/.test(assistantEntry.content)) {
           assistantEntry.content = assistantEntry.content
-            .replace(/\[\[THINKING_BLOCK\]\]/g, '')
+            .replace(/\[\[THINKING_BLOCK(_\d+)?\]\]/g, '')
             .replace(/\n{3,}/g, '\n\n')
             .trim();
           assistantEntry.content = assistantEntry.content ? assistantEntry.content + '\n\n[[THINKING_BLOCK]]\n\n' : '[[THINKING_BLOCK]]\n\n';
@@ -3541,7 +3583,7 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
       }
       if (assistantEntry.content) {
         const cleanedContent = assistantEntry.content
-          .replace(/\[\[THINKING_BLOCK\]\]/g, '')
+          .replace(/\[\[THINKING_BLOCK(_\d+)?\]\]/g, '')
           .replace(/\n{3,}/g, '\n\n')
           .trim();
         if (cleanedContent) {
@@ -3555,7 +3597,7 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
     }
 
     const settings = settingsStore.get();
-    let fullText = (settings.genai_force_reasoning && settings.genai_reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') ? settings.genai_reasoning_tag_open + '\n' : '';
+    let fullText = (settings.genai_force_reasoning && settings.genai_reasoning_tag_open && (settings.genai_reasoning_effort || 'none') !== 'none') ? settings.genai_reasoning_tag_open : '';
     let thinkingTextGenai = '';
     let thinkingActiveGenai = false;
     let thinkingStartTime = Date.now();
@@ -3575,11 +3617,12 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
           if (actionDetected) return;
           fullText += chunk;
 
+          const parsedInline = parseStreamThinking(fullText, settings.genai_reasoning_tag_open, settings.genai_reasoning_tag_close);
+
           if (thinkingActiveGenai) {
             thinkingActiveGenai = false;
             thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
           } else {
-            const parsedInline = parseStreamThinking(fullText, settings.genai_reasoning_tag_open, settings.genai_reasoning_tag_close);
             if (parsedInline.isInThinking && !thinkingActiveInlineGenai) {
               thinkingActiveInlineGenai = true;
               thinkingStartTime = Date.now();
@@ -3596,7 +3639,21 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
             return;
           }
 
-          let actionMatch = extractJsonAction(fullText);
+          let actionMatch = extractJsonAction(parsedInline.rawContent);
+          if (actionMatch) {
+            const thinkingStartIdx = parsedInline.thinkingStartIdx;
+            const thinkingEndIdx = parsedInline.thinkingEndIdx;
+            const startIdxInFullText = (thinkingStartIdx !== -1 && thinkingEndIdx !== -1 && actionMatch.startIdx >= thinkingStartIdx)
+              ? actionMatch.startIdx + (thinkingEndIdx - thinkingStartIdx)
+              : actionMatch.startIdx;
+            
+            actionMatch = {
+              json: actionMatch.json,
+              startIdx: startIdxInFullText,
+              endIdx: startIdxInFullText + actionMatch.json.length
+            };
+          }
+
           let useViewImage = false;
           let viewImageId = '';
           let viewImageStartIdx = -1;
@@ -3604,13 +3661,19 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
 
           if (settingsStore.get().genai_viewimage_enabled) {
             const viewImageRegex = /viewimage\s*\(\s*(['"]?)(img_[a-zA-Z0-9_-]+)\1\s*\)/i;
-            const match = fullText.match(viewImageRegex);
+            const match = parsedInline.rawContent.match(viewImageRegex);
             if (match) {
+              const thinkingStartIdx = parsedInline.thinkingStartIdx;
+              const thinkingEndIdx = parsedInline.thinkingEndIdx;
+              const mappedIndex = (thinkingStartIdx !== -1 && thinkingEndIdx !== -1 && match.index >= thinkingStartIdx)
+                ? match.index + (thinkingEndIdx - thinkingStartIdx)
+                : match.index;
+
               // Ensure we prioritize whichever comes first in stream
-              if (!actionMatch || match.index < actionMatch.startIdx) {
+              if (!actionMatch || mappedIndex < actionMatch.startIdx) {
                 useViewImage = true;
                 viewImageId = match[2];
-                viewImageStartIdx = match.index;
+                viewImageStartIdx = mappedIndex;
                 viewImageLength = match[0].length;
               }
             }
@@ -3691,6 +3754,9 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
                 fullText = '';
                 renderAssistantBubble(assistantEntry, bubbleEl, { cursor: true, streaming: true });
                 scrollToBottom();
+                if (isWebTool) {
+                  abortController.abort();
+                }
                 return;
               }
             }
@@ -4501,6 +4567,7 @@ async function handleMultipleActions(pendingTools, assistantEntry, bubbleEl) {
 }
 
 function continueAfterMultipleTools(toolResults, assistantEntry, bubbleEl) {
+  const gemma4 = !!settingsStore.get().gemma4_support;
   let instruction = '';
   
   for (const { tool, result } of toolResults) {
@@ -4517,14 +4584,10 @@ function continueAfterMultipleTools(toolResults, assistantEntry, bubbleEl) {
     instruction += `[TOOL RESULT] ${tool.action.genai_action}: ${JSON.stringify(resultForLlm)}\n\n`;
   }
   
-  instruction += `Continue your GenAI response now. IMPORTANT: Continue naturally from where you left off as GenAI. Do not repeat your previous text and do not write as a character in the roleplay, just provide the next part of your previous GenAI answer.`;
-
-  const previousText = assistantEntry?.content || '';
-  const hasCyrillic = /[а-яА-ЯёЁ]/.test(previousText);
-  if (hasCyrillic) {
-    instruction += `\n\nIMPORTANT: You MUST write the continuation in Russian (продолжай на русском языке). Do not switch to English!`;
-  } else {
-    instruction += `\n\nIMPORTANT: You MUST write the continuation in the exact same language that was used in the previous part of your response. If you started writing in Russian, continue in Russian. If you started in English, continue in English.`;
+  // In gemma4 mode the tool role message itself signals the model to continue —
+  // no extra steering text needed (it would be treated as a new user request).
+  if (!gemma4) {
+    instruction += `Continue your GenAI response now. IMPORTANT: Continue naturally from where you left off as GenAI. Do not repeat your previous text and do not write as a character in the roleplay, just provide the next part of your previous GenAI answer.`;
   }
 
   streamGenAI(instruction, assistantEntry, bubbleEl);
@@ -4560,16 +4623,13 @@ function continueAfterTool(action, result, assistantEntry, bubbleEl) {
     );
   }
 
-  let instruction = `[TOOL RESULT] ${action.genai_action}: ${JSON.stringify(resultForLlm)}\n\nContinue your GenAI response now. IMPORTANT: Continue naturally from where you left off as GenAI. Do not repeat your previous text and do not write as a character in the roleplay, just provide the next part of your previous GenAI answer.`;
+  const gemma4 = !!settingsStore.get().gemma4_support;
 
-  // Detect language of the previous text block to enforce language continuity
-  const previousText = assistantEntry?.content || '';
-  const hasCyrillic = /[а-яА-ЯёЁ]/.test(previousText);
-  if (hasCyrillic) {
-    instruction += `\n\nIMPORTANT: You MUST write the continuation in Russian (продолжай на русском языке). Do not switch to English!`;
-  } else {
-    instruction += `\n\nIMPORTANT: You MUST write the continuation in the exact same language that was used in the previous part of your response. If you started writing in Russian, continue in Russian. If you started in English, continue in English.`;
-  }
+  // In gemma4 mode the tool role message itself signals the model to continue —
+  // no extra steering text needed (it would be treated as a new user request).
+  let instruction = gemma4
+    ? `[TOOL RESULT] ${action.genai_action}: ${JSON.stringify(resultForLlm)}`
+    : `[TOOL RESULT] ${action.genai_action}: ${JSON.stringify(resultForLlm)}\n\nContinue your GenAI response now. IMPORTANT: Continue naturally from where you left off as GenAI. Do not repeat your previous text and do not write as a character in the roleplay, just provide the next part of your previous GenAI answer.`;
 
   if (action.genai_action === 'get_skills') {
     instruction += `\n\nCRITICAL REMINDER: You just retrieved the list of available skills. If you find a suitable skill (like a rule file, etc.), you MUST ask the user if they want to activate it for the current session, or offer them an interactive suggestion button to do so. Remember, a skill is NOT active until you call {"genai_action":"set_skill_active","filename":"...","active":true}!`;
@@ -4579,7 +4639,7 @@ function continueAfterTool(action, result, assistantEntry, bubbleEl) {
 
   if (action.genai_action === 'list_memories') {
     instruction += `\n\nCRITICAL: You have already shown your memories in the UI card. You MUST remain silent now by outputting exactly the following JSON action on a new line and nothing else: {"genai_action":"silent"}`;
-  } else {
+  } else if (!gemma4) {
     instruction += `\n\nNOTE: If you have nothing more to say or do after this tool result, you can choose to remain silent by outputting the JSON action: {"genai_action":"silent"}`;
   }
 
@@ -5427,17 +5487,54 @@ export function initGenAIPanel() {
     if (!wrapper || !btnArrow || !dropdown) return;
 
     function refreshGenAIThinkingEffortUI() {
-      const effort = settingsStore.get().reasoning_effort || 'none';
+      let effort = settingsStore.get().genai_reasoning_effort || 'none';
+      const qwenEnabled = !!settingsStore.get().qwen35_thinking_support;
+      const gemmaStyleEnabled = !!settingsStore.get().change_gemma4_thinking_style;
+      const simplifiedEffort = qwenEnabled || gemmaStyleEnabled;
+      if (simplifiedEffort) {
+        if (effort !== 'none' && effort !== 'medium' && effort !== 'high') {
+          effort = 'none';
+        }
+      }
+
       const levelSpan = btnMain?.querySelector('.effort-level-label');
       if (effort === 'none') {
         wrapper.classList.remove('active');
         if (levelSpan) levelSpan.textContent = '';
       } else {
         wrapper.classList.add('active');
-        if (levelSpan) levelSpan.textContent = effort;
+        if (levelSpan) {
+          if (simplifiedEffort) {
+            levelSpan.textContent = effort === 'medium' ? 'Lite' : 'High';
+          } else {
+            levelSpan.textContent = effort;
+          }
+        }
       }
       dropdown.querySelectorAll('.effort-option').forEach(opt => {
-        opt.classList.toggle('selected', opt.dataset.value === effort);
+        const val = opt.dataset.value;
+        if (simplifiedEffort) {
+          if (val === 'none') {
+            opt.textContent = 'Off';
+            opt.style.display = '';
+          } else if (val === 'medium') {
+            opt.textContent = 'Lite';
+            opt.style.display = '';
+          } else if (val === 'high') {
+            opt.textContent = 'High';
+            opt.style.display = '';
+          } else {
+            opt.style.display = 'none';
+          }
+        } else {
+          if (val === 'none') opt.textContent = 'None';
+          else if (val === 'minimal') opt.textContent = 'Minimal';
+          else if (val === 'low') opt.textContent = 'Low';
+          else if (val === 'medium') opt.textContent = 'Medium';
+          else if (val === 'high') opt.textContent = 'High';
+          opt.style.display = '';
+        }
+        opt.classList.toggle('selected', val === effort);
       });
       
       const isExtended = settingsStore.get().extended_thinking;
@@ -5467,20 +5564,23 @@ export function initGenAIPanel() {
     if (btnMain) {
       btnMain.addEventListener('click', (e) => {
         e.stopPropagation();
-        const currentEffort = settingsStore.get().reasoning_effort || 'none';
+        const currentEffort = settingsStore.get().genai_reasoning_effort || 'none';
+        const qwenEnabled = !!settingsStore.get().qwen35_thinking_support;
+        const gemmaStyleEnabled = !!settingsStore.get().change_gemma4_thinking_style;
+        const simplifiedEffort = qwenEnabled || gemmaStyleEnabled;
         if (currentEffort !== 'none') {
-          settingsStore.save({ ...settingsStore.get(), reasoning_effort: 'none', previous_reasoning_effort: currentEffort });
+          settingsStore.save({ ...settingsStore.get(), genai_reasoning_effort: 'none', previous_genai_reasoning_effort: currentEffort });
         } else {
-          const prev = settingsStore.get().previous_reasoning_effort || 'medium';
-          settingsStore.save({ ...settingsStore.get(), reasoning_effort: prev });
+          let prev = settingsStore.get().previous_genai_reasoning_effort || 'medium';
+          if (simplifiedEffort && prev !== 'none' && prev !== 'medium' && prev !== 'high') {
+            prev = 'medium';
+          }
+          settingsStore.save({ ...settingsStore.get(), genai_reasoning_effort: prev });
         }
         if (dropdown) dropdown.classList.add('hidden');
         refreshGenAIThinkingEffortUI();
-        if (window.refreshThinkingEffortUI) window.refreshThinkingEffortUI();
       });
       refreshGenAIThinkingEffortUI();
-      // Sync chat toolbar button if visible
-      if (window.refreshThinkingEffortUI) window.refreshThinkingEffortUI();
     }
 
     dropdown.addEventListener('click', (e) => {
@@ -5489,23 +5589,25 @@ export function initGenAIPanel() {
       e.stopPropagation();
       const value = opt.dataset.value;
       if (!value || value === 'extended') return;
-      settingsStore.save({ ...settingsStore.get(), reasoning_effort: value });
+      const updateData = { genai_reasoning_effort: value };
+      if (value !== 'none') {
+        updateData.previous_genai_reasoning_effort = value;
+      }
+      settingsStore.save({ ...settingsStore.get(), ...updateData });
       dropdown.classList.add('hidden');
       refreshGenAIThinkingEffortUI();
-      if (window.refreshThinkingEffortUI) window.refreshThinkingEffortUI();
     });
 
     const extendedToggleRow = document.getElementById('genai-extended-thinking-toggle-row');
     if (extendedToggleRow) {
       extendedToggleRow.addEventListener('click', (e) => {
         e.stopPropagation();
-        const effort = settingsStore.get().reasoning_effort || 'none';
+        const effort = settingsStore.get().genai_reasoning_effort || 'none';
         if (effort === 'none') return;
         
         const current = !!settingsStore.get().extended_thinking;
         settingsStore.save({ ...settingsStore.get(), extended_thinking: !current });
         refreshGenAIThinkingEffortUI();
-        if (window.refreshThinkingEffortUI) window.refreshThinkingEffortUI();
       });
     }
 

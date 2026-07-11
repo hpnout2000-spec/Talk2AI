@@ -272,7 +272,7 @@ async function generateGroupResponse(respondingChar, group, characters, session)
   const contentEl = msgEl.querySelector('.group-msg-text');
   const apiMessages = buildGroupApiMessages(respondingChar, characters, session);
   const settings = settingsStore.get();
-  let fullResponse = (settings.force_reasoning && settings.reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') ? settings.reasoning_tag_open + '\n' : '';
+  let fullResponse = (settings.force_reasoning && settings.reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') ? settings.reasoning_tag_open : '';
   try {
     await api.streamChat(apiMessages, groupAbortController.signal, (chunk) => {
       fullResponse += chunk;
@@ -350,7 +350,7 @@ export function buildGroupApiMessages(respondingChar, allCharacters, session) {
   }
 
   if (settings.force_reasoning && settings.reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') {
-    messages.push({ role: 'assistant', content: settings.reasoning_tag_open + '\n' });
+    messages.push({ role: 'assistant', content: settings.reasoning_tag_open });
   }
 
   return messages;

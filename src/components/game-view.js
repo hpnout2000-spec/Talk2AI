@@ -1690,7 +1690,34 @@ function openGameSettingsModal(gameId) {
   
   if (titleInput) titleInput.value = game.title || '';
   if (promptInput) promptInput.value = game.story_prompt || '';
-  if (effortSelect) effortSelect.value = game.reasoning_effort || 'none';
+  
+  if (effortSelect) {
+    const settings = settingsStore.get();
+    const qwenEnabled = !!settings.qwen35_thinking_support;
+    const gemmaStyleEnabled = !!settings.change_gemma4_thinking_style;
+    const simplifiedEffort = qwenEnabled || gemmaStyleEnabled;
+    effortSelect.innerHTML = '';
+    if (simplifiedEffort) {
+      effortSelect.insertAdjacentHTML('beforeend', `
+        <option value="none">Off</option>
+        <option value="medium">Lite</option>
+        <option value="high">High</option>
+      `);
+    } else {
+      effortSelect.insertAdjacentHTML('beforeend', `
+        <option value="none">None</option>
+        <option value="minimal">Minimal</option>
+        <option value="low">Low</option>
+        <option value="medium">Medium</option>
+        <option value="high">High</option>
+      `);
+    }
+    let effort = game.reasoning_effort || 'none';
+    if (simplifiedEffort && effort !== 'none' && effort !== 'medium' && effort !== 'high') {
+      effort = 'none';
+    }
+    effortSelect.value = effort;
+  }
   
   modal.setAttribute('data-game-id', gameId);
   uiManager.open('game-settings-modal');

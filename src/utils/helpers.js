@@ -103,6 +103,14 @@ export function renderMarkdown(text) {
     return placeholder;
   });
 
+  // Extract inline code blocks to protect them from parsing
+  const inlineCodeBlocks = [];
+  html = html.replace(/`([^`]+)`/g, (match, code) => {
+    const placeholder = `__INLINE_CODE_PLACEHOLDER_${inlineCodeBlocks.length}__`;
+    inlineCodeBlocks.push(`<code>${code}</code>`);
+    return placeholder;
+  });
+
   // Headings (### ...)
   html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
 
@@ -266,8 +274,44 @@ export function renderMarkdown(text) {
   
   html = resultListLines.join('\n');
 
-  // Inline code (`...`)
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Standard Markdown links: [text](url)
+  // We use a regex that supports balanced parentheses in the URL: ([^)]*?(?:\([^)]*?\)[^)]*?)*)
+  const linkUrls = [];
+  html = html.replace(/\[(.*?)\]\(([^)]*?(?:\([^)]*?\)[^)]*?)*)\)/g, (match, text, url) => {
+    let targetUrl = url.trim();
+    // Support titles in quotes, including quotes already replaced by quotes span helper
+    const titleMatch = targetUrl.match(/^([^\s]+)\s+(?:<span class="text-quotes">"([^"]*)"<\/span>|'([^']*)')$/);
+    let titleAttr = '';
+    if (titleMatch) {
+      targetUrl = titleMatch[1];
+      const title = titleMatch[2] || titleMatch[3] || '';
+      titleAttr = ` title="${escapeHtml(title)}"`;
+    }
+    let cleanUrl = targetUrl.replace(/&amp;/g, '&');
+    if (/^\s*javascript:/i.test(cleanUrl)) {
+      cleanUrl = '#';
+    }
+    const urlPlaceholder = `__LINK_URL_PLACEHOLDER_${linkUrls.length}__`;
+    linkUrls.push(cleanUrl);
+    return `<a href="${urlPlaceholder}" target="_blank"${titleAttr}>${text}</a>`;
+  });
+
+  // Raw URLs formatting (converting to 🌐 hostname links)
+  html = html.replace(/(<[^>]+>)|(https?:\/\/[^\s<]+)/gi, (match, tag, url) => {
+    if (tag) return tag;
+    const urlMatch = url.match(/^(.*?)([.,;!?')]*)$/);
+    const cleanUrl = urlMatch[1];
+    const trailing = urlMatch[2];
+    try {
+      const urlObj = new URL(cleanUrl.replace(/&amp;/g, '&'));
+      const siteName = urlObj.hostname.replace(/^www\./i, '');
+      const urlPlaceholder = `__LINK_URL_PLACEHOLDER_${linkUrls.length}__`;
+      linkUrls.push(cleanUrl.replace(/&amp;/g, '&'));
+      return `<a href="${urlPlaceholder}" target="_blank">${siteName}</a>${trailing}`;
+    } catch (e) {
+      return match;
+    }
+  });
 
   // Bold (**...**)
   html = html.replace(/\*\*(.+?)\*\*/g, '<span class="text-asterisks">$1</span>');
@@ -317,6 +361,16 @@ export function renderMarkdown(text) {
   // Clean up all newlines inside and around list/table tags to keep them compact
   html = html.replace(/(<\/?(?:ul|ol|li|table|thead|tbody|tr|th|td)>)\n+/g, '$1');
   html = html.replace(/\n+(<\/?(?:ul|ol|li|table|thead|tbody|tr|th|td)>)/g, '$1');
+
+  // Restore link URLs
+  for (let i = 0; i < linkUrls.length; i++) {
+    html = html.split(`__LINK_URL_PLACEHOLDER_${i}__`).join(linkUrls[i]);
+  }
+
+  // Restore inline code blocks
+  for (let i = 0; i < inlineCodeBlocks.length; i++) {
+    html = html.split(`__INLINE_CODE_PLACEHOLDER_${i}__`).join(inlineCodeBlocks[i]);
+  }
 
   // Restore code blocks
   for (let i = 0; i < codeBlocks.length; i++) {
@@ -408,7 +462,7 @@ export function extractThinkingSnippets(text) {
  * Parse thinking block progress during streaming
  */
 export function parseStreamThinking(text, customOpen = null, customClose = null) {
-  if (typeof text !== 'string') return { thinking: '', content: '', isInThinking: false };
+  if (typeof text !== 'string') return { thinking: '', content: '', rawContent: '', isInThinking: false, thinkingStartIdx: -1, thinkingEndIdx: -1 };
   
   const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const defaultOpen = '<think>|<reasoning>|<thought>';
@@ -416,7 +470,7 @@ export function parseStreamThinking(text, customOpen = null, customClose = null)
   const startMatch = text.match(new RegExp(openPattern));
   
   if (!startMatch) {
-    return { thinking: '', content: text, isInThinking: false };
+    return { thinking: '', content: text, rawContent: text, isInThinking: false, thinkingStartIdx: -1, thinkingEndIdx: -1 };
   }
 
   const startIdx = startMatch.index;
@@ -430,13 +484,13 @@ export function parseStreamThinking(text, customOpen = null, customClose = null)
   if (!endMatch) {
     const thinking = text.substring(afterStart);
     const content = text.substring(0, startIdx);
-    return { thinking, content, isInThinking: true };
+    return { thinking, content, rawContent: content, isInThinking: true, thinkingStartIdx: startIdx, thinkingEndIdx: -1 };
   } else {
     const endIdx = afterStart + endMatch.index;
     const thinkEnd = endMatch[0];
     const thinking = text.substring(afterStart, endIdx);
-    const content = text.substring(0, startIdx) + text.substring(endIdx + thinkEnd.length);
-    return { thinking, content: content.trim(), isInThinking: false };
+    const rawContent = text.substring(0, startIdx) + text.substring(endIdx + thinkEnd.length);
+    return { thinking, content: rawContent.trim(), rawContent, isInThinking: false, thinkingStartIdx: startIdx, thinkingEndIdx: endIdx + thinkEnd.length };
   }
 }
 

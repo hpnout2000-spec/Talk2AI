@@ -690,18 +690,55 @@ export function initChat() {
     if (!wrapper || !btnArrow || !dropdown) return;
 
     function refreshThinkingEffortUI() {
-      const effort = settingsStore.get().reasoning_effort || 'none';
+      let effort = settingsStore.get().reasoning_effort || 'none';
+      const qwenEnabled = !!settingsStore.get().qwen35_thinking_support;
+      const gemmaStyleEnabled = !!settingsStore.get().change_gemma4_thinking_style;
+      const simplifiedEffort = qwenEnabled || gemmaStyleEnabled;
+      if (simplifiedEffort) {
+        if (effort !== 'none' && effort !== 'medium' && effort !== 'high') {
+          effort = 'none';
+        }
+      }
+
       const levelSpan = btnMain?.querySelector('.effort-level-label');
       if (effort === 'none') {
         wrapper.classList.remove('active');
         if (levelSpan) levelSpan.textContent = '';
       } else {
         wrapper.classList.add('active');
-        if (levelSpan) levelSpan.textContent = effort;
+        if (levelSpan) {
+          if (simplifiedEffort) {
+            levelSpan.textContent = effort === 'medium' ? 'Lite' : 'High';
+          } else {
+            levelSpan.textContent = effort;
+          }
+        }
       }
       // Mark active option
       dropdown.querySelectorAll('.effort-option').forEach(opt => {
-        opt.classList.toggle('selected', opt.dataset.value === effort);
+        const val = opt.dataset.value;
+        if (simplifiedEffort) {
+          if (val === 'none') {
+            opt.textContent = 'Off';
+            opt.style.display = '';
+          } else if (val === 'medium') {
+            opt.textContent = 'Lite';
+            opt.style.display = '';
+          } else if (val === 'high') {
+            opt.textContent = 'High';
+            opt.style.display = '';
+          } else {
+            opt.style.display = 'none';
+          }
+        } else {
+          if (val === 'none') opt.textContent = 'None';
+          else if (val === 'minimal') opt.textContent = 'Minimal';
+          else if (val === 'low') opt.textContent = 'Low';
+          else if (val === 'medium') opt.textContent = 'Medium';
+          else if (val === 'high') opt.textContent = 'High';
+          opt.style.display = '';
+        }
+        opt.classList.toggle('selected', val === effort);
       });
     }
 
@@ -720,10 +757,16 @@ export function initChat() {
       btnMain.addEventListener('click', (e) => {
         e.stopPropagation();
         const currentEffort = settingsStore.get().reasoning_effort || 'none';
+        const qwenEnabled = !!settingsStore.get().qwen35_thinking_support;
+        const gemmaStyleEnabled = !!settingsStore.get().change_gemma4_thinking_style;
+        const simplifiedEffort = qwenEnabled || gemmaStyleEnabled;
         if (currentEffort !== 'none') {
           settingsStore.save({ ...settingsStore.get(), reasoning_effort: 'none', previous_reasoning_effort: currentEffort });
         } else {
-          const prev = settingsStore.get().previous_reasoning_effort || 'medium';
+          let prev = settingsStore.get().previous_reasoning_effort || 'medium';
+          if (simplifiedEffort && prev !== 'none' && prev !== 'medium' && prev !== 'high') {
+            prev = 'medium';
+          }
           settingsStore.save({ ...settingsStore.get(), reasoning_effort: prev });
         }
         if (dropdown) dropdown.classList.add('hidden');
@@ -738,7 +781,11 @@ export function initChat() {
       e.stopPropagation();
       const value = opt.dataset.value;
       if (!value || value === 'extended') return;
-      settingsStore.save({ ...settingsStore.get(), reasoning_effort: value });
+      const updateData = { reasoning_effort: value };
+      if (value !== 'none') {
+        updateData.previous_reasoning_effort = value;
+      }
+      settingsStore.save({ ...settingsStore.get(), ...updateData });
       dropdown.classList.add('hidden');
       refreshThinkingEffortUI();
       if (window.refreshGenAIThinkingEffortUI) window.refreshGenAIThinkingEffortUI();
@@ -1427,7 +1474,7 @@ async function sendMessage() {
   const msgElement = appendMessage(assistantMsg, true, character);
   const contentEl = msgElement.querySelector('.message-text');
 
-  let fullResponse = (settings.force_reasoning && settings.reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') ? settings.reasoning_tag_open + '\n' : '';
+  let fullResponse = (settings.force_reasoning && settings.reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') ? settings.reasoning_tag_open : '';
   let thinkingText = '';    // accumulated thinking from delta.reasoning_content
   let isStreaming = true;   // true while generation is in progress
   let hasReceivedFirstChunk = false; // tracks if anything has arrived yet
@@ -2166,7 +2213,7 @@ async function buildApiMessages(character, session) {
 
   // FORCE REASONING PREFILL
   if (settings.force_reasoning && settings.reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') {
-    messages.push({ role: 'assistant', content: settings.reasoning_tag_open + '\n' });
+    messages.push({ role: 'assistant', content: settings.reasoning_tag_open });
   }
 
   return messages;
@@ -2612,7 +2659,7 @@ async function triggerAssistantGeneration() {
   const msgElement = appendMessage(assistantMsg, true, character);
   const contentEl = msgElement.querySelector('.message-text');
 
-  let fullResponse = (settings.force_reasoning && settings.reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') ? settings.reasoning_tag_open + '\n' : '';
+  let fullResponse = (settings.force_reasoning && settings.reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') ? settings.reasoning_tag_open : '';
   let thinkingText2 = '';  // accumulated from delta.reasoning_content
   let isStreaming2 = true;
   let hasReceivedFirstChunk2 = false;

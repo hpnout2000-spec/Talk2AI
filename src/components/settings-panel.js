@@ -185,10 +185,12 @@ function loadSettingsToUI() {
   checkField('setting-gemma4-support', settings.gemma4_support);
   checkField('setting-change-gemma4-thinking-style', settings.change_gemma4_thinking_style);
   checkField('setting-glm47-support', settings.glm47_support);
+  checkField('setting-qwen35-thinking-support', settings.qwen35_thinking_support);
   checkField('setting-auto-translate', settings.auto_translate);
   checkField('setting-translate-user', settings.translate_user_messages);
   checkField('setting-italic-asterisks', settings.italic_asterisks);
   checkField('setting-new-streaming-animation', settings.new_streaming_animation);
+  checkField('setting-advanced-animations-blur', settings.advanced_animations_blur);
   setRangeValue('setting-streaming-speed', 'streaming-speed-value', settings.streaming_speed || 45);
   checkField('setting-ai-comments', settings.ai_comments_enabled);
   checkField('setting-suggestions-enabled', settings.suggestions_enabled);
@@ -295,10 +297,12 @@ async function saveSettings() {
     gemma4_support: getChecked('setting-gemma4-support'),
     change_gemma4_thinking_style: getChecked('setting-change-gemma4-thinking-style'),
     glm47_support: getChecked('setting-glm47-support'),
+    qwen35_thinking_support: getChecked('setting-qwen35-thinking-support'),
     auto_translate: getChecked('setting-auto-translate'),
     translate_user_messages: getChecked('setting-translate-user'),
     italic_asterisks: getChecked('setting-italic-asterisks'),
     new_streaming_animation: getChecked('setting-new-streaming-animation'),
+    advanced_animations_blur: getChecked('setting-advanced-animations-blur'),
     streaming_speed: parseFloat(document.getElementById('setting-streaming-speed')?.value || 45),
     ai_comments_enabled: getChecked('setting-ai-comments'),
     suggestions_enabled: getChecked('setting-suggestions-enabled'),
@@ -338,6 +342,10 @@ async function saveSettings() {
   };
 
   await settingsStore.save(newSettings);
+
+  if (window.refreshThinkingEffortUI) window.refreshThinkingEffortUI();
+  if (window.refreshGenAIThinkingEffortUI) window.refreshGenAIThinkingEffortUI();
+  if (window.updateReasoningUI) window.updateReasoningUI();
 
   if (window.updateContextIndicator) {
     window.updateContextIndicator();

@@ -983,6 +983,14 @@ body.genai-fullscreen .genai-empty-state {
 .genai-msg-bubble li { margin-bottom: 0.25em; }
 .genai-msg-bubble strong { font-weight: 700; }
 .genai-msg-bubble em { font-style: italic; color: var(--text-accent); }
+.genai-msg-bubble a {
+  color: var(--accent-primary, #38bdf8);
+  text-decoration: underline;
+  transition: opacity 0.2s ease;
+}
+.genai-msg-bubble a:hover {
+  opacity: 0.8;
+}
 .genai-msg-bubble code {
   font-family: var(--font-mono);
   font-size: 0.85em;

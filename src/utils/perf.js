@@ -98,45 +98,6 @@ class PerfLogger {
 export const perf = new PerfLogger();
 perf.startFPSMonitor();
 
-// Global activity trackers with timing and hover-disable optimization
-let lastScrollTime = 0;
-window.addEventListener('scroll', (e) => {
-  const now = performance.now();
-  const target = e.target === document ? 'window' : (e.target.id || e.target.className);
-
-  if (lastScrollTime > 0) {
-    const gap = now - lastScrollTime;
-    perf.logAction('SCROLL_TICK', { target, gap: gap.toFixed(2) + 'ms' });
-  } else {
-    perf.logAction('SCROLL_START', { target });
-    document.body.classList.add('disable-hover');
-  }
-
-  lastScrollTime = now;
-  // Reset scroll timer after 150ms of inactivity
-  clearTimeout(window._scrollResetTimer);
-  window._scrollResetTimer = setTimeout(() => {
-    perf.logAction('SCROLL_END', { target });
-    lastScrollTime = 0;
-    document.body.classList.remove('disable-hover');
-  }, 150);
-}, true);
-
-window.addEventListener('mousemove', () => {
-  if (!window._mouseMoveThrottled) {
-    window._mouseMoveThrottled = true;
-    perf.logAction('MOUSE_MOVE_CHECK');
-    setTimeout(() => window._mouseMoveThrottled = false, 200);
-  }
-}, true);
-
-window.addEventListener('click', (e) => {
-  perf.logAction('CLICK', {
-    tag: e.target.tagName,
-    id: e.target.id,
-    class: e.target.className
-  });
-}, true);
 
 window.exportPerfLogs = () => {
   const data = JSON.stringify(perf.getLogs(), null, 2);

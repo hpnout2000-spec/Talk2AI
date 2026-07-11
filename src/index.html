@@ -178,8 +178,12 @@
 
         <div id="characters-section" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
           <div id="characters-wrapper" style="position: relative; display: flex; flex: 1; min-height: 0; flex-direction: column;">
-            <div class="scroll-blur-overlay top" id="char-blur-top"></div>
-            <div class="scroll-blur-overlay bottom" id="char-blur-bottom"></div>
+            <div class="scroll-blur-overlay top" id="char-blur-top">
+              <div></div><div></div><div></div><div></div><div></div>
+            </div>
+            <div class="scroll-blur-overlay bottom" id="char-blur-bottom">
+              <div></div><div></div><div></div><div></div><div></div>
+            </div>
             <div class="sidebar-section" id="char-sidebar-section" style="flex: 1; width: 100%;">
               <div class="section-label">Characters</div>
               <div id="character-list" class="character-list"></div>
@@ -2094,14 +2098,18 @@
 
             <!-- Interactive List Wrapper with Scroll Blur Overlays -->
             <div style="position: relative; flex: 1; display: flex; flex-direction: column; min-height: 180px; overflow: hidden;">
-              <div class="scroll-blur-overlay top" id="storage-scroll-overlay-top" style="position: absolute; top: 0; left: 0; right: 0; height: 24px; background: linear-gradient(to bottom, var(--bg-secondary) 0%, transparent 100%); z-index: 5; pointer-events: none; opacity: 0; transition: opacity var(--transition-fast);"></div>
+              <div class="scroll-blur-overlay top" id="storage-scroll-overlay-top" style="position: absolute; top: 0; left: 0; right: 0; height: 24px; background: linear-gradient(to bottom, var(--bg-secondary) 0%, transparent 100%); z-index: 5; pointer-events: none; opacity: 0; transition: opacity var(--transition-fast);">
+                <div></div><div></div><div></div><div></div><div></div>
+              </div>
               
               <!-- Interactive List -->
               <div id="storage-cleanup-list" class="storage-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
                 <div id="storage-cleanup-stats" style="font-size: var(--text-sm); font-weight: 500; color: var(--text-tertiary); text-align: center; padding: 40px 0;">Scanning...</div>
               </div>
               
-              <div class="scroll-blur-overlay bottom" id="storage-scroll-overlay-bottom" style="position: absolute; bottom: 0; left: 0; right: 0; height: 24px; background: linear-gradient(to top, var(--bg-secondary) 0%, transparent 100%); z-index: 5; pointer-events: none; opacity: 0; transition: opacity var(--transition-fast);"></div>
+              <div class="scroll-blur-overlay bottom" id="storage-scroll-overlay-bottom" style="position: absolute; bottom: 0; left: 0; right: 0; height: 24px; background: linear-gradient(to top, var(--bg-secondary) 0%, transparent 100%); z-index: 5; pointer-events: none; opacity: 0; transition: opacity var(--transition-fast);">
+                <div></div><div></div><div></div><div></div><div></div>
+              </div>
             </div>
           </div>
           
@@ -2137,7 +2145,7 @@
               </label>
             </div>
             <div class="form-group-row">
-              <label>Change Gemma 4 thinking style</label>
+              <label>Gemma 4 Advanced thinking</label>
               <label class="toggle-switch small">
                 <input type="checkbox" id="setting-change-gemma4-thinking-style" />
                 <span class="toggle-slider"></span>
@@ -2147,6 +2155,13 @@
               <label>GLM 4.7 & Qwen 3.5 Support</label>
               <label class="toggle-switch small">
                 <input type="checkbox" id="setting-glm47-support" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="form-group-row">
+              <label>Qwen 3.5 thinking support</label>
+              <label class="toggle-switch small">
+                <input type="checkbox" id="setting-qwen35-thinking-support" />
                 <span class="toggle-slider"></span>
               </label>
             </div>
@@ -2355,6 +2370,13 @@
               <label>New Streaming Animation (Constant Speed)</label>
               <label class="toggle-switch small">
                 <input type="checkbox" id="setting-new-streaming-animation" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="form-group-row">
+              <label>Advanced animations & blur</label>
+              <label class="toggle-switch small">
+                <input type="checkbox" id="setting-advanced-animations-blur" />
                 <span class="toggle-slider"></span>
               </label>
             </div>
@@ -3763,5 +3785,39 @@
         </button>
       </div>
     </div>
+    
+    <!-- SVG Filters for Advanced Blur & Chromatic Aberration -->
+    <svg style="position: absolute; width: 0; height: 0; pointer-events: none;">
+      <defs>
+        <filter id="chromatic-aberration" x="-20%" y="-20%" width="140%" height="140%">
+          <!-- Extract and shift Red channel -->
+          <feColorMatrix type="matrix" in="SourceGraphic" result="red"
+            values="1 0 0 0 0
+                    0 0 0 0 0
+                    0 0 0 0 0
+                    0 0 0 1 0" />
+          <feOffset in="red" dx="1.5" dy="0.5" result="red-shifted" />
+
+          <!-- Extract Green channel -->
+          <feColorMatrix type="matrix" in="SourceGraphic" result="green"
+            values="0 0 0 0 0
+                    0 1 0 0 0
+                    0 0 0 0 0
+                    0 0 0 1 0" />
+
+          <!-- Extract and shift Blue channel -->
+          <feColorMatrix type="matrix" in="SourceGraphic" result="blue"
+            values="0 0 0 0 0
+                    0 0 0 0 0
+                    0 0 1 0 0
+                    0 0 0 1 0" />
+          <feOffset in="blue" dx="-1.5" dy="-0.5" result="blue-shifted" />
+
+          <!-- Recombine channels -->
+          <feBlend mode="screen" in="red-shifted" in2="green" result="rg" />
+          <feBlend mode="screen" in="rg" in2="blue-shifted" />
+        </filter>
+      </defs>
+    </svg>
   </body>
 </html>

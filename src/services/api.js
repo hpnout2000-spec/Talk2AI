@@ -148,8 +148,42 @@ export const api = {
         }
       }
 
+      let finalMessages = [...messages];
+      let effort = options.reasoning_effort ?? settings.reasoning_effort ?? 'none';
+
+      if (settings.qwen35_thinking_support) {
+        if (effort === 'high') {
+          effort = 'medium';
+          if (finalMessages.length > 0 && finalMessages[finalMessages.length - 1].role === 'user') {
+            finalMessages.push({
+              role: 'assistant',
+              content: "<think>Here's a thinking process:\n\n1.  **Analyze User Input:**"
+            });
+            const prefillStr = "<think>Here's a thinking process:\n\n1.  **Analyze User Input:**";
+            if (onChunk) {
+              onChunk(prefillStr);
+            }
+          }
+        }
+      } else if (settings.change_gemma4_thinking_style) {
+        if (effort === 'high') {
+          effort = 'medium';
+        } else if (effort === 'medium') {
+          if (finalMessages.length > 0 && finalMessages[finalMessages.length - 1].role === 'user') {
+            finalMessages.push({
+              role: 'assistant',
+              content: "<|channel>thought\nOkay,"
+            });
+            const prefillStr = "<|channel>thought\nOkay,";
+            if (onChunk) {
+              onChunk(prefillStr);
+            }
+          }
+        }
+      }
+
       const body = {
-        messages,
+        messages: finalMessages,
         stream: true,
         max_tokens: options.max_tokens || settings.max_tokens,
         temperature: options.temperature ?? settings.temperature,
@@ -175,7 +209,6 @@ export const api = {
       }
 
       // Add reasoning_effort parameter (KoboldCpp parameter for thinking budget)
-      const effort = options.reasoning_effort ?? settings.reasoning_effort ?? 'none';
       if (effort) {
         body.reasoning_effort = effort;
       }

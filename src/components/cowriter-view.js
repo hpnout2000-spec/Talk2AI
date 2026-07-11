@@ -457,7 +457,7 @@ function cancelManualComplete() {
 async function executeStreamedGeneration(messages) {
   const settings = settingsStore.get();
   if (settings.force_reasoning && settings.reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') {
-    messages.push({ role: 'assistant', content: settings.reasoning_tag_open + '\n' });
+    messages.push({ role: 'assistant', content: settings.reasoning_tag_open });
   }
 
   if (isGenerating) return;
@@ -506,7 +506,7 @@ async function executeStreamedGeneration(messages) {
   selection.removeAllRanges();
   selection.addRange(nextRange);
   
-  let fullText = (settings.force_reasoning && settings.reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') ? settings.reasoning_tag_open + '\n' : '';
+  let fullText = (settings.force_reasoning && settings.reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') ? settings.reasoning_tag_open : '';
   
   try {
     const options = {
@@ -678,19 +678,49 @@ async function saveSettings() {
 function updateReasoningUI() {
   if (!btnReasoning) return;
   const settings = settingsStore.get();
-  const activeEffort = settings.reasoning_effort || 'none';
+  let activeEffort = settings.reasoning_effort || 'none';
+  const qwenEnabled = !!settings.qwen35_thinking_support;
+  const gemmaStyleEnabled = !!settings.change_gemma4_thinking_style;
+  const simplifiedEffort = qwenEnabled || gemmaStyleEnabled;
+  if (simplifiedEffort) {
+    if (activeEffort !== 'none' && activeEffort !== 'medium' && activeEffort !== 'high') {
+      activeEffort = 'none';
+    }
+  }
   
   if (activeEffort === 'none') {
     btnReasoning.style.color = 'var(--text-secondary)';
     btnReasoning.title = 'Reasoning: Off';
   } else {
     btnReasoning.style.color = 'var(--text-accent)';
-    btnReasoning.title = `Reasoning: ${activeEffort}`;
+    const displayVal = simplifiedEffort ? (activeEffort === 'medium' ? 'Lite' : 'High') : activeEffort;
+    btnReasoning.title = `Reasoning: ${displayVal}`;
   }
   
   if (reasoningMenu) {
     reasoningMenu.querySelectorAll('.reasoning-option').forEach(option => {
-      if (option.dataset.value === activeEffort) {
+      const val = option.dataset.value;
+      if (simplifiedEffort) {
+        if (val === 'none') {
+          option.textContent = 'Off';
+          option.style.display = '';
+        } else if (val === 'medium') {
+          option.textContent = 'Lite';
+          option.style.display = '';
+        } else if (val === 'high') {
+          option.textContent = 'High';
+          option.style.display = '';
+        } else {
+          option.style.display = 'none';
+        }
+      } else {
+        if (val === 'none') option.textContent = 'None';
+        else if (val === 'low') option.textContent = 'Low';
+        else if (val === 'medium') option.textContent = 'Medium';
+        else if (val === 'high') option.textContent = 'High';
+        option.style.display = '';
+      }
+      if (val === activeEffort) {
         option.classList.add('active');
       } else {
         option.classList.remove('active');
@@ -702,6 +732,9 @@ function updateReasoningUI() {
 async function toggleReasoningEffort() {
   const settings = settingsStore.get();
   const current = settings.reasoning_effort || 'none';
+  const qwenEnabled = !!settings.qwen35_thinking_support;
+  const gemmaStyleEnabled = !!settings.change_gemma4_thinking_style;
+  const simplifiedEffort = qwenEnabled || gemmaStyleEnabled;
   
   if (current !== 'none') {
     await settingsStore.save({
@@ -710,12 +743,18 @@ async function toggleReasoningEffort() {
     });
     showToast('Reasoning effort turned OFF', 'info');
   } else {
-    const prev = settings.previous_reasoning_effort || 'medium';
+    let prev = settings.previous_reasoning_effort || 'medium';
+    if (simplifiedEffort && prev !== 'none' && prev !== 'medium' && prev !== 'high') {
+      prev = 'medium';
+    }
     await settingsStore.save({
       reasoning_effort: prev
     });
-    showToast(`Reasoning effort turned ON (${prev})`, 'info');
+    const displayVal = simplifiedEffort ? (prev === 'medium' ? 'Lite' : 'High') : prev;
+    showToast(`Reasoning effort turned ON (${displayVal})`, 'info');
   }
   updateReasoningUI();
 }
+
+window.updateReasoningUI = updateReasoningUI;
 

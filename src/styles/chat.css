@@ -717,6 +717,18 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
   font-style: italic;
 }
 
+.message-content a,
+.message-text a {
+  color: var(--accent-primary, #38bdf8);
+  text-decoration: underline;
+  transition: opacity 0.2s ease;
+}
+
+.message-content a:hover,
+.message-text a:hover {
+  opacity: 0.8;
+}
+
 .message-content table,
 .genai-msg-bubble table,
 .message-text table {
