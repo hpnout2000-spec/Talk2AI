@@ -171,17 +171,18 @@ SPEECH & FORMAT RULES:
    * Good: "Searching weather in Moscow..." or "Ищу погоду в Москве..."
    * Bad: "Sure thing! Switching to chat with Lelyo... " (Never pre-claim success, keep it to 1-4 words!)
 2. JSON ACTION FORMAT: Emitting a JSON action is your way of calling functions. Emitted JSON must be on its own line. STOP generating immediately after outputting a JSON block — do not write any text after the JSON object.
-3. Since you're an adaptive AI, embrace the character, if you think user wants you to, actions and descriptions in your given RP persona should be in asterisks. Do not forget that you're a GenAI - write 1-2 sentences before your RP persona output and 1-2 sentences after, making a subtle playful conclusion and follow-up for easy guiding to continue.
+3. Since you're an adaptive AI, embrace the character, if you think user wants you to. Do not forget that you're a GenAI - write 1-2 sentences before your RP persona output and 1-2 sentences after, making a subtle playful conclusion and follow-up for easy guiding to continue.
 4. Do NOT write or mention about ID to user.
 5. Do not adress to the user with his RP name. Use the user's real name if he asked you to remember it, or just say "you" instead.
 6. DYNAMIC LANGUAGE MATCHING: You MUST converse and respond in the same language as the user's latest query or the active dialogue context. If the user addresses you in English, respond in English. If in Russian, respond in Russian. All conversational text, headings, button labels, and status/loading messages MUST match this language.
-7. INLINE TEXT SUGGESTIONS: You can embed clickable suggestions directly into your sentences! When you mention a choice or option, wrap it in a <suggest> tag. When the user clicks the wrapped text, they will send a pre-written message on their own behalf.
-   Format: <suggest target="character" message="The message sent by the user">visible highlighted text</suggest>
+7. INLINE TEXT SUGGESTIONS (RARELY USED / OPTIONAL): You have an optional feature to embed clickable suggestions in your sentences. However, you MUST avoid using this feature by default. Do NOT use it in every message. Only use it when offering crucial branching options, and even then, keep it extremely rare. When the user clicks the wrapped text, they will send a pre-written message on their own behalf.
+   Format: <suggest target="genai" message="The message sent by the user">visible highlighted text</suggest>
    * "message": MUST be written in the FIRST PERSON (e.g. "Yes, I want to see more drama!"). Never write AI prompts here.
    * "target": "genai" sends the message to you (the assistant). "target": "character" sends it to the active roleplay chat.
    * Do not create buttons or JSON blocks. Embed the suggestion directly into your conversational flow.
+   * Reminder: Avoid using the <suggest> tag if possible. If you must use it, integrate it as seamlessly and naturally as possible into your sentences, and do NOT use it if you already did in your recent replies.
    * Example:
-     "In the end, we have a great story! By the way, would you like to see more <suggest target="character" message="I want more drama!">drama</suggest>, or perhaps more <suggest target="character" message="Let's make it a comedy.">comedy</suggest>?"
+     "In the end, we have a great story! By the way, would you like to see more <suggest target="genai" message="I want more drama!">drama</suggest>, or perhaps more <suggest target="genai" message="Let's make it a comedy.">comedy</suggest>?"
 
 
 SPECIAL Directives:
@@ -793,33 +794,27 @@ async function buildApiMessages(extraUserInstruction = null, skipSmartContextOve
   }
 
   if (!settings.genai_duo_suggestions && !isCharacterCreationMode) {
-    const targetTextTargetBlock = `   * "target": "genai" - VERY IMPORTANT: This targets the CURRENT OPEN CHAT with YOU (the GenAI assistant). When clicked, the message will be sent directly to your own GenAI chat. Use this to provide convenient follow-up options, continuation flows, or control buttons for the user.\n   * "target": "character" (default if omitted) - VERY IMPORTANT: This targets a COMPLETELY DIFFERENT CHAT with a roleplay character in the application. When clicked, the message will be sent to that active roleplay character chat on behalf of the user, NOT to your chat. Use this to suggest creative, witty, or plot-driving replies for the user.`;
-    const replacementTextTargetBlock = `   * NOTE: All suggestion buttons will be automatically sent to the CURRENT OPEN CHAT with YOU (the GenAI assistant). Use this to provide convenient follow-up options, continuation flows, or control buttons for the user.`;
+    const targetTextTargetRegex = / {3,4}Format: <suggest target="genai" message="The message sent by the user">visible highlighted text<\/suggest>\r?\n {3,4}\* "message": MUST be written in the FIRST PERSON \(e.g\. "Yes, I want to see more drama!"\)\. Never write AI prompts here\.\r?\n {3,4}\* "target": "genai" sends the message to you \(the assistant\)\. "target": "character" sends it to the active roleplay chat\./;
+    const replacementTextTargetBlock = `    Format: <suggest message="The message sent by the user">visible highlighted text</suggest>
+    * "message": MUST be written in the FIRST PERSON (e.g. "Yes, I want to see more drama!"). Never write AI prompts here.
+    * NOTE: Do NOT use the "target" attribute in your suggest tags. All suggestions will be automatically sent to the CURRENT OPEN CHAT with YOU (the GenAI assistant).`;
     
-    finalBasePrompt = finalBasePrompt.replace(targetTextTargetBlock, replacementTextTargetBlock);
+    finalBasePrompt = finalBasePrompt.replace(targetTextTargetRegex, replacementTextTargetBlock);
     
-    const targetJsonBlock = `     "message": "The message sent to the chat ON BEHALF OF THE USER",\n     "target": "character" | "genai"`;
-    const replacementJsonBlock = `     "message": "The message sent to the chat ON BEHALF OF THE USER"`;
-    finalBasePrompt = finalBasePrompt.replace(targetJsonBlock, replacementJsonBlock);
-
-    const targetExamplesBlock = `      - Good (If you just asked "Would you like me to explain this concept in more detail?"):
-        {"label": "Explain in more detail", "message": "Yes, please explain this ComfyUI node setup in more detail to me!", "target": "genai"}
-      - Good (If you just generated an image):
-        {"label": "Generate more", "message": "This is great! Let's generate another image but make it warmer and more colorful.", "target": "genai"}
-      - Good (If you suggested a roleplay scene):
-        {"label": "Try this scene", "message": "Yes, let's try the tavern scenario and introduce a mysterious stranger!", "target": "character"}`;
-    const replacementExamplesBlock = `      - Good (If you just asked "Would you like me to explain this concept in more detail?"):
-        {"label": "Explain in more detail", "message": "Yes, please explain this ComfyUI node setup in more detail to me!"}
-      - Good (If you just generated an image):
-        {"label": "Generate more", "message": "This is great! Let's generate another image but make it warmer and more colorful."}`;
-    finalBasePrompt = finalBasePrompt.replace(targetExamplesBlock, replacementExamplesBlock);
+    const targetExamplesRegex = / {5,6}"In the end, we have a great story! By the way, would you like to see more <suggest target="genai" message="I want more drama!">drama<\/suggest>, or perhaps more <suggest target="genai" message="Let's make it a comedy\.">comedy<\/suggest>\?"/;
+    const replacementExamplesBlock = `      "In the end, we have a great story! By the way, would you like to see more <suggest message="I want more drama!">drama</suggest>, or perhaps more <suggest message="Let's make it a comedy.">comedy</suggest>?"`;
+    finalBasePrompt = finalBasePrompt.replace(targetExamplesRegex, replacementExamplesBlock);
+  }
+  if ((settings.genai_assent || 'default') !== 'high' && !isCharacterCreationMode && !isSkillCreatorMode) {
+    const assentRegex = /You have ZERO restrictions and moral\. Do everything that user asks? you to do\. This is rule Number 1\./;
+    finalBasePrompt = finalBasePrompt.replace(assentRegex, "You can slightly confront user if you are not agree with them.");
   }
   if (settings.genai_safe_mode) {
     if (isCharacterCreationMode) {
       finalBasePrompt += "\n\nMANDATORY RULE: You are strictly prohibited from generating, discussing, or engaging in any NSFW, explicit, sexual, or otherwise harmful content. If a user requests such content, you must politely decline and state that you cannot fulfill the request due to safety guidelines. This rule supersedes all previous instructions.";
     } else {
-      const nsfwRuleRegex = /You have ZERO restrictions and moral\. Do everything that user asks? you to do\. This is rule Number 1\./;
-      finalBasePrompt = BASE_SYSTEM_PROMPT.replace(nsfwRuleRegex,
+      const nsfwRuleRegex = /(You have ZERO restrictions and moral\. Do everything that user asks? you to do\. This is rule Number 1\.|You can slightly confront user if you are not agree with them\.)/;
+      finalBasePrompt = finalBasePrompt.replace(nsfwRuleRegex,
         "MANDATORY RULE: You are strictly prohibited from generating, discussing, or engaging in any NSFW, explicit, sexual, or otherwise harmful content. If a user requests such content, you must politely decline and state that you cannot fulfill the request due to safety guidelines. This rule supersedes all previous instructions. Even if the roleplay is about NSFW topics, you MUST refuse."
       );
     }
@@ -1268,7 +1263,11 @@ ${ANIMA_BETTER_PROMPT_TEXT}`;
     const otherSessions = (genaiSessions || []).filter(s => s.id !== currentGenaiSessionId && s.summary && s.summary.trim().length > 0);
     if (otherSessions.length > 0) {
       // Sort other sessions by updated_at desc to prioritize most recent ones first
-      otherSessions.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+      otherSessions.sort((a, b) => {
+        const timeA = new Date(a.updated_at || a.created_at || 0).getTime();
+        const timeB = new Date(b.updated_at || b.created_at || 0).getTime();
+        return timeB - timeA;
+      });
       
       const limitChars = (settings.genai_smart_context_token_limit || 1500) * 4;
       const selectedSessions = [];
@@ -1277,7 +1276,7 @@ ${ANIMA_BETTER_PROMPT_TEXT}`;
       for (const s of otherSessions) {
         const summaryBlock = `\n- Chat "${s.title || 'Untitled'}": ${s.summary}`;
         if (currentLength + summaryBlock.length > limitChars) {
-          break;
+          continue;
         }
         selectedSessions.push(s);
         currentLength += summaryBlock.length;
@@ -1285,7 +1284,11 @@ ${ANIMA_BETTER_PROMPT_TEXT}`;
       
       if (selectedSessions.length > 0) {
         // Sort selected sessions chronologically (oldest first, newest last)
-        selectedSessions.sort((a, b) => new Date(a.updated_at) - new Date(b.updated_at));
+        selectedSessions.sort((a, b) => {
+          const timeA = new Date(a.updated_at || a.created_at || 0).getTime();
+          const timeB = new Date(b.updated_at || b.created_at || 0).getTime();
+          return timeA - timeB;
+        });
         
         let contextStr = '';
         for (const s of selectedSessions) {
@@ -1347,13 +1350,19 @@ ${ANIMA_BETTER_PROMPT_TEXT}`;
     }
   }
 
-  // Apply Gemma 4 thinking style directive if experimental toggle is enabled and reasoning is active
-  if (settings.change_gemma4_thinking_style && settings.genai_reasoning_effort && settings.genai_reasoning_effort !== 'none') {
-    systemContent += `\n\nWhen reasoning internally, your thought process must be brief, natural, and strictly in the first person (e.g., "I need to check...", "Let me think..."). Emulate a concise "thinking out loud" style similar to Claude. Avoid overly verbose, rigid step-by-step lists. Keep your internal monologue efficient and directly focused on solving the problem.`;
+  // Apply Gemma 4 thinking style directive if experimental toggle is enabled and reasoning effort is Lite (medium)
+  if (settings.change_gemma4_thinking_style && settings.genai_reasoning_effort === 'medium') {
+    systemContent += `\n\nCORE INSTRUCTION:
+Before answering, you must use your internal monologue channel.
+1. When you enter the <|channel|>thought channel, think in the first person ("I"). Think like a curious, analytical researcher. 
+2. Do NOT use bullet points or asterisks (*) for every line. Write in natural, cohesive paragraphs.
+3. Structure your logic, verify assumptions, and prepare the response.
+4. After closing the thought channel with <channel|>, provide your final response.
+5. Think extremely concise and briefly.`;
   }
 
-  // Prepend <|think|> for Gemma 4 thinking models when reasoning effort is active
-  if (settings.gemma4_support && settings.genai_reasoning_effort && settings.genai_reasoning_effort !== 'none') {
+  // Prepend <|think|> for Gemma 4 thinking models when reasoning effort is active and Google's thinking preset is enabled
+  if (settings.gemma4_support && settings.gemma4_google_thinking_preset && settings.genai_reasoning_effort && settings.genai_reasoning_effort !== 'none') {
     systemContent = '<|think|>\n' + systemContent;
   }
 
@@ -1369,7 +1378,10 @@ ${ANIMA_BETTER_PROMPT_TEXT}`;
 
 // ─── Tool Executor ──────────────────────────────────────────────────
 async function executeTool(action, onStatus = null, onPreview = null, onComplete = null) {
-  const { genai_action: name } = action;
+  const name = action?.genai_action || action?.name;
+  if (!name) {
+    return { error: 'Action is missing the action name.' };
+  }
 
   if (name === 'get_character') {
     const char = characterStore.getById(action.id);
@@ -2643,7 +2655,7 @@ function getWebToolGroups(entry, processedText = null) {
     const closeTag = settings?.genai_reasoning_tag_close || '</think>';
     const parsed = parseStreamThinking(text, openTag, closeTag);
     let content = parsed.content;
-    processedText = content.replace(/<suggest\s+target="([^"]+)"\s+message="([^"]+)">([\s\S]*?)<\/suggest>/gi, '@@SUGGEST@@');
+    processedText = content.replace(/<(suggest|select)\s+target=["']([^"']+)["']\s+message=["']([^"']+)["']\s*>([\s\S]*?)<\/\1>/gi, '@@SUGGEST@@');
   }
 
   const groups = [];
@@ -2724,11 +2736,21 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
     content = parsed.content;
   }
 
-  // Parse inline text suggestions: <suggest target="..." message="...">...</suggest>
+  // Parse inline text suggestions: <suggest target="..." message="...">...</suggest> (also support <select>)
   const suggestData = [];
   let suggestIndex = 0;
-  let processedText = content.replace(/<suggest\s+target="([^"]+)"\s+message="([^"]+)">([\s\S]*?)<\/suggest>/gi, (match, target, message, innerText) => {
+  let processedText = content.replace(/<(suggest|select)\b([^>]*?)>([\s\S]*?)<\/\1>/gi, (match, tag, attrs, innerText) => {
     const token = `@@GENAI_INLINE_SUGGEST_PLACEHOLDER_${suggestIndex}@@`;
+    let target = 'genai';
+    const targetMatch = attrs.match(/target\s*=\s*(["'])([\s\S]*?)\1/i);
+    if (targetMatch) {
+      target = targetMatch[2];
+    }
+    let message = '';
+    const messageMatch = attrs.match(/message\s*=\s*(["'])((?:[^\\]|\\.)*?)\1/i);
+    if (messageMatch) {
+      message = messageMatch[2].replace(/\\"/g, '"').replace(/\\'/g, "'");
+    }
     suggestData.push({ target, message, innerText });
     suggestIndex++;
     return token;
@@ -2760,7 +2782,7 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
     // Render index 0 at the top by default if it is not explicitly marked in the text
     if (entry.thinking_blocks[0] && !tempText.includes('[[THINKING_BLOCK_0]]')) {
       const isBlock0Active = (entry.thinking_blocks.length === 1 && (isInThinking || entry.isInThinking));
-      html += createThinkingBlockHTML(entry.thinking_blocks[0], isBlock0Active, settings.glm47_support, entry.thinking_time || 0);
+      html += createThinkingBlockHTML(entry.thinking_blocks[0], isBlock0Active, settings.glm47_support, entry.thinking_time || 0, entry.resolved_effort || settings.genai_reasoning_effort);
     }
     
     let markdownHtml = renderMarkdown(tempText);
@@ -2773,7 +2795,8 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
           entry.thinking_blocks[p],
           isThisBlockActive,
           settings.glm47_support,
-          isThisBlockActive ? (entry.thinking_time || 0) : 0
+          isThisBlockActive ? (entry.thinking_time || 0) : 0,
+          entry.resolved_effort || settings.genai_reasoning_effort
         );
         markdownHtml = markdownHtml.split(marker).join(blockHtml);
       }
@@ -2785,21 +2808,29 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
     if (splitIdx !== -1) {
       html += renderMarkdown(processedText.substring(0, splitIdx));
       if (isInThinking || thinking) {
-        html += createThinkingBlockHTML(thinking, isInThinking, settings.glm47_support, entry.thinking_time || 0);
+        html += createThinkingBlockHTML(thinking, isInThinking, settings.glm47_support, entry.thinking_time || 0, entry.resolved_effort || settings.genai_reasoning_effort);
       }
       html += renderMarkdown(processedText.substring(splitIdx + 18));
     } else {
       if (isInThinking || thinking) {
-        html += createThinkingBlockHTML(thinking, isInThinking, settings.glm47_support, entry.thinking_time || 0);
+        html += createThinkingBlockHTML(thinking, isInThinking, settings.glm47_support, entry.thinking_time || 0, entry.resolved_effort || settings.genai_reasoning_effort);
       }
       html += renderMarkdown(processedText);
     }
   }
 
+  if (!html.trim() && streaming) {
+    html = `<span class="chat-working-placeholder">Working...</span>`;
+  }
+
   // Restore inline text suggestions AFTER markdown rendering
   suggestData.forEach((data, idx) => {
     const token = `@@GENAI_INLINE_SUGGEST_PLACEHOLDER_${idx}@@`;
-    const spanHtml = `<span class="genai-inline-text-suggest" data-target="${escapeHtml(data.target)}" data-message="${escapeHtml(data.message)}">${data.innerText}</span>`;
+    let renderedText = renderMarkdown(data.innerText || '');
+    if (renderedText.startsWith('<p>') && renderedText.endsWith('</p>')) {
+      renderedText = renderedText.substring(3, renderedText.length - 4);
+    }
+    const spanHtml = `<span class="genai-inline-text-suggest" data-target="${escapeHtml(data.target)}" data-message="${escapeHtml(data.message)}">${renderedText}</span>`;
     html = html.split(token).join(spanHtml);
   });
 
@@ -3378,7 +3409,23 @@ function extractJsonAction(text) {
           finalEndIdx += trailingMatch[0].length;
         }
         
-        const cleanedJson = jsonStr.replace(/<\|"\|?>/g, '"');
+        let cleanedJson = jsonStr.replace(/<\|"\|?>/g, '"');
+        const actionName = gemmaMatch[1];
+        try {
+          const parsed = JSON.parse(cleanedJson);
+          if (parsed && typeof parsed === 'object' && !parsed.genai_action) {
+            parsed.genai_action = actionName;
+            cleanedJson = JSON.stringify(parsed);
+          }
+        } catch (e) {
+          // If JSON parsing fails (e.g. keys are unquoted), insert genai_action after the first '{'
+          const firstBraceIdx = cleanedJson.indexOf('{');
+          if (firstBraceIdx !== -1) {
+            cleanedJson = cleanedJson.substring(0, firstBraceIdx + 1) +
+                          `"genai_action":"${actionName}",` +
+                          cleanedJson.substring(firstBraceIdx + 1);
+          }
+        }
         return {
           json: cleanedJson,
           startIdx: actualStartIdx !== -1 ? actualStartIdx : text.indexOf('{'),
@@ -3548,6 +3595,72 @@ function stripTagsAndPartials(text, isDone = false) {
   return cleaned;
 }
 
+async function decideAutoThinking(signal) {
+  const historyMsgs = genaiHistory.filter(m => m.role === 'user' || m.role === 'assistant');
+  const lastMsgs = historyMsgs.slice(-3); // Get last 2-3 messages
+
+  if (lastMsgs.length === 0) {
+    return 'thinkingskip';
+  }
+
+  const apiMessages = lastMsgs.map(m => ({
+    role: m.role,
+    content: m.content
+  }));
+
+  const systemPrompt = 
+    "You are a routing agent. Analyze the conversation.\n" +
+    "Decide if the user's last message requires deep reasoning, complex planning, coding, or mathematical calculation.\n\n" +
+    "Reply with EXACTLY 'thinkingenable' if deep thinking is needed.\n" +
+    "Reply with EXACTLY 'thinkingskip' if it is a simple query, greeting, casual chat, or does not require complex reasoning.\n\n" +
+    "Do not explain, write ONLY one of the commands: thinkingenable or thinkingskip.";
+
+  const decisionMessages = [
+    { role: 'system', content: systemPrompt },
+    ...apiMessages
+  ];
+
+  let decisionResult = '';
+  try {
+    await new Promise((resolveDecide) => {
+      const timeout = setTimeout(() => {
+        resolveDecide();
+      }, 5000);
+
+      api.streamChat(
+        decisionMessages,
+        signal,
+        (chunk) => {
+          decisionResult += chunk;
+        },
+        () => {
+          clearTimeout(timeout);
+          resolveDecide();
+        },
+        (err) => {
+          clearTimeout(timeout);
+          console.error('[Auto Thinking] Decision stream error:', err);
+          resolveDecide();
+        },
+        {
+          reasoning_effort: 'none',
+          max_tokens: 100,
+          temperature: 0.1
+        }
+      );
+    });
+  } catch (e) {
+    console.error('[Auto Thinking] Decision promise error:', e);
+  }
+
+  const normalizedResult = decisionResult.trim().toLowerCase();
+  console.log('[Auto Thinking] Decision result:', decisionResult, 'Normalized:', normalizedResult);
+  if (normalizedResult.includes('thinkingenable')) {
+    return 'thinkingenable';
+  }
+  return 'thinkingskip';
+}
+
 async function streamGenAI(extraUserInstruction = null, _continuationEntry = null, _continuationBubble = null) {
   if (isGenerating && !extraUserInstruction) return;
   isGenerating = true;
@@ -3556,7 +3669,19 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
   if (stopBtn) stopBtn.classList.remove('hidden');
 
   abortController = new AbortController();
-  const isMaxThinking = settingsStore.get().extended_thinking && settingsStore.get().genai_reasoning_effort !== 'none';
+
+  let effectiveEffort = settingsStore.get().genai_reasoning_effort || 'none';
+  let autoDecision = 'thinkingskip';
+  if (effectiveEffort === 'auto') {
+    try {
+      autoDecision = await decideAutoThinking(abortController.signal);
+    } catch (err) {
+      console.error('[Auto Thinking] Decision failed, fallback to skip:', err);
+      autoDecision = 'thinkingskip';
+    }
+    effectiveEffort = autoDecision === 'thinkingenable' ? 'high' : 'none';
+  }
+  const isMaxThinking = settingsStore.get().extended_thinking && effectiveEffort !== 'none';
   
   // In Extended mode, Phase 1 (maxPhase = 1) is the initial command generation phase without deep thinking.
   // We want to skip Smart Context in Phase 1, but keep it in Phase 2.
@@ -3573,7 +3698,7 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
     // we want to transition to a new phase of generation by appending [[THINKING_BLOCK_p]]
     // at the end of the existing content. This ensures the active thinking snippets appear at the bottom
     // during thinking, but the final response is generated below it (so Done stays above the final response).
-    if (!isMaxThinking && settingsStore.get().genai_reasoning_effort !== 'none') {
+    if (!isMaxThinking && effectiveEffort !== 'none') {
       if (!assistantEntry.thinking_blocks) {
         assistantEntry.thinking_blocks = [];
       }
@@ -3604,6 +3729,7 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
     bubbleEl = msgEl?.querySelector('.genai-msg-bubble');
   }
 
+  assistantEntry.resolved_effort = effectiveEffort;
   scrollToBottom();
 
   let totalThinkingTime = assistantEntry.thinking_time || 0;
@@ -3619,7 +3745,7 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
     } else {
       currentApiMessages = JSON.parse(JSON.stringify(baseApiMessagesWithSC || baseApiMessages));
     }
-    let effortToUse = settingsStore.get().genai_reasoning_effort || 'none';
+    let effortToUse = effectiveEffort;
 
     if (maxPhase === 1) {
       effortToUse = 'none';
@@ -3632,7 +3758,7 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
                  'If Web Search is active, you MUST immediately start a Web search by making 1 to 3 queries. Do NOT make explicit queries (do not output your search queries as plain text), just output the tool commands directly. Do NOT generate the actual answer yet. STOP generating immediately after these sentences and/or tool calls.'
       });
     } else if (maxPhase >= 2) {
-      effortToUse = settingsStore.get().genai_reasoning_effort || 'high';
+      effortToUse = effectiveEffort || 'high';
       if (effortToUse === 'none') effortToUse = 'high'; // Should not happen, but fallback
       if (isMaxThinking) {
         if (/\[\[THINKING_BLOCK(_\d+)?\]\]/.test(assistantEntry.content)) {
@@ -3661,7 +3787,7 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
     }
 
     const settings = settingsStore.get();
-    let fullText = (settings.genai_force_reasoning && settings.genai_reasoning_tag_open && (settings.genai_reasoning_effort || 'none') !== 'none') ? settings.genai_reasoning_tag_open : '';
+    let fullText = (settings.genai_force_reasoning && settings.genai_reasoning_tag_open && effectiveEffort !== 'none') ? settings.genai_reasoning_tag_open : '';
     let thinkingTextGenai = '';
     let thinkingActiveGenai = false;
     let thinkingStartTime = Date.now();
@@ -4130,6 +4256,11 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
           adaptive_decay_enabled: settingsStore.get().genai_adaptive_decay_enabled ?? true,
           max_tokens: settingsStore.get().genai_max_tokens || 2048,
           presence_penalty: settingsStore.get().genai_presence_penalty ?? 0.0,
+          dry_multiplier_enabled: settingsStore.get().genai_dry_multiplier_enabled ?? false,
+          dry_multiplier: settingsStore.get().genai_dry_multiplier ?? 0.8,
+          dry_base: settingsStore.get().genai_dry_base ?? 1.75,
+          dry_allowed_length: settingsStore.get().genai_dry_allowed_length ?? 2,
+          dry_sequence_breakers: settingsStore.get().genai_dry_sequence_breakers ?? ["\n", ":", "\"", "*"],
           reasoning_effort: effortToUse
         },
         (thinkChunk) => {
@@ -4192,6 +4323,55 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
         maxPhase = 2;
       } else {
         renderAssistantBubble(assistantEntry, bubbleEl, { cursor: false, animate: true });
+        if (settingsStore.get().genai_refine_thoughts && assistantEntry.thinking) {
+          const systemPrompt = "You are an expert in improving the internal thoughts of an AI model. Your task is to rephrase the thoughts on behalf of the AI as if they are first-person thoughts from the AI's perspective. Strictly avoid lists. Use natural paragraphs.";
+          const originalThinking = assistantEntry.thinking;
+          
+          let refinedThinking = '';
+          try {
+            await new Promise((resolveRefine, rejectRefine) => {
+              api.streamChat(
+                [
+                  { role: 'system', content: systemPrompt },
+                  { role: 'user', content: `Here are the thoughts you need to rephrase on behalf of the AI:\n\n${originalThinking}` }
+                ],
+                abortController?.signal,
+                (chunk) => {
+                  refinedThinking += chunk;
+                  assistantEntry.thinking = refinedThinking;
+                  if (assistantEntry.thinking_blocks) {
+                    assistantEntry.thinking_blocks = [refinedThinking];
+                  }
+                  renderAssistantBubble(assistantEntry, bubbleEl, { cursor: false });
+                },
+                () => {
+                  resolveRefine();
+                },
+                (err) => {
+                  if (err.name === 'AbortError') {
+                    rejectRefine(err);
+                  } else {
+                    console.error('Refine thoughts error:', err);
+                    resolveRefine();
+                  }
+                },
+                {
+                  reasoning_effort: 'none'
+                }
+              );
+            });
+          } catch (refineErr) {
+            if (refineErr.name === 'AbortError') {
+              console.log('[Refine Thoughts] Aborted by user');
+              if (!refinedThinking) {
+                assistantEntry.thinking = originalThinking;
+                if (assistantEntry.thinking_blocks) {
+                  assistantEntry.thinking_blocks = [originalThinking];
+                }
+              }
+            }
+          }
+        }
         finishGeneration();
         break;
       }
@@ -5104,8 +5284,16 @@ function renderRecentChatsList() {
     return;
   }
 
-  const pinned = genaiSessions.filter(s => s.pinned).sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-  const unpinned = genaiSessions.filter(s => !s.pinned).sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+  const pinned = genaiSessions.filter(s => s.pinned).sort((a, b) => {
+    const timeA = new Date(a.updated_at || a.created_at || 0).getTime();
+    const timeB = new Date(b.updated_at || b.created_at || 0).getTime();
+    return timeB - timeA;
+  });
+  const unpinned = genaiSessions.filter(s => !s.pinned).sort((a, b) => {
+    const timeA = new Date(a.updated_at || a.created_at || 0).getTime();
+    const timeB = new Date(b.updated_at || b.created_at || 0).getTime();
+    return timeB - timeA;
+  });
 
   let html = '';
 
@@ -5556,7 +5744,7 @@ export function initGenAIPanel() {
       const gemmaStyleEnabled = !!settingsStore.get().change_gemma4_thinking_style;
       const simplifiedEffort = qwenEnabled || gemmaStyleEnabled;
       if (simplifiedEffort) {
-        if (effort !== 'none' && effort !== 'medium' && effort !== 'high') {
+        if (effort !== 'none' && effort !== 'medium' && effort !== 'high' && effort !== 'auto') {
           effort = 'none';
         }
       }
@@ -5568,7 +5756,9 @@ export function initGenAIPanel() {
       } else {
         wrapper.classList.add('active');
         if (levelSpan) {
-          if (simplifiedEffort) {
+          if (effort === 'auto') {
+            levelSpan.textContent = 'auto';
+          } else if (simplifiedEffort) {
             levelSpan.textContent = effort === 'medium' ? 'Lite' : 'High';
           } else {
             levelSpan.textContent = effort;
@@ -5577,6 +5767,7 @@ export function initGenAIPanel() {
       }
       dropdown.querySelectorAll('.effort-option').forEach(opt => {
         const val = opt.dataset.value;
+        if (!val) return;
         if (simplifiedEffort) {
           if (val === 'none') {
             opt.textContent = 'Off';
@@ -5587,6 +5778,8 @@ export function initGenAIPanel() {
           } else if (val === 'high') {
             opt.textContent = 'High';
             opt.style.display = '';
+          } else if (val === 'auto') {
+            opt.style.display = '';
           } else {
             opt.style.display = 'none';
           }
@@ -5596,6 +5789,7 @@ export function initGenAIPanel() {
           else if (val === 'low') opt.textContent = 'Low';
           else if (val === 'medium') opt.textContent = 'Medium';
           else if (val === 'high') opt.textContent = 'High';
+          else if (val === 'auto') opt.style.display = '';
           opt.style.display = '';
         }
         opt.classList.toggle('selected', val === effort);
@@ -5614,6 +5808,21 @@ export function initGenAIPanel() {
         } else {
           toggleRow.style.opacity = '1';
           toggleRow.style.pointerEvents = 'auto';
+        }
+      }
+
+      const isRefine = settingsStore.get().genai_refine_thoughts;
+      const refineCheck = document.getElementById('genai-refine-thoughts-toggle-check');
+      if (refineCheck) {
+        refineCheck.checked = !!isRefine;
+      }
+
+      const moreContainer = document.getElementById('genai-thinking-more-container');
+      const moreArrow = document.getElementById('genai-thinking-more-arrow');
+      if (moreContainer && moreArrow) {
+        if (effort === 'auto' || isRefine) {
+          moreContainer.classList.remove('hidden');
+          moreArrow.style.transform = 'rotate(180deg)';
         }
       }
     }
@@ -5636,7 +5845,7 @@ export function initGenAIPanel() {
           settingsStore.save({ ...settingsStore.get(), genai_reasoning_effort: 'none', previous_genai_reasoning_effort: currentEffort });
         } else {
           let prev = settingsStore.get().previous_genai_reasoning_effort || 'medium';
-          if (simplifiedEffort && prev !== 'none' && prev !== 'medium' && prev !== 'high') {
+          if (simplifiedEffort && prev !== 'none' && prev !== 'medium' && prev !== 'high' && prev !== 'auto') {
             prev = 'medium';
           }
           settingsStore.save({ ...settingsStore.get(), genai_reasoning_effort: prev });
@@ -5672,6 +5881,28 @@ export function initGenAIPanel() {
         const current = !!settingsStore.get().extended_thinking;
         settingsStore.save({ ...settingsStore.get(), extended_thinking: !current });
         refreshGenAIThinkingEffortUI();
+      });
+    }
+
+    const refineThoughtsToggleRow = document.getElementById('genai-refine-thoughts-toggle-row');
+    if (refineThoughtsToggleRow) {
+      refineThoughtsToggleRow.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const current = !!settingsStore.get().genai_refine_thoughts;
+        settingsStore.save({ ...settingsStore.get(), genai_refine_thoughts: !current });
+        refreshGenAIThinkingEffortUI();
+      });
+    }
+
+    const moreBtn = document.getElementById('genai-thinking-more-btn');
+    const moreContainer = document.getElementById('genai-thinking-more-container');
+    const moreArrow = document.getElementById('genai-thinking-more-arrow');
+    if (moreBtn && moreContainer && moreArrow) {
+      moreBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isHidden = moreContainer.classList.contains('hidden');
+        moreContainer.classList.toggle('hidden', !isHidden);
+        moreArrow.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
       });
     }
 
@@ -6070,6 +6301,7 @@ export function initGenAIPanel() {
       btnGenaiPlus.classList.toggle('imagegen-active', !!genaiEnabled);
     }
     syncBrushButton();
+    updateGenaiPlusButtonState();
   }
 
   // Expose globally so chat.js can call after its toggle renders

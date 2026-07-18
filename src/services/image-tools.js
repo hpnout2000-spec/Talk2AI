@@ -20,6 +20,14 @@ export function loadImageFromDataUrl(dataUrl) {
 // Helper to convert ComfyUI URL to base64 DataUrl to avoid Canvas tainting
 export async function fetchAsBase64(url) {
   try {
+    const invoke = window.__TAURI_INTERNALS__?.invoke;
+    if (invoke) {
+      try {
+        return await invoke('fetch_image_base64', { url });
+      } catch (tauriErr) {
+        console.warn('Failed to fetch image as base64 via Tauri, falling back to standard fetch:', tauriErr);
+      }
+    }
     const response = await fetch(url);
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     const blob = await response.blob();

@@ -1527,16 +1527,17 @@ async function sendMessage() {
       if (!isStreaming) return;
 
       try {
+        const useGLM = settings.glm47_support && !/<(?:think|thought|reasoning|\|channel>thought)/i.test(fullResponse);
         let displayContent, currentThinking, currentIsInThinking;
         if (thinkingText) {
           // delta.reasoning_content path: thinking comes separately
           currentThinking = thinkingText;
           currentIsInThinking = thinkingActive;
-          const parsed = settings.glm47_support ? parseGLMThinking(fullResponse) : parseStreamThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
+          const parsed = useGLM ? parseGLMThinking(fullResponse) : parseStreamThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
           displayContent = parsed.content;
         } else {
           // Inline tag or GLM 4.7 path
-          const parsed = settings.glm47_support ? parseGLMThinking(fullResponse) : parseStreamThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
+          const parsed = useGLM ? parseGLMThinking(fullResponse) : parseStreamThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
           currentThinking = parsed.thinking;
           displayContent = parsed.content;
           currentIsInThinking = parsed.isInThinking;
@@ -1563,12 +1564,16 @@ async function sendMessage() {
         let html = '';
         const showThinking = currentIsInThinking || currentThinking;
         if (showThinking) {
-          html += createThinkingBlockHTML(currentThinking, currentIsInThinking, settings.glm47_support, typeof thinkingTime !== "undefined" ? thinkingTime : 0);
+          html += createThinkingBlockHTML(currentThinking, currentIsInThinking, settings.glm47_support, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort);
         }
         const cleaned = stripJsonBlocks(displayContent, true);
         let formatted = renderMarkdown(cleaned);
         formatted = processCharacterMentions(formatted);
         html += wrapWordsInSpans(formatted);
+
+        if (!html.trim() && isStreaming) {
+          html = `<span class="chat-working-placeholder">Working...</span>`;
+        }
 
         const temp = document.createElement('div');
         temp.className = contentEl.className;
@@ -1609,14 +1614,15 @@ async function sendMessage() {
           thinkingActive = false;
           if (thinkingTime === 0) thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
         }
+        const useGLM = settings.glm47_support && !/<(?:think|thought|reasoning|\|channel>thought)/i.test(fullResponse);
         let parsedThinking, parsedContent;
         try {
           if (thinkingText) {
             parsedThinking = thinkingText;
-            const parsed = settings.glm47_support ? parseGLMThinking(fullResponse) : parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
+            const parsed = useGLM ? parseGLMThinking(fullResponse) : parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
             parsedContent = parsed.content;
           } else {
-            const parsed = settings.glm47_support ? parseGLMThinking(fullResponse) : parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
+            const parsed = useGLM ? parseGLMThinking(fullResponse) : parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
             parsedThinking = parsed.thinking;
             parsedContent = parsed.content;
           }
@@ -1625,7 +1631,7 @@ async function sendMessage() {
           let finalHtml = '';
           if (parsedThinking) {
             if (thinkingTime === 0) thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
-            finalHtml += createThinkingBlockHTML(parsedThinking, false, settings.glm47_support, thinkingTime);
+            finalHtml += createThinkingBlockHTML(parsedThinking, false, settings.glm47_support, thinkingTime, settings.reasoning_effort);
           }
           const cleaned = stripJsonBlocks(parsedContent, false);
           let formatted = renderMarkdown(cleaned);
@@ -2182,13 +2188,19 @@ async function buildApiMessages(character, session) {
     systemContent += `\n\n[CURRENT MOOD STATUS]\n${statusStr}`;
   }
 
-  // Apply Gemma 4 thinking style directive if experimental toggle is enabled and reasoning is active
-  if (settings.change_gemma4_thinking_style && settings.reasoning_effort && settings.reasoning_effort !== 'none') {
-    systemContent += `\n\nWhen reasoning internally, your thought process must be brief, natural, and strictly in the first person (e.g., "I need to check...", "Let me think..."). Emulate a concise "thinking out loud" style similar to Claude. Avoid overly verbose, rigid step-by-step lists. Keep your internal monologue efficient and directly focused on solving the problem.`;
+  // Apply Gemma 4 thinking style directive if experimental toggle is enabled and reasoning effort is Lite (medium)
+  if (settings.change_gemma4_thinking_style && settings.reasoning_effort === 'medium') {
+    systemContent += `\n\nCORE INSTRUCTION:
+Before answering, you must use your internal monologue channel.
+1. When you enter the <|channel|>thought channel, think in the first person ("I"). Think like a curious, analytical researcher. 
+2. Do NOT use bullet points or asterisks (*) for every line. Write in natural, cohesive paragraphs.
+3. Structure your logic, verify assumptions, and prepare the response.
+4. After closing the thought channel with <channel|>, provide your final response.
+5. Think extremely concise and briefly.`;
   }
 
-  // Prepend <|think|> for Gemma 4 thinking models when reasoning effort is active
-  if (settings.gemma4_support && settings.reasoning_effort && settings.reasoning_effort !== 'none') {
+  // Prepend <|think|> for Gemma 4 thinking models when reasoning effort is active and Google's thinking preset is enabled
+  if (settings.gemma4_support && settings.gemma4_google_thinking_preset && settings.reasoning_effort && settings.reasoning_effort !== 'none') {
     systemContent = '<|think|>\n' + systemContent;
   }
 
@@ -2262,13 +2274,23 @@ function appendMessage(msg, isStreaming = false, character = null) {
   }
 
   let contentHtml = '';
-  if (msg.thinking) {
-    contentHtml += createThinkingBlockHTML(msg.thinking, false, settings.glm47_support, msg.thinking_time || 0);
+  let msgThinking = msg.thinking;
+  let msgContent = (msg.translated_content && !msg.show_original) ? msg.translated_content : msg.content;
+
+  // Auto-recovery: if the message has no thinking block saved, but the content contains tags, parse them!
+  if (!msgThinking && msgContent && /<(?:think|thought|reasoning|\|channel>thought)/i.test(msgContent)) {
+    const parsed = parseThinking(msgContent, settings.reasoning_tag_open, settings.reasoning_tag_close);
+    if (parsed.thinking) {
+      msgThinking = parsed.thinking;
+      msgContent = parsed.content;
+    }
   }
 
-  // Persistence: use translated content if it exists and we're not showing original
-  const displayContent = (msg.translated_content && !msg.show_original) ? msg.translated_content : msg.content;
-  const cleanedContent = stripJsonBlocks(displayContent, isStreaming);
+  if (msgThinking) {
+    contentHtml += createThinkingBlockHTML(msgThinking, false, settings.glm47_support, msg.thinking_time || 0, settings.reasoning_effort);
+  }
+
+  const cleanedContent = stripJsonBlocks(msgContent, isStreaming);
   let formatted = renderMarkdown(cleanedContent);
   formatted = processCharacterMentions(formatted);
   contentHtml += formatted;
@@ -2330,6 +2352,17 @@ function appendMessage(msg, isStreaming = false, character = null) {
               <path d="M12 7l1.5 3 3.5.5-2.5 2.5.5 3.5-3-1.5-3 1.5.5-3.5-2.5-2.5 3.5-.5z"/>
             </svg>
           </button>
+          ${isUser ? '' : `
+          <button class="btn-illustrate-msg" title="Generate Illustration">
+            <svg viewBox="0 0 512 512" fill="currentColor" style="width: 14px; height: 14px;">
+              <g transform="translate(0.000000,512.000000) scale(0.100000,-0.100000)">
+                <path d="M4903 4956 c-305 -96 -1216 -820 -2401 -1909 l-292 -269 79 -87 c44 -47 212 -217 373 -378 l293 -291 140 155 c835 927 1486 1719 1807 2198 157 234 229 397 214 479 -9 48 -49 93 -94 106 -47 13 -67 12 -119 -4z"/>
+                <path d="M1830 2414 c-107 -104 -195 -192 -195 -195 0 -3 173 -181 384 -395 l383 -389 129 135 c71 74 156 164 188 200 l59 65 -377 384 -377 384 -194 -189z"/>
+                <path d="M1320 2019 c-344 -73 -553 -224 -685 -494 -59 -119 -90 -222 -136 -440 -93 -441 -157 -541 -369 -576 -39 -7 -82 -20 -95 -31 -52 -41 -39 -125 25 -158 60 -31 288 -97 426 -124 490 -95 935 -24 1229 198 238 179 415 463 491 788 l18 78 -385 387 c-221 223 -392 389 -404 390 -11 1 -63 -7 -115 -18z"/>
+              </g>
+            </svg>
+          </button>
+          `}
           <button class="btn-delete-msg delete" title="Delete">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -2358,7 +2391,7 @@ function appendMessage(msg, isStreaming = false, character = null) {
       contentEl.classList.add('block-replacing-out');
       setTimeout(() => {
         let html = '';
-        if (msg.thinking) html += createThinkingBlockHTML(msg.thinking, false, settings.glm47_support, msg.thinking_time || 0);
+        if (msg.thinking) html += createThinkingBlockHTML(msg.thinking, false, settings.glm47_support, msg.thinking_time || 0, settings.reasoning_effort);
         const cleaned = stripJsonBlocks(newDisplayContent, false);
         let formatted = renderMarkdown(cleaned);
         formatted = processCharacterMentions(formatted);
@@ -2430,6 +2463,27 @@ function appendMessage(msg, isStreaming = false, character = null) {
   // AI Comment button
   el.querySelector('.btn-ai-comment')?.addEventListener('click', () => {
     requestAiComment(msg, character || appState.currentCharacter);
+  });
+
+  // Paintbrush (manual illustration) button
+  el.querySelector('.btn-illustrate-msg')?.addEventListener('click', () => {
+    const character = appState.currentCharacter;
+    const session = appState.currentChat;
+    if (!character || !session) {
+      showToast('Please select a character first', 'error');
+      return;
+    }
+
+    const freshSettings = settingsStore.get();
+    if (!freshSettings.comfyui_enabled) {
+      showToast('ComfyUI is disabled in settings', 'warning');
+      return;
+    }
+
+    showToast('Starting manual image generation...', 'success');
+    
+    // Trigger standard automatic generation flow targeting this message
+    triggerAutomaticImageGeneration(character, session, msg.content, msg);
   });
 
   // Swipe listeners
@@ -2702,14 +2756,15 @@ async function triggerAssistantGeneration() {
       appState.updateScheduled = false;
       if (!isStreaming2) return;
 
+      const useGLM = settings.glm47_support && !/<(?:think|thought|reasoning|\|channel>thought)/i.test(fullResponse);
       let displayContent, currentThinking, currentIsInThinking;
       if (thinkingText2) {
         currentThinking = thinkingText2;
         currentIsInThinking = thinkingActive2;
-        const parsed = settings.glm47_support ? parseGLMThinking(fullResponse) : parseStreamThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
+        const parsed = useGLM ? parseGLMThinking(fullResponse) : parseStreamThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
         displayContent = parsed.content;
       } else {
-        const parsed = settings.glm47_support ? parseGLMThinking(fullResponse) : parseStreamThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
+        const parsed = useGLM ? parseGLMThinking(fullResponse) : parseStreamThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
         currentThinking = parsed.thinking;
         displayContent = parsed.content;
         currentIsInThinking = parsed.isInThinking;
@@ -2733,8 +2788,12 @@ async function triggerAssistantGeneration() {
       if (!hasReceivedFirstChunk2) return;
 
       let html = '';
-      if (currentIsInThinking || currentThinking) html += createThinkingBlockHTML(currentThinking, currentIsInThinking, settings.glm47_support, typeof thinkingTime !== "undefined" ? thinkingTime : 0);
+      if (currentIsInThinking || currentThinking) html += createThinkingBlockHTML(currentThinking, currentIsInThinking, settings.glm47_support, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort);
       html += wrapWordsInSpans(renderMarkdown(displayContent));
+
+      if (!html.trim() && isStreaming2) {
+        html = `<span class="chat-working-placeholder">Working...</span>`;
+      }
 
       const temp = document.createElement('div');
       temp.className = contentEl.className;
@@ -2767,13 +2826,14 @@ async function triggerAssistantGeneration() {
           thinkingActive2 = false;
           if (thinkingTime === 0) thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
         }
+        const useGLM = settings.glm47_support && !/<(?:think|thought|reasoning|\|channel>thought)/i.test(fullResponse);
         let parsedThinking2, parsedContent2;
         if (thinkingText2) {
           parsedThinking2 = thinkingText2;
-          const parsed = settings.glm47_support ? parseGLMThinking(fullResponse) : parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
+          const parsed = useGLM ? parseGLMThinking(fullResponse) : parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
           parsedContent2 = parsed.content;
         } else {
-          const parsed = settings.glm47_support ? parseGLMThinking(fullResponse) : parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
+          const parsed = useGLM ? parseGLMThinking(fullResponse) : parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
           parsedThinking2 = parsed.thinking;
           parsedContent2 = parsed.content;
         }
@@ -2782,7 +2842,7 @@ async function triggerAssistantGeneration() {
         let finalHtml = '';
         if (parsedThinking2) {
             if (thinkingTime === 0) thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
-            finalHtml += createThinkingBlockHTML(parsedThinking2, false, settings.glm47_support, thinkingTime);
+            finalHtml += createThinkingBlockHTML(parsedThinking2, false, settings.glm47_support, thinkingTime, settings.reasoning_effort);
         }
         finalHtml += wrapWordsInSpans(renderMarkdown(parsedContent2));
 
@@ -3013,10 +3073,11 @@ Do not include any Markdown formatting like \`\`\`json or any other text. Return
     });
 
     const response = await api.chatCompletion(messages, {
-      max_tokens: 300,
+      max_tokens: 1024,
       temperature: 0.7,
       signal: signal,
-      priority: 'background'
+      priority: 'background',
+      reasoning_effort: 'none'
     });
 
     // CRITICAL: Check if we were aborted while waiting for the network
@@ -3421,6 +3482,7 @@ function setupRightSidebarToggle() {
       closeAiCommentsSidebar();
     });
   }
+
 }
 
 async function triggerIndicatorUpdate(character, session, lastUserMsg, lastAssistantMsg) {
@@ -3461,7 +3523,12 @@ Example: {"indicators": {"Trust": +5, "Fear": -10}}`
   });
 
   try {
-    const response = await api.chatCompletion(context, { max_tokens: 150, temperature: 0.1, priority: 'background' });
+    const response = await api.chatCompletion(context, { 
+      max_tokens: 1024, 
+      temperature: 0.1, 
+      priority: 'background',
+      reasoning_effort: 'none'
+    });
     // More flexible JSON extraction (greedy to capture nested braces)
     const jsonMatch = response.match(/\{[\s\S]*"indicators"[\s\S]*\}/);
     if (jsonMatch) {
@@ -3922,9 +3989,9 @@ function attachSuggestionButtonListeners(container, buttonsData) {
   });
 }
 
-async function triggerAutomaticImageGeneration(character, session, assistantReply) {
-  // 1. Find the last assistant message to embed in
-  const lastMsg = session.messages.slice().reverse().find(m => m.role === 'assistant');
+async function triggerAutomaticImageGeneration(character, session, assistantReply, targetMsg = null) {
+  // 1. Find the target message to embed in
+  const lastMsg = targetMsg || session.messages.slice().reverse().find(m => m.role === 'assistant');
   if (!lastMsg) return;
 
   // Start image generation state
@@ -3945,7 +4012,7 @@ async function triggerAutomaticImageGeneration(character, session, assistantRepl
 
   // Set initial loading state while the LLM is writing the prompt
   lastMsg.content = lastMsg.original_text + '\n\n[[loader:Drafting the scene description...]]';
-  loadChat(session); // re-render instantly to show loader
+  loadChat(session); // re-render instantly to show the loader
 
   // Build a complete history context up to settings.prompt_token_limit
   const settings = settingsStore.get();
@@ -3984,7 +4051,25 @@ async function triggerAutomaticImageGeneration(character, session, assistantRepl
 
   const formattedHistory = selectedLines.join('\n');
 
+  // Extract previous image prompts for visual consistency
+  const previousImagePrompts = [];
+  session.messages.forEach(m => {
+    if (m.content) {
+      const matches = m.content.matchAll(/!\[(.*?)\]\((.*?)\)/g);
+      for (const match of matches) {
+        const prompt = match[1];
+        if (prompt && !prompt.includes('loader:')) {
+          previousImagePrompts.push(prompt);
+        }
+      }
+    }
+  });
+
   let contextText = `${charData}\n\nCONVERSATION HISTORY:\n${formattedHistory}`;
+  if (previousImagePrompts.length > 0) {
+    contextText += `\n\nPREVIOUSLY GENERATED ILLUSTRATION PROMPTS (Use these to maintain visual consistency, clothing, characters, style, and setting across images):\n` + 
+      previousImagePrompts.map((p, idx) => `Illustration ${idx + 1}: ${p}`).join('\n');
+  }
   if (character.image_tags && character.image_tags.trim() !== '') {
     contextText += mandatoryTags;
   }
@@ -3992,6 +4077,8 @@ async function triggerAutomaticImageGeneration(character, session, assistantRepl
   let systemPromptContent = `You are an expert prompt engineer and scenic narrator for AI image generators.
 Analyze the character profile and the entire conversation history context carefully.
 CRITICAL DIRECTIVE: You MUST pay close attention to all visual and narrative context clues, details, and progression in the conversation history (such as the character's attire/clothing, physical pose, emotions, facial expressions, weapons or objects held, background environment, lighting, time of day, and active setting). Do NOT miss or ignore these details! Your generated Stable Diffusion prompt must accurately reflect the CURRENT state and context of the scene.
+
+CRITICAL DIRECTIVE ON VISUAL CONSISTENCY: If the context contains 'PREVIOUSLY GENERATED ILLUSTRATION PROMPTS', analyze them to maintain visual consistency across generations. You should carry over persistent features (such as clothing style/color, hairstyle, hair color, facial features, or key items) from the previous illustration prompts unless the scene/action specifies a clear change (e.g., character changed clothes, it is now night, or they moved to a new room).
 
 You must generate two things:
 1. An array of 3 creative loading status messages in English describing the drawing process (e.g. "Sketching the forest outline...", "Detailing character clothing...", "Adding volumetric lighting..."). Be very short (3-5 words each).
@@ -4023,7 +4110,11 @@ You MUST respond strictly in the following JSON format. Output ONLY raw JSON, do
   let parsed = null;
   try {
     if (appState.abortController.signal.aborted) throw new Error('Stopped by user');
-    const rawResponse = await api.chatCompletion(messages, { temperature: 0.7, max_tokens: 250 });
+    const rawResponse = await api.chatCompletion(messages, { 
+      temperature: 0.7, 
+      max_tokens: 4096,
+      reasoning_effort: settings.comfyui_reasoning_effort || 'none'
+    });
     let cleanText = rawResponse.trim();
     if (cleanText.startsWith('```json')) {
       cleanText = cleanText.replace(/^```json/m, '').replace(/```$/m, '').trim();
@@ -4152,15 +4243,47 @@ async function triggerImageGenerationSuggestion(character, session, assistantRep
   ];
 
   try {
-    const rawResponse = await api.chatCompletion(messages, { temperature: 0.5, max_tokens: 200, priority: 'background' });
+    const rawResponse = await api.chatCompletion(messages, { 
+      temperature: 0.5, 
+      max_tokens: 1024, 
+      priority: 'background',
+      reasoning_effort: 'none'
+    });
     let cleanText = rawResponse.trim();
     if (cleanText.startsWith('```json')) cleanText = cleanText.replace(/^```json/m, '').replace(/```$/m, '').trim();
     else if (cleanText.startsWith('```')) cleanText = cleanText.replace(/^```/m, '').replace(/```$/m, '').trim();
     
-    const parsed = JSON.parse(cleanText);
+    let parsed = null;
+    try {
+      parsed = JSON.parse(cleanText);
+    } catch (e) {
+      console.warn('Failed to parse LLM image suggestion JSON directly, attempting recovery:', e);
+      
+      const shouldGenerateMatch = cleanText.match(/"should_generate"\s*:\s*(true|false)/i);
+      if (shouldGenerateMatch) {
+        const shouldGenerate = shouldGenerateMatch[1].toLowerCase() === 'true';
+        let suggestionText = '';
+        const suggestionTextMatch = cleanText.match(/"suggestion_text"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/);
+        if (suggestionTextMatch) {
+          suggestionText = suggestionTextMatch[1].replace(/\\"/g, '"');
+        } else {
+          const truncatedMatch = cleanText.match(/"suggestion_text"\s*:\s*"([^"]*)$/);
+          if (truncatedMatch) {
+            suggestionText = truncatedMatch[1].replace(/\\"/g, '"').trim();
+          }
+        }
+        parsed = {
+          should_generate: shouldGenerate,
+          suggestion_text: suggestionText
+        };
+      }
+    }
     
-    if (parsed.should_generate && parsed.suggestion_text) {
-      showImageSuggestionPopup(character, session, parsed.suggestion_text);
+    if (parsed && parsed.should_generate) {
+      const suggestion = (parsed.suggestion_text && parsed.suggestion_text.trim()) 
+        ? parsed.suggestion_text 
+        : `Anime illustration of ${character.name}`;
+      showImageSuggestionPopup(character, session, suggestion);
     }
   } catch (e) {
     console.warn('Failed to parse LLM image suggestion JSON:', e);

@@ -166,7 +166,11 @@ export function renderSmartContextChats() {
   const container = document.getElementById('smart-context-chats-list');
   if (!container) return;
 
-  const sessions = getGenaiSessions() || [];
+  const sessions = (getGenaiSessions() || []).slice().sort((a, b) => {
+    const timeA = new Date(a.updated_at || a.created_at || 0).getTime();
+    const timeB = new Date(b.updated_at || b.created_at || 0).getTime();
+    return timeB - timeA;
+  });
 
   if (sessions.length === 0) {
     container.innerHTML = `
@@ -319,12 +323,12 @@ export async function updateSessionSummaryIfNeeded(session, force = false) {
       // Step 2: Summarize each chunk sequentially
       for (let i = 0; i < chunks.length; i++) {
         const chunkMsgs = chunks[i];
-        const textToSummarize = chunkMsgs.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n');
+        const textToSummarize = chunkMsgs.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n') + '\nEND OF THE CHUNK. MAKE SUMMARY NOW';
         
         const payload = [
           {
             role: 'system',
-            content: 'You are a helper that creates extremely concise summaries of the conversation history. Write a brief summary of what happened in the conversation chunk (literally 50-100 words). Return ONLY the summary, no other text.'
+            content: "You are a summarization agent that writes extremely concise summaries of the conversation history. MANDATORY RULE: Write a brief summary of what happened in the conversation chunk (literally 50-100 words). Return ONLY the summary, no other text. do NOT continue chat or roleplay. you're writing SUMMARY."
           },
           {
             role: 'user',
@@ -334,7 +338,7 @@ export async function updateSessionSummaryIfNeeded(session, force = false) {
 
         const summary = await api.chatCompletion(payload, { 
           priority: 'background',
-          temperature: 0.3,
+          temperature: 0.8,
           reasoning_effort: 'none'
         });
         
@@ -351,7 +355,7 @@ export async function updateSessionSummaryIfNeeded(session, force = false) {
         const payload = [
           {
             role: 'system',
-            content: 'You are a helper that merges multiple conversation summaries into one coherent, extremely concise summary. Write a final summary of the entire conversation (literally 50-100 words). Return ONLY the summary, no other text.'
+            content: "You are a summarization agent that writes extremely concise summaries of the conversation history. MANDATORY RULE: Merge multiple conversation summaries into one coherent, extremely concise summary (literally 50-100 words). Return ONLY the summary, no other text. do NOT continue chat or roleplay. you're writing SUMMARY."
           },
           {
             role: 'user',
@@ -361,7 +365,7 @@ export async function updateSessionSummaryIfNeeded(session, force = false) {
         
         const combined = await api.chatCompletion(payload, {
           priority: 'background',
-          temperature: 0.3,
+          temperature: 0.8,
           reasoning_effort: 'none'
         });
         

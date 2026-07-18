@@ -172,9 +172,9 @@ export const api = {
           if (finalMessages.length > 0 && (finalMessages[finalMessages.length - 1].role === 'user' || finalMessages[finalMessages.length - 1].role === 'tool')) {
             finalMessages.push({
               role: 'assistant',
-              content: "<|channel>thought\nOkay,"
+              content: "<|channel>thought\nOkay, let me think really quickly from a first-person perspective."
             });
-            const prefillStr = "<|channel>thought\nOkay,";
+            const prefillStr = "<|channel>thought\nOkay, let me think really quickly from a first-person perspective.";
             if (onChunk) {
               onChunk(prefillStr);
             }
@@ -206,6 +206,21 @@ export const api = {
       }
       if (options.adaptive_decay_enabled ?? settings.adaptive_decay_enabled ?? true) {
         body.adaptive_decay = options.adaptive_decay ?? settings.adaptive_decay ?? 0.9;
+      }
+      if (options.dry_multiplier_enabled ?? settings.dry_multiplier_enabled ?? false) {
+        body.dry_multiplier = options.dry_multiplier ?? settings.dry_multiplier ?? 0.8;
+        body.dry_base = options.dry_base ?? settings.dry_base ?? 1.75;
+        body.dry_allowed_length = options.dry_allowed_length ?? settings.dry_allowed_length ?? 2;
+        
+        let breakers = options.dry_sequence_breakers ?? settings.dry_sequence_breakers;
+        if (typeof breakers === 'string') {
+          try {
+            breakers = JSON.parse(breakers);
+          } catch (e) {
+            breakers = ["\n", ":", "\"", "*"];
+          }
+        }
+        body.dry_sequence_breakers = Array.isArray(breakers) ? breakers : ["\n", ":", "\"", "*"];
       }
 
       // Add reasoning_effort parameter (KoboldCpp parameter for thinking budget)
@@ -683,7 +698,10 @@ Keep the summary under 300 words. Write only the summary itself in ${language}, 
 
     let systemPrompt = "";
     if (previousSummary) {
-      systemPrompt = `You are a professional assistant. You are tasked with UPDATING an existing conversation summary with new messages that occurred after it.
+      systemPrompt = `You are a summarization agent that writes extremely concise summaries of the conversation history.
+MANDATORY RULE: Write only the summary itself in ${language}, without any introductory remarks, greetings, or meta-commentary. Keep the summary extremely concise and short.
+do NOT continue chat or roleplay. you're writing SUMMARY.
+
 Here is the EXISTING SUMMARY of the conversation so far:
 """
 ${previousSummary}
@@ -694,19 +712,18 @@ Here are the NEW MESSAGES:
 ${newMessagesText}
 """
 
-Please write a new, comprehensive, cohesive, and detailed summary of the entire conversation from the very beginning up to the latest messages.
-Integrate the new events seamlessly with the old summary.
-The summary should be approximately 500 words long. Write only the summary itself in ${language}, without any introductory remarks, greetings, or meta-commentary.`;
+Please update the existing summary with the new messages, maintaining an extremely concise summary of the entire conversation.`;
     } else {
-      systemPrompt = `You are a professional assistant. You are tasked with writing a detailed summary of the following conversation.
+      systemPrompt = `You are a summarization agent that writes extremely concise summaries of the conversation history.
+MANDATORY RULE: Write only the summary itself in ${language}, without any introductory remarks, greetings, or meta-commentary. Keep the summary extremely concise and short.
+do NOT continue chat or roleplay. you're writing SUMMARY.
+
 Here are the MESSAGES in the conversation:
 """
 ${newMessagesText}
 """
 
-Please write a cohesive and detailed summary of the entire conversation from the very beginning up to the latest messages.
-Highlight key events, major dialogue points, and critical developments.
-The summary should be approximately 500 words long. Write only the summary itself in ${language}, without any introductory remarks, greetings, or meta-commentary.`;
+Please write an extremely concise summary of the conversation.`;
     }
 
     const messages = [

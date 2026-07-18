@@ -1860,6 +1860,52 @@ async fn gelbooru_fetch_image_base64(
     Ok(format!("data:{};base64,{}", content_type, b64))
 }
 
+#[tauri::command]
+async fn fetch_image_base64(
+    url: String,
+) -> Result<String, String> {
+    use reqwest::header::{HeaderMap, HeaderValue, USER_AGENT};
+    use base64::{Engine as _, engine::general_purpose};
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap_or_default();
+    let mut headers = HeaderMap::new();
+    
+    headers.insert(
+        USER_AGENT,
+        HeaderValue::from_static("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"),
+    );
+
+    let resp = client.get(&url)
+        .headers(headers)
+        .send()
+        .await
+        .map_err(|e| format!("Image request failed: {}", e))?;
+
+    let status = resp.status();
+    let content_type = resp.headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("image/jpeg")
+        .to_string();
+
+    let bytes = resp.bytes().await.map_err(|e| format!("Failed to read image bytes: {}", e))?;
+
+    if !status.is_success() {
+        return Err(format!("Server returned HTTP {} for image URL", status.as_u16()));
+    }
+
+    if !content_type.starts_with("image/") {
+        return Err(format!("Server returned non-image content-type '{}'", content_type));
+    }
+
+    let b64 = general_purpose::STANDARD.encode(&bytes);
+
+    Ok(format!("data:{};base64,{}", content_type, b64))
+}
+
 // ─── Web Search / Fetch Commands ────────────────────────────────────
 
 fn strip_html_tags(html: &str) -> String {
@@ -2378,6 +2424,7 @@ pub fn run() {
             nhentai_fetch_image_base64,
             gelbooru_request,
             gelbooru_fetch_image_base64,
+            fetch_image_base64,
             web_search,
             web_fetch,
             start_host_server,

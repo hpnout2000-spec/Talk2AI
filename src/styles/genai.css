@@ -998,7 +998,7 @@ body.genai-fullscreen .genai-empty-state {
   background: rgba(0,0,0,0.3);
   border-radius: var(--radius-sm);
 }
-.genai-msg-bubble h1, .genai-msg-bubble h2, .genai-msg-bubble h3 {
+.genai-msg-bubble h1, .genai-msg-bubble h2, .genai-msg-bubble h3, .genai-msg-bubble h4, .genai-msg-bubble h5, .genai-msg-bubble h6 {
   font-size: 14px;
   font-weight: 600;
   margin: 0.6em 0 0.2em;
@@ -1302,23 +1302,30 @@ body.genai-fullscreen .genai-input-area .input-container {
 
 body:not(.genai-fullscreen) #genai-thinking-effort-wrapper {
   margin-right: 4px;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  height: auto !important;
+  overflow: visible !important;
 }
 
 body:not(.genai-fullscreen) #genai-thinking-effort-wrapper .btn-thinking-effort-arrow {
-  display: none;
+  display: none !important;
 }
 
 body:not(.genai-fullscreen) #genai-thinking-effort-wrapper .btn-thinking-effort {
-  border-radius: 50%;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  justify-content: center;
-  border-right: 1px solid var(--border-light);
+  border-radius: 50% !important;
+  width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
+  justify-content: center !important;
+  border: 1px solid var(--border-light) !important;
+  background: var(--bg-tertiary) !important;
 }
 
 body:not(.genai-fullscreen) #genai-thinking-effort-wrapper.active .btn-thinking-effort {
-  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-color: rgba(99, 179, 130, 0.4) !important;
+  background: rgba(99, 179, 130, 0.08) !important;
 }
 
 body:not(.genai-fullscreen) #genai-thinking-effort-wrapper .thinking-btn-label,
@@ -1364,6 +1371,7 @@ body:not(.genai-fullscreen) #genai-thinking-effort-wrapper .thinking-icon-bulb {
 }
 
 .genai-tool-capsule {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1375,6 +1383,7 @@ body:not(.genai-fullscreen) #genai-thinking-effort-wrapper .thinking-icon-bulb {
   color: var(--text-secondary);
   cursor: default;
   transition: all 0.2s;
+  overflow: hidden;
 }
 
 .genai-tool-capsule:hover {
@@ -1382,23 +1391,29 @@ body:not(.genai-fullscreen) #genai-thinking-effort-wrapper .thinking-icon-bulb {
 }
 
 .genai-tool-capsule .close-btn {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 32px;
   cursor: pointer;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.2s;
   display: flex;
   align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  width: 14px;
-  height: 14px;
+  justify-content: flex-end;
+  padding-right: 8px;
+  background: linear-gradient(to right, transparent 0%, var(--bg-hover) 50%, var(--bg-hover) 100%);
+  color: var(--text-secondary);
 }
 
 .genai-tool-capsule:hover .close-btn {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .genai-tool-capsule .close-btn:hover {
-  background: var(--bg-hover);
   color: var(--text-primary);
 }
 
@@ -1812,12 +1827,11 @@ body:not(.genai-fullscreen) #genai-thinking-effort-wrapper .thinking-icon-bulb {
 
 /* Premium Character Hover Glow Detail in GenAI Chat - Only for Done text */
 .thinking-done-text {
-  transition: text-shadow 0.35s cubic-bezier(0.25, 0.8, 0.25, 1), color 0.35s cubic-bezier(0.25, 0.8, 0.25, 1);
+  transition: color 0.25s ease;
 }
 
 .thinking-done-text:hover {
-  color: #ffffff !important;
-  text-shadow: 0 0 10px rgba(255, 255, 255, 0.45), 0 0 20px rgba(255, 255, 255, 0.25);
+  color: var(--text-primary, #ffffff) !important;
 }
 
 /* Flying Text Clone Animation for Suggestion Continuation Buttons */

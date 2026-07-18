@@ -230,40 +230,55 @@ body.genai-sidebar-open .btn-toggle-right-sidebar svg {
   display: flex;
   align-items: center;
   flex-shrink: 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-light);
+  border-radius: 16px;
+  height: 24px;
+  box-sizing: border-box;
+  transition: all 0.2s;
+}
+
+.thinking-effort-wrapper:hover {
+  background: var(--bg-hover);
 }
 
 .btn-thinking-effort {
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 0 8px 0 10px;
-  border: 1px solid var(--border-light);
-  border-right: none;
-  border-radius: 14px 0 0 14px;
-  background: transparent;
+  padding: 0 4px 0 10px;
+  border: none !important;
+  border-radius: 16px 0 0 16px;
+  background: transparent !important;
   cursor: pointer;
-  color: var(--text-tertiary);
-  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  font-size: 11px;
   font-weight: 500;
   transition: all 0.15s ease;
   white-space: nowrap;
-  height: 28px;
+  height: 100%;
   box-sizing: border-box;
 }
 
 .btn-thinking-effort:hover {
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
+  color: var(--text-primary);
+}
+
+.thinking-effort-wrapper.active {
+  border-color: rgba(99, 179, 130, 0.4);
+  background: rgba(99, 179, 130, 0.08);
+}
+
+.thinking-effort-wrapper.active:hover {
+  background: rgba(99, 179, 130, 0.15);
 }
 
 .thinking-effort-wrapper.active .btn-thinking-effort {
-  border: 2px solid rgba(255, 255, 255, 0.4);
-  border-right: none;
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 .thinking-btn-label {
-  font-size: var(--text-xs);
+  font-size: 11px;
 }
 
 .thinking-btn-short {
@@ -271,41 +286,40 @@ body.genai-sidebar-open .btn-toggle-right-sidebar svg {
 }
 
 .effort-level-label {
-  font-size: var(--text-xs);
+  font-size: 11px;
   color: var(--text-tertiary);
-  margin-left: 1px;
+  margin-left: 2px;
 }
 
 .thinking-effort-wrapper.active .effort-level-label {
-  color: var(--text-tertiary);
+  color: #68d391;
+  font-weight: 600;
 }
 
 .btn-thinking-effort-arrow {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 28px;
+  width: 20px;
+  height: 100%;
   padding: 0;
-  border: 1px solid var(--border-light);
-  border-radius: 0 14px 14px 0;
-  background: transparent;
+  border: none !important;
+  border-radius: 0 16px 16px 0;
+  background: transparent !important;
   cursor: pointer;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   transition: all 0.15s ease;
   flex-shrink: 0;
   box-sizing: border-box;
 }
 
 .thinking-effort-wrapper.active .btn-thinking-effort-arrow {
-  border: 2px solid rgba(255, 255, 255, 0.4);
-  border-left: 1px solid rgba(255, 255, 255, 0.4);
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 .btn-thinking-effort-arrow:hover {
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: var(--text-primary);
 }
 
 
@@ -2266,7 +2280,8 @@ glm-thinking-snippets .glm-snippet::before {
   content: "";
   position: absolute;
   left: -18px;
-  top: 8px;
+  top: 0.55em;
+  transform: translateY(-50%);
   width: 6px;
   height: 6px;
   background: var(--border-light);
@@ -2277,7 +2292,7 @@ glm-thinking-snippets .glm-snippet::after {
   content: "";
   position: absolute;
   left: -16px;
-  top: 14px;
+  top: calc(0.55em + 3px);
   width: 2px;
   height: calc(100% + 4px);
   background: var(--border-light);
@@ -2303,21 +2318,19 @@ glm-thinking-snippets .glm-snippet.active {
 .glm-thinking-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1);
   cursor: pointer;
   color: var(--text-secondary);
-  font-size: 0.85em;
-  font-weight: 500;
-  background: rgba(255,255,255,0.05);
-  padding: 4px 10px;
-  border-radius: 12px;
-  transition: all 0.2s;
-  border: 1px solid var(--border-light);
+  font-size: var(--text-xs);
+  opacity: 0.6;
+  font-style: italic;
+  letter-spacing: 0.02em;
+  transition: opacity 0.2s ease;
+  user-select: none;
+  line-height: 1;
 }
 .glm-thinking-toggle:hover {
-  background: rgba(255,255,255,0.1);
-  border-color: var(--accent-primary);
-  color: var(--text-primary);
+  opacity: 0.85;
 }
 .glm-thinking-content {
   display: none;

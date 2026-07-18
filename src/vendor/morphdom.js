@@ -379,7 +379,13 @@ function morphdomFactory(morphAttrs) {
       }
 
       if (parentNode) {
-        parentNode.removeChild(node);
+        try {
+          if (node.parentNode === parentNode) {
+            parentNode.removeChild(node);
+          }
+        } catch (err) {
+          console.warn('morphdom: failed to remove child node', node, 'from parent', parentNode, err);
+        }
       }
 
       onNodeDiscarded(node);

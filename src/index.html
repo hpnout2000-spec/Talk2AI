@@ -1370,16 +1370,37 @@
                         <span class="toggle-slider"></span>
                       </label>
                     </div>
+                    <div style="height: 1px; background: var(--border-light); margin: 4px 0;"></div>
+                    <div id="genai-thinking-more-btn" class="effort-option" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; user-select: none;">
+                      <span style="font-weight: 500;">More</span>
+                      <svg id="genai-thinking-more-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:10px;height:10px;transform: rotate(0deg); transition: transform 0.2s;">
+                        <polyline points="6 9 12 15 18 9"/>
+                      </svg>
+                    </div>
+                    <div id="genai-thinking-more-container" class="hidden" style="border-top: 1px solid var(--border-light); padding-top: 4px; display: flex; flex-direction: column;">
+                      <div id="genai-refine-thoughts-toggle-row" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; cursor: pointer;" class="hover-bg-light">
+                        <span style="font-size: var(--text-sm); font-weight: 500;">Refine thoughts</span>
+                        <label class="toggle-switch small" style="pointer-events: none;">
+                          <input type="checkbox" id="genai-refine-thoughts-toggle-check" />
+                          <span class="toggle-slider"></span>
+                        </label>
+                      </div>
+                      <div class="effort-option" data-value="auto" id="genai-auto-switch-option">
+                        Auto switch
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
 
               <div class="input-actions">
                 <button id="btn-genai-brush" class="btn-icon hidden" title="Generate image only">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="m12 22 1-1c1.4-1.4 2.4-3.2 3-5.2L18 9l-5-5-7 2-5 5 5 5z"/>
-                    <path d="m19 9 1-1c1.1-1.1 2.9-1.1 4 0s1.1 2.9 0 4l-1 1"/>
-                    <path d="M5 16c.2-.4.4-.8.7-1.1l1.1-1.1c.3-.3.7-.5 1.1-.7"/>
+                  <svg viewBox="0 0 512 512" fill="currentColor">
+                    <g transform="translate(0.000000,512.000000) scale(0.100000,-0.100000)" fill="currentColor" stroke="none">
+                      <path d="M4903 4956 c-305 -96 -1216 -820 -2401 -1909 l-292 -269 79 -87 c44 -47 212 -217 373 -378 l293 -291 140 155 c835 927 1486 1719 1807 2198 157 234 229 397 214 479 -9 48 -49 93 -94 106 -47 13 -67 12 -119 -4z"/>
+                      <path d="M1830 2414 c-107 -104 -195 -192 -195 -195 0 -3 173 -181 384 -395 l383 -389 129 135 c71 74 156 164 188 200 l59 65 -377 384 -377 384 -194 -189z"/>
+                      <path d="M1320 2019 c-344 -73 -553 -224 -685 -494 -59 -119 -90 -222 -136 -440 -93 -441 -157 -541 -369 -576 -39 -7 -82 -20 -95 -31 -52 -41 -39 -125 25 -158 60 -31 288 -97 426 -124 490 -95 935 -24 1229 198 238 179 415 463 491 788 l18 78 -385 387 c-221 223 -392 389 -404 390 -11 1 -63 -7 -115 -18z"/>
+                    </g>
                   </svg>
                 </button>
                 <button id="btn-genai-send" class="btn-icon" title="Send">
@@ -2144,10 +2165,17 @@
                 <span class="toggle-slider"></span>
               </label>
             </div>
-            <div class="form-group-row">
-              <label>Gemma 4 Advanced thinking</label>
+            <div class="form-group-row nested-setting">
+              <label>Advanced thinking</label>
               <label class="toggle-switch small">
                 <input type="checkbox" id="setting-change-gemma4-thinking-style" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="form-group-row nested-setting">
+              <label>Google's thinking preset</label>
+              <label class="toggle-switch small">
+                <input type="checkbox" id="setting-gemma4-google-thinking-preset" />
                 <span class="toggle-slider"></span>
               </label>
             </div>
@@ -2445,6 +2473,20 @@
                 <select id="setting-genai-emoji-preferences" class="hidden">
                   <option value="default">Default</option>
                   <option value="more">More</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="setting-genai-assent">Assent</label>
+              <div class="vibe-dropdown" id="dropdown-genai-assent">
+                <div class="vibe-dropdown-trigger" data-value="default">Default</div>
+                <div class="vibe-dropdown-menu">
+                  <div class="vibe-dropdown-item" data-value="default">Default</div>
+                  <div class="vibe-dropdown-item" data-value="high">High</div>
+                </div>
+                <select id="setting-genai-assent" class="hidden">
+                  <option value="default">Default</option>
+                  <option value="high">High</option>
                 </select>
               </div>
             </div>
@@ -2905,6 +2947,29 @@
               </label>
             </div>
 
+            <!-- Image Gen Reasoning level -->
+            <div class="form-group" style="margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border-subtle);">
+              <label for="setting-comfyui-reasoning-effort">Prompt Generator Reasoning Level</label>
+              <div class="vibe-dropdown" id="dropdown-comfyui-reasoning-effort" style="margin-top: 6px;">
+                <div class="vibe-dropdown-trigger" data-value="none">None</div>
+                <div class="vibe-dropdown-menu">
+                  <div class="vibe-dropdown-item" data-value="none">None</div>
+                  <div class="vibe-dropdown-item" data-value="minimal">Minimal</div>
+                  <div class="vibe-dropdown-item" data-value="low">Low</div>
+                  <div class="vibe-dropdown-item" data-value="medium">Medium</div>
+                  <div class="vibe-dropdown-item" data-value="high">High</div>
+                </div>
+                <select id="setting-comfyui-reasoning-effort" class="hidden">
+                  <option value="none">None</option>
+                  <option value="minimal">Minimal</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                </select>
+              </div>
+              <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 6px;">Select reasoning/thinking effort level for the image prompt generator LLM.</div>
+            </div>
+
             <!-- ComfyUI URL -->
             <div class="form-group">
               <label for="setting-comfyui-url">ComfyUI Server URL</label>
@@ -2980,7 +3045,7 @@
                   <input type="text" id="setting-comfyui-lora-input" placeholder="Lora name (e.g. style_model.safetensors)" style="flex:1; padding:8px 10px; background:var(--bg-primary); border:1px solid var(--border-light); border-radius:var(--radius-sm); color:var(--text-primary); font-size:var(--text-sm);" />
                   <button id="btn-add-comfyui-lora" class="btn-secondary small" style="white-space: nowrap;">Add</button>
                 </div>
-                <div id="comfyui-loras-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto;">
+                <div id="comfyui-loras-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 250px; overflow-y: auto; padding-right: 4px;">
                   <!-- Lora items will be injected here -->
                 </div>
               </div>
@@ -3457,6 +3522,35 @@
                         <label for="adv-setting-presence-penalty">Presence Penalty: <span id="adv-presence-penalty-value">0.00</span></label>
                         <input type="range" id="adv-setting-presence-penalty" min="-2.0" max="2.0" step="0.05" value="0.00" />
                       </div>
+                      
+                      <div class="form-group" style="margin-top: 12px; padding: 12px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                          <label for="adv-setting-dry-enabled" style="margin-bottom: 0; font-weight: 500; font-size: var(--text-sm);">Dry Sampler</label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-dry-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <div id="dry-sampler-controls" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
+                          <div class="form-group" style="margin-bottom: 8px;">
+                            <label for="adv-setting-dry-multiplier" style="font-size: 11px;">Multiplier: <span id="adv-dry-multiplier-value">0.8</span></label>
+                            <input type="range" id="adv-setting-dry-multiplier" min="0.0" max="2.0" step="0.05" value="0.8" />
+                          </div>
+                          <div class="form-group" style="margin-bottom: 8px;">
+                            <label for="adv-setting-dry-base" style="font-size: 11px;">Base: <span id="adv-dry-base-value">1.75</span></label>
+                            <input type="range" id="adv-setting-dry-base" min="1.0" max="3.0" step="0.05" value="1.75" />
+                          </div>
+                          <div class="form-group" style="margin-bottom: 8px;">
+                            <label for="adv-setting-dry-allowed-length" style="font-size: 11px;">Allowed Length: <span id="adv-dry-allowed-length-value">2</span></label>
+                            <input type="range" id="adv-setting-dry-allowed-length" min="0" max="10" step="1" value="2" />
+                          </div>
+                          <div class="form-group" style="margin-bottom: 0;">
+                            <label for="adv-setting-dry-sequence-breakers" style="font-size: 11px; margin-bottom: 4px; display: block;">Sequence Breakers (JSON array)</label>
+                            <input type="text" id="adv-setting-dry-sequence-breakers" class="form-control" style="font-size: 11px; padding: 4px 8px; height: 28px;" value='["\n", ":", "\"", "*"]' />
+                          </div>
+                        </div>
+                      </div>
+
                       <hr style="border: none; border-top: 1px solid var(--border-light); margin-bottom: 16px;">
                       
                       <h3>Reasoning Formatting</h3>
@@ -3559,6 +3653,34 @@
                       <div class="form-group">
                         <label for="adv-setting-genai-presence-penalty">Presence Penalty: <span id="adv-genai-presence-penalty-value">0.00</span></label>
                         <input type="range" id="adv-setting-genai-presence-penalty" min="-2.0" max="2.0" step="0.05" value="0.00" />
+                      </div>
+                      
+                      <div class="form-group" style="margin-top: 12px; padding: 12px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                          <label for="adv-setting-genai-dry-enabled" style="margin-bottom: 0; font-weight: 500; font-size: var(--text-sm);">Dry Sampler</label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-genai-dry-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <div id="genai-dry-sampler-controls" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
+                          <div class="form-group" style="margin-bottom: 8px;">
+                            <label for="adv-setting-genai-dry-multiplier" style="font-size: 11px;">Multiplier: <span id="adv-genai-dry-multiplier-value">0.8</span></label>
+                            <input type="range" id="adv-setting-genai-dry-multiplier" min="0.0" max="2.0" step="0.05" value="0.8" />
+                          </div>
+                          <div class="form-group" style="margin-bottom: 8px;">
+                            <label for="adv-setting-genai-dry-base" style="font-size: 11px;">Base: <span id="adv-genai-dry-base-value">1.75</span></label>
+                            <input type="range" id="adv-setting-genai-dry-base" min="1.0" max="3.0" step="0.05" value="1.75" />
+                          </div>
+                          <div class="form-group" style="margin-bottom: 8px;">
+                            <label for="adv-setting-genai-dry-allowed-length" style="font-size: 11px;">Allowed Length: <span id="adv-genai-dry-allowed-length-value">2</span></label>
+                            <input type="range" id="adv-setting-genai-dry-allowed-length" min="0" max="10" step="1" value="2" />
+                          </div>
+                          <div class="form-group" style="margin-bottom: 0;">
+                            <label for="adv-setting-genai-dry-sequence-breakers" style="font-size: 11px; margin-bottom: 4px; display: block;">Sequence Breakers (JSON array)</label>
+                            <input type="text" id="adv-setting-genai-dry-sequence-breakers" class="form-control" style="font-size: 11px; padding: 4px 8px; height: 28px;" value='["\n", ":", "\"", "*"]' />
+                          </div>
+                        </div>
                       </div>
 
                       <div class="form-group" style="margin-top: var(--space-4); display: flex; flex-direction: column;">

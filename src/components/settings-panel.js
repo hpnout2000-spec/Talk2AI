@@ -74,6 +74,11 @@ export function initSettingsPanel() {
     btnTestConnection.addEventListener('click', testConnection);
   }
 
+  const gemmaSupportEl = document.getElementById('setting-gemma4-support');
+  if (gemmaSupportEl) {
+    gemmaSupportEl.addEventListener('change', updateGemmaSubsettingsState);
+  }
+
   // Range inputs: show values in real-time
   setupRangeInput('setting-font-size', 'font-size-value', v => v);
   setupRangeInput('adv-setting-max-tokens', 'adv-max-tokens-value', v => v);
@@ -142,6 +147,32 @@ function setupRangeInput(inputId, valueId, formatter) {
   updateValue();
 }
 
+function updateGemmaSubsettingsState() {
+  const gemmaSupportEl = document.getElementById('setting-gemma4-support');
+  const subsettings = [
+    document.getElementById('setting-change-gemma4-thinking-style'),
+    document.getElementById('setting-gemma4-google-thinking-preset')
+  ];
+  if (gemmaSupportEl) {
+    const isEnabled = gemmaSupportEl.checked;
+    subsettings.forEach(el => {
+      if (el) {
+        el.disabled = !isEnabled;
+        const row = el.closest('.form-group-row');
+        if (row) {
+          if (isEnabled) {
+            row.style.opacity = '1';
+            row.style.pointerEvents = 'auto';
+          } else {
+            row.style.opacity = '0.5';
+            row.style.pointerEvents = 'none';
+          }
+        }
+      }
+    });
+  }
+}
+
 function loadSettingsToUI() {
   const settings = settingsStore.get();
 
@@ -184,6 +215,7 @@ function loadSettingsToUI() {
   checkField('setting-memory', settings.memory_enabled);
   checkField('setting-gemma4-support', settings.gemma4_support);
   checkField('setting-change-gemma4-thinking-style', settings.change_gemma4_thinking_style);
+  checkField('setting-gemma4-google-thinking-preset', settings.gemma4_google_thinking_preset !== false);
   checkField('setting-glm47-support', settings.glm47_support);
   checkField('setting-qwen35-thinking-support', settings.qwen35_thinking_support);
   checkField('setting-auto-translate', settings.auto_translate);
@@ -203,6 +235,7 @@ function loadSettingsToUI() {
   setField('setting-genai-response-length', settings.genai_response_length || 'default');
   setField('setting-genai-speech-style', settings.genai_speech_style || 'default');
   setField('setting-genai-emoji-preferences', settings.genai_emoji_preferences || 'default');
+  setField('setting-genai-assent', settings.genai_assent || 'default');
   const speechStyleDropdown = document.getElementById('setting-genai-speech-style');
   checkField('setting-genai-duo-suggestions', settings.genai_duo_suggestions !== false);
   checkField('setting-genai-safe-mode', settings.genai_safe_mode);
@@ -215,6 +248,7 @@ function loadSettingsToUI() {
   checkField('setting-comfyui-auto-chat', settings.comfyui_auto_chat);
   checkField('setting-comfyui-auto-scale', settings.comfyui_auto_scale);
   checkField('setting-comfyui-better-prompts', settings.comfyui_better_prompts);
+  setField('setting-comfyui-reasoning-effort', settings.comfyui_reasoning_effort || 'none');
   setField('setting-comfyui-url', settings.comfyui_url || 'http://localhost:8188');
   setField('setting-comfyui-neg-prompt', settings.comfyui_negative_prompt || '');
   setField('setting-comfyui-sampler', settings.comfyui_sampler || 'euler');
@@ -262,6 +296,7 @@ function loadSettingsToUI() {
 
   // Update custom dropdown triggers
   updateVibeDropdownTriggers();
+  updateGemmaSubsettingsState();
 }
 
 function setRangeValue(inputId, valueId, value) {
@@ -296,6 +331,7 @@ async function saveSettings() {
     memory_enabled: getChecked('setting-memory'),
     gemma4_support: getChecked('setting-gemma4-support'),
     change_gemma4_thinking_style: getChecked('setting-change-gemma4-thinking-style'),
+    gemma4_google_thinking_preset: getChecked('setting-gemma4-google-thinking-preset'),
     glm47_support: getChecked('setting-glm47-support'),
     qwen35_thinking_support: getChecked('setting-qwen35-thinking-support'),
     auto_translate: getChecked('setting-auto-translate'),
@@ -313,6 +349,7 @@ async function saveSettings() {
     genai_response_length: getVal('setting-genai-response-length'),
     genai_speech_style: getVal('setting-genai-speech-style'),
     genai_emoji_preferences: getVal('setting-genai-emoji-preferences'),
+    genai_assent: getVal('setting-genai-assent'),
     genai_duo_suggestions: getChecked('setting-genai-duo-suggestions'),
     genai_safe_mode: getChecked('setting-genai-safe-mode'),
     genai_viewimage_enabled: getChecked('setting-genai-viewimage-enabled'),
@@ -327,6 +364,7 @@ async function saveSettings() {
     comfyui_auto_chat: getChecked('setting-comfyui-auto-chat'),
     comfyui_auto_scale: getChecked('setting-comfyui-auto-scale'),
     comfyui_better_prompts: getChecked('setting-comfyui-better-prompts'),
+    comfyui_reasoning_effort: getVal('setting-comfyui-reasoning-effort') || 'none',
     comfyui_url: getVal('setting-comfyui-url') || current.comfyui_url,
     comfyui_steps: parseInt(document.getElementById('setting-comfyui-steps')?.value || current.comfyui_steps),
     comfyui_cfg: parseFloat(document.getElementById('setting-comfyui-cfg')?.value || current.comfyui_cfg),
@@ -782,6 +820,12 @@ function initImageGenSettings() {
       inputLora.value = '';
       _persistLoras();
       renderLorasList();
+      setTimeout(() => {
+        const container = document.getElementById('comfyui-loras-list');
+        if (container) {
+          container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+        }
+      }, 50);
     });
     inputLora.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') btnAddLora.click();
@@ -884,6 +928,11 @@ export function renderLorasList() {
     
     header.addEventListener('click', () => {
       details.classList.toggle('hidden');
+      if (!details.classList.contains('hidden')) {
+        setTimeout(() => {
+          item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 50);
+      }
     });
     
     // Strength slider row

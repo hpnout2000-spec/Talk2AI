@@ -90,7 +90,7 @@ export const memoryService = {
         },
       ];
 
-      const response = await api.chatCompletion(messages, { priority: 'background' });
+      const response = await api.chatCompletion(messages, { priority: 'background', reasoning_effort: 'none' });
 
       // Parse JSON from response
       let extracted;

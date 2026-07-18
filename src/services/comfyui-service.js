@@ -122,6 +122,52 @@ function buildAnimaWorkflow(prompt, negPrompt, settings, loras = []) {
 }
 
 /**
+ * Helper to execute HTTP calls to ComfyUI.
+ * If running inside Tauri, routes the request through Tauri's `client_http_request` command to bypass CORS.
+ * Otherwise, falls back to browser `fetch`.
+ */
+async function comfyFetch(url, options = {}) {
+  const invoke = window.__TAURI_INTERNALS__?.invoke;
+  if (invoke && (typeof options.body === 'string' || !options.body)) {
+    try {
+      const method = options.method || 'GET';
+      const body = options.body || null;
+      const headers = options.headers || {};
+      
+      const headersObj = {};
+      if (headers) {
+        if (headers instanceof Headers) {
+          for (const [k, v] of headers.entries()) {
+            headersObj[k] = v;
+          }
+        } else {
+          Object.assign(headersObj, headers);
+        }
+      }
+
+      const resText = await invoke('client_http_request', {
+        method,
+        url,
+        body,
+        headers: headersObj,
+        timeoutSecs: 30
+      });
+
+      return {
+        ok: true,
+        status: 200,
+        text: async () => resText,
+        json: async () => JSON.parse(resText),
+        blob: async () => new Blob([resText])
+      };
+    } catch (err) {
+      console.warn(`comfyFetch via Tauri failed for ${url}, falling back to browser fetch:`, err);
+    }
+  }
+  return await fetch(url, options);
+}
+
+/**
  * Check if ComfyUI is reachable
  * @param {string} url - ComfyUI base URL
  * @returns {Promise<boolean>}
@@ -129,7 +175,7 @@ function buildAnimaWorkflow(prompt, negPrompt, settings, loras = []) {
 export async function checkComfyUIConnection(url) {
   try {
     const baseUrl = (url || 'http://localhost:8188').replace(/\/$/, '');
-    const resp = await fetch(`${baseUrl}/system_stats`, { method: 'GET' });
+    const resp = await comfyFetch(`${baseUrl}/system_stats`, { method: 'GET' });
     return resp.ok;
   } catch {
     return false;
@@ -251,7 +297,7 @@ export async function generateImageComfyUI(prompt, arg2 = null, arg3 = null, arg
     const workflow = buildAnimaWorkflow(finalPrompt, negPrompt, settings, finalLoras);
 
     // 2. Queue the prompt
-    const queueResp = await fetch(`${baseUrl}/prompt`, {
+    const queueResp = await comfyFetch(`${baseUrl}/prompt`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -289,7 +335,7 @@ export async function generateImageComfyUI(prompt, arg2 = null, arg3 = null, arg
 
       if (signal?.aborted) throw new Error('Image generation stopped by user');
 
-      const histResp = await fetch(`${baseUrl}/history/${promptId}`, { signal });
+      const histResp = await comfyFetch(`${baseUrl}/history/${promptId}`, { signal });
       if (!histResp.ok) continue;
 
       const hist = await histResp.json();
@@ -458,7 +504,7 @@ export async function removeBackgroundComfyUI(dataUrl, useAlphaFallback = false,
   };
 
   // 3. Queue the prompt
-  const queueResp = await fetch(`${baseUrl}/prompt`, {
+  const queueResp = await comfyFetch(`${baseUrl}/prompt`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ client_id: clientId, prompt: workflow }),
@@ -493,7 +539,7 @@ export async function removeBackgroundComfyUI(dataUrl, useAlphaFallback = false,
 
     if (signal?.aborted) throw new Error('Background removal stopped by user');
 
-    const histResp = await fetch(`${baseUrl}/history/${promptId}`, { signal });
+    const histResp = await comfyFetch(`${baseUrl}/history/${promptId}`, { signal });
     if (!histResp.ok) continue;
 
     const hist = await histResp.json();
@@ -510,6 +556,16 @@ export async function removeBackgroundComfyUI(dataUrl, useAlphaFallback = false,
       if (saveNode?.images?.length > 0) {
         const img = saveNode.images[0];
         const imageUrl = `${baseUrl}/view?filename=${encodeURIComponent(img.filename)}&subfolder=${encodeURIComponent(img.subfolder || '')}&type=${encodeURIComponent(img.type || 'output')}`;
+
+        // Fetch and return as base64
+        const invoke = window.__TAURI_INTERNALS__?.invoke;
+        if (invoke) {
+          try {
+            return await invoke('fetch_image_base64', { url: imageUrl });
+          } catch (e) {
+            console.warn('Failed to fetch rembg result via Tauri, falling back to standard fetch:', e);
+          }
+        }
 
         // Fetch and return as base64
         const imgResp = await fetch(imageUrl, { signal });

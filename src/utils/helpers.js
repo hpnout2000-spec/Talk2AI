@@ -38,6 +38,9 @@ export function renderMarkdown(text) {
 
   let html = escapeHtml(text);
 
+  // Normalize smart/typographical double quotes (curly, guillemets, low-9) to standard double quotes
+  html = html.replace(/[“”«»„]/g, '&quot;');
+
   // Quotes ("...") - Must be first to avoid matching quotes in HTML tags
   html = html.replace(/&quot;(.*?)&quot;/g, '<span class="text-quotes">"$1"</span>');
 
@@ -111,8 +114,13 @@ export function renderMarkdown(text) {
     return placeholder;
   });
 
-  // Headings (### ...)
+  // Headings (#, ##, ###, ####, #####, ######)
+  html = html.replace(/^###### (.+)$/gm, '<h6>$1</h6>');
+  html = html.replace(/^##### (.+)$/gm, '<h5>$1</h5>');
+  html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
   html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
 
   // Horizontal rules (***)
   html = html.replace(/^\s*(?:\*\s*){3,}$/gm, '<hr>');
@@ -313,11 +321,161 @@ export function renderMarkdown(text) {
     }
   });
 
-  // Bold (**...**)
-  html = html.replace(/\*\*(.+?)\*\*/g, '<span class="text-asterisks">$1</span>');
+  // Bold and Italic parsing using custom flanking rules (CommonMark compliant)
+  html = (() => {
+    const chars = [];
+    let i = 0;
+    while (i < html.length) {
+      if (html[i] === '<') {
+        const closeIdx = html.indexOf('>', i);
+        if (closeIdx !== -1) {
+          i = closeIdx + 1;
+          continue;
+        }
+      }
+      if (html.startsWith('__', i)) {
+        const match = html.substring(i).match(/^__[A-Z0-9_]+_PLACEHOLDER_\d+__/);
+        if (match) {
+          i += match[0].length;
+          continue;
+        }
+      }
+      chars.push({ char: html[i], index: i });
+      i++;
+    }
 
-  // Italic (*...*)
-  html = html.replace(/\*(.+?)\*/g, '<span class="text-asterisks">$1</span>');
+    const delimiters = [];
+    let j = 0;
+    while (j < chars.length) {
+      if (chars[j].char === '*') {
+        const start = j;
+        while (j < chars.length && chars[j].char === '*') {
+          j++;
+        }
+        const length = j - start;
+        
+        const prevChar = start > 0 ? chars[start - 1].char : null;
+        const nextChar = j < chars.length ? chars[j].char : null;
+        
+        const isWhitespace = (c) => !c || /\s/.test(c);
+        const isPunctuation = (c) => {
+          if (!c) return true;
+          try {
+            return /[\p{P}\p{S}]/u.test(c);
+          } catch (e) {
+            return /[\!\@\#\$\%\^\&\*\(\)\-\_\+\=\[\]\{\}\;\:\'\"\,\.\<\>\/\?\|\~\`\\⟫⟪«»“”‘’]/.test(c);
+          }
+        };
+        
+        const nextIsWhitespace = isWhitespace(nextChar);
+        const prevIsWhitespace = isWhitespace(prevChar);
+        const nextIsPunctuation = isPunctuation(nextChar);
+        const prevIsPunctuation = isPunctuation(prevChar);
+        
+        const leftFlanking = !nextIsWhitespace && (!nextIsPunctuation || (nextIsPunctuation && (prevIsWhitespace || prevIsPunctuation)));
+        const rightFlanking = !prevIsWhitespace && (!prevIsPunctuation || (prevIsPunctuation && (nextIsWhitespace || nextIsPunctuation)));
+        
+        const canOpen = leftFlanking;
+        const canClose = rightFlanking;
+        
+        if (length === 1) {
+          delimiters.push({
+            type: '*',
+            startIndex: chars[start].index,
+            endIndex: chars[start].index,
+            canOpen,
+            canClose
+          });
+        } else if (length === 2) {
+          delimiters.push({
+            type: '**',
+            startIndex: chars[start].index,
+            endIndex: chars[start + 1].index,
+            canOpen,
+            canClose
+          });
+        } else if (length >= 3) {
+          if (canClose) {
+            delimiters.push({
+              type: '*',
+              startIndex: chars[start].index,
+              endIndex: chars[start].index,
+              canOpen,
+              canClose
+            });
+            delimiters.push({
+              type: '**',
+              startIndex: chars[start + 1].index,
+              endIndex: chars[start + length - 1].index,
+              canOpen,
+              canClose
+            });
+          } else {
+            delimiters.push({
+              type: '**',
+              startIndex: chars[start].index,
+              endIndex: chars[start + 1].index,
+              canOpen,
+              canClose
+            });
+            delimiters.push({
+              type: '*',
+              startIndex: chars[start + 2].index,
+              endIndex: chars[start + length - 1].index,
+              canOpen,
+              canClose
+            });
+          }
+        }
+      } else {
+        j++;
+      }
+    }
+
+    const openers = [];
+    const replacements = [];
+    
+    for (let dIdx = 0; dIdx < delimiters.length; dIdx++) {
+      const delim = delimiters[dIdx];
+      let matched = false;
+      
+      if (delim.canClose) {
+        for (let oIdx = openers.length - 1; oIdx >= 0; oIdx--) {
+          const opener = openers[oIdx];
+          if (opener.type === delim.type) {
+            const openTag = delim.type === '**' ? '<strong class="text-asterisks">' : '<span class="text-asterisks">';
+            const closeTag = delim.type === '**' ? '</strong>' : '</span>';
+            replacements.push({
+              start: opener.startIndex,
+              end: opener.endIndex,
+              text: openTag
+            });
+            replacements.push({
+              start: delim.startIndex,
+              end: delim.endIndex,
+              text: closeTag
+            });
+            openers.splice(oIdx);
+            matched = true;
+            break;
+          }
+        }
+      }
+      
+      if (!matched && delim.canOpen) {
+        openers.push(delim);
+      }
+    }
+    
+    replacements.sort((a, b) => b.start - a.start);
+    
+    let result = html;
+    for (const r of replacements) {
+      result = result.substring(0, r.start) + r.text + result.substring(r.end + 1);
+    }
+    
+    return result;
+  })();
 
   // Group lines into paragraphs and block elements
   const processedLines = html.split('\n');
@@ -428,8 +586,8 @@ export function extractThinkingSnippets(text) {
   if (typeof text !== 'string' || !text) return [];
   
   let cleanText = text
-    .replace(/(?:<\|?think\|?>|<reasoning>|<thought>)/gi, '')
-    .replace(/(?:<\|?\/think\|?>|<\/thought>|<\/reasoning>)/gi, '')
+    .replace(/(?:<\|channel>thought|<\|?think\|?>|<reasoning>|<thought>)/gi, '')
+    .replace(/(?:<channel\|>|<\|?\/think\|?>|<\/thought>|<\/reasoning>)/gi, '')
     .replace(/```[\s\S]*?```/g, '')
     .replace(/`[^`]*`/g, '')
     .replace(/[*#_\[\]\(\)]/g, ' ')
@@ -465,7 +623,7 @@ export function parseStreamThinking(text, customOpen = null, customClose = null)
   if (typeof text !== 'string') return { thinking: '', content: '', rawContent: '', isInThinking: false, thinkingStartIdx: -1, thinkingEndIdx: -1 };
   
   const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const defaultOpen = '<think>|<reasoning>|<thought>';
+  const defaultOpen = '<\\|channel>thought|<\\|?think\\|?>|<thought>|<reasoning>';
   const openPattern = customOpen ? escapeRegExp(customOpen) + '|' + defaultOpen : defaultOpen;
   const startMatch = text.match(new RegExp(openPattern));
   
@@ -495,11 +653,51 @@ export function parseStreamThinking(text, customOpen = null, customClose = null)
 }
 
 /**
+ * Check if the thinking text represents a system budget exceeded message
+ */
+export function isBudgetExceededMessage(text) {
+  if (typeof text !== 'string') return false;
+  const clean = text.trim().toLowerCase();
+  if (!clean) return false;
+
+  // Exact or containing matches for known warnings
+  if (clean.includes('reasoning budget exceeded') || 
+      clean.includes('time to respond now.')) {
+    return true;
+  }
+
+  // Prefix matching to prevent UI flicker while streaming these warnings
+  // Only match prefixes of length >= 2 to avoid blocking real short thoughts like "("
+  if (clean.length >= 2) {
+    const patterns = [
+      "(reasoning budget exceeded)",
+      "(reasoning budget exceeded)\ntime to respond now.",
+      "(reasoning budget exceeded) time to respond now.",
+      "reasoning budget exceeded",
+      "reasoning budget exceeded\ntime to respond now.",
+      "reasoning budget exceeded time to respond now."
+    ];
+    for (const p of patterns) {
+      if (p.startsWith(clean)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
  * Generate thinking block HTML structure
  */
-export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, thinkingTime = 0) {
+export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, thinkingTime = 0, reasoningEffortSetting = null) {
   const settings = settingsStore.get() || {};
-  if (settings.reasoning_effort === 'none') {
+  const effort = reasoningEffortSetting || settings.reasoning_effort;
+  if (effort === 'none') {
+    return '';
+  }
+
+  if (isBudgetExceededMessage(thinkingText)) {
     return '';
   }
 
@@ -520,7 +718,6 @@ export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, t
         return `<div class="glm-nested-item">
                   <div class="glm-nested-toggle" onclick="this.closest('.glm-nested-item').classList.toggle('glm-nested-expanded')">
                     <span class="glm-nested-title">${sec.number}. ${escapedTitle}</span>
-                    <span class="glm-nested-chevron">▸</span>
                   </div>
                   <div class="glm-nested-content">${formattedContent}</div>
                 </div>`;
@@ -535,7 +732,7 @@ export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, t
 
     return `<div class="thinking-inline glm-thinking-expanded-container">
               <div class="glm-thinking-toggle" onclick="this.closest('.glm-thinking-expanded-container').classList.toggle('glm-thinking-expanded')">
-                <span class="thinking-done-text">${timeText}</span><span class="thinking-chevron">▸</span>
+                <span class="thinking-done-text">${timeText}</span>
               </div>
               <div class="glm-thinking-content">
                 <div class="glm-nested-accordion">${sectionsHtml}</div>
@@ -889,7 +1086,15 @@ export function parseGLMThinkingSections(thinkingText) {
         sections.push(currentSection);
       }
       
-      let title = match[2].replace(/[*_~`]/g, '').trim();
+      let rawTitle = match[2];
+      let initialContent = '';
+      const colonIdx = rawTitle.indexOf(': ');
+      if (colonIdx !== -1) {
+        initialContent = rawTitle.substring(colonIdx + 2).trim();
+        rawTitle = rawTitle.substring(0, colonIdx).trim();
+      }
+      
+      let title = rawTitle.replace(/[*_~`]/g, '').trim();
       if (title.endsWith(':')) {
         title = title.slice(0, -1) + '.';
       }
@@ -899,6 +1104,10 @@ export function parseGLMThinkingSections(thinkingText) {
         title: title,
         contentLines: []
       };
+      
+      if (initialContent) {
+        currentSection.contentLines.push(initialContent);
+      }
     } else {
       if (currentSection) {
         currentSection.contentLines.push(line);
