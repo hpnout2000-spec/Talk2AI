@@ -1918,3 +1918,33 @@ body.genai-fullscreen .btn-fetched-data,
   border-color: var(--text-accent) !important;
   background: rgba(255, 255, 255, 0.08) !important;
 }
+
+/* GenAI Mode Layout Overrides */
+body.genai-mode-active #main-content {
+  display: none !important;
+}
+body.genai-mode-active #genai-sidebar {
+  width: auto !important;
+  flex: 1 !important;
+  max-width: none !important;
+  border-left: none !important;
+  margin-left: 0 !important;
+}
+body.genai-mode-active .sidebar-tabs,
+body.genai-mode-active #characters-section,
+body.genai-mode-active #groups-section,
+body.genai-mode-active #books-section,
+body.genai-mode-active #games-section,
+body.genai-mode-active #album-section {
+  display: none !important;
+}
+body.genai-mode-active #genai-left-sidebar {
+  display: flex !important;
+}
+
+
+
+body.genai-mode-active .btn-toggle-right-sidebar {
+  display: none !important;
+}
+

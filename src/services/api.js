@@ -5,6 +5,7 @@
 import { settingsStore } from './settings-store.js';
 import { localSyncService } from './local-sync-service.js';
 import { appState } from '../state.js';
+import { formatTextCompletionPrompt } from '../utils/text-completion-formatter.js';
 
 class RequestQueue {
   constructor() {
@@ -80,6 +81,61 @@ class RequestQueue {
 
 const llmQueue = new RequestQueue();
 
+/**
+ * Preprocess messages for Legacy Jinja Support:
+ * If enabled, converts 'system' role messages to 'user' and merges consecutive
+ * messages with the same role.
+ */
+function preprocessMessages(messages, settings) {
+  if (!settings?.legacy_jinja_support || !messages || messages.length === 0) {
+    return messages;
+  }
+
+  // 1. Convert 'system' role to 'user'
+  const converted = messages.map(msg => {
+    if (msg.role === 'system') {
+      return { ...msg, role: 'user' };
+    }
+    return msg;
+  });
+
+  // 2. Merge consecutive messages with the same role
+  const merged = [];
+  for (const msg of converted) {
+    if (merged.length > 0 && merged[merged.length - 1].role === msg.role) {
+      const prev = merged[merged.length - 1];
+      let newContent = '';
+
+      const getMsgContentString = (content) => {
+        if (typeof content === 'string') {
+          return content;
+        }
+        if (Array.isArray(content)) {
+          return content.map(part => {
+            if (part && part.type === 'text') return part.text || '';
+            return '';
+          }).join(' ');
+        }
+        return content ? String(content) : '';
+      };
+
+      const prevText = getMsgContentString(prev.content);
+      const msgText = getMsgContentString(msg.content);
+      
+      newContent = prevText + '\n\n' + msgText;
+
+      merged[merged.length - 1] = {
+        ...prev,
+        content: newContent
+      };
+    } else {
+      merged.push({ ...msg });
+    }
+  }
+
+  return merged;
+}
+
 export const api = {
   /**
    * Check if the API server is reachable
@@ -148,7 +204,7 @@ export const api = {
         }
       }
 
-      let finalMessages = [...messages];
+      let finalMessages = preprocessMessages(messages, settings);
       let effort = options.reasoning_effort ?? settings.reasoning_effort ?? 'none';
 
       if (settings.qwen35_thinking_support) {
@@ -182,37 +238,84 @@ export const api = {
         }
       }
 
-      const body = {
-        messages: finalMessages,
-        stream: true,
-        max_tokens: options.max_tokens || settings.max_tokens,
-        temperature: options.temperature ?? settings.temperature,
-        top_p: options.top_p ?? settings.top_p,
-        top_k: options.top_k ?? settings.top_k,
-        repeat_penalty: options.rep_penalty ?? settings.rep_penalty,
-        presence_penalty: options.presence_penalty ?? settings.presence_penalty ?? 0.0,
-      };
+      const isGenAI = options.isGenAI || false;
+      const completionMode = isGenAI ? (settings.genai_completion_mode || 'chat_completion') : (settings.completion_mode || 'chat_completion');
 
-      const sf = options.smoothing_factor ?? settings.smoothing_factor ?? 0;
+      const maxTokens = options.max_tokens || (isGenAI ? settings.genai_max_tokens : settings.max_tokens);
+      const temp = options.temperature ?? (isGenAI ? settings.genai_temperature : settings.temperature);
+      const topP = options.top_p ?? (isGenAI ? settings.genai_top_p : settings.top_p);
+      const topK = options.top_k ?? (isGenAI ? settings.genai_top_k : settings.top_k);
+      const repPenalty = options.rep_penalty ?? (isGenAI ? settings.genai_rep_penalty : settings.rep_penalty);
+      const presPenalty = options.presence_penalty ?? (isGenAI ? settings.genai_presence_penalty : settings.presence_penalty) ?? 0.0;
+
+      let body;
+      if (completionMode === 'text_completion') {
+        const instructId = isGenAI ? (settings.genai_active_instruct_template_id || 'gemma2') : (settings.active_instruct_template_id || 'gemma2');
+        const contextId = isGenAI ? (settings.genai_active_context_template_id || 'gemma2') : (settings.active_context_template_id || 'gemma2');
+        const instructTemplate = (settings.instruct_templates || []).find(t => t.id === instructId) || (settings.instruct_templates || [])[0] || {};
+        const contextTemplate = (settings.context_templates || []).find(t => t.id === contextId) || (settings.context_templates || [])[0] || {};
+
+        const formatted = formatTextCompletionPrompt(messages, contextTemplate, instructTemplate, {
+          charName: options.charName || appState.currentCharacter?.name || 'Assistant',
+          userName: options.userName || settings.user_name || 'User',
+          charDescription: options.charDescription || appState.currentCharacter?.description || '',
+          charPersonality: options.charPersonality || appState.currentCharacter?.personality || '',
+          scenario: options.scenario || appState.currentCharacter?.scenario || '',
+          persona: options.persona || appState.activePersona?.description || '',
+          systemPrompt: options.systemPrompt || '',
+        });
+
+        body = {
+          prompt: formatted.prompt,
+          stop: formatted.stop,
+          stream: true,
+          max_tokens: maxTokens,
+          temperature: temp,
+          top_p: topP,
+          top_k: topK,
+          repeat_penalty: repPenalty,
+          presence_penalty: presPenalty,
+        };
+      } else {
+        body = {
+          messages: finalMessages,
+          stream: true,
+          max_tokens: maxTokens,
+          temperature: temp,
+          top_p: topP,
+          top_k: topK,
+          repeat_penalty: repPenalty,
+          presence_penalty: presPenalty,
+        };
+      }
+
+      const sf = options.smoothing_factor ?? (isGenAI ? settings.genai_smoothing_factor : settings.smoothing_factor) ?? 0;
       if (sf > 0) {
         body.smoothing_factor = sf;
       }
       
-      if (options.min_p_enabled ?? settings.min_p_enabled ?? true) {
-        body.min_p = options.min_p ?? settings.min_p ?? 0.05;
+      const minPEnabled = options.min_p_enabled ?? (isGenAI ? settings.genai_min_p_enabled : settings.min_p_enabled) ?? true;
+      if (minPEnabled) {
+        body.min_p = options.min_p ?? (isGenAI ? settings.genai_min_p : settings.min_p) ?? 0.05;
       }
-      if (options.adaptive_target_enabled ?? settings.adaptive_target_enabled ?? true) {
-        body.adaptive_target = options.adaptive_target ?? settings.adaptive_target ?? 0.8;
+
+      const adaptiveTargetEnabled = options.adaptive_target_enabled ?? (isGenAI ? settings.genai_adaptive_target_enabled : settings.adaptive_target_enabled) ?? true;
+      if (adaptiveTargetEnabled) {
+        body.adaptive_target = options.adaptive_target ?? (isGenAI ? settings.genai_adaptive_target : settings.adaptive_target) ?? 0.8;
       }
-      if (options.adaptive_decay_enabled ?? settings.adaptive_decay_enabled ?? true) {
-        body.adaptive_decay = options.adaptive_decay ?? settings.adaptive_decay ?? 0.9;
+
+      const adaptiveDecayEnabled = options.adaptive_decay_enabled ?? (isGenAI ? settings.genai_adaptive_decay_enabled : settings.adaptive_decay_enabled) ?? true;
+      if (adaptiveDecayEnabled) {
+        body.adaptive_decay = options.adaptive_decay ?? (isGenAI ? settings.genai_adaptive_decay : settings.adaptive_decay) ?? 0.9;
       }
-      if (options.dry_multiplier_enabled ?? settings.dry_multiplier_enabled ?? false) {
-        body.dry_multiplier = options.dry_multiplier ?? settings.dry_multiplier ?? 0.8;
-        body.dry_base = options.dry_base ?? settings.dry_base ?? 1.75;
-        body.dry_allowed_length = options.dry_allowed_length ?? settings.dry_allowed_length ?? 2;
+
+      const dryEnabled = options.dry_multiplier_enabled ?? (isGenAI ? settings.genai_dry_multiplier_enabled : settings.dry_multiplier_enabled) ?? false;
+      if (dryEnabled) {
+        body.dry_multiplier = options.dry_multiplier ?? (isGenAI ? settings.genai_dry_multiplier : settings.dry_multiplier) ?? 0.8;
+        body.dry_base = options.dry_base ?? (isGenAI ? settings.genai_dry_base : settings.dry_base) ?? 1.75;
+        body.dry_allowed_length = options.dry_allowed_length ?? (isGenAI ? settings.genai_dry_allowed_length : settings.dry_allowed_length) ?? 2;
         
-        let breakers = options.dry_sequence_breakers ?? settings.dry_sequence_breakers;
+        let breakers = options.dry_sequence_breakers ?? (isGenAI ? settings.genai_dry_sequence_breakers : settings.dry_sequence_breakers);
         if (typeof breakers === 'string') {
           try {
             breakers = JSON.parse(breakers);
@@ -223,13 +326,77 @@ export const api = {
         body.dry_sequence_breakers = Array.isArray(breakers) ? breakers : ["\n", ":", "\"", "*"];
       }
 
+      // Sampler Order
+      const samplerOrderEnabled = options.sampler_order_enabled ?? (isGenAI ? settings.genai_sampler_order_enabled : settings.sampler_order_enabled);
+      if (samplerOrderEnabled) {
+        let order = options.sampler_order ?? (isGenAI ? settings.genai_sampler_order : settings.sampler_order);
+        if (typeof order === 'string') {
+          try {
+            order = JSON.parse(order);
+          } catch (e) {
+            order = [6, 0, 1, 3, 4, 5, 2];
+          }
+        }
+        const parsedOrder = Array.isArray(order) ? order : [6, 0, 1, 3, 4, 5, 2];
+        body.sampler_order = parsedOrder;
+        body.samplers = parsedOrder;
+      }
+
+      // Extended samplers
+      const getSamplerOpt = (key, defaultVal = null) => {
+        const isEnabled = options[`${key}_enabled`] ?? (isGenAI ? settings[`genai_${key}_enabled`] : settings[`${key}_enabled`]);
+        if (isEnabled) {
+          return options[key] ?? (isGenAI ? settings[`genai_${key}`] : settings[key]) ?? defaultVal;
+        }
+        return null;
+      };
+
+      const typicalP = getSamplerOpt('typical_p');
+      if (typicalP !== null) { body.typical_p = typicalP; body.typical = typicalP; }
+      const freqPen = getSamplerOpt('frequency_penalty');
+      if (freqPen !== null) body.frequency_penalty = freqPen;
+      const topA = getSamplerOpt('top_a');
+      if (topA !== null) body.top_a = topA;
+      const tfs = getSamplerOpt('tfs');
+      if (tfs !== null) body.tfs = tfs;
+
+      const mirostatEnabled = options.mirostat_enabled ?? (isGenAI ? settings.genai_mirostat_enabled : settings.mirostat_enabled);
+      if (mirostatEnabled) {
+        body.mirostat_mode = options.mirostat_mode ?? (isGenAI ? settings.genai_mirostat_mode : settings.mirostat_mode) ?? 0;
+        body.mirostat_tau = options.mirostat_tau ?? (isGenAI ? settings.genai_mirostat_tau : settings.mirostat_tau) ?? 5.0;
+        body.mirostat_eta = options.mirostat_eta ?? (isGenAI ? settings.genai_mirostat_eta : settings.mirostat_eta) ?? 0.1;
+      }
+      const xtcEnabled = options.xtc_enabled ?? (isGenAI ? settings.genai_xtc_enabled : settings.xtc_enabled);
+      if (xtcEnabled) {
+        body.xtc_threshold = options.xtc_threshold ?? (isGenAI ? settings.genai_xtc_threshold : settings.xtc_threshold) ?? 0.1;
+        body.xtc_probability = options.xtc_probability ?? (isGenAI ? settings.genai_xtc_probability : settings.xtc_probability) ?? 0.0;
+      }
+      const topNSigma = getSamplerOpt('top_n_sigma');
+      if (topNSigma !== null) { body.top_n_sigma = topNSigma; body.nsigma = topNSigma; }
+      const repPenRangeEnabled = options.rep_pen_range_enabled ?? (isGenAI ? settings.genai_rep_pen_range_enabled : settings.rep_pen_range_enabled);
+      if (repPenRangeEnabled) {
+        body.rep_pen_range = options.rep_pen_range ?? (isGenAI ? settings.genai_rep_pen_range : settings.rep_pen_range) ?? 0;
+        body.rep_pen_slope = options.rep_pen_slope ?? (isGenAI ? settings.genai_rep_pen_slope : settings.rep_pen_slope) ?? 1.0;
+      }
+      const minTokens = getSamplerOpt('min_tokens');
+      if (minTokens !== null) body.min_tokens = minTokens;
+      const cfgEnabled = options.guidance_scale_enabled ?? (isGenAI ? settings.genai_guidance_scale_enabled : settings.guidance_scale_enabled);
+      if (cfgEnabled) {
+        body.guidance_scale = options.guidance_scale ?? (isGenAI ? settings.genai_guidance_scale : settings.guidance_scale) ?? 1.0;
+        const negPrompt = options.negative_prompt ?? (isGenAI ? settings.genai_negative_prompt : settings.negative_prompt);
+        if (negPrompt) body.negative_prompt = negPrompt;
+      }
+      const ignoreEos = options.ignore_eos ?? (isGenAI ? settings.genai_ignore_eos : settings.ignore_eos);
+      if (ignoreEos) { body.ignore_eos = true; body.ban_eos_token = true; }
+      const bannedStrings = options.banned_strings ?? (isGenAI ? settings.genai_banned_strings : settings.banned_strings);
+      if (bannedStrings) {
+        body.banned_strings = typeof bannedStrings === 'string' ? bannedStrings.split(',').map(s => s.trim()).filter(Boolean) : bannedStrings;
+      }
+
       // Add reasoning_effort parameter (KoboldCpp parameter for thinking budget)
       if (effort) {
         body.reasoning_effort = effort;
       }
-
-
-      // Removed jinja_kwargs override to avoid conflict with manual system prompt token prefill
 
       try {
         if (combinedController.signal.aborted) {
@@ -237,10 +404,10 @@ export const api = {
           return;
         }
 
-        // Use relay URL when connected to a host, otherwise direct LLM
+        const endpointPath = completionMode === 'text_completion' ? '/v1/completions' : '/v1/chat/completions';
         const effectiveUrl = localSyncService.isClientMode
           ? localSyncService.getRelayUrl()
-          : `${settings.api_url}/v1/chat/completions`;
+          : `${settings.api_url}${endpointPath}`;
 
         if (localSyncService.isClientMode) {
           const invoke = window.__TAURI_INTERNALS__?.invoke;
@@ -254,13 +421,12 @@ export const api = {
           let doneUnlisten = null;
           let buffer = '';
 
-          // 1. Set up event listener for the stream chunks
           if (window.__TAURI__ && window.__TAURI__.event) {
             unlisten = await window.__TAURI__.event.listen(`relay-chunk-${eventId}`, (event) => {
               const text = event.payload;
               buffer += text;
               const lines = buffer.split('\n');
-              buffer = lines.pop(); // Keep incomplete line in buffer
+              buffer = lines.pop();
 
               for (const line of lines) {
                 const trimmed = line.trim();
@@ -273,12 +439,15 @@ export const api = {
 
                 try {
                   const parsed = JSON.parse(data);
-                  const delta = parsed.choices?.[0]?.delta;
-                  if (delta?.reasoning_content && onThinkingChunk) {
-                    onThinkingChunk(delta.reasoning_content);
+                  const choice = parsed.choices?.[0];
+                  const textChunk = choice?.text !== undefined ? choice.text : (choice?.delta?.content !== undefined ? choice.delta.content : null);
+                  const reasoningChunk = choice?.delta?.reasoning_content || choice?.reasoning_content;
+
+                  if (reasoningChunk && onThinkingChunk) {
+                    onThinkingChunk(reasoningChunk);
                   }
-                  if (delta?.content) {
-                    onChunk(delta.content);
+                  if (textChunk) {
+                    onChunk(textChunk);
                   }
                 } catch {
                   // Skip malformed JSON
@@ -295,7 +464,6 @@ export const api = {
             });
           }
 
-          // Handle abort signal
           const handleAbort = () => {
             invoke('cancel_client_relay', { eventId }).catch(() => {});
             if (unlisten) unlisten();
@@ -346,7 +514,7 @@ export const api = {
 
           buffer += decoder.decode(value, { stream: true });
           const lines = buffer.split('\n');
-          buffer = lines.pop(); // Keep incomplete line in buffer
+          buffer = lines.pop();
 
           for (const line of lines) {
             const trimmed = line.trim();
@@ -360,12 +528,15 @@ export const api = {
 
             try {
               const parsed = JSON.parse(data);
-              const delta = parsed.choices?.[0]?.delta;
-              if (delta?.reasoning_content && onThinkingChunk) {
-                onThinkingChunk(delta.reasoning_content);
+              const choice = parsed.choices?.[0];
+              const textChunk = choice?.text !== undefined ? choice.text : (choice?.delta?.content !== undefined ? choice.delta.content : null);
+              const reasoningChunk = choice?.delta?.reasoning_content || choice?.reasoning_content;
+
+              if (reasoningChunk && onThinkingChunk) {
+                onThinkingChunk(reasoningChunk);
               }
-              if (delta?.content) {
-                onChunk(delta.content);
+              if (textChunk) {
+                onChunk(textChunk);
               }
             } catch {
               // Skip malformed JSON
@@ -688,7 +859,7 @@ Keep the summary under 300 words. Write only the summary itself in ${language}, 
   /**
    * Generates a condensed summary of past chat messages
    */
-  async generateChatSummary(previousSummary, newMessages, userName, characterName, language = 'Russian') {
+  async generateChatSummary(previousSummary, newMessages, userName, characterName) {
     let newMessagesText = "";
     newMessages.forEach((msg) => {
       const name = msg.role === 'user' ? userName : characterName;
@@ -699,7 +870,7 @@ Keep the summary under 300 words. Write only the summary itself in ${language}, 
     let systemPrompt = "";
     if (previousSummary) {
       systemPrompt = `You are a summarization agent that writes extremely concise summaries of the conversation history.
-MANDATORY RULE: Write only the summary itself in ${language}, without any introductory remarks, greetings, or meta-commentary. Keep the summary extremely concise and short.
+MANDATORY RULE: Write only the summary itself in the same language as the conversation, without any introductory remarks, greetings, or meta-commentary. Keep the summary extremely concise and short.
 do NOT continue chat or roleplay. you're writing SUMMARY.
 
 Here is the EXISTING SUMMARY of the conversation so far:
@@ -715,7 +886,7 @@ ${newMessagesText}
 Please update the existing summary with the new messages, maintaining an extremely concise summary of the entire conversation.`;
     } else {
       systemPrompt = `You are a summarization agent that writes extremely concise summaries of the conversation history.
-MANDATORY RULE: Write only the summary itself in ${language}, without any introductory remarks, greetings, or meta-commentary. Keep the summary extremely concise and short.
+MANDATORY RULE: Write only the summary itself in the same language as the conversation, without any introductory remarks, greetings, or meta-commentary. Keep the summary extremely concise and short.
 do NOT continue chat or roleplay. you're writing SUMMARY.
 
 Here are the MESSAGES in the conversation:
@@ -728,7 +899,7 @@ Please write an extremely concise summary of the conversation.`;
 
     const messages = [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: `Generate the conversation summary in ${language}.` }
+      { role: 'user', content: `Generate the conversation summary.` }
     ];
 
     try {
@@ -922,9 +1093,12 @@ Focus ONLY on what is known or can be directly inferred from the history. Keep t
   async countMessagesTokensDetailed(messages, signal = null) {
     if (!messages || messages.length === 0) return { value: 0, precise: true };
     
+    const settings = settingsStore.get();
+    const processedMessages = preprocessMessages(messages, settings);
+
     // Format the messages array into a single ChatML-like string
     let formattedText = '';
-    for (const msg of messages) {
+    for (const msg of processedMessages) {
       const role = msg.role || 'user';
       let contentText = '';
       if (Array.isArray(msg.content)) {

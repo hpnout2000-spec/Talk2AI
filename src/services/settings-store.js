@@ -2,8 +2,193 @@
    Settings Store — Persistent app settings via Tauri or localStorage
    ════════════════════════════════════════════════════════════════════ */
 
+const DEFAULT_INSTRUCT_TEMPLATES = [
+  {
+    id: 'gemma2',
+    name: 'Gemma 2 / Gemma 3',
+    activation_regex: '/gemma(-)?(2|3)/i',
+    wrap_sequences_with_newline: true,
+    replace_macro_in_sequences: true,
+    sequences_as_stop_strings: true,
+    skip_example_dialogues: false,
+    include_names: 'user_assistant',
+    story_prefix: '<start_of_turn>user\n',
+    story_suffix: '<end_of_turn>\n',
+    user_prefix: '<start_of_turn>user\n',
+    user_suffix: '<end_of_turn>\n',
+    assistant_prefix: '<start_of_turn>model\n',
+    assistant_suffix: '<end_of_turn>\n',
+    system_prefix: '<start_of_turn>user\n',
+    system_suffix: '<end_of_turn>\n'
+  },
+  {
+    id: 'llama3',
+    name: 'Llama 3 / 3.1 / 3.3',
+    activation_regex: '/llama(-)?(3|3.1|3.3)/i',
+    wrap_sequences_with_newline: false,
+    replace_macro_in_sequences: true,
+    sequences_as_stop_strings: true,
+    skip_example_dialogues: false,
+    include_names: 'none',
+    story_prefix: '<|start_header_id|>system<|end_header_id|>\n\n',
+    story_suffix: '<|eot_id|>\n',
+    user_prefix: '<|start_header_id|>user<|end_header_id|>\n\n',
+    user_suffix: '<|eot_id|>\n',
+    assistant_prefix: '<|start_header_id|>assistant<|end_header_id|>\n\n',
+    assistant_suffix: '<|eot_id|>\n',
+    system_prefix: '<|start_header_id|>system<|end_header_id|>\n\n',
+    system_suffix: '<|eot_id|>\n'
+  },
+  {
+    id: 'chatml',
+    name: 'ChatML (Qwen / Yi)',
+    activation_regex: '/qwen|chatml|hermes/i',
+    wrap_sequences_with_newline: false,
+    replace_macro_in_sequences: true,
+    sequences_as_stop_strings: true,
+    skip_example_dialogues: false,
+    include_names: 'none',
+    story_prefix: '<|im_start|>system\n',
+    story_suffix: '<|im_end|>\n',
+    user_prefix: '<|im_start|>user\n',
+    user_suffix: '<|im_end|>\n',
+    assistant_prefix: '<|im_start|>assistant\n',
+    assistant_suffix: '<|im_end|>\n',
+    system_prefix: '<|im_start|>system\n',
+    system_suffix: '<|im_end|>\n'
+  },
+  {
+    id: 'alpaca',
+    name: 'Alpaca (Human / Response)',
+    activation_regex: '/alpaca/i',
+    wrap_sequences_with_newline: true,
+    replace_macro_in_sequences: true,
+    sequences_as_stop_strings: true,
+    skip_example_dialogues: false,
+    include_names: 'none',
+    story_prefix: '### Instruction:\n',
+    story_suffix: '\n\n',
+    user_prefix: '### Human:\n',
+    user_suffix: '\n\n',
+    assistant_prefix: '### Response:\n',
+    assistant_suffix: '\n\n',
+    system_prefix: '### Instruction:\n',
+    system_suffix: '\n\n'
+  },
+  {
+    id: 'alpaca_input',
+    name: 'Alpaca (Instruction / Input)',
+    activation_regex: '/alpaca(-)?input/i',
+    wrap_sequences_with_newline: true,
+    replace_macro_in_sequences: true,
+    sequences_as_stop_strings: true,
+    skip_example_dialogues: false,
+    include_names: 'none',
+    story_prefix: 'Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.\n\n### Instruction:\n',
+    story_suffix: '\n\n',
+    user_prefix: '### Input:\n',
+    user_suffix: '\n\n',
+    assistant_prefix: '### Response:\n',
+    assistant_suffix: '\n\n',
+    system_prefix: '### Instruction:\n',
+    system_suffix: '\n\n'
+  },
+  {
+    id: 'alpaca_simple',
+    name: 'Alpaca (Pure Instruction / Response)',
+    activation_regex: '/alpaca(-)?simple/i',
+    wrap_sequences_with_newline: true,
+    replace_macro_in_sequences: true,
+    sequences_as_stop_strings: true,
+    skip_example_dialogues: false,
+    include_names: 'none',
+    story_prefix: 'Below is an instruction that describes a task. Write a response that appropriately completes the request.\n\n### Instruction:\n',
+    story_suffix: '\n\n',
+    user_prefix: '### Instruction:\n',
+    user_suffix: '\n\n',
+    assistant_prefix: '### Response:\n',
+    assistant_suffix: '\n\n',
+    system_prefix: '### Instruction:\n',
+    system_suffix: '\n\n'
+  },
+  {
+    id: 'vicuna',
+    name: 'Vicuna 1.1',
+    activation_regex: '/vicuna/i',
+    wrap_sequences_with_newline: true,
+    replace_macro_in_sequences: true,
+    sequences_as_stop_strings: true,
+    skip_example_dialogues: false,
+    include_names: 'none',
+    story_prefix: 'A chat between a curious user and an artificial intelligence assistant. The assistant gives helpful, detailed, and polite answers to the user\'s questions.\n\n',
+    story_suffix: '\n\n',
+    user_prefix: 'USER: ',
+    user_suffix: '\n',
+    assistant_prefix: 'ASSISTANT: ',
+    assistant_suffix: '\n',
+    system_prefix: '',
+    system_suffix: ''
+  },
+  {
+    id: 'mistral',
+    name: 'Mistral / Llama 2',
+    activation_regex: '/mistral|llama(-)?2/i',
+    wrap_sequences_with_newline: false,
+    replace_macro_in_sequences: true,
+    sequences_as_stop_strings: true,
+    skip_example_dialogues: false,
+    include_names: 'none',
+    story_prefix: '[INST] <<SYS>>\n',
+    story_suffix: '\n<</SYS>>\n\n',
+    user_prefix: '[INST] ',
+    user_suffix: ' [/INST]',
+    assistant_prefix: '',
+    assistant_suffix: ' </s>\n',
+    system_prefix: '[INST] <<SYS>>\n',
+    system_suffix: '\n<</SYS>>\n\n'
+  }
+];
+
+const DEFAULT_CONTEXT_TEMPLATES = [
+  {
+    id: 'gemma2',
+    name: 'Gemma 2 / Gemma 3',
+    story_string: '{{#if anchorBefore}}{{anchorBefore}}{{/if}}{{#if system}}{{system}}{{/if}}{{#if wiBefore}}{{wiBefore}}{{/if}}{{#if description}}{{description}}{{/if}}{{#if personality}}{{personality}}{{/if}}{{#if scenario}}{{scenario}}{{/if}}{{#if wiAfter}}{{wiAfter}}{{/if}}{{#if persona}}{{persona}}{{/if}}{{#if anchorAfter}}{{anchorAfter}}{{/if}}{{trim}}',
+    position: 'top',
+    example_separator: '***',
+    chat_start: '',
+    always_add_character_name: true,
+    generate_one_line: false,
+    collapse_newlines: false,
+    trim_spaces: true,
+    trim_incomplete_sentences: false,
+    separators_as_stop: false,
+    names_as_stop: true
+  },
+  {
+    id: 'standard',
+    name: 'Standard Roleplay',
+    story_string: '{{#if system}}{{system}}\n\n{{/if}}{{#if description}}[Character Description: {{description}}]\n\n{{/if}}{{#if personality}}[Personality: {{personality}}]\n\n{{/if}}{{#if scenario}}[Scenario: {{scenario}}]\n\n{{/if}}{{#if persona}}[User Persona: {{persona}}]\n\n{{/if}}{{trim}}',
+    position: 'top',
+    example_separator: '***',
+    chat_start: '',
+    always_add_character_name: true,
+    generate_one_line: false,
+    collapse_newlines: true,
+    trim_spaces: true,
+    trim_incomplete_sentences: false,
+    separators_as_stop: false,
+    names_as_stop: true
+  }
+];
+
 const DEFAULTS = {
   api_url: 'http://localhost:5001',
+  completion_mode: 'chat_completion',
+  active_instruct_template_id: 'gemma2',
+  active_context_template_id: 'gemma2',
+  instruct_templates: DEFAULT_INSTRUCT_TEMPLATES,
+  context_templates: DEFAULT_CONTEXT_TEMPLATES,
   max_tokens: 2048,
   prompt_token_limit: 4096,
   temperature: 0.7,
@@ -23,15 +208,53 @@ const DEFAULTS = {
   dry_base: 1.75,
   dry_allowed_length: 2,
   dry_sequence_breakers: ["\n", ":", "\"", "*"],
+
+  // Extended Samplers (disabled by default)
+  typical_p_enabled: false,
+  typical_p: 1.0,
+  frequency_penalty_enabled: false,
+  frequency_penalty: 0.0,
+  top_a_enabled: false,
+  top_a: 0.0,
+  tfs_enabled: false,
+  tfs: 1.0,
+  mirostat_enabled: false,
+  mirostat_mode: 0,
+  mirostat_tau: 5.0,
+  mirostat_eta: 0.1,
+  xtc_enabled: false,
+  xtc_threshold: 0.10,
+  xtc_probability: 0.0,
+  top_n_sigma_enabled: false,
+  top_n_sigma: 0.0,
+  rep_pen_range_enabled: false,
+  rep_pen_range: 0,
+  rep_pen_slope: 1.0,
+  dry_penalty_last_n_enabled: false,
+  dry_penalty_last_n: 0,
+  smoothing_curve_enabled: false,
+  smoothing_curve: 1.0,
+  min_tokens_enabled: false,
+  min_tokens: 0,
+  guidance_scale_enabled: false,
+  guidance_scale: 1.0,
+  negative_prompt: '',
+  ignore_eos_enabled: false,
+  ignore_eos: false,
+  banned_strings_enabled: false,
+  banned_strings: '',
+  sampler_order_enabled: false,
+  sampler_order: [6, 0, 1, 3, 4, 2, 5],
+
   active_generation_preset_id: 'default',
   generation_presets: [
-    { id: 'default', name: 'Default', max_tokens: 2048, temperature: 0.7, top_p: 0.9, top_k: 40, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: true, adaptive_decay: 0.9, adaptive_decay_enabled: true, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"] },
-    { id: 'glm47flash', name: 'GLM 4.7 Flash (Creative)', max_tokens: 2048, temperature: 1.0, top_p: 0.95, top_k: 40, rep_penalty: 1.1, smoothing_factor: 1.5, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: true, adaptive_decay: 0.9, adaptive_decay_enabled: true, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"] },
-    { id: 'glm46', name: 'GLM 4.6 (Unsloth)', max_tokens: 2048, temperature: 0.8, top_p: 0.6, top_k: 2, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: true, adaptive_decay: 0.9, adaptive_decay_enabled: true, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"] },
-    { id: 'qwen35stable', name: 'Qwen 3.5 MoE (stable)', max_tokens: 4000, temperature: 0.65, top_p: 0.95, top_k: 20, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: false, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 1.6, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"] },
-    { id: 'qwen35official', name: 'Qwen 3.5 MoE (Official)', max_tokens: 4000, temperature: 1.0, top_p: 0.95, top_k: 20, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: false, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 1.5, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"] },
-    { id: 'gemma4creative', name: 'Gemma 4 (Creative)', max_tokens: 3000, temperature: 1.5, top_p: 1.0, top_k: 64, rep_penalty: 1.0, smoothing_factor: 1.5, min_p: 0.05, min_p_enabled: false, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: true, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"] },
-    { id: 'gemma4stable', name: 'Gemma 4 (Stable)', max_tokens: 3000, temperature: 1.0, top_p: 1.0, top_k: 64, rep_penalty: 1.1, smoothing_factor: 1.5, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.4, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"] }
+    { id: 'default', name: 'Default', completion_mode: 'chat_completion', active_instruct_template_id: 'gemma2', active_context_template_id: 'gemma2', max_tokens: 2048, temperature: 0.7, top_p: 0.9, top_k: 40, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: true, adaptive_decay: 0.9, adaptive_decay_enabled: true, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], typical_p: 1.0, typical_p_enabled: false, frequency_penalty: 0.0, frequency_penalty_enabled: false, top_a: 0.0, top_a_enabled: false, tfs: 1.0, tfs_enabled: false, mirostat_enabled: false, mirostat_mode: 0, mirostat_tau: 5.0, mirostat_eta: 0.1, xtc_enabled: false, xtc_threshold: 0.1, xtc_probability: 0.0, top_n_sigma_enabled: false, top_n_sigma: 0.0, rep_pen_range_enabled: false, rep_pen_range: 0, rep_pen_slope: 1.0, min_tokens_enabled: false, min_tokens: 0, guidance_scale_enabled: false, guidance_scale: 1.0, negative_prompt: '', ignore_eos: false, banned_strings: '' },
+    { id: 'glm47flash', name: 'GLM 4.7 Flash (Creative)', completion_mode: 'chat_completion', active_instruct_template_id: 'gemma2', active_context_template_id: 'gemma2', max_tokens: 2048, temperature: 1.0, top_p: 0.95, top_k: 40, rep_penalty: 1.1, smoothing_factor: 1.5, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: true, adaptive_decay: 0.9, adaptive_decay_enabled: true, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], typical_p: 1.0, typical_p_enabled: false, frequency_penalty: 0.0, frequency_penalty_enabled: false, top_a: 0.0, top_a_enabled: false, tfs: 1.0, tfs_enabled: false, mirostat_enabled: false, mirostat_mode: 0, mirostat_tau: 5.0, mirostat_eta: 0.1, xtc_enabled: false, xtc_threshold: 0.1, xtc_probability: 0.0, top_n_sigma_enabled: false, top_n_sigma: 0.0, rep_pen_range_enabled: false, rep_pen_range: 0, rep_pen_slope: 1.0, min_tokens_enabled: false, min_tokens: 0, guidance_scale_enabled: false, guidance_scale: 1.0, negative_prompt: '', ignore_eos: false, banned_strings: '' },
+    { id: 'glm46', name: 'GLM 4.6 (Unsloth)', completion_mode: 'chat_completion', active_instruct_template_id: 'gemma2', active_context_template_id: 'gemma2', max_tokens: 2048, temperature: 0.8, top_p: 0.6, top_k: 2, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: true, adaptive_decay: 0.9, adaptive_decay_enabled: true, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], typical_p: 1.0, typical_p_enabled: false, frequency_penalty: 0.0, frequency_penalty_enabled: false, top_a: 0.0, top_a_enabled: false, tfs: 1.0, tfs_enabled: false, mirostat_enabled: false, mirostat_mode: 0, mirostat_tau: 5.0, mirostat_eta: 0.1, xtc_enabled: false, xtc_threshold: 0.1, xtc_probability: 0.0, top_n_sigma_enabled: false, top_n_sigma: 0.0, rep_pen_range_enabled: false, rep_pen_range: 0, rep_pen_slope: 1.0, min_tokens_enabled: false, min_tokens: 0, guidance_scale_enabled: false, guidance_scale: 1.0, negative_prompt: '', ignore_eos: false, banned_strings: '' },
+    { id: 'qwen35stable', name: 'Qwen 3.5 MoE (stable)', completion_mode: 'chat_completion', active_instruct_template_id: 'chatml', active_context_template_id: 'standard', max_tokens: 4000, temperature: 0.65, top_p: 0.95, top_k: 20, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: false, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 1.6, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], typical_p: 1.0, typical_p_enabled: false, frequency_penalty: 0.0, frequency_penalty_enabled: false, top_a: 0.0, top_a_enabled: false, tfs: 1.0, tfs_enabled: false, mirostat_enabled: false, mirostat_mode: 0, mirostat_tau: 5.0, mirostat_eta: 0.1, xtc_enabled: false, xtc_threshold: 0.1, xtc_probability: 0.0, top_n_sigma_enabled: false, top_n_sigma: 0.0, rep_pen_range_enabled: false, rep_pen_range: 0, rep_pen_slope: 1.0, min_tokens_enabled: false, min_tokens: 0, guidance_scale_enabled: false, guidance_scale: 1.0, negative_prompt: '', ignore_eos: false, banned_strings: '' },
+    { id: 'qwen35official', name: 'Qwen 3.5 MoE (Official)', completion_mode: 'chat_completion', active_instruct_template_id: 'chatml', active_context_template_id: 'standard', max_tokens: 4000, temperature: 1.0, top_p: 0.95, top_k: 20, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: false, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 1.5, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], typical_p: 1.0, typical_p_enabled: false, frequency_penalty: 0.0, frequency_penalty_enabled: false, top_a: 0.0, top_a_enabled: false, tfs: 1.0, tfs_enabled: false, mirostat_enabled: false, mirostat_mode: 0, mirostat_tau: 5.0, mirostat_eta: 0.1, xtc_enabled: false, xtc_threshold: 0.1, xtc_probability: 0.0, top_n_sigma_enabled: false, top_n_sigma: 0.0, rep_pen_range_enabled: false, rep_pen_range: 0, rep_pen_slope: 1.0, min_tokens_enabled: false, min_tokens: 0, guidance_scale_enabled: false, guidance_scale: 1.0, negative_prompt: '', ignore_eos: false, banned_strings: '' },
+    { id: 'gemma4creative', name: 'Gemma 4 (Creative)', completion_mode: 'chat_completion', active_instruct_template_id: 'gemma2', active_context_template_id: 'gemma2', max_tokens: 3000, temperature: 1.5, top_p: 1.0, top_k: 64, rep_penalty: 1.0, smoothing_factor: 1.5, min_p: 0.05, min_p_enabled: false, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: true, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], typical_p: 1.0, typical_p_enabled: false, frequency_penalty: 0.0, frequency_penalty_enabled: false, top_a: 0.0, top_a_enabled: false, tfs: 1.0, tfs_enabled: false, mirostat_enabled: false, mirostat_mode: 0, mirostat_tau: 5.0, mirostat_eta: 0.1, xtc_enabled: false, xtc_threshold: 0.1, xtc_probability: 0.0, top_n_sigma_enabled: false, top_n_sigma: 0.0, rep_pen_range_enabled: false, rep_pen_range: 0, rep_pen_slope: 1.0, min_tokens_enabled: false, min_tokens: 0, guidance_scale_enabled: false, guidance_scale: 1.0, negative_prompt: '', ignore_eos: false, banned_strings: '' },
+    { id: 'gemma4stable', name: 'Gemma 4 (Stable)', completion_mode: 'chat_completion', active_instruct_template_id: 'gemma2', active_context_template_id: 'gemma2', max_tokens: 3000, temperature: 1.0, top_p: 1.0, top_k: 64, rep_penalty: 1.1, smoothing_factor: 1.5, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.4, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], typical_p: 1.0, typical_p_enabled: false, frequency_penalty: 0.0, frequency_penalty_enabled: false, top_a: 0.0, top_a_enabled: false, tfs: 1.0, tfs_enabled: false, mirostat_enabled: false, mirostat_mode: 0, mirostat_tau: 5.0, mirostat_eta: 0.1, xtc_enabled: false, xtc_threshold: 0.1, xtc_probability: 0.0, top_n_sigma_enabled: false, top_n_sigma: 0.0, rep_pen_range_enabled: false, rep_pen_range: 0, rep_pen_slope: 1.0, min_tokens_enabled: false, min_tokens: 0, guidance_scale_enabled: false, guidance_scale: 1.0, negative_prompt: '', ignore_eos: false, banned_strings: '' }
   ],
   user_name: 'User',
   active_persona_id: 'default',
@@ -48,9 +271,13 @@ const DEFAULTS = {
   gemma4_google_thinking_preset: true,
   glm47_support: false,
   qwen35_thinking_support: false,
+  legacy_jinja_support: false,
   extended_thinking: false,
   memory_enabled: true,
   font_size: 15,
+  genai_completion_mode: 'chat_completion',
+  genai_active_instruct_template_id: 'gemma2',
+  genai_active_context_template_id: 'gemma2',
   genai_max_tokens: 2048,
   genai_temperature: 0.7,
   genai_top_p: 0.9,
@@ -69,6 +296,41 @@ const DEFAULTS = {
   genai_dry_base: 1.75,
   genai_dry_allowed_length: 2,
   genai_dry_sequence_breakers: ["\n", ":", "\"", "*"],
+  genai_typical_p_enabled: false,
+  genai_typical_p: 1.0,
+  genai_frequency_penalty_enabled: false,
+  genai_frequency_penalty: 0.0,
+  genai_top_a_enabled: false,
+  genai_top_a: 0.0,
+  genai_tfs_enabled: false,
+  genai_tfs: 1.0,
+  genai_mirostat_enabled: false,
+  genai_mirostat_mode: 0,
+  genai_mirostat_tau: 5.0,
+  genai_mirostat_eta: 0.1,
+  genai_xtc_enabled: false,
+  genai_xtc_threshold: 0.10,
+  genai_xtc_probability: 0.0,
+  genai_top_n_sigma_enabled: false,
+  genai_top_n_sigma: 0.0,
+  genai_rep_pen_range_enabled: false,
+  genai_rep_pen_range: 0,
+  genai_rep_pen_slope: 1.0,
+  genai_dry_penalty_last_n_enabled: false,
+  genai_dry_penalty_last_n: 0,
+  genai_smoothing_curve_enabled: false,
+  genai_smoothing_curve: 1.0,
+  genai_min_tokens_enabled: false,
+  genai_min_tokens: 0,
+  genai_guidance_scale_enabled: false,
+  genai_guidance_scale: 1.0,
+  genai_negative_prompt: '',
+  genai_ignore_eos_enabled: false,
+  genai_ignore_eos: false,
+  genai_banned_strings_enabled: false,
+  genai_banned_strings: '',
+  genai_sampler_order_enabled: false,
+  genai_sampler_order: [6, 0, 1, 3, 4, 2, 5],
   active_genai_generation_preset_id: 'default',
   response_length: 'auto',
   description_depth: 0,
@@ -197,6 +459,22 @@ export const settingsStore = {
             ...userPresets
           ];
         }
+        if (parsed.instruct_templates) {
+          const defaultIds = DEFAULT_INSTRUCT_TEMPLATES.map(p => p.id);
+          const userTemplates = parsed.instruct_templates.filter(p => !defaultIds.includes(p.id));
+          parsed.instruct_templates = [
+            ...DEFAULT_INSTRUCT_TEMPLATES,
+            ...userTemplates
+          ];
+        }
+        if (parsed.context_templates) {
+          const defaultIds = DEFAULT_CONTEXT_TEMPLATES.map(p => p.id);
+          const userTemplates = parsed.context_templates.filter(p => !defaultIds.includes(p.id));
+          parsed.context_templates = [
+            ...DEFAULT_CONTEXT_TEMPLATES,
+            ...userTemplates
+          ];
+        }
         settings = { ...DEFAULTS, ...parsed };
       } else {
         // localStorage fallback
@@ -209,6 +487,22 @@ export const settingsStore = {
             parsed.generation_presets = [
               ...DEFAULTS.generation_presets,
               ...userPresets
+            ];
+          }
+          if (parsed.instruct_templates) {
+            const defaultIds = DEFAULT_INSTRUCT_TEMPLATES.map(p => p.id);
+            const userTemplates = parsed.instruct_templates.filter(p => !defaultIds.includes(p.id));
+            parsed.instruct_templates = [
+              ...DEFAULT_INSTRUCT_TEMPLATES,
+              ...userTemplates
+            ];
+          }
+          if (parsed.context_templates) {
+            const defaultIds = DEFAULT_CONTEXT_TEMPLATES.map(p => p.id);
+            const userTemplates = parsed.context_templates.filter(p => !defaultIds.includes(p.id));
+            parsed.context_templates = [
+              ...DEFAULT_CONTEXT_TEMPLATES,
+              ...userTemplates
             ];
           }
           settings = { ...DEFAULTS, ...parsed };
@@ -240,6 +534,7 @@ export const settingsStore = {
 };
 
 export const SETTING_META = {
+  legacy_jinja_support: { label: 'Legacy Jinja Support', type: 'bool' },
   ai_comments_enabled: { label: 'AI Comments', type: 'bool' },
   suggestions_enabled: { label: 'AI Suggestions', type: 'bool' },
   auto_translate: { label: 'Auto Translation', type: 'bool' },

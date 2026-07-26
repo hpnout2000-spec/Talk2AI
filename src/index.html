@@ -2193,6 +2193,13 @@
                 <span class="toggle-slider"></span>
               </label>
             </div>
+            <div class="form-group-row">
+              <label>Legacy jinja support</label>
+              <label class="toggle-switch small">
+                <input type="checkbox" id="setting-legacy-jinja-support" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
             <button id="btn-test-connection" class="btn-secondary btn-full">Test Connection</button>
 
             <!-- ──────────── LOCAL NETWORK SYNC ──────────── -->
@@ -3408,6 +3415,13 @@
                   </svg>
                   <span>AI Comments</span>
                 </button>
+                <button class="nav-item" data-tab="advanced-formatting">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="16 18 22 12 16 6"/>
+                    <polyline points="8 6 2 12 8 18"/>
+                  </svg>
+                  <span>Advanced Formatting</span>
+                </button>
               </nav>
 
               <!-- Main Content Area -->
@@ -3457,6 +3471,26 @@
                           </button>
                         </div>
                       </div>
+
+                      <div class="form-group" style="margin-top: 12px; margin-bottom: 12px;">
+                        <label for="adv-setting-completion-mode" style="font-weight: 600;">Completion Mode</label>
+                        <select id="adv-setting-completion-mode" class="form-control" style="background: var(--bg-tertiary);">
+                          <option value="chat_completion">Chat Completion (Standard API)</option>
+                          <option value="text_completion">Text Completion (SillyTavern Prompt Engine)</option>
+                        </select>
+                      </div>
+
+                      <div id="text-completion-templates-group" style="display: none; flex-direction: column; gap: 8px; margin-bottom: 16px; padding: 12px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
+                        <div class="form-group" style="margin-bottom: 6px;">
+                          <label for="adv-setting-instruct-template-select" style="font-size: 12px;">Instruct Template</label>
+                          <select id="adv-setting-instruct-template-select" class="form-control" style="font-size: 12px;"></select>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                          <label for="adv-setting-context-template-select" style="font-size: 12px;">Context Template</label>
+                          <select id="adv-setting-context-template-select" class="form-control" style="font-size: 12px;"></select>
+                        </div>
+                      </div>
+
                       <hr style="border: none; border-top: 1px solid var(--border-light); margin-bottom: 16px;">
                       
                       <h3>Model Parameters</h3>
@@ -3569,6 +3603,188 @@
                         <label for="adv-setting-reasoning-close">Close Tag</label>
                         <input type="text" id="adv-setting-reasoning-close" class="form-control" placeholder="</think>" />
                       </div>
+
+                      <hr style="border: none; border-top: 1px solid var(--border-light); margin: 20px 0 16px 0;">
+                      
+                      <h3>Extended Samplers</h3>
+
+                      <!-- Typical P -->
+                      <div class="form-group" style="margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                          <label for="adv-setting-typical-p" style="margin-bottom: 0;">Typical P: <span id="adv-typical-p-value">1.00</span></label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-typical-p-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <input type="range" id="adv-setting-typical-p" min="0" max="1" step="0.01" value="1.00" />
+                      </div>
+
+                      <!-- Frequency Penalty -->
+                      <div class="form-group" style="margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                          <label for="adv-setting-frequency-penalty" style="margin-bottom: 0;">Frequency Penalty: <span id="adv-frequency-penalty-value">0.00</span></label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-frequency-penalty-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <input type="range" id="adv-setting-frequency-penalty" min="-2.0" max="2.0" step="0.05" value="0.00" />
+                      </div>
+
+                      <!-- Top-A -->
+                      <div class="form-group" style="margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                          <label for="adv-setting-top-a" style="margin-bottom: 0;">Top-A: <span id="adv-top-a-value">0.00</span></label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-top-a-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <input type="range" id="adv-setting-top-a" min="0" max="1" step="0.01" value="0.00" />
+                      </div>
+
+                      <!-- TFS -->
+                      <div class="form-group" style="margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                          <label for="adv-setting-tfs" style="margin-bottom: 0;">Tail Free Sampling (TFS): <span id="adv-tfs-value">1.00</span></label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-tfs-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <input type="range" id="adv-setting-tfs" min="0" max="1" step="0.01" value="1.00" />
+                      </div>
+
+                      <!-- Mirostat -->
+                      <div class="form-group" style="margin-bottom: 10px; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                          <label for="adv-setting-mirostat-enabled" style="margin-bottom: 0; font-weight: 500; font-size: var(--text-sm);">Mirostat Sampling</label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-mirostat-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <div id="mirostat-controls" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
+                          <div class="form-group" style="margin-bottom: 6px;">
+                            <label for="adv-setting-mirostat-mode" style="font-size: 11px;">Mirostat Mode</label>
+                            <select id="adv-setting-mirostat-mode" class="form-control" style="font-size: 11px; padding: 4px 8px; height: 28px;">
+                              <option value="0">Disabled (0)</option>
+                              <option value="1">Mirostat 1.0 (1)</option>
+                              <option value="2">Mirostat 2.0 (2)</option>
+                            </select>
+                          </div>
+                          <div class="form-group" style="margin-bottom: 6px;">
+                            <label for="adv-setting-mirostat-tau" style="font-size: 11px;">Mirostat Tau: <span id="adv-mirostat-tau-value">5.0</span></label>
+                            <input type="range" id="adv-setting-mirostat-tau" min="0" max="10" step="0.1" value="5.0" />
+                          </div>
+                          <div class="form-group" style="margin-bottom: 0;">
+                            <label for="adv-setting-mirostat-eta" style="font-size: 11px;">Mirostat Eta: <span id="adv-mirostat-eta-value">0.10</span></label>
+                            <input type="range" id="adv-setting-mirostat-eta" min="0" max="1" step="0.01" value="0.10" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- XTC -->
+                      <div class="form-group" style="margin-bottom: 10px; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                          <label for="adv-setting-xtc-enabled" style="margin-bottom: 0; font-weight: 500; font-size: var(--text-sm);">XTC Sampler</label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-xtc-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <div id="xtc-controls" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
+                          <div class="form-group" style="margin-bottom: 6px;">
+                            <label for="adv-setting-xtc-threshold" style="font-size: 11px;">Threshold: <span id="adv-xtc-threshold-value">0.10</span></label>
+                            <input type="range" id="adv-setting-xtc-threshold" min="0" max="1" step="0.01" value="0.10" />
+                          </div>
+                          <div class="form-group" style="margin-bottom: 0;">
+                            <label for="adv-setting-xtc-probability" style="font-size: 11px;">Probability: <span id="adv-xtc-probability-value">0.00</span></label>
+                            <input type="range" id="adv-setting-xtc-probability" min="0" max="1" step="0.01" value="0.00" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Top N-Sigma -->
+                      <div class="form-group" style="margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                          <label for="adv-setting-top-n-sigma" style="margin-bottom: 0;">Top N-Sigma: <span id="adv-top-n-sigma-value">0.00</span></label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-top-n-sigma-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <input type="range" id="adv-setting-top-n-sigma" min="0" max="5" step="0.05" value="0.00" />
+                      </div>
+
+                      <!-- Repetition Penalty Range & Slope -->
+                      <div class="form-group" style="margin-bottom: 10px; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                          <label for="adv-setting-rep-pen-range-enabled" style="margin-bottom: 0; font-weight: 500; font-size: var(--text-sm);">Rep Penalty Range & Slope</label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-rep-pen-range-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <div id="rep-pen-range-controls" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
+                          <div class="form-group" style="margin-bottom: 6px;">
+                            <label for="adv-setting-rep-pen-range" style="font-size: 11px;">Range (Tokens): <span id="adv-rep-pen-range-value">0</span></label>
+                            <input type="range" id="adv-setting-rep-pen-range" min="0" max="4096" step="32" value="0" />
+                          </div>
+                          <div class="form-group" style="margin-bottom: 0;">
+                            <label for="adv-setting-rep-pen-slope" style="font-size: 11px;">Slope: <span id="adv-rep-pen-slope-value">1.0</span></label>
+                            <input type="range" id="adv-setting-rep-pen-slope" min="0" max="5" step="0.1" value="1.0" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Min Tokens -->
+                      <div class="form-group" style="margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                          <label for="adv-setting-min-tokens" style="margin-bottom: 0;">Min Tokens: <span id="adv-min-tokens-value">0</span></label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-min-tokens-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <input type="range" id="adv-setting-min-tokens" min="0" max="500" step="5" value="0" />
+                      </div>
+
+                      <!-- Guidance Scale (CFG) & Negative Prompt -->
+                      <div class="form-group" style="margin-bottom: 10px; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                          <label for="adv-setting-guidance-scale-enabled" style="margin-bottom: 0; font-weight: 500; font-size: var(--text-sm);">Classifier-Free Guidance (CFG)</label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-guidance-scale-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <div id="guidance-scale-controls" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
+                          <div class="form-group" style="margin-bottom: 6px;">
+                            <label for="adv-setting-guidance-scale" style="font-size: 11px;">Guidance Scale: <span id="adv-guidance-scale-value">1.0</span></label>
+                            <input type="range" id="adv-setting-guidance-scale" min="1.0" max="3.0" step="0.05" value="1.0" />
+                          </div>
+                          <div class="form-group" style="margin-bottom: 0;">
+                            <label for="adv-setting-negative-prompt" style="font-size: 11px; margin-bottom: 4px; display: block;">Negative Prompt</label>
+                            <input type="text" id="adv-setting-negative-prompt" class="form-control" style="font-size: 11px; padding: 4px 8px; height: 28px;" placeholder="Negative text prompt..." />
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Ignore EOS & Banned Strings -->
+                      <div class="form-group-row" style="margin-bottom: 10px;">
+                        <label for="adv-setting-ignore-eos">Ignore EOS Token</label>
+                        <label class="toggle-switch">
+                          <input type="checkbox" id="adv-setting-ignore-eos" />
+                          <span class="toggle-slider"></span>
+                        </label>
+                      </div>
+
+                      <div class="form-group" style="margin-bottom: 10px;">
+                        <label for="adv-setting-banned-strings">Banned Strings (comma separated)</label>
+                        <input type="text" id="adv-setting-banned-strings" class="form-control" placeholder='e.g. "As an AI", "In conclusion"' />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -3589,6 +3805,26 @@
                           </button>
                         </div>
                       </div>
+
+                      <div class="form-group" style="margin-top: 12px; margin-bottom: 12px;">
+                        <label for="adv-setting-genai-completion-mode" style="font-weight: 600;">GenAI Completion Mode</label>
+                        <select id="adv-setting-genai-completion-mode" class="form-control" style="background: var(--bg-tertiary);">
+                          <option value="chat_completion">Chat Completion (Standard API)</option>
+                          <option value="text_completion">Text Completion (SillyTavern Prompt Engine)</option>
+                        </select>
+                      </div>
+
+                      <div id="genai-text-completion-templates-group" style="display: none; flex-direction: column; gap: 8px; margin-bottom: 16px; padding: 12px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
+                        <div class="form-group" style="margin-bottom: 6px;">
+                          <label for="adv-setting-genai-instruct-template-select" style="font-size: 12px;">Instruct Template</label>
+                          <select id="adv-setting-genai-instruct-template-select" class="form-control" style="font-size: 12px;"></select>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                          <label for="adv-setting-genai-context-template-select" style="font-size: 12px;">Context Template</label>
+                          <select id="adv-setting-genai-context-template-select" class="form-control" style="font-size: 12px;"></select>
+                        </div>
+                      </div>
+
                       <hr style="border: none; border-top: 1px solid var(--border-light); margin-bottom: 16px;">
                       
                       <h3>GenAI Parameters</h3>
@@ -3707,6 +3943,188 @@
                         <label for="adv-setting-genai-reasoning-close">Close Tag</label>
                         <input type="text" id="adv-setting-genai-reasoning-close" class="form-control" placeholder="</think>" />
                       </div>
+
+                      <hr style="border: none; border-top: 1px solid var(--border-light); margin: 20px 0 16px 0;">
+                      
+                      <h3>Extended Samplers</h3>
+
+                      <!-- Typical P -->
+                      <div class="form-group" style="margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                          <label for="adv-setting-genai-typical-p" style="margin-bottom: 0;">Typical P: <span id="adv-genai-typical-p-value">1.00</span></label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-genai-typical-p-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <input type="range" id="adv-setting-genai-typical-p" min="0" max="1" step="0.01" value="1.00" />
+                      </div>
+
+                      <!-- Frequency Penalty -->
+                      <div class="form-group" style="margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                          <label for="adv-setting-genai-frequency-penalty" style="margin-bottom: 0;">Frequency Penalty: <span id="adv-genai-frequency-penalty-value">0.00</span></label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-genai-frequency-penalty-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <input type="range" id="adv-setting-genai-frequency-penalty" min="-2.0" max="2.0" step="0.05" value="0.00" />
+                      </div>
+
+                      <!-- Top-A -->
+                      <div class="form-group" style="margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                          <label for="adv-setting-genai-top-a" style="margin-bottom: 0;">Top-A: <span id="adv-genai-top-a-value">0.00</span></label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-genai-top-a-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <input type="range" id="adv-setting-genai-top-a" min="0" max="1" step="0.01" value="0.00" />
+                      </div>
+
+                      <!-- TFS -->
+                      <div class="form-group" style="margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                          <label for="adv-setting-genai-tfs" style="margin-bottom: 0;">Tail Free Sampling (TFS): <span id="adv-genai-tfs-value">1.00</span></label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-genai-tfs-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <input type="range" id="adv-setting-genai-tfs" min="0" max="1" step="0.01" value="1.00" />
+                      </div>
+
+                      <!-- Mirostat -->
+                      <div class="form-group" style="margin-bottom: 10px; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                          <label for="adv-setting-genai-mirostat-enabled" style="margin-bottom: 0; font-weight: 500; font-size: var(--text-sm);">Mirostat Sampling</label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-genai-mirostat-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <div id="genai-mirostat-controls" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
+                          <div class="form-group" style="margin-bottom: 6px;">
+                            <label for="adv-setting-genai-mirostat-mode" style="font-size: 11px;">Mirostat Mode</label>
+                            <select id="adv-setting-genai-mirostat-mode" class="form-control" style="font-size: 11px; padding: 4px 8px; height: 28px;">
+                              <option value="0">Disabled (0)</option>
+                              <option value="1">Mirostat 1.0 (1)</option>
+                              <option value="2">Mirostat 2.0 (2)</option>
+                            </select>
+                          </div>
+                          <div class="form-group" style="margin-bottom: 6px;">
+                            <label for="adv-setting-genai-mirostat-tau" style="font-size: 11px;">Mirostat Tau: <span id="adv-genai-mirostat-tau-value">5.0</span></label>
+                            <input type="range" id="adv-setting-genai-mirostat-tau" min="0" max="10" step="0.1" value="5.0" />
+                          </div>
+                          <div class="form-group" style="margin-bottom: 0;">
+                            <label for="adv-setting-genai-mirostat-eta" style="font-size: 11px;">Mirostat Eta: <span id="adv-genai-mirostat-eta-value">0.10</span></label>
+                            <input type="range" id="adv-setting-genai-mirostat-eta" min="0" max="1" step="0.01" value="0.10" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- XTC -->
+                      <div class="form-group" style="margin-bottom: 10px; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                          <label for="adv-setting-genai-xtc-enabled" style="margin-bottom: 0; font-weight: 500; font-size: var(--text-sm);">XTC Sampler</label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-genai-xtc-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <div id="genai-xtc-controls" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
+                          <div class="form-group" style="margin-bottom: 6px;">
+                            <label for="adv-setting-genai-xtc-threshold" style="font-size: 11px;">Threshold: <span id="adv-genai-xtc-threshold-value">0.10</span></label>
+                            <input type="range" id="adv-setting-genai-xtc-threshold" min="0" max="1" step="0.01" value="0.10" />
+                          </div>
+                          <div class="form-group" style="margin-bottom: 0;">
+                            <label for="adv-setting-genai-xtc-probability" style="font-size: 11px;">Probability: <span id="adv-genai-xtc-probability-value">0.00</span></label>
+                            <input type="range" id="adv-setting-genai-xtc-probability" min="0" max="1" step="0.01" value="0.00" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Top N-Sigma -->
+                      <div class="form-group" style="margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                          <label for="adv-setting-genai-top-n-sigma" style="margin-bottom: 0;">Top N-Sigma: <span id="adv-genai-top-n-sigma-value">0.00</span></label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-genai-top-n-sigma-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <input type="range" id="adv-setting-genai-top-n-sigma" min="0" max="5" step="0.05" value="0.00" />
+                      </div>
+
+                      <!-- Repetition Penalty Range & Slope -->
+                      <div class="form-group" style="margin-bottom: 10px; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                          <label for="adv-setting-genai-rep-pen-range-enabled" style="margin-bottom: 0; font-weight: 500; font-size: var(--text-sm);">Rep Penalty Range & Slope</label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-genai-rep-pen-range-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <div id="genai-rep-pen-range-controls" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
+                          <div class="form-group" style="margin-bottom: 6px;">
+                            <label for="adv-setting-genai-rep-pen-range" style="font-size: 11px;">Range (Tokens): <span id="adv-genai-rep-pen-range-value">0</span></label>
+                            <input type="range" id="adv-setting-genai-rep-pen-range" min="0" max="4096" step="32" value="0" />
+                          </div>
+                          <div class="form-group" style="margin-bottom: 0;">
+                            <label for="adv-setting-genai-rep-pen-slope" style="font-size: 11px;">Slope: <span id="adv-genai-rep-pen-slope-value">1.0</span></label>
+                            <input type="range" id="adv-setting-genai-rep-pen-slope" min="0" max="5" step="0.1" value="1.0" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Min Tokens -->
+                      <div class="form-group" style="margin-bottom: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                          <label for="adv-setting-genai-min-tokens" style="margin-bottom: 0;">Min Tokens: <span id="adv-genai-min-tokens-value">0</span></label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-genai-min-tokens-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <input type="range" id="adv-setting-genai-min-tokens" min="0" max="500" step="5" value="0" />
+                      </div>
+
+                      <!-- Guidance Scale (CFG) & Negative Prompt -->
+                      <div class="form-group" style="margin-bottom: 10px; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                          <label for="adv-setting-genai-guidance-scale-enabled" style="margin-bottom: 0; font-weight: 500; font-size: var(--text-sm);">Classifier-Free Guidance (CFG)</label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-genai-guidance-scale-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <div id="genai-guidance-scale-controls" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
+                          <div class="form-group" style="margin-bottom: 6px;">
+                            <label for="adv-setting-genai-guidance-scale" style="font-size: 11px;">Guidance Scale: <span id="adv-genai-guidance-scale-value">1.0</span></label>
+                            <input type="range" id="adv-setting-genai-guidance-scale" min="1.0" max="3.0" step="0.05" value="1.0" />
+                          </div>
+                          <div class="form-group" style="margin-bottom: 0;">
+                            <label for="adv-setting-genai-negative-prompt" style="font-size: 11px; margin-bottom: 4px; display: block;">Negative Prompt</label>
+                            <input type="text" id="adv-setting-genai-negative-prompt" class="form-control" style="font-size: 11px; padding: 4px 8px; height: 28px;" placeholder="Negative text prompt..." />
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Ignore EOS & Banned Strings -->
+                      <div class="form-group-row" style="margin-bottom: 10px;">
+                        <label for="adv-setting-genai-ignore-eos">Ignore EOS Token</label>
+                        <label class="toggle-switch">
+                          <input type="checkbox" id="adv-setting-genai-ignore-eos" />
+                          <span class="toggle-slider"></span>
+                        </label>
+                      </div>
+
+                      <div class="form-group" style="margin-bottom: 10px;">
+                        <label for="adv-setting-genai-banned-strings">Banned Strings (comma separated)</label>
+                        <input type="text" id="adv-setting-genai-banned-strings" class="form-control" placeholder='e.g. "As an AI", "In conclusion"' />
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -3731,6 +4149,146 @@
                         <textarea id="adv-ai-comments-prompt" style="flex: 1; min-height: 200px;" placeholder="Instructions for the AI on how to comment..."></textarea>
                         <p class="form-hint">This prompt will be sent to the AI when generating a comment. Use {{char}} and {{user}} placeholders if needed.</p>
                       </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Advanced Formatting Tab -->
+                <div id="tab-advanced-formatting" class="tab-content">
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; height: 100%;">
+                    
+                    <!-- Left: Context Template -->
+                    <div style="display: flex; flex-direction: column; gap: 12px; background: rgba(0,0,0,0.15); padding: 16px; border-radius: var(--radius-lg); border: 1px solid var(--border-subtle); overflow-y: auto;">
+                      <div class="presets-row-container">
+                        <h3 style="margin:0;">Context Template</h3>
+                        <div class="preset-controls-group">
+                          <select id="adv-fmt-context-select" class="form-control preset-select-control"></select>
+                          <button id="btn-add-context-template" class="btn-secondary small preset-btn-add">Save As New</button>
+                          <button id="btn-delete-context-template" class="btn-icon small text-error preset-btn-delete" title="Delete template">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div class="form-group">
+                        <label for="adv-fmt-context-name">Template Name</label>
+                        <input type="text" id="adv-fmt-context-name" class="form-control" placeholder="Gemma 2" />
+                      </div>
+
+                      <div class="form-group" style="flex: 1; display: flex; flex-direction: column;">
+                        <label for="adv-fmt-story-string">Story String</label>
+                        <textarea id="adv-fmt-story-string" class="textarea-premium" style="flex: 1; min-height: 120px; font-family: monospace; font-size: 12px;" placeholder="{{#if system}}{{system}}{{/if}}..."></textarea>
+                        <p class="form-hint">Macros: {{system}}, {{description}}, {{personality}}, {{scenario}}, {{persona}}, {{wiBefore}}, {{wiAfter}}, {{anchorBefore}}, {{anchorAfter}}, {{trim}}</p>
+                      </div>
+
+                      <div class="form-group">
+                        <label for="adv-fmt-context-position">Position</label>
+                        <select id="adv-fmt-context-position" class="form-control">
+                          <option value="top">Default (top of context)</option>
+                          <option value="bottom">Bottom of context</option>
+                        </select>
+                      </div>
+
+                      <div class="form-group">
+                        <label for="adv-fmt-example-separator">Example Separator</label>
+                        <input type="text" id="adv-fmt-example-separator" class="form-control" placeholder="***" />
+                      </div>
+
+                      <h4 style="font-size: 12px; margin-top: 8px; margin-bottom: 4px; color: var(--text-secondary);">Context Formatting Options</h4>
+                      
+                      <div class="form-group-row">
+                        <label for="adv-fmt-always-add-name" style="font-size: 12px;">Always add character's name to prompt</label>
+                        <input type="checkbox" id="adv-fmt-always-add-name" />
+                      </div>
+                      <div class="form-group-row">
+                        <label for="adv-fmt-collapse-newlines" style="font-size: 12px;">Collapse Consecutive Newlines</label>
+                        <input type="checkbox" id="adv-fmt-collapse-newlines" />
+                      </div>
+                      <div class="form-group-row">
+                        <label for="adv-fmt-trim-spaces" style="font-size: 12px;">Trim spaces</label>
+                        <input type="checkbox" id="adv-fmt-trim-spaces" />
+                      </div>
+                      <div class="form-group-row">
+                        <label for="adv-fmt-separators-as-stop" style="font-size: 12px;">Separators as Stop Strings</label>
+                        <input type="checkbox" id="adv-fmt-separators-as-stop" />
+                      </div>
+                      <div class="form-group-row">
+                        <label for="adv-fmt-names-as-stop" style="font-size: 12px;">Names as Stop Strings</label>
+                        <input type="checkbox" id="adv-fmt-names-as-stop" />
+                      </div>
+                    </div>
+
+                    <!-- Right: Instruct Template -->
+                    <div style="display: flex; flex-direction: column; gap: 12px; background: rgba(0,0,0,0.15); padding: 16px; border-radius: var(--radius-lg); border: 1px solid var(--border-subtle); overflow-y: auto;">
+                      <div class="presets-row-container">
+                        <h3 style="margin:0;">Instruct Template</h3>
+                        <div class="preset-controls-group">
+                          <select id="adv-fmt-instruct-select" class="form-control preset-select-control"></select>
+                          <button id="btn-add-instruct-template" class="btn-secondary small preset-btn-add">Save As New</button>
+                          <button id="btn-delete-instruct-template" class="btn-icon small text-error preset-btn-delete" title="Delete template">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div class="form-group">
+                        <label for="adv-fmt-instruct-name">Template Name</label>
+                        <input type="text" id="adv-fmt-instruct-name" class="form-control" placeholder="Gemma 2" />
+                      </div>
+
+                      <div class="form-group">
+                        <label for="adv-fmt-activation-regex">Activation Regex</label>
+                        <input type="text" id="adv-fmt-activation-regex" class="form-control" placeholder="e.g. /gemma(-)?(2|3)/i" />
+                      </div>
+
+                      <div class="form-group-row">
+                        <label for="adv-fmt-wrap-newlines" style="font-size: 12px;">Wrap Sequences with Newline</label>
+                        <input type="checkbox" id="adv-fmt-wrap-newlines" />
+                      </div>
+                      <div class="form-group-row">
+                        <label for="adv-fmt-replace-macro" style="font-size: 12px;">Replace Macro in Sequences</label>
+                        <input type="checkbox" id="adv-fmt-replace-macro" />
+                      </div>
+                      <div class="form-group-row">
+                        <label for="adv-fmt-seq-as-stop" style="font-size: 12px;">Sequences as Stop Strings</label>
+                        <input type="checkbox" id="adv-fmt-seq-as-stop" />
+                      </div>
+
+                      <div class="form-group">
+                        <label for="adv-fmt-include-names">Include Names</label>
+                        <select id="adv-fmt-include-names" class="form-control">
+                          <option value="none">None</option>
+                          <option value="user_assistant">User and Assistant</option>
+                          <option value="all">Groups and Past Personas</option>
+                        </select>
+                      </div>
+
+                      <h4 style="font-size: 12px; margin-top: 8px; margin-bottom: 4px; color: var(--text-secondary);">Instruct Sequences</h4>
+                      
+                      <div class="form-group" style="margin-bottom: 6px;">
+                        <label style="font-size: 11px;">User Message Sequences (Prefix / Suffix)</label>
+                        <div style="display: flex; gap: 6px;">
+                          <input type="text" id="adv-fmt-user-prefix" class="form-control" style="font-size: 11px;" placeholder="<start_of_turn>user\n" />
+                          <input type="text" id="adv-fmt-user-suffix" class="form-control" style="font-size: 11px;" placeholder="<end_of_turn>\n" />
+                        </div>
+                      </div>
+
+                      <div class="form-group" style="margin-bottom: 6px;">
+                        <label style="font-size: 11px;">Assistant Message Sequences (Prefix / Suffix)</label>
+                        <div style="display: flex; gap: 6px;">
+                          <input type="text" id="adv-fmt-assistant-prefix" class="form-control" style="font-size: 11px;" placeholder="<start_of_turn>model\n" />
+                          <input type="text" id="adv-fmt-assistant-suffix" class="form-control" style="font-size: 11px;" placeholder="<end_of_turn>\n" />
+                        </div>
+                      </div>
+
+                      <div class="form-group" style="margin-bottom: 6px;">
+                        <label style="font-size: 11px;">Story String Sequences (Prefix / Suffix)</label>
+                        <div style="display: flex; gap: 6px;">
+                          <input type="text" id="adv-fmt-story-prefix" class="form-control" style="font-size: 11px;" placeholder="<start_of_turn>user\n" />
+                          <input type="text" id="adv-fmt-story-suffix" class="form-control" style="font-size: 11px;" placeholder="<end_of_turn>\n" />
+                        </div>
+                      </div>
+
                     </div>
                   </div>
                 </div>

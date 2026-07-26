@@ -218,6 +218,7 @@ function loadSettingsToUI() {
   checkField('setting-gemma4-google-thinking-preset', settings.gemma4_google_thinking_preset !== false);
   checkField('setting-glm47-support', settings.glm47_support);
   checkField('setting-qwen35-thinking-support', settings.qwen35_thinking_support);
+  checkField('setting-legacy-jinja-support', settings.legacy_jinja_support);
   checkField('setting-auto-translate', settings.auto_translate);
   checkField('setting-translate-user', settings.translate_user_messages);
   checkField('setting-italic-asterisks', settings.italic_asterisks);
@@ -334,6 +335,7 @@ async function saveSettings() {
     gemma4_google_thinking_preset: getChecked('setting-gemma4-google-thinking-preset'),
     glm47_support: getChecked('setting-glm47-support'),
     qwen35_thinking_support: getChecked('setting-qwen35-thinking-support'),
+    legacy_jinja_support: getChecked('setting-legacy-jinja-support'),
     auto_translate: getChecked('setting-auto-translate'),
     translate_user_messages: getChecked('setting-translate-user'),
     italic_asterisks: getChecked('setting-italic-asterisks'),

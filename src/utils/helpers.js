@@ -565,15 +565,24 @@ export function parseThinking(text, customOpen = null, customClose = null) {
   const defaultClose = '<channel\\|>|<\\|?\\/think\\|?>|<\\/thought>|<\\/reasoning>';
   const closePattern = customClose ? escapeRegExp(customClose) + '|' + defaultClose : defaultClose;
 
-  // Build the regex: match open tag, capture everything lazily, match close tag
-  // We use [\s\S]*? to capture across newlines
-  const thinkRegex = new RegExp(`(?:${openPattern})([\\s\\S]*?)(?:${closePattern})`);
+  const thinkRegex = new RegExp(`(?:${openPattern})([\\s\\S]*?)(?:${closePattern})`, 'i');
   const match = text.match(thinkRegex);
+  const cleanOpenRegex = new RegExp(`^(?:${openPattern})\\s*`, 'gi');
 
   if (match) {
-    const thinking = match[1] ? match[1].trim() : '';
-    const content = text.replace(thinkRegex, '').trim();
+    let thinking = match[1] ? match[1].trim() : '';
+    thinking = thinking.replace(cleanOpenRegex, '').trim();
+    let content = text.replace(thinkRegex, '').trim();
+    content = content.replace(cleanOpenRegex, '').trim();
     return { thinking, content };
+  }
+
+  // If no closing tag was found, but text starts with an open tag:
+  const startMatch = text.match(new RegExp(`^(?:${openPattern})\\s*`, 'i'));
+  if (startMatch) {
+    let thinking = text.substring(startMatch[0].length);
+    thinking = thinking.replace(cleanOpenRegex, '').trim();
+    return { thinking, content: '' };
   }
 
   return { thinking: null, content: text };
@@ -625,7 +634,7 @@ export function parseStreamThinking(text, customOpen = null, customClose = null)
   const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const defaultOpen = '<\\|channel>thought|<\\|?think\\|?>|<thought>|<reasoning>';
   const openPattern = customOpen ? escapeRegExp(customOpen) + '|' + defaultOpen : defaultOpen;
-  const startMatch = text.match(new RegExp(openPattern));
+  const startMatch = text.match(new RegExp(openPattern, 'i'));
   
   if (!startMatch) {
     return { thinking: '', content: text, rawContent: text, isInThinking: false, thinkingStartIdx: -1, thinkingEndIdx: -1 };
@@ -637,18 +646,24 @@ export function parseStreamThinking(text, customOpen = null, customClose = null)
 
   const defaultClose = '<channel\\|>|<\\|?\\/think\\|?>|<\\/thought>|<\\/reasoning>';
   const closePattern = customClose ? escapeRegExp(customClose) + '|' + defaultClose : defaultClose;
-  const endMatch = text.substring(afterStart).match(new RegExp(closePattern));
+  const endMatch = text.substring(afterStart).match(new RegExp(closePattern, 'i'));
+
+  const cleanOpenRegex = new RegExp(`^(?:${openPattern})\\s*`, 'gi');
 
   if (!endMatch) {
-    const thinking = text.substring(afterStart);
-    const content = text.substring(0, startIdx);
+    let thinking = text.substring(afterStart);
+    thinking = thinking.replace(cleanOpenRegex, '');
+    let content = text.substring(0, startIdx);
+    content = content.replace(cleanOpenRegex, '');
     return { thinking, content, rawContent: content, isInThinking: true, thinkingStartIdx: startIdx, thinkingEndIdx: -1 };
   } else {
     const endIdx = afterStart + endMatch.index;
     const thinkEnd = endMatch[0];
-    const thinking = text.substring(afterStart, endIdx);
+    let thinking = text.substring(afterStart, endIdx);
+    thinking = thinking.replace(cleanOpenRegex, '').trim();
     const rawContent = text.substring(0, startIdx) + text.substring(endIdx + thinkEnd.length);
-    return { thinking, content: rawContent.trim(), rawContent, isInThinking: false, thinkingStartIdx: startIdx, thinkingEndIdx: endIdx + thinkEnd.length };
+    let content = rawContent.trim().replace(cleanOpenRegex, '');
+    return { thinking, content, rawContent, isInThinking: false, thinkingStartIdx: startIdx, thinkingEndIdx: endIdx + thinkEnd.length };
   }
 }
 
@@ -701,12 +716,19 @@ export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, t
     return '';
   }
 
+  const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const defaultOpen = '<\\|channel>thought|<\\|?think\\|?>|<thought>|<reasoning>';
+  const openPattern = settings.reasoning_tag_open ? escapeRegExp(settings.reasoning_tag_open) + '|' + defaultOpen : defaultOpen;
+  const cleanOpenRegex = new RegExp(`^(?:${openPattern})\\s*`, 'gi');
+
+  let cleanThinking = (thinkingText || '').replace(cleanOpenRegex, '').trim();
+
   if (isGLM) {
     if (isActive) {
-      const escapedThoughts = escapeHtml(thinkingText || '');
+      const escapedThoughts = escapeHtml(cleanThinking);
       return `<div class="thinking-inline thinking-inline-active"><glm-thinking-snippets thoughts="${escapedThoughts}"></glm-thinking-snippets></div>`;
     }
-    const sections = parseGLMThinkingSections(thinkingText);
+    const sections = parseGLMThinkingSections(cleanThinking);
     const timeText = thinkingTime > 0 ? `Thought for ${thinkingTime} seconds` : 'Thought finished';
     
     const sectionsHtml = sections.map((sec) => {
@@ -741,7 +763,7 @@ export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, t
   }
 
   if (isActive) {
-    const escapedThoughts = escapeHtml(thinkingText || '');
+    const escapedThoughts = escapeHtml(cleanThinking);
     return `<div class="thinking-inline thinking-inline-active"><div class="thinking-inline-header"><thinking-snippets id="genai-thinking-snippets" thoughts="${escapedThoughts}"></thinking-snippets></div></div>`;
   }
   let doneText = '';
@@ -750,7 +772,7 @@ export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, t
   } else {
     doneText = `thought for a few seconds.`;
   }
-  return '<div class="thinking-inline"><div class="thinking-inline-header thinking-toggle-header" onclick="this.closest(\'.thinking-inline\').classList.toggle(\'thinking-expanded\')"><span class="thinking-done-text">' + escapeHtml(doneText) + '</span><span class="thinking-chevron"> ▸</span></div><div class="thinking-inline-content">' + escapeHtml(thinkingText).replace(/\n/g, '<br>') + '</div></div>';
+  return '<div class="thinking-inline"><div class="thinking-inline-header thinking-toggle-header" onclick="this.closest(\'.thinking-inline\').classList.toggle(\'thinking-expanded\')"><span class="thinking-done-text">' + escapeHtml(doneText) + '</span><span class="thinking-chevron"> ▸</span></div><div class="thinking-inline-content">' + escapeHtml(cleanThinking).replace(/\n/g, '<br>') + '</div></div>';
 }
 
 /**
@@ -981,7 +1003,7 @@ export function wrapWordsInSpans(htmlString, useNewAnimation = false, revealedWo
       if (lower.startsWith('<table')) inTableTag = true;
       if (lower.startsWith('</table')) inTableTag = false;
       
-      if (lower.startsWith('<div') && (lower.includes('thinking-inline') || lower.includes('genai-tool-capsule'))) {
+      if (lower.startsWith('<div') && (lower.includes('thinking-inline') || lower.includes('genai-tool-capsule') || lower.includes('genai-inline-tool') || lower.includes('generated-image-container') || lower.includes('chat-image-loader'))) {
         inSkipBlock = true;
         skipBlockTag = 'div';
         skipBlockDepth = 1;

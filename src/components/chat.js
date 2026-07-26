@@ -385,22 +385,23 @@ export function initChat() {
 
       let previousSummary = "";
       let newMessages = [];
+      let startIndex = 0;
       if (session.autoSummary && session.autoSummary.text && session.autoSummary.lastSummarizedMsgId) {
         previousSummary = session.autoSummary.text;
         const idx = session.messages.findIndex(m => m.id === session.autoSummary.lastSummarizedMsgId);
         if (idx !== -1) {
-          newMessages = session.messages.slice(idx + 1);
-        } else {
-          newMessages = session.messages;
+          startIndex = idx + 1;
         }
-      } else {
-        newMessages = session.messages;
       }
 
-      if (newMessages.length === 0) {
-        showToast("History is already summarized.", "info");
+      const endIndex = session.messages.length - 6;
+
+      if (endIndex <= startIndex) {
+        showToast("Not enough new messages to summarize (keeping 6 recent).", "info");
         return;
       }
+
+      newMessages = session.messages.slice(startIndex, endIndex);
 
       const originalBtnText = btnMakeAutoSummary.textContent;
       btnMakeAutoSummary.disabled = true;
@@ -410,13 +411,12 @@ export function initChat() {
         const settings = settingsStore.get();
         const userName = session.user_name || settings.user_name || 'User';
         const characterName = character.name;
-        const language = settings.target_language || 'Russian';
 
-        const summaryText = await api.generateChatSummary(previousSummary, newMessages, userName, characterName, language);
+        const summaryText = await api.generateChatSummary(previousSummary, newMessages, userName, characterName);
 
         session.autoSummary = {
           text: summaryText.trim(),
-          lastSummarizedMsgId: session.messages[session.messages.length - 1].id
+          lastSummarizedMsgId: session.messages[endIndex - 1].id
         };
 
         await chatStore.saveSession(session);
@@ -486,27 +486,32 @@ export function initChat() {
         const settings = settingsStore.get();
         const userName = session.user_name || settings.user_name || 'User';
         const characterName = character.name;
-        const language = settings.target_language || 'Russian';
 
         let previousSummary = "";
         let newMessages = [];
+        let startIndex = 0;
         if (session.autoSummary && session.autoSummary.text && session.autoSummary.lastSummarizedMsgId) {
           previousSummary = session.autoSummary.text;
           const idx = session.messages.findIndex(m => m.id === session.autoSummary.lastSummarizedMsgId);
           if (idx !== -1) {
-            newMessages = session.messages.slice(idx + 1);
-          } else {
-            newMessages = session.messages;
+            startIndex = idx + 1;
           }
-        } else {
-          newMessages = session.messages;
         }
 
-        const summaryText = await api.generateChatSummary(previousSummary, newMessages, userName, characterName, language);
+        const endIndex = session.messages.length - 6;
+
+        if (endIndex <= startIndex) {
+          showToast("Not enough new messages to summarize (keeping 6 recent).", "info");
+          return;
+        }
+
+        newMessages = session.messages.slice(startIndex, endIndex);
+
+        const summaryText = await api.generateChatSummary(previousSummary, newMessages, userName, characterName);
 
         session.autoSummary = {
           text: summaryText.trim(),
-          lastSummarizedMsgId: session.messages[session.messages.length - 1].id
+          lastSummarizedMsgId: session.messages[endIndex - 1].id
         };
 
         await chatStore.saveSession(session);
@@ -1533,8 +1538,11 @@ async function sendMessage() {
           // delta.reasoning_content path: thinking comes separately
           currentThinking = thinkingText;
           currentIsInThinking = thinkingActive;
-          const parsed = useGLM ? parseGLMThinking(fullResponse) : parseStreamThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
-          displayContent = parsed.content;
+          let cleanResponseForParsing = fullResponse;
+          if (settings.force_reasoning && settings.reasoning_tag_open && cleanResponseForParsing.startsWith(settings.reasoning_tag_open)) {
+            cleanResponseForParsing = cleanResponseForParsing.substring(settings.reasoning_tag_open.length);
+          }
+          displayContent = cleanResponseForParsing;
         } else {
           // Inline tag or GLM 4.7 path
           const parsed = useGLM ? parseGLMThinking(fullResponse) : parseStreamThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
@@ -1619,8 +1627,11 @@ async function sendMessage() {
         try {
           if (thinkingText) {
             parsedThinking = thinkingText;
-            const parsed = useGLM ? parseGLMThinking(fullResponse) : parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
-            parsedContent = parsed.content;
+            let cleanResponseForParsing = fullResponse;
+            if (settings.force_reasoning && settings.reasoning_tag_open && cleanResponseForParsing.startsWith(settings.reasoning_tag_open)) {
+              cleanResponseForParsing = cleanResponseForParsing.substring(settings.reasoning_tag_open.length);
+            }
+            parsedContent = cleanResponseForParsing;
           } else {
             const parsed = useGLM ? parseGLMThinking(fullResponse) : parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
             parsedThinking = parsed.thinking;
@@ -3087,7 +3098,7 @@ Do not include any Markdown formatting like \`\`\`json or any other text. Return
     if (messageInput.value.trim().length > 0) return;
 
     // Strip thinking blocks just in case
-    const cleanResponse = response.replace(/(?:<\|?think\|?>|<reasoning>)([\s\S]*?)(?:<\|?\/think\|?>|<\/reasoning>)/g, '');
+    const cleanResponse = response.replace(/(?:<\|?think\|?>|<reasoning>|<\|channel>thought)([\s\S]*?)(?:<\|?\/think\|?>|<\/reasoning>|<channel\|>)/gi, '');
 
     const jsonMatch = cleanResponse.match(/\[[\s\S]*\]/);
     if (!jsonMatch) return;

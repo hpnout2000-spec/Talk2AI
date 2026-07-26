@@ -182,7 +182,7 @@ Do not include any Markdown formatting like \`\`\`json or any other text. Return
       const response = await api.chatCompletion(messages, { max_tokens: 4000, temperature: 0.7 });
       
       // Strip any thinking blocks
-      const cleanResponse = response.replace(/(?:<\|?think\|?>|<reasoning>)([\s\S]*?)(?:<\|?\/think\|?>|<\/reasoning>)/g, '');
+      const cleanResponse = response.replace(/(?:<\|?think\|?>|<reasoning>|<\|channel>thought)([\s\S]*?)(?:<\|?\/think\|?>|<\/reasoning>|<channel\|>)/gi, '');
       
       const jsonMatch = cleanResponse.match(/\{[\s\S]*\}/);
       if (jsonMatch) {

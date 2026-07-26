@@ -96,7 +96,7 @@ export const memoryService = {
       let extracted;
       try {
         // Strip any rogue <think> blocks that the model might generate despite instructions
-        const cleanResponse = response.replace(/(?:<\|?think\|?>|<reasoning>)([\s\S]*?)(?:<\|?\/think\|?>|<\/reasoning>)/g, '');
+        const cleanResponse = response.replace(/(?:<\|?think\|?>|<reasoning>|<\|channel>thought)([\s\S]*?)(?:<\|?\/think\|?>|<\/reasoning>|<channel\|>)/gi, '');
         
         // Try to find JSON in the cleaned response
         const jsonMatch = cleanResponse.match(/\{[\s\S]*\}/);

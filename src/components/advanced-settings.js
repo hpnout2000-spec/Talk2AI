@@ -107,8 +107,66 @@ export function initAdvancedSettings() {
   setupRangeInput('adv-setting-genai-presence-penalty', 'adv-genai-presence-penalty-value', true);
   setupRangeInput('adv-setting-genai-dry-multiplier', 'adv-genai-dry-multiplier-value', true);
   setupRangeInput('adv-setting-genai-dry-base', 'adv-genai-dry-base-value', true);
-  setupRangeInput('adv-setting-genai-dry-allowed-length', 'adv-genai-dry-allowed-length-value', true);
-  
+  // Extended Sampler range inputs (Generation)
+  setupRangeInput('adv-setting-typical-p', 'adv-typical-p-value', false);
+  setupRangeInput('adv-setting-frequency-penalty', 'adv-frequency-penalty-value', false);
+  setupRangeInput('adv-setting-top-a', 'adv-top-a-value', false);
+  setupRangeInput('adv-setting-tfs', 'adv-tfs-value', false);
+  setupRangeInput('adv-setting-mirostat-tau', 'adv-mirostat-tau-value', false);
+  setupRangeInput('adv-setting-mirostat-eta', 'adv-mirostat-eta-value', false);
+  setupRangeInput('adv-setting-xtc-threshold', 'adv-xtc-threshold-value', false);
+  setupRangeInput('adv-setting-xtc-probability', 'adv-xtc-probability-value', false);
+  setupRangeInput('adv-setting-top-n-sigma', 'adv-top-n-sigma-value', false);
+  setupRangeInput('adv-setting-rep-pen-range', 'adv-rep-pen-range-value', false);
+  setupRangeInput('adv-setting-rep-pen-slope', 'adv-rep-pen-slope-value', false);
+  setupRangeInput('adv-setting-min-tokens', 'adv-min-tokens-value', false);
+  setupRangeInput('adv-setting-guidance-scale', 'adv-guidance-scale-value', false);
+
+  // Extended Sampler range inputs (GenAI)
+  setupRangeInput('adv-setting-genai-typical-p', 'adv-genai-typical-p-value', true);
+  setupRangeInput('adv-setting-genai-frequency-penalty', 'adv-genai-frequency-penalty-value', true);
+  setupRangeInput('adv-setting-genai-top-a', 'adv-genai-top-a-value', true);
+  setupRangeInput('adv-setting-genai-tfs', 'adv-genai-tfs-value', true);
+  setupRangeInput('adv-setting-genai-mirostat-tau', 'adv-genai-mirostat-tau-value', true);
+  setupRangeInput('adv-setting-genai-mirostat-eta', 'adv-genai-mirostat-eta-value', true);
+  setupRangeInput('adv-setting-genai-xtc-threshold', 'adv-genai-xtc-threshold-value', true);
+  setupRangeInput('adv-setting-genai-xtc-probability', 'adv-genai-xtc-probability-value', true);
+  setupRangeInput('adv-setting-genai-top-n-sigma', 'adv-genai-top-n-sigma-value', true);
+  setupRangeInput('adv-setting-genai-rep-pen-range', 'adv-genai-rep-pen-range-value', true);
+  setupRangeInput('adv-setting-genai-rep-pen-slope', 'adv-genai-rep-pen-slope-value', true);
+  setupRangeInput('adv-setting-genai-min-tokens', 'adv-genai-min-tokens-value', true);
+  setupRangeInput('adv-setting-genai-guidance-scale', 'adv-genai-guidance-scale-value', true);
+
+  // Collapsible Sampler Group Toggles (Generation)
+  const setupGroupToggle = (toggleId, controlsId) => {
+    document.getElementById(toggleId)?.addEventListener('change', (e) => {
+      const ctrls = document.getElementById(controlsId);
+      if (ctrls) ctrls.style.display = e.target.checked ? 'flex' : 'none';
+    });
+  };
+  setupGroupToggle('adv-setting-mirostat-enabled', 'mirostat-controls');
+  setupGroupToggle('adv-setting-xtc-enabled', 'xtc-controls');
+  setupGroupToggle('adv-setting-rep-pen-range-enabled', 'rep-pen-range-controls');
+  setupGroupToggle('adv-setting-guidance-scale-enabled', 'guidance-scale-controls');
+  setupGroupToggle('adv-setting-genai-mirostat-enabled', 'genai-mirostat-controls');
+  setupGroupToggle('adv-setting-genai-xtc-enabled', 'genai-xtc-controls');
+  setupGroupToggle('adv-setting-genai-rep-pen-range-enabled', 'genai-rep-pen-range-controls');
+  setupGroupToggle('adv-setting-genai-guidance-scale-enabled', 'genai-guidance-scale-controls');
+
+  // Completion Mode Select Listeners
+  document.getElementById('adv-setting-completion-mode')?.addEventListener('change', (e) => {
+    const isText = e.target.value === 'text_completion';
+    const grp = document.getElementById('text-completion-templates-group');
+    if (grp) grp.style.display = isText ? 'flex' : 'none';
+    updateActiveGenerationPreset(false);
+  });
+  document.getElementById('adv-setting-genai-completion-mode')?.addEventListener('change', (e) => {
+    const isText = e.target.value === 'text_completion';
+    const grp = document.getElementById('genai-text-completion-templates-group');
+    if (grp) grp.style.display = isText ? 'flex' : 'none';
+    updateActiveGenerationPreset(true);
+  });
+
   const addToggleListener = (id, isGenAI) => {
     document.getElementById(id)?.addEventListener('change', () => {
       updateActiveGenerationPreset(isGenAI);
@@ -119,23 +177,58 @@ export function initAdvancedSettings() {
   addToggleListener('adv-setting-adaptive-decay-enabled', false);
   addToggleListener('adv-setting-dry-enabled', false);
   addToggleListener('adv-setting-force-reasoning', false);
+  addToggleListener('adv-setting-typical-p-enabled', false);
+  addToggleListener('adv-setting-frequency-penalty-enabled', false);
+  addToggleListener('adv-setting-top-a-enabled', false);
+  addToggleListener('adv-setting-tfs-enabled', false);
+  addToggleListener('adv-setting-mirostat-enabled', false);
+  addToggleListener('adv-setting-xtc-enabled', false);
+  addToggleListener('adv-setting-top-n-sigma-enabled', false);
+  addToggleListener('adv-setting-rep-pen-range-enabled', false);
+  addToggleListener('adv-setting-min-tokens-enabled', false);
+  addToggleListener('adv-setting-guidance-scale-enabled', false);
+  addToggleListener('adv-setting-ignore-eos', false);
+
   addToggleListener('adv-setting-genai-min-p-enabled', true);
   addToggleListener('adv-setting-genai-adaptive-target-enabled', true);
   addToggleListener('adv-setting-genai-adaptive-decay-enabled', true);
   addToggleListener('adv-setting-genai-dry-enabled', true);
   addToggleListener('adv-setting-genai-force-reasoning', true);
+  addToggleListener('adv-setting-genai-typical-p-enabled', true);
+  addToggleListener('adv-setting-genai-frequency-penalty-enabled', true);
+  addToggleListener('adv-setting-genai-top-a-enabled', true);
+  addToggleListener('adv-setting-genai-tfs-enabled', true);
+  addToggleListener('adv-setting-genai-mirostat-enabled', true);
+  addToggleListener('adv-setting-genai-xtc-enabled', true);
+  addToggleListener('adv-setting-genai-top-n-sigma-enabled', true);
+  addToggleListener('adv-setting-genai-rep-pen-range-enabled', true);
+  addToggleListener('adv-setting-genai-min-tokens-enabled', true);
+  addToggleListener('adv-setting-genai-guidance-scale-enabled', true);
+  addToggleListener('adv-setting-genai-ignore-eos', true);
 
   const addInputListener = (id, isGenAI) => {
-    document.getElementById(id)?.addEventListener('input', () => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', () => {
+      updateActiveGenerationPreset(isGenAI);
+    });
+    el.addEventListener('change', () => {
       updateActiveGenerationPreset(isGenAI);
     });
   };
   addInputListener('adv-setting-reasoning-open', false);
   addInputListener('adv-setting-reasoning-close', false);
   addInputListener('adv-setting-dry-sequence-breakers', false);
+  addInputListener('adv-setting-mirostat-mode', false);
+  addInputListener('adv-setting-negative-prompt', false);
+  addInputListener('adv-setting-banned-strings', false);
+
   addInputListener('adv-setting-genai-reasoning-open', true);
   addInputListener('adv-setting-genai-reasoning-close', true);
   addInputListener('adv-setting-genai-dry-sequence-breakers', true);
+  addInputListener('adv-setting-genai-mirostat-mode', true);
+  addInputListener('adv-setting-genai-negative-prompt', true);
+  addInputListener('adv-setting-genai-banned-strings', true);
 
   document.getElementById('adv-setting-dry-enabled')?.addEventListener('change', (e) => {
     const ctrls = document.getElementById('dry-sampler-controls');
@@ -158,6 +251,9 @@ export function initAdvancedSettings() {
 
   document.getElementById('btn-delete-generation-preset')?.addEventListener('click', () => deleteGenerationPreset(false));
   document.getElementById('btn-delete-genai-preset')?.addEventListener('click', () => deleteGenerationPreset(true));
+
+  // Advanced Formatting Templates listeners
+  setupFormattingTemplateListeners();
 
   // Live save for preset editor
   presetNameInput.addEventListener('input', updateEditingPreset);
@@ -218,6 +314,7 @@ function loadSettingsToUI() {
     const breakersVal = currentSettings.dry_sequence_breakers || ["\n", ":", "\"", "*"];
     breakersInput.value = typeof breakersVal === 'string' ? breakersVal : JSON.stringify(breakersVal);
   }
+  applyExtendedSamplersToUI(currentSettings, false);
 
   // Load GenAI generation settings
   setRangeValue('adv-setting-genai-max-tokens', 'adv-genai-max-tokens-value', currentSettings.genai_max_tokens);
@@ -248,6 +345,35 @@ function loadSettingsToUI() {
     const genaiBreakersVal = currentSettings.genai_dry_sequence_breakers || ["\n", ":", "\"", "*"];
     genaiBreakersInput.value = typeof genaiBreakersVal === 'string' ? genaiBreakersVal : JSON.stringify(genaiBreakersVal);
   }
+  applyExtendedSamplersToUI({
+    typical_p: currentSettings.genai_typical_p,
+    typical_p_enabled: currentSettings.genai_typical_p_enabled,
+    frequency_penalty: currentSettings.genai_frequency_penalty,
+    frequency_penalty_enabled: currentSettings.genai_frequency_penalty_enabled,
+    top_a: currentSettings.genai_top_a,
+    top_a_enabled: currentSettings.genai_top_a_enabled,
+    tfs: currentSettings.genai_tfs,
+    tfs_enabled: currentSettings.genai_tfs_enabled,
+    mirostat_enabled: currentSettings.genai_mirostat_enabled,
+    mirostat_mode: currentSettings.genai_mirostat_mode,
+    mirostat_tau: currentSettings.genai_mirostat_tau,
+    mirostat_eta: currentSettings.genai_mirostat_eta,
+    xtc_enabled: currentSettings.genai_xtc_enabled,
+    xtc_threshold: currentSettings.genai_xtc_threshold,
+    xtc_probability: currentSettings.genai_xtc_probability,
+    top_n_sigma_enabled: currentSettings.genai_top_n_sigma_enabled,
+    top_n_sigma: currentSettings.genai_top_n_sigma,
+    rep_pen_range_enabled: currentSettings.genai_rep_pen_range_enabled,
+    rep_pen_range: currentSettings.genai_rep_pen_range,
+    rep_pen_slope: currentSettings.genai_rep_pen_slope,
+    min_tokens_enabled: currentSettings.genai_min_tokens_enabled,
+    min_tokens: currentSettings.genai_min_tokens,
+    guidance_scale_enabled: currentSettings.genai_guidance_scale_enabled,
+    guidance_scale: currentSettings.genai_guidance_scale,
+    negative_prompt: currentSettings.genai_negative_prompt,
+    ignore_eos: currentSettings.genai_ignore_eos,
+    banned_strings: currentSettings.genai_banned_strings
+  }, true);
 
   const genaiSystemPromptInput = document.getElementById('adv-setting-genai-system-prompt');
   if (genaiSystemPromptInput) {
@@ -277,9 +403,24 @@ function loadSettingsToUI() {
     historyToggle.checked = !!currentSettings.ai_comments_history_enabled;
   }
 
-  // Load presets
+  const compMode = document.getElementById('adv-setting-completion-mode');
+  if (compMode) {
+    compMode.value = currentSettings.completion_mode || 'chat_completion';
+    const grp = document.getElementById('text-completion-templates-group');
+    if (grp) grp.style.display = compMode.value === 'text_completion' ? 'flex' : 'none';
+  }
+
+  const genaiCompMode = document.getElementById('adv-setting-genai-completion-mode');
+  if (genaiCompMode) {
+    genaiCompMode.value = currentSettings.genai_completion_mode || 'chat_completion';
+    const grp = document.getElementById('genai-text-completion-templates-group');
+    if (grp) grp.style.display = genaiCompMode.value === 'text_completion' ? 'flex' : 'none';
+  }
+
+  // Load presets & formatting templates
   renderPresets();
   renderGenerationPresetsUI();
+  renderFormattingTemplatesUI();
 
   // Select active preset
   editingPresetId = currentSettings.active_system_prompt_preset_id;
@@ -319,12 +460,125 @@ function renderGenerationPresetsUI() {
   genaiSelect.value = currentSettings.active_genai_generation_preset_id || 'default';
 }
 
+function extractExtendedSamplersFromUI(isGenAI) {
+  const prefix = isGenAI ? 'adv-setting-genai-' : 'adv-setting-';
+  return {
+    typical_p: parseFloat(document.getElementById(`${prefix}typical-p`)?.value ?? 1.0),
+    typical_p_enabled: document.getElementById(`${prefix}typical-p-enabled`)?.checked ?? false,
+    frequency_penalty: parseFloat(document.getElementById(`${prefix}frequency-penalty`)?.value ?? 0.0),
+    frequency_penalty_enabled: document.getElementById(`${prefix}frequency-penalty-enabled`)?.checked ?? false,
+    top_a: parseFloat(document.getElementById(`${prefix}top-a`)?.value ?? 0.0),
+    top_a_enabled: document.getElementById(`${prefix}top-a-enabled`)?.checked ?? false,
+    tfs: parseFloat(document.getElementById(`${prefix}tfs`)?.value ?? 1.0),
+    tfs_enabled: document.getElementById(`${prefix}tfs-enabled`)?.checked ?? false,
+    mirostat_enabled: document.getElementById(`${prefix}mirostat-enabled`)?.checked ?? false,
+    mirostat_mode: parseInt(document.getElementById(`${prefix}mirostat-mode`)?.value ?? 0),
+    mirostat_tau: parseFloat(document.getElementById(`${prefix}mirostat-tau`)?.value ?? 5.0),
+    mirostat_eta: parseFloat(document.getElementById(`${prefix}mirostat-eta`)?.value ?? 0.1),
+    xtc_enabled: document.getElementById(`${prefix}xtc-enabled`)?.checked ?? false,
+    xtc_threshold: parseFloat(document.getElementById(`${prefix}xtc-threshold`)?.value ?? 0.1),
+    xtc_probability: parseFloat(document.getElementById(`${prefix}xtc-probability`)?.value ?? 0.0),
+    top_n_sigma_enabled: document.getElementById(`${prefix}top-n-sigma-enabled`)?.checked ?? false,
+    top_n_sigma: parseFloat(document.getElementById(`${prefix}top-n-sigma`)?.value ?? 0.0),
+    rep_pen_range_enabled: document.getElementById(`${prefix}rep-pen-range-enabled`)?.checked ?? false,
+    rep_pen_range: parseInt(document.getElementById(`${prefix}rep-pen-range`)?.value ?? 0),
+    rep_pen_slope: parseFloat(document.getElementById(`${prefix}rep-pen-slope`)?.value ?? 1.0),
+    min_tokens_enabled: document.getElementById(`${prefix}min-tokens-enabled`)?.checked ?? false,
+    min_tokens: parseInt(document.getElementById(`${prefix}min-tokens`)?.value ?? 0),
+    guidance_scale_enabled: document.getElementById(`${prefix}guidance-scale-enabled`)?.checked ?? false,
+    guidance_scale: parseFloat(document.getElementById(`${prefix}guidance-scale`)?.value ?? 1.0),
+    negative_prompt: document.getElementById(`${prefix}negative-prompt`)?.value || '',
+    ignore_eos: document.getElementById(`${prefix}ignore-eos`)?.checked ?? false,
+    banned_strings: document.getElementById(`${prefix}banned-strings`)?.value || ''
+  };
+}
+
+function applyExtendedSamplersToUI(preset, isGenAI) {
+  const prefix = isGenAI ? 'adv-setting-genai-' : 'adv-setting-';
+  const valPrefix = isGenAI ? 'adv-genai-' : 'adv-';
+  const controlsPrefix = isGenAI ? 'genai-' : '';
+
+  setRangeValue(`${prefix}typical-p`, `${valPrefix}typical-p-value`, preset.typical_p ?? 1.0);
+  if (document.getElementById(`${prefix}typical-p-enabled`)) document.getElementById(`${prefix}typical-p-enabled`).checked = preset.typical_p_enabled ?? false;
+
+  setRangeValue(`${prefix}frequency-penalty`, `${valPrefix}frequency-penalty-value`, preset.frequency_penalty ?? 0.0);
+  if (document.getElementById(`${prefix}frequency-penalty-enabled`)) document.getElementById(`${prefix}frequency-penalty-enabled`).checked = preset.frequency_penalty_enabled ?? false;
+
+  setRangeValue(`${prefix}top-a`, `${valPrefix}top-a-value`, preset.top_a ?? 0.0);
+  if (document.getElementById(`${prefix}top-a-enabled`)) document.getElementById(`${prefix}top-a-enabled`).checked = preset.top_a_enabled ?? false;
+
+  setRangeValue(`${prefix}tfs`, `${valPrefix}tfs-value`, preset.tfs ?? 1.0);
+  if (document.getElementById(`${prefix}tfs-enabled`)) document.getElementById(`${prefix}tfs-enabled`).checked = preset.tfs_enabled ?? false;
+
+  const mirostatEnabled = preset.mirostat_enabled ?? false;
+  if (document.getElementById(`${prefix}mirostat-enabled`)) {
+    document.getElementById(`${prefix}mirostat-enabled`).checked = mirostatEnabled;
+    const ctrls = document.getElementById(`${controlsPrefix}mirostat-controls`);
+    if (ctrls) ctrls.style.display = mirostatEnabled ? 'flex' : 'none';
+  }
+  if (document.getElementById(`${prefix}mirostat-mode`)) document.getElementById(`${prefix}mirostat-mode`).value = preset.mirostat_mode ?? 0;
+  setRangeValue(`${prefix}mirostat-tau`, `${valPrefix}mirostat-tau-value`, preset.mirostat_tau ?? 5.0);
+  setRangeValue(`${prefix}mirostat-eta`, `${valPrefix}mirostat-eta-value`, preset.mirostat_eta ?? 0.1);
+
+  const xtcEnabled = preset.xtc_enabled ?? false;
+  if (document.getElementById(`${prefix}xtc-enabled`)) {
+    document.getElementById(`${prefix}xtc-enabled`).checked = xtcEnabled;
+    const ctrls = document.getElementById(`${controlsPrefix}xtc-controls`);
+    if (ctrls) ctrls.style.display = xtcEnabled ? 'flex' : 'none';
+  }
+  setRangeValue(`${prefix}xtc-threshold`, `${valPrefix}xtc-threshold-value`, preset.xtc_threshold ?? 0.1);
+  setRangeValue(`${prefix}xtc-probability`, `${valPrefix}xtc-probability-value`, preset.xtc_probability ?? 0.0);
+
+  if (document.getElementById(`${prefix}top-n-sigma-enabled`)) document.getElementById(`${prefix}top-n-sigma-enabled`).checked = preset.top_n_sigma_enabled ?? false;
+  setRangeValue(`${prefix}top-n-sigma`, `${valPrefix}top-n-sigma-value`, preset.top_n_sigma ?? 0.0);
+
+  const repPenRangeEnabled = preset.rep_pen_range_enabled ?? false;
+  if (document.getElementById(`${prefix}rep-pen-range-enabled`)) {
+    document.getElementById(`${prefix}rep-pen-range-enabled`).checked = repPenRangeEnabled;
+    const ctrls = document.getElementById(`${controlsPrefix}rep-pen-range-controls`);
+    if (ctrls) ctrls.style.display = repPenRangeEnabled ? 'flex' : 'none';
+  }
+  setRangeValue(`${prefix}rep-pen-range`, `${valPrefix}rep-pen-range-value`, preset.rep_pen_range ?? 0);
+  setRangeValue(`${prefix}rep-pen-slope`, `${valPrefix}rep-pen-slope-value`, preset.rep_pen_slope ?? 1.0);
+
+  if (document.getElementById(`${prefix}min-tokens-enabled`)) document.getElementById(`${prefix}min-tokens-enabled`).checked = preset.min_tokens_enabled ?? false;
+  setRangeValue(`${prefix}min-tokens`, `${valPrefix}min-tokens-value`, preset.min_tokens ?? 0);
+
+  const guidanceScaleEnabled = preset.guidance_scale_enabled ?? false;
+  if (document.getElementById(`${prefix}guidance-scale-enabled`)) {
+    document.getElementById(`${prefix}guidance-scale-enabled`).checked = guidanceScaleEnabled;
+    const ctrls = document.getElementById(`${controlsPrefix}guidance-scale-controls`);
+    if (ctrls) ctrls.style.display = guidanceScaleEnabled ? 'flex' : 'none';
+  }
+  setRangeValue(`${prefix}guidance-scale`, `${valPrefix}guidance-scale-value`, preset.guidance_scale ?? 1.0);
+
+  if (document.getElementById(`${prefix}negative-prompt`)) document.getElementById(`${prefix}negative-prompt`).value = preset.negative_prompt ?? '';
+  if (document.getElementById(`${prefix}ignore-eos`)) document.getElementById(`${prefix}ignore-eos`).checked = preset.ignore_eos ?? false;
+  if (document.getElementById(`${prefix}banned-strings`)) document.getElementById(`${prefix}banned-strings`).value = preset.banned_strings ?? '';
+}
+
 function applyGenerationPreset(presetId, isGenAI) {
   const preset = currentSettings.generation_presets.find(p => p.id === presetId);
   if (!preset) return;
   
   if (isGenAI) {
     currentSettings.active_genai_generation_preset_id = presetId;
+    if (preset.completion_mode) {
+      const el = document.getElementById('adv-setting-genai-completion-mode');
+      if (el) {
+        el.value = preset.completion_mode;
+        const grp = document.getElementById('genai-text-completion-templates-group');
+        if (grp) grp.style.display = preset.completion_mode === 'text_completion' ? 'flex' : 'none';
+      }
+    }
+    if (preset.active_instruct_template_id) {
+      const el = document.getElementById('adv-setting-genai-instruct-template-select');
+      if (el) el.value = preset.active_instruct_template_id;
+    }
+    if (preset.active_context_template_id) {
+      const el = document.getElementById('adv-setting-genai-context-template-select');
+      if (el) el.value = preset.active_context_template_id;
+    }
     setRangeValue('adv-setting-genai-max-tokens', 'adv-genai-max-tokens-value', preset.max_tokens);
     setRangeValue('adv-setting-genai-temperature', 'adv-genai-temperature-value', preset.temperature);
     setRangeValue('adv-setting-genai-top-p', 'adv-genai-top-p-value', preset.top_p);
@@ -356,8 +610,26 @@ function applyGenerationPreset(presetId, isGenAI) {
       const genaiBreakersVal = preset.dry_sequence_breakers || ["\n", ":", "\"", "*"];
       genaiBreakersInput.value = typeof genaiBreakersVal === 'string' ? genaiBreakersVal : JSON.stringify(genaiBreakersVal);
     }
+
+    applyExtendedSamplersToUI(preset, true);
   } else {
     currentSettings.active_generation_preset_id = presetId;
+    if (preset.completion_mode) {
+      const el = document.getElementById('adv-setting-completion-mode');
+      if (el) {
+        el.value = preset.completion_mode;
+        const grp = document.getElementById('text-completion-templates-group');
+        if (grp) grp.style.display = preset.completion_mode === 'text_completion' ? 'flex' : 'none';
+      }
+    }
+    if (preset.active_instruct_template_id) {
+      const el = document.getElementById('adv-setting-instruct-template-select');
+      if (el) el.value = preset.active_instruct_template_id;
+    }
+    if (preset.active_context_template_id) {
+      const el = document.getElementById('adv-setting-context-template-select');
+      if (el) el.value = preset.active_context_template_id;
+    }
     setRangeValue('adv-setting-max-tokens', 'adv-max-tokens-value', preset.max_tokens);
     setRangeValue('adv-setting-temperature', 'adv-temperature-value', preset.temperature);
     setRangeValue('adv-setting-top-p', 'adv-top-p-value', preset.top_p);
@@ -389,6 +661,8 @@ function applyGenerationPreset(presetId, isGenAI) {
       const breakersVal = preset.dry_sequence_breakers || ["\n", ":", "\"", "*"];
       breakersInput.value = typeof breakersVal === 'string' ? breakersVal : JSON.stringify(breakersVal);
     }
+
+    applyExtendedSamplersToUI(preset, false);
   }
 }
 
@@ -426,6 +700,7 @@ function saveAsNewGenerationPreset(isGenAI) {
     } catch (e) {
       preset.dry_sequence_breakers = ["\n", ":", "\"", "*"];
     }
+    Object.assign(preset, extractExtendedSamplersFromUI(true));
     currentSettings.active_genai_generation_preset_id = id;
   } else {
     preset.max_tokens = parseInt(document.getElementById('adv-setting-max-tokens').value);
@@ -454,6 +729,7 @@ function saveAsNewGenerationPreset(isGenAI) {
     } catch (e) {
       preset.dry_sequence_breakers = ["\n", ":", "\"", "*"];
     }
+    Object.assign(preset, extractExtendedSamplersFromUI(false));
     currentSettings.active_generation_preset_id = id;
   }
   
@@ -489,14 +765,16 @@ async function resetGenerationPreset(isGenAI) {
     return;
   }
 
+  const stdDefaults = { typical_p: 1.0, typical_p_enabled: false, frequency_penalty: 0.0, frequency_penalty_enabled: false, top_a: 0.0, top_a_enabled: false, tfs: 1.0, tfs_enabled: false, mirostat_enabled: false, mirostat_mode: 0, mirostat_tau: 5.0, mirostat_eta: 0.1, xtc_enabled: false, xtc_threshold: 0.1, xtc_probability: 0.0, top_n_sigma_enabled: false, top_n_sigma: 0.0, rep_pen_range_enabled: false, rep_pen_range: 0, rep_pen_slope: 1.0, min_tokens_enabled: false, min_tokens: 0, guidance_scale_enabled: false, guidance_scale: 1.0, negative_prompt: '', ignore_eos: false, banned_strings: '' };
+
   const defaultPresets = [
-    { id: 'default', name: 'Default', max_tokens: 2048, temperature: 0.7, top_p: 0.9, top_k: 40, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: true, adaptive_decay: 0.9, adaptive_decay_enabled: true, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"] },
-    { id: 'glm47flash', name: 'GLM 4.7 Flash (Creative)', max_tokens: 2048, temperature: 1.0, top_p: 0.95, top_k: 40, rep_penalty: 1.1, smoothing_factor: 1.5, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: true, adaptive_decay: 0.9, adaptive_decay_enabled: true, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"] },
-    { id: 'glm46', name: 'GLM 4.6 (Unsloth)', max_tokens: 2048, temperature: 0.8, top_p: 0.6, top_k: 2, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: true, adaptive_decay: 0.9, adaptive_decay_enabled: true, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"] },
-    { id: 'qwen35stable', name: 'Qwen 3.5 MoE (stable)', max_tokens: 4000, temperature: 0.65, top_p: 0.95, top_k: 20, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: false, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 1.6, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"] },
-    { id: 'qwen35official', name: 'Qwen 3.5 MoE (Official)', max_tokens: 4000, temperature: 1.0, top_p: 0.95, top_k: 20, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: false, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 1.5, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"] },
-    { id: 'gemma4creative', name: 'Gemma 4 (Creative)', max_tokens: 3000, temperature: 1.5, top_p: 1.0, top_k: 64, rep_penalty: 1.0, smoothing_factor: 1.5, min_p: 0.05, min_p_enabled: false, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: true, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"] },
-    { id: 'gemma4stable', name: 'Gemma 4 (Stable)', max_tokens: 3000, temperature: 1.0, top_p: 1.0, top_k: 64, rep_penalty: 1.1, smoothing_factor: 1.5, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.4, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"] }
+    { id: 'default', name: 'Default', max_tokens: 2048, temperature: 0.7, top_p: 0.9, top_k: 40, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: true, adaptive_decay: 0.9, adaptive_decay_enabled: true, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...stdDefaults },
+    { id: 'glm47flash', name: 'GLM 4.7 Flash (Creative)', max_tokens: 2048, temperature: 1.0, top_p: 0.95, top_k: 40, rep_penalty: 1.1, smoothing_factor: 1.5, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: true, adaptive_decay: 0.9, adaptive_decay_enabled: true, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...stdDefaults },
+    { id: 'glm46', name: 'GLM 4.6 (Unsloth)', max_tokens: 2048, temperature: 0.8, top_p: 0.6, top_k: 2, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: true, adaptive_decay: 0.9, adaptive_decay_enabled: true, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...stdDefaults },
+    { id: 'qwen35stable', name: 'Qwen 3.5 MoE (stable)', max_tokens: 4000, temperature: 0.65, top_p: 0.95, top_k: 20, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: false, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 1.6, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...stdDefaults },
+    { id: 'qwen35official', name: 'Qwen 3.5 MoE (Official)', max_tokens: 4000, temperature: 1.0, top_p: 0.95, top_k: 20, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: false, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 1.5, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...stdDefaults },
+    { id: 'gemma4creative', name: 'Gemma 4 (Creative)', max_tokens: 3000, temperature: 1.5, top_p: 1.0, top_k: 64, rep_penalty: 1.0, smoothing_factor: 1.5, min_p: 0.05, min_p_enabled: false, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: true, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...stdDefaults },
+    { id: 'gemma4stable', name: 'Gemma 4 (Stable)', max_tokens: 3000, temperature: 1.0, top_p: 1.0, top_k: 64, rep_penalty: 1.1, smoothing_factor: 1.5, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.4, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...stdDefaults }
   ];
 
   const originalPreset = defaultPresets.find(p => p.id === activeId);
@@ -647,6 +925,7 @@ function updateActiveGenerationPreset(isGenAI) {
     } catch (e) {
       preset.dry_sequence_breakers = ["\n", ":", "\"", "*"];
     }
+    Object.assign(preset, extractExtendedSamplersFromUI(true));
     
     // Sync to other tab if it uses the same custom preset
     if (currentSettings.active_generation_preset_id === activeId) {
@@ -676,6 +955,7 @@ function updateActiveGenerationPreset(isGenAI) {
       if (breakersInput) {
         breakersInput.value = typeof preset.dry_sequence_breakers === 'string' ? preset.dry_sequence_breakers : JSON.stringify(preset.dry_sequence_breakers || ["\n", ":", "\"", "*"]);
       }
+      applyExtendedSamplersToUI(preset, false);
     }
   } else {
     preset.max_tokens = parseInt(document.getElementById('adv-setting-max-tokens').value);
@@ -704,6 +984,7 @@ function updateActiveGenerationPreset(isGenAI) {
     } catch (e) {
       preset.dry_sequence_breakers = ["\n", ":", "\"", "*"];
     }
+    Object.assign(preset, extractExtendedSamplersFromUI(false));
     
     // Sync to other tab if it uses the same custom preset
     if (currentSettings.active_genai_generation_preset_id === activeId) {
@@ -733,6 +1014,7 @@ function updateActiveGenerationPreset(isGenAI) {
       if (breakersInput) {
         breakersInput.value = typeof preset.dry_sequence_breakers === 'string' ? preset.dry_sequence_breakers : JSON.stringify(preset.dry_sequence_breakers || ["\n", ":", "\"", "*"]);
       }
+      applyExtendedSamplersToUI(preset, true);
     }
   }
 }
@@ -818,6 +1100,74 @@ async function saveAll() {
     genai_reasoning_tag_open: document.getElementById('adv-setting-genai-reasoning-open') ? document.getElementById('adv-setting-genai-reasoning-open').value : (currentSettings.genai_reasoning_tag_open || '<think>'),
     genai_reasoning_tag_close: document.getElementById('adv-setting-genai-reasoning-close') ? document.getElementById('adv-setting-genai-reasoning-close').value : (currentSettings.genai_reasoning_tag_close || '</think>'),
     
+    completion_mode: document.getElementById('adv-setting-completion-mode')?.value || 'chat_completion',
+    active_instruct_template_id: document.getElementById('adv-setting-instruct-template-select')?.value || 'gemma2',
+    active_context_template_id: document.getElementById('adv-setting-context-template-select')?.value || 'gemma2',
+
+    typical_p_enabled: document.getElementById('adv-setting-typical-p-enabled')?.checked ?? false,
+    typical_p: parseFloat(document.getElementById('adv-setting-typical-p')?.value ?? 1.0),
+    frequency_penalty_enabled: document.getElementById('adv-setting-frequency-penalty-enabled')?.checked ?? false,
+    frequency_penalty: parseFloat(document.getElementById('adv-setting-frequency-penalty')?.value ?? 0.0),
+    top_a_enabled: document.getElementById('adv-setting-top-a-enabled')?.checked ?? false,
+    top_a: parseFloat(document.getElementById('adv-setting-top-a')?.value ?? 0.0),
+    tfs_enabled: document.getElementById('adv-setting-tfs-enabled')?.checked ?? false,
+    tfs: parseFloat(document.getElementById('adv-setting-tfs')?.value ?? 1.0),
+    mirostat_enabled: document.getElementById('adv-setting-mirostat-enabled')?.checked ?? false,
+    mirostat_mode: parseInt(document.getElementById('adv-setting-mirostat-mode')?.value ?? 0),
+    mirostat_tau: parseFloat(document.getElementById('adv-setting-mirostat-tau')?.value ?? 5.0),
+    mirostat_eta: parseFloat(document.getElementById('adv-setting-mirostat-eta')?.value ?? 0.1),
+    xtc_enabled: document.getElementById('adv-setting-xtc-enabled')?.checked ?? false,
+    xtc_threshold: parseFloat(document.getElementById('adv-setting-xtc-threshold')?.value ?? 0.1),
+    xtc_probability: parseFloat(document.getElementById('adv-setting-xtc-probability')?.value ?? 0.0),
+    top_n_sigma_enabled: document.getElementById('adv-setting-top-n-sigma-enabled')?.checked ?? false,
+    top_n_sigma: parseFloat(document.getElementById('adv-setting-top-n-sigma')?.value ?? 0.0),
+    rep_pen_range_enabled: document.getElementById('adv-setting-rep-pen-range-enabled')?.checked ?? false,
+    rep_pen_range: parseInt(document.getElementById('adv-setting-rep-pen-range')?.value ?? 0),
+    rep_pen_slope: parseFloat(document.getElementById('adv-setting-rep-pen-slope')?.value ?? 1.0),
+    min_tokens_enabled: document.getElementById('adv-setting-min-tokens-enabled')?.checked ?? false,
+    min_tokens: parseInt(document.getElementById('adv-setting-min-tokens')?.value ?? 0),
+    guidance_scale_enabled: document.getElementById('adv-setting-guidance-scale-enabled')?.checked ?? false,
+    guidance_scale: parseFloat(document.getElementById('adv-setting-guidance-scale')?.value ?? 1.0),
+    negative_prompt: document.getElementById('adv-setting-negative-prompt')?.value || '',
+    ignore_eos_enabled: document.getElementById('adv-setting-ignore-eos')?.checked ?? false,
+    ignore_eos: document.getElementById('adv-setting-ignore-eos')?.checked ?? false,
+    banned_strings: document.getElementById('adv-setting-banned-strings')?.value || '',
+
+    genai_completion_mode: document.getElementById('adv-setting-genai-completion-mode')?.value || 'chat_completion',
+    genai_active_instruct_template_id: document.getElementById('adv-setting-genai-instruct-template-select')?.value || 'gemma2',
+    genai_active_context_template_id: document.getElementById('adv-setting-genai-context-template-select')?.value || 'gemma2',
+
+    genai_typical_p_enabled: document.getElementById('adv-setting-genai-typical-p-enabled')?.checked ?? false,
+    genai_typical_p: parseFloat(document.getElementById('adv-setting-genai-typical-p')?.value ?? 1.0),
+    genai_frequency_penalty_enabled: document.getElementById('adv-setting-genai-frequency-penalty-enabled')?.checked ?? false,
+    genai_frequency_penalty: parseFloat(document.getElementById('adv-setting-genai-frequency-penalty')?.value ?? 0.0),
+    genai_top_a_enabled: document.getElementById('adv-setting-genai-top-a-enabled')?.checked ?? false,
+    genai_top_a: parseFloat(document.getElementById('adv-setting-genai-top-a')?.value ?? 0.0),
+    genai_tfs_enabled: document.getElementById('adv-setting-genai-tfs-enabled')?.checked ?? false,
+    genai_tfs: parseFloat(document.getElementById('adv-setting-genai-tfs')?.value ?? 1.0),
+    genai_mirostat_enabled: document.getElementById('adv-setting-genai-mirostat-enabled')?.checked ?? false,
+    genai_mirostat_mode: parseInt(document.getElementById('adv-setting-genai-mirostat-mode')?.value ?? 0),
+    genai_mirostat_tau: parseFloat(document.getElementById('adv-setting-genai-mirostat-tau')?.value ?? 5.0),
+    genai_mirostat_eta: parseFloat(document.getElementById('adv-setting-genai-mirostat-eta')?.value ?? 0.1),
+    genai_xtc_enabled: document.getElementById('adv-setting-genai-xtc-enabled')?.checked ?? false,
+    genai_xtc_threshold: parseFloat(document.getElementById('adv-setting-genai-xtc-threshold')?.value ?? 0.1),
+    genai_xtc_probability: parseFloat(document.getElementById('adv-setting-genai-xtc-probability')?.value ?? 0.0),
+    genai_top_n_sigma_enabled: document.getElementById('adv-setting-genai-top-n-sigma-enabled')?.checked ?? false,
+    genai_top_n_sigma: parseFloat(document.getElementById('adv-setting-genai-top-n-sigma')?.value ?? 0.0),
+    genai_rep_pen_range_enabled: document.getElementById('adv-setting-genai-rep-pen-range-enabled')?.checked ?? false,
+    genai_rep_pen_range: parseInt(document.getElementById('adv-setting-genai-rep-pen-range')?.value ?? 0),
+    genai_rep_pen_slope: parseFloat(document.getElementById('adv-setting-genai-rep-pen-slope')?.value ?? 1.0),
+    genai_min_tokens_enabled: document.getElementById('adv-setting-genai-min-tokens-enabled')?.checked ?? false,
+    genai_min_tokens: parseInt(document.getElementById('adv-setting-genai-min-tokens')?.value ?? 0),
+    genai_guidance_scale_enabled: document.getElementById('adv-setting-genai-guidance-scale-enabled')?.checked ?? false,
+    genai_guidance_scale: parseFloat(document.getElementById('adv-setting-genai-guidance-scale')?.value ?? 1.0),
+    genai_negative_prompt: document.getElementById('adv-setting-genai-negative-prompt')?.value || '',
+    genai_ignore_eos_enabled: document.getElementById('adv-setting-genai-ignore-eos')?.checked ?? false,
+    genai_ignore_eos: document.getElementById('adv-setting-genai-ignore-eos')?.checked ?? false,
+    genai_banned_strings: document.getElementById('adv-setting-genai-banned-strings')?.value || '',
+
+    instruct_templates: currentSettings.instruct_templates,
+    context_templates: currentSettings.context_templates,
     generation_presets: currentSettings.generation_presets,
 
     ai_comments_prompt: aiCommentsPromptInput ? aiCommentsPromptInput.value.trim() : currentSettings.ai_comments_prompt,
@@ -844,4 +1194,251 @@ async function saveAll() {
   
   closeWindow(modal);
   showToast('Advanced settings saved');
+}
+
+let editingContextTemplateId = 'gemma2';
+let editingInstructTemplateId = 'gemma2';
+
+function renderFormattingTemplatesUI() {
+  const ctxSelect = document.getElementById('adv-fmt-context-select');
+  const instSelect = document.getElementById('adv-fmt-instruct-select');
+  const genCtxSelect = document.getElementById('adv-setting-context-template-select');
+  const genInstSelect = document.getElementById('adv-setting-instruct-template-select');
+  const genaiCtxSelect = document.getElementById('adv-setting-genai-context-template-select');
+  const genaiInstSelect = document.getElementById('adv-setting-genai-instruct-template-select');
+
+  if (ctxSelect) {
+    ctxSelect.innerHTML = '';
+    if (genCtxSelect) genCtxSelect.innerHTML = '';
+    if (genaiCtxSelect) genaiCtxSelect.innerHTML = '';
+
+    (currentSettings.context_templates || []).forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.name;
+      ctxSelect.appendChild(opt);
+
+      if (genCtxSelect) {
+        const opt2 = document.createElement('option');
+        opt2.value = t.id;
+        opt2.textContent = t.name;
+        genCtxSelect.appendChild(opt2);
+      }
+      if (genaiCtxSelect) {
+        const opt3 = document.createElement('option');
+        opt3.value = t.id;
+        opt3.textContent = t.name;
+        genaiCtxSelect.appendChild(opt3);
+      }
+    });
+
+    ctxSelect.value = editingContextTemplateId;
+    if (genCtxSelect) genCtxSelect.value = currentSettings.active_context_template_id || 'gemma2';
+    if (genaiCtxSelect) genaiCtxSelect.value = currentSettings.genai_active_context_template_id || 'gemma2';
+  }
+
+  if (instSelect) {
+    instSelect.innerHTML = '';
+    if (genInstSelect) genInstSelect.innerHTML = '';
+    if (genaiInstSelect) genaiInstSelect.innerHTML = '';
+
+    (currentSettings.instruct_templates || []).forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.name;
+      instSelect.appendChild(opt);
+
+      if (genInstSelect) {
+        const opt2 = document.createElement('option');
+        opt2.value = t.id;
+        opt2.textContent = t.name;
+        genInstSelect.appendChild(opt2);
+      }
+      if (genaiInstSelect) {
+        const opt3 = document.createElement('option');
+        opt3.value = t.id;
+        opt3.textContent = t.name;
+        genaiInstSelect.appendChild(opt3);
+      }
+    });
+
+    instSelect.value = editingInstructTemplateId;
+    if (genInstSelect) genInstSelect.value = currentSettings.active_instruct_template_id || 'gemma2';
+    if (genaiInstSelect) genaiInstSelect.value = currentSettings.genai_active_instruct_template_id || 'gemma2';
+  }
+
+  loadContextTemplateToEditor(editingContextTemplateId);
+  loadInstructTemplateToEditor(editingInstructTemplateId);
+}
+
+function loadContextTemplateToEditor(id) {
+  const t = (currentSettings.context_templates || []).find(tmpl => tmpl.id === id);
+  if (!t) return;
+  editingContextTemplateId = id;
+  
+  if (document.getElementById('adv-fmt-context-name')) document.getElementById('adv-fmt-context-name').value = t.name || '';
+  if (document.getElementById('adv-fmt-story-string')) document.getElementById('adv-fmt-story-string').value = t.story_string || '';
+  if (document.getElementById('adv-fmt-context-position')) document.getElementById('adv-fmt-context-position').value = t.position || 'top';
+  if (document.getElementById('adv-fmt-example-separator')) document.getElementById('adv-fmt-example-separator').value = t.example_separator || '***';
+  if (document.getElementById('adv-fmt-always-add-name')) document.getElementById('adv-fmt-always-add-name').checked = !!t.always_add_character_name;
+  if (document.getElementById('adv-fmt-collapse-newlines')) document.getElementById('adv-fmt-collapse-newlines').checked = !!t.collapse_newlines;
+  if (document.getElementById('adv-fmt-trim-spaces')) document.getElementById('adv-fmt-trim-spaces').checked = !!t.trim_spaces;
+  if (document.getElementById('adv-fmt-separators-as-stop')) document.getElementById('adv-fmt-separators-as-stop').checked = !!t.separators_as_stop;
+  if (document.getElementById('adv-fmt-names-as-stop')) document.getElementById('adv-fmt-names-as-stop').checked = !!t.names_as_stop;
+
+  const isDefault = id === 'gemma2' || id === 'standard';
+  if (document.getElementById('adv-fmt-context-name')) document.getElementById('adv-fmt-context-name').disabled = isDefault;
+}
+
+function loadInstructTemplateToEditor(id) {
+  const t = (currentSettings.instruct_templates || []).find(tmpl => tmpl.id === id);
+  if (!t) return;
+  editingInstructTemplateId = id;
+
+  if (document.getElementById('adv-fmt-instruct-name')) document.getElementById('adv-fmt-instruct-name').value = t.name || '';
+  if (document.getElementById('adv-fmt-activation-regex')) document.getElementById('adv-fmt-activation-regex').value = t.activation_regex || '';
+  if (document.getElementById('adv-fmt-wrap-newlines')) document.getElementById('adv-fmt-wrap-newlines').checked = !!t.wrap_sequences_with_newline;
+  if (document.getElementById('adv-fmt-replace-macro')) document.getElementById('adv-fmt-replace-macro').checked = !!t.replace_macro_in_sequences;
+  if (document.getElementById('adv-fmt-seq-as-stop')) document.getElementById('adv-fmt-seq-as-stop').checked = !!t.sequences_as_stop_strings;
+  if (document.getElementById('adv-fmt-include-names')) document.getElementById('adv-fmt-include-names').value = t.include_names || 'none';
+
+  if (document.getElementById('adv-fmt-user-prefix')) document.getElementById('adv-fmt-user-prefix').value = t.user_prefix || '';
+  if (document.getElementById('adv-fmt-user-suffix')) document.getElementById('adv-fmt-user-suffix').value = t.user_suffix || '';
+  if (document.getElementById('adv-fmt-assistant-prefix')) document.getElementById('adv-fmt-assistant-prefix').value = t.assistant_prefix || '';
+  if (document.getElementById('adv-fmt-assistant-suffix')) document.getElementById('adv-fmt-assistant-suffix').value = t.assistant_suffix || '';
+  if (document.getElementById('adv-fmt-story-prefix')) document.getElementById('adv-fmt-story-prefix').value = t.story_prefix || '';
+  if (document.getElementById('adv-fmt-story-suffix')) document.getElementById('adv-fmt-story-suffix').value = t.story_suffix || '';
+
+  const defaultInstructIds = ['gemma2', 'llama3', 'chatml', 'alpaca', 'alpaca_input', 'alpaca_simple', 'vicuna', 'mistral'];
+  const isDefault = defaultInstructIds.includes(id);
+  if (document.getElementById('adv-fmt-instruct-name')) document.getElementById('adv-fmt-instruct-name').disabled = isDefault;
+}
+
+function setupFormattingTemplateListeners() {
+  document.getElementById('adv-fmt-context-select')?.addEventListener('change', (e) => loadContextTemplateToEditor(e.target.value));
+  document.getElementById('adv-fmt-instruct-select')?.addEventListener('change', (e) => loadInstructTemplateToEditor(e.target.value));
+
+  document.getElementById('btn-add-context-template')?.addEventListener('click', () => {
+    const name = window.prompt("Enter name for new Context Template:", "Custom Context");
+    if (!name) return;
+    const id = 'custom_ctx_' + Date.now();
+    const newTmpl = {
+      id,
+      name,
+      story_string: '{{#if system}}{{system}}\n\n{{/if}}{{#if description}}{{description}}\n\n{{/if}}{{trim}}',
+      position: 'top',
+      example_separator: '***',
+      chat_start: '',
+      always_add_character_name: true,
+      collapse_newlines: false,
+      trim_spaces: true,
+      separators_as_stop: false,
+      names_as_stop: true
+    };
+    currentSettings.context_templates.push(newTmpl);
+    editingContextTemplateId = id;
+    renderFormattingTemplatesUI();
+  });
+
+  document.getElementById('btn-add-instruct-template')?.addEventListener('click', () => {
+    const name = window.prompt("Enter name for new Instruct Template:", "Custom Instruct");
+    if (!name) return;
+    const id = 'custom_inst_' + Date.now();
+    const newTmpl = {
+      id,
+      name,
+      activation_regex: '',
+      wrap_sequences_with_newline: true,
+      replace_macro_in_sequences: true,
+      sequences_as_stop_strings: true,
+      include_names: 'none',
+      story_prefix: '<start_of_turn>user\n',
+      story_suffix: '<end_of_turn>\n',
+      user_prefix: '<start_of_turn>user\n',
+      user_suffix: '<end_of_turn>\n',
+      assistant_prefix: '<start_of_turn>model\n',
+      assistant_suffix: '<end_of_turn>\n',
+      system_prefix: '<start_of_turn>user\n',
+      system_suffix: '<end_of_turn>\n'
+    };
+    currentSettings.instruct_templates.push(newTmpl);
+    editingInstructTemplateId = id;
+    renderFormattingTemplatesUI();
+  });
+
+  document.getElementById('btn-delete-context-template')?.addEventListener('click', async () => {
+    if (editingContextTemplateId === 'gemma2' || editingContextTemplateId === 'standard') {
+      showToast("Cannot delete default template");
+      return;
+    }
+    const confirm = await showConfirm('Delete Template', 'Delete this context template?');
+    if (confirm) {
+      currentSettings.context_templates = currentSettings.context_templates.filter(t => t.id !== editingContextTemplateId);
+      editingContextTemplateId = 'gemma2';
+      renderFormattingTemplatesUI();
+    }
+  });
+
+  document.getElementById('btn-delete-instruct-template')?.addEventListener('click', async () => {
+    const defaultInstructIds = ['gemma2', 'llama3', 'chatml', 'alpaca', 'alpaca_input', 'alpaca_simple', 'vicuna', 'mistral'];
+    if (defaultInstructIds.includes(editingInstructTemplateId)) {
+      showToast("Cannot delete default template");
+      return;
+    }
+    const confirm = await showConfirm('Delete Template', 'Delete this instruct template?');
+    if (confirm) {
+      currentSettings.instruct_templates = currentSettings.instruct_templates.filter(t => t.id !== editingInstructTemplateId);
+      editingInstructTemplateId = 'gemma2';
+      renderFormattingTemplatesUI();
+    }
+  });
+
+  // Live save for Context template editor
+  const syncContextEditor = () => {
+    const t = currentSettings.context_templates.find(tmpl => tmpl.id === editingContextTemplateId);
+    if (!t) return;
+    t.name = document.getElementById('adv-fmt-context-name')?.value || t.name;
+    t.story_string = document.getElementById('adv-fmt-story-string')?.value || '';
+    t.position = document.getElementById('adv-fmt-context-position')?.value || 'top';
+    t.example_separator = document.getElementById('adv-fmt-example-separator')?.value || '***';
+    t.always_add_character_name = !!document.getElementById('adv-fmt-always-add-name')?.checked;
+    t.collapse_newlines = !!document.getElementById('adv-fmt-collapse-newlines')?.checked;
+    t.trim_spaces = !!document.getElementById('adv-fmt-trim-spaces')?.checked;
+    t.separators_as_stop = !!document.getElementById('adv-fmt-separators-as-stop')?.checked;
+    t.names_as_stop = !!document.getElementById('adv-fmt-names-as-stop')?.checked;
+  };
+
+  ['adv-fmt-context-name', 'adv-fmt-story-string', 'adv-fmt-context-position', 'adv-fmt-example-separator', 'adv-fmt-always-add-name', 'adv-fmt-collapse-newlines', 'adv-fmt-trim-spaces', 'adv-fmt-separators-as-stop', 'adv-fmt-names-as-stop'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', syncContextEditor);
+      el.addEventListener('change', syncContextEditor);
+    }
+  });
+
+  // Live save for Instruct template editor
+  const syncInstructEditor = () => {
+    const t = currentSettings.instruct_templates.find(tmpl => tmpl.id === editingInstructTemplateId);
+    if (!t) return;
+    t.name = document.getElementById('adv-fmt-instruct-name')?.value || t.name;
+    t.activation_regex = document.getElementById('adv-fmt-activation-regex')?.value || '';
+    t.wrap_sequences_with_newline = !!document.getElementById('adv-fmt-wrap-newlines')?.checked;
+    t.replace_macro_in_sequences = !!document.getElementById('adv-fmt-replace-macro')?.checked;
+    t.sequences_as_stop_strings = !!document.getElementById('adv-fmt-seq-as-stop')?.checked;
+    t.include_names = document.getElementById('adv-fmt-include-names')?.value || 'none';
+    t.user_prefix = document.getElementById('adv-fmt-user-prefix')?.value || '';
+    t.user_suffix = document.getElementById('adv-fmt-user-suffix')?.value || '';
+    t.assistant_prefix = document.getElementById('adv-fmt-assistant-prefix')?.value || '';
+    t.assistant_suffix = document.getElementById('adv-fmt-assistant-suffix')?.value || '';
+    t.story_prefix = document.getElementById('adv-fmt-story-prefix')?.value || '';
+    t.story_suffix = document.getElementById('adv-fmt-story-suffix')?.value || '';
+  };
+
+  ['adv-fmt-instruct-name', 'adv-fmt-activation-regex', 'adv-fmt-wrap-newlines', 'adv-fmt-replace-macro', 'adv-fmt-seq-as-stop', 'adv-fmt-include-names', 'adv-fmt-user-prefix', 'adv-fmt-user-suffix', 'adv-fmt-assistant-prefix', 'adv-fmt-assistant-suffix', 'adv-fmt-story-prefix', 'adv-fmt-story-suffix'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('input', syncInstructEditor);
+      el.addEventListener('change', syncInstructEditor);
+    }
+  });
 }
