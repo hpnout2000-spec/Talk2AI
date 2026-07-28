@@ -62,6 +62,9 @@ let isSkillCreatorMode = false;
 
 // ─── DOM refs ───────────────────────────────────────────────────────
 let messagesEl, inputEl, sendBtn, stopBtn, clearBtn, closeBtn, fullscreenBtn, brushBtn;
+let activeReplyQuote = null;
+let selectionReplyBtn = null;
+let replyQuoteContainer = null;
 
 // ─── System Prompt ──────────────────────────────────────────────────
 const ANIMA_BETTER_PROMPT_TEXT = `[IMAGE GENERATION RULES & GUIDELINES]
@@ -2740,7 +2743,7 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
           cleanContent = cleanContent.substring(settings.genai_reasoning_tag_open.length);
         }
       }
-      content = parsed.content || cleanContent;
+      content = parsed.content !== null && parsed.content !== undefined ? parsed.content : cleanContent;
     }
   }
 
@@ -3299,6 +3302,27 @@ function appendMsgEl(entry) {
       htmlContent += `</div>`;
     }
     let textToRender = entry.content || '';
+    
+    // Check if entry starts with [System note: The user highlighted the following from the AI's response: "..."]
+    const systemNoteRegex = /^\[System note: The user highlighted the following from the AI's response: "([\s\S]*?)"\](?:\r?\n\r?\n)?/;
+    const sysNoteMatch = textToRender.match(systemNoteRegex);
+    if (sysNoteMatch) {
+      const quotedText = sysNoteMatch[1];
+      textToRender = textToRender.replace(systemNoteRegex, '');
+      
+      htmlContent += `
+        <div class="genai-user-msg-quote" style="display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px; margin-bottom: 8px; background: rgba(255, 255, 255, 0.08); border-left: 3px solid var(--accent-primary, #38bdf8); border-radius: 4px; font-size: 12px; color: var(--text-secondary, #d4d4d8); max-width: 100%;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 13px; height: 13px; flex-shrink: 0; color: var(--text-tertiary, #a1a1aa);">
+            <line x1="4" y1="5" x2="4" y2="19"/>
+            <line x1="9" y1="6" x2="20" y2="6"/>
+            <line x1="9" y1="12" x2="20" y2="12"/>
+            <line x1="9" y1="18" x2="16" y2="18"/>
+          </svg>
+          <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px;">${escapeHtml(quotedText)}</span>
+        </div>
+      `;
+    }
+
     const urlRegex = /(?<!\]\()(https?:\/\/[^\s]+)/gi;
     const urlBadges = [];
     textToRender = textToRender.replace(urlRegex, (url) => {
@@ -5489,10 +5513,136 @@ function renderChatRow(s) {
   `;
 }
 
+// ─── Selection Reply Quote State & Functions ─────────────────────────
+export function setGenAIReplyQuote(quoteText) {
+  if (!quoteText) return;
+  activeReplyQuote = quoteText.trim();
+  renderGenAIReplyQuotePill();
+  if (inputEl) {
+    inputEl.focus();
+  }
+}
+
+export function clearGenAIReplyQuote() {
+  activeReplyQuote = null;
+  replyQuoteContainer = replyQuoteContainer || document.getElementById('genai-reply-quote-container');
+  if (replyQuoteContainer) {
+    replyQuoteContainer.innerHTML = '';
+    replyQuoteContainer.classList.add('hidden');
+  }
+}
+
+function renderGenAIReplyQuotePill() {
+  replyQuoteContainer = replyQuoteContainer || document.getElementById('genai-reply-quote-container');
+  if (!replyQuoteContainer || !activeReplyQuote) return;
+
+  replyQuoteContainer.classList.remove('hidden');
+
+  replyQuoteContainer.innerHTML = `
+    <div class="genai-reply-quote-pill">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="genai-reply-quote-icon">
+        <line x1="4" y1="5" x2="4" y2="19"/>
+        <line x1="9" y1="6" x2="20" y2="6"/>
+        <line x1="9" y1="12" x2="20" y2="12"/>
+        <line x1="9" y1="18" x2="16" y2="18"/>
+      </svg>
+      <span class="genai-reply-quote-text">${escapeHtml(activeReplyQuote)}</span>
+      <button class="genai-reply-quote-close" title="Remove quote" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 11px; height: 11px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+  `;
+
+  const closeBtn = replyQuoteContainer.querySelector('.genai-reply-quote-close');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      clearGenAIReplyQuote();
+    });
+  }
+}
+
+function initGenAIReplySelection() {
+  selectionReplyBtn = document.getElementById('genai-selection-reply-btn');
+  replyQuoteContainer = document.getElementById('genai-reply-quote-container');
+  const messagesContainer = document.getElementById('genai-messages');
+
+  if (!messagesContainer || !selectionReplyBtn) return;
+
+  function hideSelectionReplyBtn() {
+    if (selectionReplyBtn && !selectionReplyBtn.classList.contains('hidden')) {
+      selectionReplyBtn.classList.add('hidden');
+    }
+  }
+
+  function handleSelection() {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) {
+      hideSelectionReplyBtn();
+      return;
+    }
+
+    const text = selection.toString().trim();
+    if (!text) {
+      hideSelectionReplyBtn();
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+    const containerNode = range.commonAncestorContainer;
+    if (!messagesContainer.contains(containerNode)) {
+      hideSelectionReplyBtn();
+      return;
+    }
+
+    const rect = range.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) {
+      hideSelectionReplyBtn();
+      return;
+    }
+
+    let top = rect.top - 42;
+    let left = rect.left + rect.width / 2;
+
+    if (top < 10) {
+      top = rect.bottom + 8;
+    }
+
+    selectionReplyBtn.style.top = `${top}px`;
+    selectionReplyBtn.style.left = `${left}px`;
+    selectionReplyBtn.style.transform = 'translateX(-50%)';
+    selectionReplyBtn.classList.remove('hidden');
+  }
+
+  document.addEventListener('selectionchange', () => {
+    requestAnimationFrame(handleSelection);
+  });
+
+  messagesContainer.addEventListener('scroll', hideSelectionReplyBtn);
+
+  document.addEventListener('pointerdown', (e) => {
+    if (selectionReplyBtn && selectionReplyBtn.contains(e.target)) return;
+    if (messagesContainer && messagesContainer.contains(e.target)) return;
+    hideSelectionReplyBtn();
+  });
+
+  selectionReplyBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const selection = window.getSelection();
+    const text = selection ? selection.toString().trim() : '';
+    if (text) {
+      setGenAIReplyQuote(text);
+      window.getSelection().removeAllRanges();
+    }
+    hideSelectionReplyBtn();
+  });
+}
+
 // ─── Send User Message ───────────────────────────────────────────────
 async function sendUserMessage() {
-  const text = inputEl.value.trim();
-  if (!text || isGenerating) return;
+  const rawText = inputEl.value.trim();
+  if ((!rawText && !activeReplyQuote) || isGenerating) return;
 
   // Intercept send if Smart Context is currently summarizing
   if (window.isSmartContextRunning && window.isSmartContextRunning()) {
@@ -5512,6 +5662,13 @@ async function sendUserMessage() {
         warningPopup.classList.add('hidden');
       }
     }
+  }
+
+  let text = rawText;
+  if (activeReplyQuote) {
+    const systemNote = `[System note: The user highlighted the following from the AI's response: "${activeReplyQuote}"]`;
+    text = rawText ? `${systemNote}\n\n${rawText}` : systemNote;
+    clearGenAIReplyQuote();
   }
 
   inputEl.value = '';
@@ -5748,6 +5905,8 @@ export function initGenAIPanel() {
   };
 
   if (!messagesEl || !inputEl) return;
+
+  initGenAIReplySelection();
 
   loadHistory().then(() => {
     renderMessages();

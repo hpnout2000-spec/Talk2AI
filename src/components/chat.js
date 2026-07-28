@@ -9,6 +9,7 @@ import { characterStore } from '../services/character-store.js';
 import { gameStore } from '../services/game-store.js';
 import { api } from '../services/api.js';
 import { settingsStore } from '../services/settings-store.js';
+import { lorebookStore, idbGet, idbSet } from '../services/lorebook-store.js';
 import { memoryService } from '../services/memory-service.js';
 import {
   renderMarkdown,
@@ -26,7 +27,8 @@ import { perf } from '../utils/perf.js';
 import { groupChatStore } from '../services/group-chat-store.js';
 import { buildGroupApiMessages } from './group-chat-view.js';
 import { generateImageComfyUI } from '../services/comfyui-service.js';
-
+import { initLorebookButtons, renderLorebookEditorList } from './lorebook-ui.js';
+import { parseMessageExamples } from '../utils/message-examples-parser.js';
 // Lazy notify GenAI panel when a response arrives (avoids circular import)
 function notifyGenAI(response, characterName) {
   import('../components/genai-panel.js').then(m => m.notifyGenAIResponse(response, characterName)).catch(() => { });
@@ -144,8 +146,15 @@ let contentDetailsMemory;
 let contentDetailsSummary;
 let contentDetailsHistory;
 let barAutoSummary;
-let btnMakeAutoSummary;
+let btnSummarySettings;
+let summarySettingsDropdown;
+let chkSummaryThinking;
+let selectSummaryLength;
+let selectSummaryMode;
+let btnAutoSummarizeAll;
+let btnAddSummaryChunk;
 let btnRevertAutoSummary;
+let summaryChunksList;
 let autoSummaryRecommendation;
 let btnRecHide;
 let btnRecEnable;
@@ -158,13 +167,19 @@ let currentIndicatorCalcId = 0; // Tracks active token calculation sequence ID t
 
 function getHistorySignature(session) {
   if (!session || !session.messages) return '';
-  
+
+  // History starts after the last summary chunk (or from msg index 3 if no chunks)
+  const KEEP_FIRST = 3;
+  const chunks = session.summaryChunks;
   let messagesToCount = session.messages;
-  if (session.autoSummary && session.autoSummary.lastSummarizedMsgId) {
-    const idx = session.messages.findIndex(m => m.id === session.autoSummary.lastSummarizedMsgId);
+  if (chunks && chunks.length > 0) {
+    const lastChunk = chunks[chunks.length - 1];
+    const idx = session.messages.findIndex(m => m.id === lastChunk.endMsgId);
     if (idx !== -1) {
       messagesToCount = session.messages.slice(idx + 1);
     }
+  } else {
+    messagesToCount = session.messages.slice(KEEP_FIRST);
   }
 
   return messagesToCount
@@ -297,8 +312,15 @@ export function initChat() {
   contentDetailsSummary = document.getElementById('content-details-summary');
   contentDetailsHistory = document.getElementById('content-details-history');
 
-  btnMakeAutoSummary = document.getElementById('btn-make-auto-summary');
+  btnSummarySettings = document.getElementById('btn-summary-settings');
+  summarySettingsDropdown = document.getElementById('summary-settings-dropdown');
+  chkSummaryThinking = document.getElementById('chk-summary-thinking');
+  selectSummaryLength = document.getElementById('select-summary-length');
+  selectSummaryMode = document.getElementById('select-summary-mode');
+  btnAutoSummarizeAll = document.getElementById('btn-auto-summarize-all');
+  btnAddSummaryChunk = document.getElementById('btn-add-summary-chunk');
   btnRevertAutoSummary = document.getElementById('btn-revert-auto-summary');
+  summaryChunksList = document.getElementById('summary-chunks-list');
   autoSummaryRecommendation = document.getElementById('auto-summary-recommendation');
   btnRecHide = document.getElementById('btn-rec-hide');
   btnRecEnable = document.getElementById('btn-rec-enable');
@@ -369,67 +391,187 @@ export function initChat() {
   setupAccordion('header-details-memory', 'content-details-memory');
   setupAccordion('header-details-summary', 'content-details-summary');
   setupAccordion('header-details-history', 'content-details-history');
+  setupAccordion('header-details-lorebooks', 'content-details-lorebooks');
 
-  // Auto Summary Actions
-  if (btnMakeAutoSummary) {
-    btnMakeAutoSummary.addEventListener('click', async (e) => {
+  // ─── Auto Summary: Settings & Add Chunks ──────────────────────────────
+  if (btnSummarySettings && summarySettingsDropdown) {
+    btnSummarySettings.addEventListener('click', (e) => {
+      e.stopPropagation();
+      summarySettingsDropdown.classList.toggle('hidden');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (summarySettingsDropdown && !summarySettingsDropdown.classList.contains('hidden')) {
+        if (!summarySettingsDropdown.contains(e.target) && e.target !== btnSummarySettings) {
+          summarySettingsDropdown.classList.add('hidden');
+        }
+      }
+    });
+  }
+
+  if (chkSummaryThinking) {
+    chkSummaryThinking.addEventListener('change', (e) => {
+      settingsStore.set({ summary_thinking_enabled: e.target.checked });
+    });
+  }
+
+  if (selectSummaryLength) {
+    selectSummaryLength.addEventListener('change', (e) => {
+      settingsStore.set({ summary_length: e.target.value });
+    });
+  }
+
+  if (selectSummaryMode) {
+    selectSummaryMode.addEventListener('change', (e) => {
+      settingsStore.set({ summary_injection_mode: e.target.value });
+    });
+  }
+
+  // Helper: compute the next chunk window and generate a summary chunk
+  async function addSummaryChunk(session, character, silent = false) {
+    const settings = settingsStore.get();
+    const userName = session.user_name || settings.user_name || 'User';
+    const characterName = character.name;
+    const chunkSize = settings.summary_chunk_size || 10;
+    const summaryLength = settings.summary_length || 'default';
+    const enableThinking = settings.summary_thinking_enabled ?? false;
+
+    // First 3 messages are always kept verbatim — never summarized
+    const KEEP_FIRST = 3;
+    // Last 6 messages are always kept verbatim — never summarized
+    const KEEP_LAST = 6;
+
+    const chunks = session.summaryChunks || [];
+    const lastChunk = chunks[chunks.length - 1];
+
+    // Start of next chunk: right after the last summarized message, or from msg index 3
+    let startIndex;
+    if (lastChunk) {
+      const idx = session.messages.findIndex(m => m.id === lastChunk.endMsgId);
+      startIndex = idx !== -1 ? idx + 1 : KEEP_FIRST;
+    } else {
+      startIndex = KEEP_FIRST;
+    }
+
+    // End of available window: exclude last 6 messages
+    const maxEnd = session.messages.length - KEEP_LAST;
+
+    if (startIndex >= maxEnd) {
+      if (!silent) showToast('Not enough new messages to summarize (last 6 are always kept).', 'info');
+      return false;
+    }
+
+    // Take up to chunkSize messages
+    const endIndex = Math.min(startIndex + chunkSize, maxEnd);
+    const newMessages = session.messages.slice(startIndex, endIndex);
+
+    if (newMessages.length === 0) {
+      if (!silent) showToast('No messages available for a new summary chunk.', 'info');
+      return false;
+    }
+
+    const summaryText = await api.generateChatSummary('', newMessages, userName, characterName, {
+      summaryLength,
+      enableThinking
+    });
+
+    const newChunk = {
+      id: Date.now().toString() + '_' + Math.random().toString(36).substring(2, 6),
+      text: summaryText.trim(),
+      startMsgId: session.messages[startIndex].id,
+      endMsgId: session.messages[endIndex - 1].id
+    };
+
+    if (!session.summaryChunks) session.summaryChunks = [];
+    session.summaryChunks.push(newChunk);
+
+    await chatStore.saveSession(session);
+    return true;
+  }
+
+  if (btnAutoSummarizeAll) {
+    btnAutoSummarizeAll.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const session = appState.currentChat;
+      const character = appState.currentCharacter;
+      if (!session || !character) return;
+
+      if (!session.messages || session.messages.length === 0) {
+        showToast('No messages to summarize.', 'info');
+        return;
+      }
+
+      // Calculate context breakdown and summary needs based on 70% threshold
+      const breakdown = await computeContextAndTrimHistory(character, session);
+      let needs = calculateSummaryNeeds(session, breakdown.maxContext, breakdown.baseTokens);
+
+      if (!needs.needsMore) {
+        const usedPct = Math.round((breakdown.baseTokens / breakdown.maxContext) * 100);
+        showToast(`Context usage is ${usedPct}% (below 70% threshold). No summary needed!`, 'info');
+        return;
+      }
+
+      btnAutoSummarizeAll.disabled = true;
+      if (btnAddSummaryChunk) btnAddSummaryChunk.disabled = true;
+      if (btnRevertAutoSummary) btnRevertAutoSummary.disabled = true;
+
+      let createdCount = 0;
+      try {
+        while (needs.needsMore) {
+          btnAutoSummarizeAll.textContent = `… ${needs.doneCount}/${needs.totalNeeded}`;
+          const ok = await addSummaryChunk(session, character, true);
+          if (!ok) break;
+          createdCount++;
+
+          const freshBreakdown = await computeContextAndTrimHistory(character, session);
+          needs = calculateSummaryNeeds(session, freshBreakdown.maxContext, freshBreakdown.baseTokens);
+          await updateContextIndicator(false, true);
+          populateContextDetailsModal(session, freshBreakdown);
+        }
+        if (createdCount > 0) {
+          showToast(`Generated ${createdCount} summary chunk(s)! Context usage reduced below 70%.`, 'success');
+        }
+      } catch (err) {
+        console.error('Failed auto summarization loop:', err);
+        showToast('Auto summarization failed: ' + err.message, 'error');
+      } finally {
+        btnAutoSummarizeAll.disabled = false;
+        if (btnAddSummaryChunk) btnAddSummaryChunk.disabled = false;
+        if (btnRevertAutoSummary) btnRevertAutoSummary.disabled = false;
+        populateContextDetailsModal(session);
+      }
+    });
+  }
+
+  if (btnAddSummaryChunk) {
+    btnAddSummaryChunk.addEventListener('click', async (e) => {
       e.stopPropagation();
       const session = appState.currentChat;
       const character = appState.currentCharacter;
       if (!session || !character) return;
 
       if (session.messages.length === 0) {
-        showToast("No messages to summarize.", "info");
+        showToast('No messages to summarize.', 'info');
         return;
       }
 
-      let previousSummary = "";
-      let newMessages = [];
-      let startIndex = 0;
-      if (session.autoSummary && session.autoSummary.text && session.autoSummary.lastSummarizedMsgId) {
-        previousSummary = session.autoSummary.text;
-        const idx = session.messages.findIndex(m => m.id === session.autoSummary.lastSummarizedMsgId);
-        if (idx !== -1) {
-          startIndex = idx + 1;
-        }
-      }
-
-      const endIndex = session.messages.length - 6;
-
-      if (endIndex <= startIndex) {
-        showToast("Not enough new messages to summarize (keeping 6 recent).", "info");
-        return;
-      }
-
-      newMessages = session.messages.slice(startIndex, endIndex);
-
-      const originalBtnText = btnMakeAutoSummary.textContent;
-      btnMakeAutoSummary.disabled = true;
-      btnMakeAutoSummary.textContent = "Summarizing...";
+      const originalText = btnAddSummaryChunk.textContent;
+      btnAddSummaryChunk.disabled = true;
+      btnAddSummaryChunk.textContent = '…';
 
       try {
-        const settings = settingsStore.get();
-        const userName = session.user_name || settings.user_name || 'User';
-        const characterName = character.name;
-
-        const summaryText = await api.generateChatSummary(previousSummary, newMessages, userName, characterName);
-
-        session.autoSummary = {
-          text: summaryText.trim(),
-          lastSummarizedMsgId: session.messages[endIndex - 1].id
-        };
-
-        await chatStore.saveSession(session);
-        showToast("Auto Summary updated!", "success");
-
-        await updateContextIndicator(false, true);
-        populateContextDetailsModal(session);
+        const ok = await addSummaryChunk(session, character, false);
+        if (ok) {
+          showToast('Summary chunk added!', 'success');
+          await updateContextIndicator(false, true);
+          populateContextDetailsModal(session);
+        }
       } catch (err) {
-        console.error("Failed to generate auto summary:", err);
-        showToast("Summarization failed: " + err.message, "error");
+        console.error('Failed to add summary chunk:', err);
+        showToast('Summarization failed: ' + err.message, 'error');
       } finally {
-        btnMakeAutoSummary.disabled = false;
-        btnMakeAutoSummary.textContent = originalBtnText;
+        btnAddSummaryChunk.disabled = false;
+        btnAddSummaryChunk.textContent = originalText;
       }
     });
   }
@@ -440,12 +582,12 @@ export function initChat() {
       const session = appState.currentChat;
       if (!session) return;
 
-      const confirmed = await showConfirm('Revert Auto Summary', 'Are you sure you want to delete the summary and restore the full message history in context?');
+      const confirmed = await showConfirm('Revert Auto Summary', 'Are you sure you want to delete all summary chunks and restore the full message history in context?');
       if (!confirmed) return;
 
-      session.autoSummary = null;
+      session.summaryChunks = [];
       await chatStore.saveSession(session);
-      showToast("Auto Summary reverted.", "info");
+      showToast('All summary chunks removed.', 'info');
 
       await updateContextIndicator(false, true);
       populateContextDetailsModal(session);
@@ -472,7 +614,7 @@ export function initChat() {
       if (!session || !character) return;
 
       if (session.messages.length === 0) {
-        showToast("No messages to summarize.", "info");
+        showToast('No messages to summarize.', 'info');
         return;
       }
 
@@ -480,47 +622,17 @@ export function initChat() {
         autoSummaryRecommendation.classList.add('hidden');
       }
 
-      showToast("Summarizing chat history...", "info");
+      showToast('Summarizing chat history...', 'info');
 
       try {
-        const settings = settingsStore.get();
-        const userName = session.user_name || settings.user_name || 'User';
-        const characterName = character.name;
-
-        let previousSummary = "";
-        let newMessages = [];
-        let startIndex = 0;
-        if (session.autoSummary && session.autoSummary.text && session.autoSummary.lastSummarizedMsgId) {
-          previousSummary = session.autoSummary.text;
-          const idx = session.messages.findIndex(m => m.id === session.autoSummary.lastSummarizedMsgId);
-          if (idx !== -1) {
-            startIndex = idx + 1;
-          }
+        const ok = await addSummaryChunk(session, character);
+        if (ok) {
+          showToast('Auto Summary enabled!', 'success');
+          await updateContextIndicator(false, true);
         }
-
-        const endIndex = session.messages.length - 6;
-
-        if (endIndex <= startIndex) {
-          showToast("Not enough new messages to summarize (keeping 6 recent).", "info");
-          return;
-        }
-
-        newMessages = session.messages.slice(startIndex, endIndex);
-
-        const summaryText = await api.generateChatSummary(previousSummary, newMessages, userName, characterName);
-
-        session.autoSummary = {
-          text: summaryText.trim(),
-          lastSummarizedMsgId: session.messages[endIndex - 1].id
-        };
-
-        await chatStore.saveSession(session);
-        showToast("Auto Summary enabled!", "success");
-
-        await updateContextIndicator(false, true);
       } catch (err) {
-        console.error("Failed to enable auto summary:", err);
-        showToast("Failed to generate summary: " + err.message, "error");
+        console.error('Failed to enable auto summary:', err);
+        showToast('Failed to generate summary: ' + err.message, 'error');
       }
     });
   }
@@ -643,14 +755,24 @@ export function initChat() {
   const chatImagegenToggleCheck = document.getElementById('chat-imagegen-toggle-check');
 
   if (btnChatPlus && chatPlusPopover) {
+    const chatPlusSlider = document.getElementById('chat-plus-slider');
+    const btnChatPlusLorebooks = document.getElementById('btn-chat-plus-lorebooks');
+    const btnChatLorebooksBack = document.getElementById('btn-chat-lorebooks-back');
+    const btnChatLorebooksManage = document.getElementById('btn-chat-lorebooks-manage');
+
     btnChatPlus.addEventListener('click', (e) => {
       e.stopPropagation();
       const isHidden = chatPlusPopover.classList.contains('hidden');
       if (isHidden) {
         const enabled = settingsStore.get().comfyui_enabled;
         if (chatImagegenToggleCheck) chatImagegenToggleCheck.checked = !!enabled;
+        if (chatPlusSlider) chatPlusSlider.style.transform = 'translateX(0)';
         chatPlusPopover.classList.remove('hidden');
         if (inputSettingsPopover) inputSettingsPopover.classList.add('hidden');
+        
+        // Calculate initial height based on main panel
+        const mainPanel = document.getElementById('chat-plus-main');
+        if (mainPanel) chatPlusPopover.style.height = mainPanel.offsetHeight + 'px';
       } else {
         chatPlusPopover.classList.add('hidden');
       }
@@ -659,9 +781,142 @@ export function initChat() {
     document.addEventListener('click', (e) => {
       if (chatPlusPopover && !chatPlusPopover.contains(e.target) && (!btnChatPlus || !btnChatPlus.contains(e.target))) {
         chatPlusPopover.classList.add('hidden');
+        if (chatPlusSlider) chatPlusSlider.style.transform = 'translateX(0)';
       }
     });
+
+    const updateChatPlusHeight = (targetPageId) => {
+      if (!chatPlusPopover) return;
+      const targetEl = document.getElementById(targetPageId);
+      if (targetEl) {
+        chatPlusPopover.style.height = targetEl.offsetHeight + 'px';
+      }
+    };
+
+    if (btnChatPlusLorebooks && chatPlusSlider) {
+      btnChatPlusLorebooks.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        chatPlusSlider.style.transform = 'translateX(-50%)';
+        await window.renderChatLorebooksList();
+        updateChatPlusHeight('chat-plus-lorebooks-view');
+      });
+    }
+    
+    if (btnChatLorebooksBack && chatPlusSlider) {
+      btnChatLorebooksBack.addEventListener('click', (e) => {
+        e.stopPropagation();
+        chatPlusSlider.style.transform = 'translateX(0)';
+        updateChatPlusHeight('chat-plus-main');
+      });
+    }
+
+    if (btnChatLorebooksManage) {
+      btnChatLorebooksManage.addEventListener('click', (e) => {
+        e.stopPropagation();
+        chatPlusPopover.classList.add('hidden');
+        const modal = document.getElementById('lorebook-editor-modal');
+        if (modal) {
+          modal.classList.remove('hidden');
+          modal.style.display = 'flex';
+          initLorebookButtons();
+          renderLorebookEditorList();
+        }
+      });
+    }
+
+    const btnLorebookModalClose = document.getElementById('btn-lorebook-modal-close');
+    if (btnLorebookModalClose) {
+      btnLorebookModalClose.addEventListener('click', () => {
+        const modal = document.getElementById('lorebook-editor-modal');
+        if (modal) {
+          modal.classList.add('hidden');
+          modal.style.display = 'none';
+        }
+      });
+    }
   }
+
+  // Define render functions on window so they can be called easily
+  window.renderChatLorebooksList = async function() {
+    const container = document.getElementById('chat-lorebooks-list');
+    if (!container) return;
+    
+    const allBooks = await lorebookStore.load();
+    const favBooks = allBooks.filter(b => b.favorite);
+    
+    container.innerHTML = '';
+    
+    if (favBooks.length === 0) {
+      container.innerHTML = '<div style="padding: 12px; text-align: center; color: var(--text-tertiary); font-size: 12px;">No favorite lorebooks.</div>';
+      return;
+    }
+    const activeSessionId = (typeof chatStore !== 'undefined' && chatStore.getCurrentSession()) ? chatStore.getCurrentSession().id : 'default';
+    const savedState = await idbGet(`llmchat_active_lorebooks_${activeSessionId}`);
+    const activeState = savedState ? JSON.parse(savedState) : {};
+    
+    favBooks.forEach(book => {
+      const isActive = !!activeState[book.id];
+      
+      const btn = document.createElement('button');
+      btn.className = 'dropdown-option';
+      btn.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; width: 100%; text-align: left;';
+      btn.innerHTML = `
+        <span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
+          <span style="font-weight: 500; font-size: var(--text-sm); color: var(--text-primary);">${book.name}</span>
+          <span style="font-size: 11px; color: var(--text-tertiary);">${book.entries?.length || 0} entries</span>
+        </span>
+        <label class="toggle-switch small" style="pointer-events: none; flex-shrink: 0;">
+          <input type="checkbox" ${isActive ? 'checked' : ''} />
+          <span class="toggle-slider"></span>
+        </label>
+      `;
+      
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const activeSessionId = (typeof chatStore !== 'undefined' && chatStore.getCurrentSession()) ? chatStore.getCurrentSession().id : 'default';
+        const newState = !isActive;
+        activeState[book.id] = newState;
+        try {
+          await idbSet(`llmchat_active_lorebooks_${activeSessionId}`, JSON.stringify(activeState));
+        } catch (e) {
+          console.warn("Could not save active lorebooks to IndexedDB", e);
+        }
+        window.renderChatLorebooksList();
+        window.syncLorebookIndicators();
+      });
+      
+      container.appendChild(btn);
+    });
+  };
+
+  window.syncLorebookIndicators = async function() {
+    const container = document.getElementById('active-lorebooks-container');
+    if (!container) return;
+    
+    const allBooks = typeof lorebookStore !== 'undefined' ? lorebookStore.getAll() : [];
+    const activeSessionId = (typeof chatStore !== 'undefined' && chatStore.getCurrentSession()) ? chatStore.getCurrentSession().id : 'default';
+    const savedState = await idbGet(`llmchat_active_lorebooks_${activeSessionId}`);
+    const activeState = savedState ? JSON.parse(savedState) : {};
+    
+    container.innerHTML = '';
+    
+    allBooks.forEach(book => {
+      if (activeState[book.id]) {
+        const el = document.createElement('div');
+        // Wrap in a div that looks identical to thinking-effort-wrapper
+        el.className = 'thinking-effort-wrapper'; 
+        el.style.marginLeft = '4px';
+        el.title = `Lorebook ON: ${book.name}`;
+        el.innerHTML = `
+          <button class="btn-thinking-effort" style="cursor: default; padding-right: 12px; display: flex; align-items: center; gap: 6px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;flex-shrink:0;"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+            <span class="thinking-btn-label" style="display: block;">${escapeHtml(book.name)}</span>
+          </button>
+        `;
+        container.appendChild(el);
+      }
+    });
+  };
 
     btnChatToggleImagegen.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1136,6 +1391,7 @@ export function startNewChat(character = null) {
     appState.currentChat = session;
     clearMessages();
     renderIndicators();
+    if (window.syncLorebookIndicators) window.syncLorebookIndicators();
   }
 
   // Show first message if character has one
@@ -1178,6 +1434,16 @@ export function startNewChat(character = null) {
 export function loadChat(session) {
   if (!session) return;
   if (appState.currentCharacter?.id !== session.character_id) return;
+  if (!session.summaryChunks && session.summary_chunks) {
+    session.summaryChunks = session.summary_chunks;
+  }
+  if (!session.summary_chunks && session.summaryChunks) {
+    session.summary_chunks = session.summaryChunks;
+  }
+  if (!session.summaryChunks) {
+    session.summaryChunks = [];
+    session.summary_chunks = [];
+  }
   appState.currentChat = session;
   chatStore.setCurrentSession(session);
   clearMessages();
@@ -1204,6 +1470,7 @@ export function loadChat(session) {
   scrollToBottom();
   updateChatHistory();
   window.dispatchEvent(new CustomEvent('genai-active-skills-changed'));
+  if (window.syncLorebookIndicators) window.syncLorebookIndicators();
 }
 
 // ─── Select Character ───────────────────────────────────────────────
@@ -1569,29 +1836,102 @@ async function sendMessage() {
           displayContent += '*';
         }
 
-        let html = '';
-        const showThinking = currentIsInThinking || currentThinking;
-        if (showThinking) {
-          html += createThinkingBlockHTML(currentThinking, currentIsInThinking, settings.glm47_support, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort);
-        }
-        const cleaned = stripJsonBlocks(displayContent, true);
-        let formatted = renderMarkdown(cleaned);
-        formatted = processCharacterMentions(formatted);
-        html += wrapWordsInSpans(formatted);
+        const isNewAnimation = settings.new_streaming_animation;
+        const streamingSpeed = settings.streaming_speed || 45;
 
-        if (!html.trim() && isStreaming) {
-          html = `<span class="chat-working-placeholder">Working...</span>`;
-        }
+        // Helper: renders content into contentEl using morphdom
+        const renderChatContent = (dc, thinking, isInThinking, revealProgress) => {
+          let html = '';
+          const showThinking = isInThinking || thinking;
+          if (showThinking) {
+            html += createThinkingBlockHTML(thinking, isInThinking, settings.glm47_support, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort);
+          }
+          const cleaned = stripJsonBlocks(dc, true);
+          let formatted = renderMarkdown(cleaned);
+          formatted = processCharacterMentions(formatted);
 
-        const temp = document.createElement('div');
-        temp.className = contentEl.className;
-        temp.innerHTML = html;
+          if (isNewAnimation) {
+            html += wrapWordsInSpans(formatted, true, revealProgress, streamingSpeed);
+            contentEl._rawCharCount = wrapWordsInSpans.lastTotalChars || 0;
+          } else {
+            html += wrapWordsInSpans(formatted);
+          }
 
-        morphdom(contentEl, temp, morphOptions);
+          if (!html.trim() && isStreaming) {
+            html = `<span class="chat-working-placeholder">Working...</span>`;
+          }
 
-        if (!currentIsInThinking) {
-          getOrCreateChatCursor();
-          repositionChatCursor(contentEl);
+          const temp = document.createElement('div');
+          temp.className = contentEl.className;
+          temp.innerHTML = html;
+
+          morphdom(contentEl, temp, morphOptions);
+
+          if (!isInThinking) {
+            getOrCreateChatCursor();
+            repositionChatCursor(contentEl);
+          }
+        };
+
+        if (isNewAnimation) {
+          // Always store latest state so animateReveal can access fresh data
+          contentEl._latestState = { displayContent, currentThinking, currentIsInThinking };
+
+          if (!contentEl._revealInterval) {
+            contentEl._revealProgress = contentEl._revealProgress || 0;
+            contentEl._lastRevealTime = performance.now();
+            contentEl.classList.remove('stream-finished');
+
+            const animateReveal = () => {
+              if (!contentEl || !contentEl.isConnected) {
+                contentEl._revealInterval = null;
+                return;
+              }
+
+              const rawLimit = contentEl._rawCharCount || 0;
+              const isCurrentlyStreaming = isStreaming;
+
+              const now = performance.now();
+              const deltaMs = now - contentEl._lastRevealTime;
+              contentEl._lastRevealTime = now;
+
+              const spd = settings.streaming_speed || 45;
+              const charsToAdd = deltaMs * (spd / 1000);
+              const oldProgress = contentEl._revealProgress;
+              contentEl._revealProgress = Math.min(rawLimit, contentEl._revealProgress + charsToAdd);
+
+              contentEl.style.setProperty('--reveal-progress', contentEl._revealProgress + 'ch');
+
+              if (Math.floor(contentEl._revealProgress) > Math.floor(oldProgress)) {
+                // Re-render using the LATEST stored state (not stale closure)
+                const state = contentEl._latestState;
+                if (state) {
+                  renderChatContent(state.displayContent, state.currentThinking, state.currentIsInThinking, contentEl._revealProgress);
+                }
+              }
+
+              if (isCurrentlyStreaming || contentEl._revealProgress < rawLimit) {
+                contentEl._revealInterval = requestAnimationFrame(animateReveal);
+              } else {
+                contentEl.style.setProperty('--reveal-progress', (rawLimit + 20) + 'ch');
+                contentEl.classList.add('stream-finished');
+                const revealSpans = contentEl.querySelectorAll('.word-reveal');
+                revealSpans.forEach(span => span.classList.add('revealed'));
+                contentEl._revealInterval = null;
+
+                if (contentEl._onRevealFinish) {
+                  contentEl._onRevealFinish();
+                  contentEl._onRevealFinish = null;
+                }
+              }
+            };
+            contentEl._revealInterval = requestAnimationFrame(animateReveal);
+          }
+
+          // Render immediately with current progress
+          renderChatContent(displayContent, currentThinking, currentIsInThinking, contentEl._revealProgress || 0);
+        } else {
+          renderChatContent(displayContent, currentThinking, currentIsInThinking, 0);
         }
       } catch (err) {
         console.error("STREAM CHUNK ERROR:", err);
@@ -1622,118 +1962,133 @@ async function sendMessage() {
           thinkingActive = false;
           if (thinkingTime === 0) thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
         }
-        const useGLM = settings.glm47_support && !/<(?:think|thought|reasoning|\|channel>thought)/i.test(fullResponse);
-        let parsedThinking, parsedContent;
-        try {
-          if (thinkingText) {
-            parsedThinking = thinkingText;
-            let cleanResponseForParsing = fullResponse;
-            if (settings.force_reasoning && settings.reasoning_tag_open && cleanResponseForParsing.startsWith(settings.reasoning_tag_open)) {
-              cleanResponseForParsing = cleanResponseForParsing.substring(settings.reasoning_tag_open.length);
-            }
-            parsedContent = cleanResponseForParsing;
-          } else {
-            const parsed = useGLM ? parseGLMThinking(fullResponse) : parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
-            parsedThinking = parsed.thinking;
-            parsedContent = parsed.content;
-          }
 
-          removeChatCursor();
-          let finalHtml = '';
-          if (parsedThinking) {
-            if (thinkingTime === 0) thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
-            finalHtml += createThinkingBlockHTML(parsedThinking, false, settings.glm47_support, thinkingTime, settings.reasoning_effort);
-          }
-          const cleaned = stripJsonBlocks(parsedContent, false);
-          let formatted = renderMarkdown(cleaned);
-          formatted = processCharacterMentions(formatted);
-          finalHtml += wrapWordsInSpans(formatted);
-
-          const tempFinal = document.createElement('div');
-          tempFinal.className = contentEl.className;
-          tempFinal.innerHTML = finalHtml;
-
-          perf.start('morphdom-final-patch');
-          morphdom(contentEl, tempFinal, morphOptions);
-          perf.end('morphdom-final-patch');
-        } catch (err) {
-          console.error("ON DONE ERROR:", err);
-          showToast("Final UI render error: " + err.message, "error");
-          const fallback = parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
-          parsedThinking = fallback.thinking;
-          parsedContent = fallback.content;
-        }
-
-        let originalContent = parsedContent;
-
-        let translatedContent = null;
-
-        // Auto-translation (AI response)
-        if (settings.auto_translate && originalContent) {
-          headerCharStatus.textContent = 'Translating...';
-          headerCharStatus.classList.add('generating');
-          translatedContent = await performStreamingTranslation(contentEl, originalContent, settings.target_language);
-        }
-
-        chatStore.updateLastAssistantMessage(originalContent, parsedThinking, session, translatedContent, thinkingTime);
-        await chatStore.saveSession(session);
-        updateContextIndicator();
-
-        if (appState.currentCharacter?.id === character.id) {
-          appState.isGenerating = false;
-          appState.abortController = null;
-          btnSend.classList.remove('hidden');
-          btnStop.classList.add('hidden');
-          headerCharStatus.textContent = 'Ready';
-          headerCharStatus.classList.remove('generating');
-          updateChatHistory();
-          updateRegenerateVisibility();
-          scrollToBottom();
-        }
-
-        if (originalContent) {
-          // Strict sequential execution IIFE to respect single-concurrency LLM limits
-          (async () => {
-            try {
-              // 1. Generate continuation options replies first (High Priority UI)
-              await generateContinuationOptions(character, session, msgElement);
-            } catch (e) {
-              console.warn('Failed to generate suggestions:', e);
-            }
-
-            try {
-              // 2. Process Image Gen suggestion popup (High Priority UI)
-              const freshSettings = settingsStore.get();
-              if (freshSettings.comfyui_enabled && freshSettings.comfyui_auto_chat) {
-                await triggerAutomaticImageGeneration(character, session, originalContent);
-              } else if (freshSettings.comfyui_enabled && !freshSettings.comfyui_auto_chat) {
-                await triggerImageGenerationSuggestion(character, session, originalContent, msgElement);
+        const finalizeUI = async () => {
+          const useGLM = settings.glm47_support && !/<(?:think|thought|reasoning|\|channel>thought)/i.test(fullResponse);
+          let parsedThinking, parsedContent;
+          try {
+            if (thinkingText) {
+              parsedThinking = thinkingText;
+              let cleanResponseForParsing = fullResponse;
+              if (settings.force_reasoning && settings.reasoning_tag_open && cleanResponseForParsing.startsWith(settings.reasoning_tag_open)) {
+                cleanResponseForParsing = cleanResponseForParsing.substring(settings.reasoning_tag_open.length);
               }
-            } catch (e) {
-              console.warn('Failed to handle image generation:', e);
+              parsedContent = cleanResponseForParsing;
+            } else {
+              const parsed = useGLM ? parseGLMThinking(fullResponse) : parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
+              parsedThinking = parsed.thinking;
+              parsedContent = parsed.content;
             }
 
-            try {
-              // 3. Extract and save memory (Low Priority Background)
-              await extractAndShowMemory(character, session, content, originalContent, msgElement);
-            } catch (e) {
-              console.warn('Failed to extract memory:', e);
+            removeChatCursor();
+            let finalHtml = '';
+            if (parsedThinking) {
+              if (thinkingTime === 0) thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
+              finalHtml += createThinkingBlockHTML(parsedThinking, false, settings.glm47_support, thinkingTime, settings.reasoning_effort);
+            }
+            const cleaned = stripJsonBlocks(parsedContent, false);
+            let formatted = renderMarkdown(cleaned);
+            formatted = processCharacterMentions(formatted);
+            
+            const isNewAnimation = settings.new_streaming_animation;
+            if (isNewAnimation) {
+              finalHtml += wrapWordsInSpans(formatted, true, Infinity, settings.streaming_speed || 45);
+            } else {
+              finalHtml += wrapWordsInSpans(formatted);
             }
 
-            try {
-              // 4. Update indicators status (Low Priority Background)
-              await triggerIndicatorUpdate(character, session, content, originalContent);
-            } catch (e) {
-              console.warn('Failed to update indicators:', e);
-            }
+            const tempFinal = document.createElement('div');
+            tempFinal.className = contentEl.className;
+            tempFinal.innerHTML = finalHtml;
 
-            // 5. Notify GenAI (for vibe plot mode)
-            notifyGenAI(originalContent, character.name);
-          })();
+            perf.start('morphdom-final-patch');
+            morphdom(contentEl, tempFinal, morphOptions);
+            perf.end('morphdom-final-patch');
+          } catch (err) {
+            console.error("ON DONE ERROR:", err);
+            showToast("Final UI render error: " + err.message, "error");
+            const fallback = parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
+            parsedThinking = fallback.thinking;
+            parsedContent = fallback.content;
+          }
+
+          let originalContent = parsedContent;
+
+          let translatedContent = null;
+
+          // Auto-translation (AI response)
+          if (settings.auto_translate && originalContent) {
+            headerCharStatus.textContent = 'Translating...';
+            headerCharStatus.classList.add('generating');
+            translatedContent = await performStreamingTranslation(contentEl, originalContent, settings.target_language);
+          }
+
+          chatStore.updateLastAssistantMessage(originalContent, parsedThinking, session, translatedContent, thinkingTime);
+          await chatStore.saveSession(session);
+          updateContextIndicator();
+
+          if (appState.currentCharacter?.id === character.id) {
+            appState.isGenerating = false;
+            appState.abortController = null;
+            btnSend.classList.remove('hidden');
+            btnStop.classList.add('hidden');
+            headerCharStatus.textContent = 'Ready';
+            headerCharStatus.classList.remove('generating');
+            updateChatHistory();
+            updateRegenerateVisibility();
+            scrollToBottom();
+          }
+
+          if (originalContent) {
+            // Strict sequential execution IIFE to respect single-concurrency LLM limits
+            (async () => {
+              try {
+                // 1. Generate continuation options replies first (High Priority UI)
+                await generateContinuationOptions(character, session, msgElement);
+              } catch (e) {
+                console.warn('Failed to generate suggestions:', e);
+              }
+
+              try {
+                // 2. Process Image Gen suggestion popup (High Priority UI)
+                const freshSettings = settingsStore.get();
+                if (freshSettings.comfyui_enabled && freshSettings.comfyui_auto_chat) {
+                  await triggerAutomaticImageGeneration(character, session, originalContent);
+                } else if (freshSettings.comfyui_enabled && !freshSettings.comfyui_auto_chat) {
+                  await triggerImageGenerationSuggestion(character, session, originalContent, msgElement);
+                }
+              } catch (e) {
+                console.warn('Failed to handle image generation:', e);
+              }
+
+              try {
+                // 3. Extract and save memory (Low Priority Background)
+                await extractAndShowMemory(character, session, content, originalContent, msgElement);
+              } catch (e) {
+                console.warn('Failed to extract memory:', e);
+              }
+
+              try {
+                // 4. Update indicators status (Low Priority Background)
+                await triggerIndicatorUpdate(character, session, content, originalContent);
+              } catch (e) {
+                console.warn('Failed to update indicators:', e);
+              }
+
+              // 5. Notify GenAI (for vibe plot mode)
+              notifyGenAI(originalContent, character.name);
+            })();
+          }
+
+          window.dispatchEvent(new CustomEvent('genai-chat-response-finished'));
+          checkConnection();
+        };
+
+        if (settings.new_streaming_animation && contentEl._revealInterval) {
+          contentEl._onRevealFinish = finalizeUI;
+        } else {
+          await finalizeUI();
         }
-
-        window.dispatchEvent(new CustomEvent('genai-chat-response-finished'));
-        checkConnection();
       },
       // onError
       (err) => {
@@ -1809,6 +2164,69 @@ async function extractAndShowMemory(character, session, userMessage, assistantRe
   }
 }
 
+// ─── Calculate Summary Needs Based on 70% Context Usage ──────────────
+
+export function calculateSummaryNeeds(session, maxContext, fullContextTokens, unsummarizedMessages = []) {
+  const settings = settingsStore.get();
+  const chunkSize = settings.summary_chunk_size || 10;
+  const summaryLength = settings.summary_length || 'default';
+  const KEEP_LAST = 6;
+  const doneCount = session.summaryChunks ? session.summaryChunks.length : 0;
+
+  if (!session || !session.messages || session.messages.length === 0) {
+    return { doneCount, totalNeeded: doneCount, needsMore: false, targetLimit: Math.round(0.70 * maxContext) };
+  }
+
+  const targetLimit = 0.70 * maxContext;
+
+  // If full unsummarized context is ALREADY <= 70% of maxContext, no extra summaries needed!
+  if (fullContextTokens <= targetLimit) {
+    return { doneCount, totalNeeded: doneCount, needsMore: false, targetLimit: Math.round(targetLimit) };
+  }
+
+  // Calculate how many summary chunks are required to bring fullContextTokens <= 70%
+  let simulatedTokens = fullContextTokens;
+  let additionalChunks = 0;
+  let currIdx = 0;
+  const maxEndIdx = Math.max(0, unsummarizedMessages.length - KEEP_LAST);
+
+  const estSummaryTokens = summaryLength === 'short' ? 120 : (summaryLength === 'long' ? 350 : 200);
+
+  while (simulatedTokens > targetLimit && currIdx < maxEndIdx) {
+    const endIdx = Math.min(currIdx + chunkSize, maxEndIdx);
+    const batch = unsummarizedMessages.slice(currIdx, endIdx);
+    if (batch.length === 0) break;
+
+    // Calculate raw tokens of this batch of messages
+    let batchRawTokens = 0;
+    for (const m of batch) {
+      const text = m.role === 'user' ? (m.translated_content || m.content) : (m.original_text || m.content);
+      const msgKey = `msg_${m.id}_${(text || '').length}`;
+      const cached = tokenCountCache.get(msgKey);
+      batchRawTokens += (cached ? cached.value : Math.ceil((text || '').length / 3.3)) + 4;
+    }
+
+    // Token reduction for creating this summary chunk
+    const netSavings = batchRawTokens - estSummaryTokens;
+    if (netSavings <= 0) {
+      // Summarizing doesn't save tokens, stop loop
+      break;
+    }
+
+    simulatedTokens -= netSavings;
+    additionalChunks++;
+    currIdx = endIdx;
+  }
+
+  const totalNeeded = doneCount + additionalChunks;
+  return {
+    doneCount,
+    totalNeeded,
+    needsMore: doneCount < totalNeeded,
+    targetLimit: Math.round(targetLimit)
+  };
+}
+
 // ─── Build API Messages ─────────────────────────────────────────────
 
 // ─── Compute Context And Trim History (Sliding Window) ──────────────
@@ -1873,8 +2291,21 @@ async function computeContextAndTrimHistory(character, session, signal = null) {
     }
   }
 
-  if (character.message_examples && character.message_examples.trim()) {
-    systemBasePure += `\n\nCharacter must talk in this style: ${character.message_examples.trim()}`;
+  const exMode = settings.example_messages_mode || 'chat';
+  let exampleChatMsgs = [];
+  let exampleSystemText = '';
+
+  if (character.message_examples && character.message_examples.trim() && exMode !== 'off') {
+    const parsedEx = parseMessageExamples(character.message_examples, userName, character.name);
+    if (exMode === 'chat') {
+      exampleChatMsgs = parsedEx.messages;
+    } else if (exMode === 'system') {
+      exampleSystemText = parsedEx.formattedSystemText;
+    }
+  }
+
+  if (exampleSystemText) {
+    systemBasePure += `\n\n${exampleSystemText}`;
   }
 
   systemBasePure = systemBasePure.replace(/\{\{user\}\}/gi, userName);
@@ -1923,38 +2354,83 @@ async function computeContextAndTrimHistory(character, session, signal = null) {
   }
   const systemTokens = systemTokensObj.value;
 
-  // 5. Count tokens for Auto Summary
-  let summaryTokens = 0;
+  // 5. Count tokens for Summary Chunks + pinned first 3 messages
+  const KEEP_FIRST = 3;
+  const summaryChunks = session.summaryChunks || [];
+  const injectionMode = settings.summary_injection_mode || 'system';
+
   let summaryText = "";
-  let summaryTokensObj = { value: 0, precise: true };
-  if (session.autoSummary && session.autoSummary.text) {
-    summaryText = session.autoSummary.text;
-    const summaryKey = `sum_${session.id}_${summaryText.length}`;
-    summaryTokensObj = tokenCountCache.get(summaryKey);
-    if (summaryTokensObj === undefined) {
-      summaryTokensObj = await api.countTokensDetailed(`[Auto Summary of previous conversation:\n${summaryText}]`, signal);
-      tokenCountCache.set(summaryKey, summaryTokensObj);
+  if (summaryChunks.length > 0 && injectionMode === 'system') {
+    const lines = summaryChunks.map((c, idx) => `Event ${idx + 1}: ${c.text}`);
+    summaryText = `[Chat Summary]\n${lines.join('\n\n')}`;
+  }
+
+  // Count tokens for summary chunks
+  let summaryTokens = 0;
+  let summaryTokensPrecise = true;
+  if (summaryChunks.length > 0) {
+    if (injectionMode === 'system') {
+      const chunkKey = `summary_sys_${session.id}_${summaryText.length}`;
+      let tokenObj = tokenCountCache.get(chunkKey);
+      if (tokenObj === undefined) {
+        tokenObj = await api.countTokensDetailed(`\n\n${summaryText}`, signal);
+        tokenCountCache.set(chunkKey, tokenObj);
+      }
+      summaryTokens = tokenObj.value;
+      if (!tokenObj.precise) summaryTokensPrecise = false;
+    } else {
+      for (let idx = 0; idx < summaryChunks.length; idx++) {
+        const chunk = summaryChunks[idx];
+        const chunkContent = `[Chat Summary - Event ${idx + 1}:\n${chunk.text}]`;
+        const chunkKey = `chunk_hist_${chunk.id}_${chunk.text.length}`;
+        let chunkTokensObj = tokenCountCache.get(chunkKey);
+        if (chunkTokensObj === undefined) {
+          chunkTokensObj = await api.countTokensDetailed(chunkContent, signal);
+          tokenCountCache.set(chunkKey, chunkTokensObj);
+        }
+        summaryTokens += chunkTokensObj.value + 4;
+        if (!chunkTokensObj.precise) summaryTokensPrecise = false;
+      }
     }
   }
-  summaryTokens = summaryTokensObj.value;
+  const summaryTokensObj = { value: summaryTokens, precise: summaryTokensPrecise };
+
+  // Count tokens for pinned first 3 messages
+  const pinnedMessages = session.messages.slice(0, KEEP_FIRST).filter(
+    m => m.role !== 'system' && (m.role !== 'assistant' || m.content)
+  );
+  let pinnedTokens = 0;
+  let pinnedTokensPrecise = true;
+  for (const msg of pinnedMessages) {
+    const contentText = msg.role === 'user' ? (msg.translated_content || msg.content) : (msg.original_text || msg.content);
+    const msgKey = `msg_${msg.id}_${contentText.length}`;
+    let tokenObj = tokenCountCache.get(msgKey);
+    if (tokenObj === undefined) {
+      tokenObj = await api.countTokensDetailed(contentText, signal);
+      tokenCountCache.set(msgKey, tokenObj);
+    }
+    pinnedTokens += tokenObj.value + 4;
+    if (!tokenObj.precise) pinnedTokensPrecise = false;
+  }
 
   // 6. Sliding Window Calculation
   const maxTokensSetting = settings.max_tokens || 2048;
   const safetyBuffer = 100;
-  const basePromptTokens = charTokens + systemTokens + memoryTokens + summaryTokens;
+  const basePromptTokens = charTokens + systemTokens + memoryTokens + summaryTokens + pinnedTokens;
   const totalPromptBudget = maxContext - maxTokensSetting - safetyBuffer;
-  const historyBudget = Math.max(0, totalPromptBudget - basePromptTokens);
 
-  // Filter messages to count (from session.messages)
-  let messagesToCount = session.messages;
-  let startIdx = 0;
-  if (session.autoSummary && session.autoSummary.text && session.autoSummary.lastSummarizedMsgId) {
-    const idx = session.messages.findIndex(m => m.id === session.autoSummary.lastSummarizedMsgId);
+  // Determine sliding window start: after last chunk's endMsgId, or from index KEEP_FIRST
+  let historyStartIdx = KEEP_FIRST;
+  if (summaryChunks.length > 0) {
+    const lastChunk = summaryChunks[summaryChunks.length - 1];
+    const idx = session.messages.findIndex(m => m.id === lastChunk.endMsgId);
     if (idx !== -1) {
-      startIdx = idx + 1;
-      messagesToCount = session.messages.slice(startIdx);
+      historyStartIdx = idx + 1;
     }
   }
+
+  // Filter messages for sliding window (messages after summaries, excluding pinned first 3)
+  const messagesToCount = session.messages.slice(historyStartIdx);
 
   const messagesMeta = [];
   for (const msg of messagesToCount) {
@@ -1988,7 +2464,8 @@ async function computeContextAndTrimHistory(character, session, signal = null) {
     const tokens = cachedItem ? cachedItem.value : 0;
     const tokensWithOverhead = tokens + 4; // Add message wrapper overhead (~4 tokens)
 
-    if (basePromptTokens + estimatedHistoryTokens + tokensWithOverhead <= estimatedBudget) {
+    const isLastMessage = (i === messagesMeta.length - 1);
+    if (isLastMessage || (basePromptTokens + estimatedHistoryTokens + tokensWithOverhead <= estimatedBudget)) {
       estimatedHistoryTokens += tokensWithOverhead;
       trimmedMessages.unshift(item.msg);
     } else {
@@ -1999,17 +2476,29 @@ async function computeContextAndTrimHistory(character, session, signal = null) {
   // Construct the exact messages array template to count exact tokens on the server
   const buildTestMessages = (trimmed) => {
     const msgs = [];
-    const parts = [charText, systemContentPure, memoryText].filter(Boolean);
-    const systemPromptContent = parts.join('\n\n');
-    msgs.push({ role: 'system', content: systemPromptContent });
-    
-    if (summaryText) {
-      msgs.push({
-        role: 'system',
-        content: `[Auto Summary of previous conversation:\n${summaryText}]`
-      });
+    let systemPromptContent = [charText, systemContentPure, memoryText].filter(Boolean).join('\n\n');
+    if (injectionMode === 'system' && summaryText) {
+      systemPromptContent += `\n\n${summaryText}`;
     }
-    
+    msgs.push({ role: 'system', content: systemPromptContent });
+
+    // Insert separate example chat messages if in 'chat' mode
+    for (const exMsg of exampleChatMsgs) {
+      msgs.push({ role: exMsg.role, content: exMsg.content });
+    }
+
+    // Insert pinned first 3 messages
+    for (const msg of pinnedMessages) {
+      const contentText = msg.role === 'user' ? (msg.translated_content || msg.content) : (msg.original_text || msg.content);
+      msgs.push({ role: msg.role, content: contentText });
+    }
+
+    if (injectionMode === 'history' && summaryChunks.length > 0) {
+      for (let idx = 0; idx < summaryChunks.length; idx++) {
+        msgs.push({ role: 'system', content: `[Chat Summary - Event ${idx + 1}:\n${summaryChunks[idx].text}]` });
+      }
+    }
+
     for (const msg of trimmed) {
       const contentText = msg.role === 'user' ? (msg.translated_content || msg.content) : (msg.original_text || msg.content);
       msgs.push({ role: msg.role, content: contentText });
@@ -2028,6 +2517,15 @@ async function computeContextAndTrimHistory(character, session, signal = null) {
     exactTokensObj = await api.countMessagesTokensDetailed(testMsgs, signal);
   }
 
+  // Calculate tokens of ALL unsummarized history messages
+  let fullHistoryTokens = 0;
+  for (const item of messagesMeta) {
+    const cachedItem = tokenCountCache.get(item.msgKey);
+    const tokens = cachedItem ? cachedItem.value : 0;
+    fullHistoryTokens += tokens + 4;
+  }
+  const fullContextTokens = basePromptTokens + fullHistoryTokens;
+
   const historyItems = trimmedMessages.map(msg => {
     const contentText = msg.role === 'user' ? (msg.translated_content || msg.content) : (msg.original_text || msg.content);
     const cachedItem = tokenCountCache.get(`msg_${msg.id}_${contentText.length}`);
@@ -2043,6 +2541,7 @@ async function computeContextAndTrimHistory(character, session, signal = null) {
                      memoryTokensObj.precise &&
                      systemTokensObj.precise &&
                      summaryTokensObj.precise &&
+                     pinnedTokensPrecise &&
                      trimmedMessages.every(msg => {
                        const contentText = msg.role === 'user' ? (msg.translated_content || msg.content) : (msg.original_text || msg.content);
                        const cachedItem = tokenCountCache.get(`msg_${msg.id}_${contentText.length}`);
@@ -2059,10 +2558,14 @@ async function computeContextAndTrimHistory(character, session, signal = null) {
     memoryTokens,
     memoryText,
     summaryTokens,
-    summaryText,
+    summaryChunks,
+    pinnedMessages,
+    fullHistoryTokens,
+    fullContextTokens,
     historyTokens: exactTokensObj.value - basePromptTokens,
     historyItems,
     trimmedMessages,
+    unsummarizedMessages: messagesMeta.map(m => m.msg),
     baseTokens: exactTokensObj.value,
     precise: allPrecise
   };
@@ -2140,9 +2643,21 @@ async function buildApiMessages(character, session) {
     }
   }
 
-  // Inject style examples
-  if (character.message_examples && character.message_examples.trim()) {
-    systemContent += `\n\nCharacter must talk in this style: ${character.message_examples.trim()}`;
+  const exMode = settings.example_messages_mode || 'chat';
+  let exampleChatMsgs = [];
+  let exampleSystemText = '';
+
+  if (character.message_examples && character.message_examples.trim() && exMode !== 'off') {
+    const parsedEx = parseMessageExamples(character.message_examples, userName, character.name);
+    if (exMode === 'chat') {
+      exampleChatMsgs = parsedEx.messages;
+    } else if (exMode === 'system') {
+      exampleSystemText = parsedEx.formattedSystemText;
+    }
+  }
+
+  if (exampleSystemText) {
+    systemContent += `\n\n${exampleSystemText}`;
   }
 
   // Replace placeholders
@@ -2210,6 +2725,14 @@ Before answering, you must use your internal monologue channel.
 5. Think extremely concise and briefly.`;
   }
 
+  const injectionMode = settings.summary_injection_mode || 'system';
+
+  // Append summary chunks directly to the end of main system message if in system mode
+  if (injectionMode === 'system' && result.summaryChunks && result.summaryChunks.length > 0) {
+    const lines = result.summaryChunks.map((c, idx) => `Event ${idx + 1}: ${c.text}`);
+    systemContent += `\n\n[Chat Summary]\n${lines.join('\n\n')}`;
+  }
+
   // Prepend <|think|> for Gemma 4 thinking models when reasoning effort is active and Google's thinking preset is enabled
   if (settings.gemma4_support && settings.gemma4_google_thinking_preset && settings.reasoning_effort && settings.reasoning_effort !== 'none') {
     systemContent = '<|think|>\n' + systemContent;
@@ -2217,20 +2740,52 @@ Before answering, you must use your internal monologue channel.
 
   messages.push({ role: 'system', content: systemContent });
 
-  // Inject Auto Summary as system message if active
-  if (session.autoSummary && session.autoSummary.text && session.autoSummary.lastSummarizedMsgId) {
-    const idx = session.messages.findIndex(m => m.id === session.autoSummary.lastSummarizedMsgId);
-    if (idx !== -1) {
-      messages.push({
-        role: 'system',
-        content: `[Auto Summary of previous conversation:\n${session.autoSummary.text}]`
-      });
+  // Inject separate example chat messages if in 'chat' mode
+  for (const exMsg of exampleChatMsgs) {
+    messages.push({ role: exMsg.role, content: exMsg.content });
+  }
+
+  // ─── LOREBOOK INJECTION ───────────────────────────────────────────
+  try {
+    const activeSessionId = (typeof chatStore !== 'undefined' && chatStore.getCurrentSession()) ? chatStore.getCurrentSession().id : 'default';
+    const savedState = await idbGet(`llmchat_active_lorebooks_${activeSessionId}`);
+    const activeLorebookState = savedState ? JSON.parse(savedState) : {};
+    const allLorebooks = typeof lorebookStore !== 'undefined' ? lorebookStore.getAll() : [];
+    const activeBooks = allLorebooks.filter(b => activeLorebookState[b.id]);
+    
+    if (activeBooks.length > 0 && result.trimmedMessages) {
+      // Scan the last few messages for keywords
+      const recentMessages = result.trimmedMessages.slice(-3);
+      const textToScan = recentMessages.map(m => m.role === 'user' ? (m.translated_content || m.content) : (m.original_text || m.content)).join('\n');
+      
+      const matchedEntries = lorebookStore.scanText(textToScan, activeBooks);
+      if (matchedEntries.length > 0) {
+        console.log(`[Lorebooks] Activated ${matchedEntries.length} entries.`);
+        const lorebookText = matchedEntries.map(e => e.content).join('\n\n');
+        messages.push({ role: 'system', content: `[World Info / Lorebook Context]\n${lorebookText}` });
+      }
+    }
+  } catch (e) {
+    console.error('Failed to inject Lorebooks', e);
+  }
+
+  // Inject pinned first 3 messages (always present, before summaries)
+  for (const msg of result.pinnedMessages) {
+    const content = msg.role === 'user' ? (msg.translated_content || msg.content) : (msg.original_text || msg.content);
+    messages.push({ role: msg.role, content: content });
+  }
+
+  // Inject summary chunks in history if mode is 'history'
+  if (injectionMode === 'history' && result.summaryChunks && result.summaryChunks.length > 0) {
+    for (let idx = 0; idx < result.summaryChunks.length; idx++) {
+      const chunk = result.summaryChunks[idx];
+      messages.push({ role: 'system', content: `[Chat Summary - Event ${idx + 1}:\n${chunk.text}]` });
     }
   }
 
-  // Append trimmed messages
+  // Append trimmed messages (sliding window after last chunk)
   for (const msg of result.trimmedMessages) {
-    let content = msg.role === 'user' ? (msg.translated_content || msg.content) : (msg.original_text || msg.content);
+    const content = msg.role === 'user' ? (msg.translated_content || msg.content) : (msg.original_text || msg.content);
     messages.push({ role: msg.role, content: content });
   }
 
@@ -4478,8 +5033,18 @@ function getContextSignature(character, session, settings) {
     }
   }
 
-  if (character.message_examples && character.message_examples.trim()) {
-    systemBasePure += `\n\nCharacter must talk in this style: ${character.message_examples.trim()}`;
+  const exMode = settings.example_messages_mode || 'chat';
+  let exampleSystemText = '';
+
+  if (character.message_examples && character.message_examples.trim() && exMode !== 'off') {
+    const parsedEx = parseMessageExamples(character.message_examples, userName, character.name);
+    if (exMode === 'system') {
+      exampleSystemText = parsedEx.formattedSystemText;
+    }
+  }
+
+  if (exampleSystemText) {
+    systemBasePure += `\n\n${exampleSystemText}`;
   }
 
   systemBasePure = systemBasePure.replace(/\{\{user\}\}/gi, userName);
@@ -4520,10 +5085,8 @@ function getContextSignature(character, session, settings) {
     systemContentPure += `\n\n[CURRENT MOOD STATUS]\n${statusStr}`;
   }
 
-  let summaryText = "";
-  if (session.autoSummary && session.autoSummary.text) {
-    summaryText = session.autoSummary.text;
-  }
+  // Use summaryChunks total text length as part of signature
+  const chunksText = (session.summaryChunks || []).map(c => c.text).join('');
 
   const messagesToCount = session.messages || [];
   const msgsSig = messagesToCount.map(m => {
@@ -4531,7 +5094,7 @@ function getContextSignature(character, session, settings) {
     return `${m.id}:${contentText ? contentText.length : 0}`;
   }).join(',');
 
-  return `${charText.length}_${memoryText.length}_${systemContentPure.length}_${summaryText.length}_[${msgsSig}]`;
+  return `${charText.length}_${memoryText.length}_${systemContentPure.length}_${chunksText.length}_[${msgsSig}]`;
 }
 
 export async function updateContextIndicator(debounce = false, forceRecalculate = false) {
@@ -4750,7 +5313,7 @@ export async function updateContextIndicator(debounce = false, forceRecalculate 
   // Update Recommendation Banner Visibility
   const recBanner = document.getElementById('auto-summary-recommendation');
   if (recBanner) {
-    const hasSummary = session.autoSummary && session.autoSummary.text;
+    const hasSummary = session.summaryChunks && session.summaryChunks.length > 0;
     if (freePercent < 10 && !hasSummary && !session._autoSummaryDismissed && session.messages.length > 0) {
       recBanner.classList.remove('hidden');
     } else {
@@ -4768,9 +5331,12 @@ export async function updateContextIndicator(debounce = false, forceRecalculate 
     memoryTokens: result.memoryTokens,
     memoryText: result.memoryText,
     summaryTokens: result.summaryTokens,
-    summaryText: result.summaryText,
+    summaryChunks: result.summaryChunks,
+    fullHistoryTokens: result.fullHistoryTokens,
+    fullContextTokens: result.fullContextTokens,
     historyTokens: result.historyTokens,
     historyItems: result.historyItems,
+    unsummarizedMessages: result.unsummarizedMessages,
     inputTokens,
     inputText: currentInputText,
     totalUsed,
@@ -4780,7 +5346,7 @@ export async function updateContextIndicator(debounce = false, forceRecalculate 
   };
 }
 
-export function populateContextDetailsModal(session) {
+export async function populateContextDetailsModal(session) {
   if (!session || !session._contextBreakdown) return;
 
   const breakdown = session._contextBreakdown;
@@ -4803,9 +5369,15 @@ export function populateContextDetailsModal(session) {
 
   // 1. Populate summary totals
   if (contextTotalInfo) {
-    contextTotalInfo.textContent = `${breakdown.totalUsed.toLocaleString()} / ${breakdown.maxContext.toLocaleString()} tokens used`;
+    if (breakdown.fullContextTokens && breakdown.fullContextTokens > breakdown.baseTokens) {
+      const fullPct = Math.round((breakdown.fullContextTokens / breakdown.maxContext) * 100);
+      contextTotalInfo.textContent = `${breakdown.baseTokens.toLocaleString()} / ${breakdown.maxContext.toLocaleString()} in window (${fullPct}% total chat history)`;
+    } else {
+      contextTotalInfo.textContent = `${breakdown.totalUsed.toLocaleString()} / ${breakdown.maxContext.toLocaleString()} tokens used`;
+    }
   }
-  const freePercent = Math.max(0, 100 - (breakdown.totalUsed / breakdown.maxContext) * 100);
+  const activePercent = breakdown.fullContextTokens || breakdown.totalUsed;
+  const freePercent = Math.max(0, 100 - (activePercent / breakdown.maxContext) * 100);
   if (contextFreeInfo) {
     contextFreeInfo.textContent = `${Math.round(freePercent)}% free`;
     contextFreeInfo.style.color = freePercent < 5 ? 'var(--error)' : (freePercent < 20 ? 'var(--warning)' : 'var(--success)');
@@ -4824,29 +5396,128 @@ export function populateContextDetailsModal(session) {
   if (legendSystemPrompt) legendSystemPrompt.textContent = `${breakdown.systemTokens}t`;
   if (legendMemoryContext) legendMemoryContext.textContent = `${breakdown.memoryTokens}t`;
   if (legendAutoSummary) legendAutoSummary.textContent = `${breakdown.summaryTokens || 0}t`;
-  if (legendChatHistory) legendChatHistory.textContent = `${breakdown.historyTokens}t`;
+  if (legendChatHistory) legendChatHistory.textContent = `${breakdown.fullHistoryTokens || breakdown.historyTokens}t`;
 
   // 4. Update accordion badges
   if (badgeDetailsChar) badgeDetailsChar.textContent = `${breakdown.charTokens} tokens`;
   if (badgeDetailsSystem) badgeDetailsSystem.textContent = `${breakdown.systemTokens} tokens`;
   if (badgeDetailsMemory) badgeDetailsMemory.textContent = `${breakdown.memoryTokens} tokens`;
   if (badgeDetailsSummary) badgeDetailsSummary.textContent = `${breakdown.summaryTokens || 0} tokens`;
-  if (badgeDetailsHistory) badgeDetailsHistory.textContent = `${breakdown.historyTokens} tokens`;
+  if (badgeDetailsHistory) {
+    if (breakdown.fullHistoryTokens && breakdown.fullHistoryTokens > breakdown.historyTokens) {
+      badgeDetailsHistory.textContent = `${breakdown.fullHistoryTokens} tokens total (${breakdown.historyTokens} in window)`;
+    } else {
+      badgeDetailsHistory.textContent = `${breakdown.historyTokens} tokens`;
+    }
+  }
+
+  // Update Auto Summary Settings & Indicator
+  const settings = settingsStore.get();
+  if (chkSummaryThinking) {
+    chkSummaryThinking.checked = settings.summary_thinking_enabled ?? false;
+  }
+  if (selectSummaryLength) {
+    selectSummaryLength.value = settings.summary_length || 'default';
+  }
+  if (selectSummaryMode) {
+    selectSummaryMode.value = settings.summary_injection_mode || 'system';
+  }
+
+  if (btnAutoSummarizeAll) {
+    const maxCtx = breakdown.maxContext || settings.context_window || 8192;
+    const fullTokens = breakdown.fullContextTokens || breakdown.baseTokens || 0;
+    const unsummarizedMsgs = breakdown.unsummarizedMessages || [];
+    const needs = calculateSummaryNeeds(session, maxCtx, fullTokens, unsummarizedMsgs);
+
+    btnAutoSummarizeAll.textContent = `${needs.doneCount}/${needs.totalNeeded}`;
+    if (needs.needsMore) {
+      const usedPct = Math.round((fullTokens / maxCtx) * 100);
+      btnAutoSummarizeAll.title = `Full chat context usage is ${usedPct}% (exceeds 70% threshold). ${needs.totalNeeded - needs.doneCount} summary chunk(s) needed to bring history below 70%. Click to auto-generate.`;
+      btnAutoSummarizeAll.style.borderColor = 'rgba(56, 189, 248, 0.5)';
+      btnAutoSummarizeAll.style.color = '#38bdf8';
+      btnAutoSummarizeAll.style.background = 'rgba(56, 189, 248, 0.15)';
+    } else {
+      const usedPct = Math.round((fullTokens / maxCtx) * 100);
+      btnAutoSummarizeAll.title = `Full chat context usage is ${usedPct}% (below 70% threshold). No additional summaries needed (${needs.doneCount}/${needs.totalNeeded}).`;
+      btnAutoSummarizeAll.style.borderColor = 'var(--border-light)';
+      btnAutoSummarizeAll.style.color = 'var(--text-secondary)';
+      btnAutoSummarizeAll.style.background = 'var(--bg-tertiary)';
+    }
+  }
 
   // Update Revert button visibility
   if (btnRevertAutoSummary) {
-    if (session.autoSummary && session.autoSummary.text) {
-      btnRevertAutoSummary.style.display = 'inline-block';
-    } else {
-      btnRevertAutoSummary.style.display = 'none';
-    }
+    const hasChunks = session.summaryChunks && session.summaryChunks.length > 0;
+    btnRevertAutoSummary.style.display = hasChunks ? 'inline-block' : 'none';
   }
 
   // 5. Update content texts
   if (contentDetailsChar) contentDetailsChar.textContent = breakdown.charText || '(No character description fields configured)';
   if (contentDetailsSystem) contentDetailsSystem.textContent = breakdown.systemText || '(No system prompt or rules configured)';
   if (contentDetailsMemory) contentDetailsMemory.textContent = breakdown.memoryText || '(No memory context active)';
-  if (contentDetailsSummary) contentDetailsSummary.textContent = breakdown.summaryText || '(No auto summary generated)';
+
+  // 6. Render summary chunks list
+  const chunksList = document.getElementById('summary-chunks-list');
+  if (chunksList) {
+    chunksList.innerHTML = '';
+    const chunks = breakdown.summaryChunks || [];
+    if (chunks.length === 0) {
+      chunksList.innerHTML = '<div style="padding:12px; color:var(--text-tertiary); font-size:var(--text-xs); text-align:center;">No summary chunks yet. Click [+] to create one.</div>';
+    } else {
+      chunks.forEach((chunk, idx) => {
+        const card = document.createElement('div');
+        card.style.cssText = 'border:1px solid var(--border-light); border-radius:6px; overflow:hidden; background:rgba(255,255,255,0.03);';
+
+        const header = document.createElement('div');
+        header.style.cssText = 'display:flex; align-items:center; justify-content:space-between; padding:8px 10px; cursor:pointer; user-select:none;';
+
+        const titleEl = document.createElement('span');
+        titleEl.style.cssText = 'font-size:12px; color:var(--text-secondary); font-weight:500;';
+        titleEl.textContent = `Chunk #${idx + 1}`;
+
+        const rightEl = document.createElement('div');
+        rightEl.style.cssText = 'display:flex; align-items:center; gap:8px;';
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.textContent = '✕';
+        deleteBtn.title = 'Delete this chunk';
+        deleteBtn.style.cssText = 'background:transparent; border:none; color:var(--text-tertiary); cursor:pointer; font-size:11px; padding:2px 4px; border-radius:3px;';
+        deleteBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const currentSession = appState.currentChat;
+          if (!currentSession) return;
+          currentSession.summaryChunks = (currentSession.summaryChunks || []).filter(c => c.id !== chunk.id);
+          await chatStore.saveSession(currentSession);
+          showToast('Summary chunk deleted.', 'info');
+          await updateContextIndicator(false, true);
+          populateContextDetailsModal(currentSession);
+        });
+
+        const expandIcon = document.createElement('span');
+        expandIcon.style.cssText = 'font-size:10px; color:var(--text-tertiary); transition:transform 0.2s;';
+        expandIcon.textContent = '▶';
+
+        rightEl.appendChild(deleteBtn);
+        rightEl.appendChild(expandIcon);
+        header.appendChild(titleEl);
+        header.appendChild(rightEl);
+
+        const body = document.createElement('div');
+        body.style.cssText = 'padding:10px; border-top:1px solid var(--border-light); font-size:12px; color:var(--text-secondary); line-height:1.5; white-space:pre-wrap; font-family:var(--font-sans); display:none;';
+        body.textContent = chunk.text;
+
+        header.addEventListener('click', () => {
+          const isOpen = body.style.display !== 'none';
+          body.style.display = isOpen ? 'none' : 'block';
+          expandIcon.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(90deg)';
+        });
+
+        card.appendChild(header);
+        card.appendChild(body);
+        chunksList.appendChild(card);
+      });
+    }
+  }
 
   // 6. Populate history messages list
   if (contentDetailsHistory) {
@@ -4868,6 +5539,88 @@ export function populateContextDetailsModal(session) {
         `;
         contentDetailsHistory.appendChild(itemEl);
       });
+    }
+  }
+
+  // 7. Populate Lorebooks list (Max potential budget)
+  const contentDetailsLorebooks = document.getElementById('content-details-lorebooks');
+  const badgeDetailsLorebooks = document.getElementById('badge-details-lorebooks');
+  
+  if (contentDetailsLorebooks && badgeDetailsLorebooks) {
+    const activeSessionId = session.id || 'default';
+    let activeState = {};
+    try {
+      const savedState = await idbGet(`llmchat_active_lorebooks_${activeSessionId}`);
+      if (savedState) activeState = JSON.parse(savedState);
+    } catch (e) {
+      console.warn("Failed to get active lorebooks for context modal", e);
+    }
+    
+    const allBooks = typeof lorebookStore !== 'undefined' ? lorebookStore.getAll() : [];
+    const activeBooks = allBooks.filter(b => activeState[b.id]);
+    
+    contentDetailsLorebooks.innerHTML = '';
+    
+    if (activeBooks.length === 0) {
+      contentDetailsLorebooks.innerHTML = '<div style="padding:12px; color:var(--text-tertiary); font-size:var(--text-xs); text-align:center;">No active Lorebooks</div>';
+      badgeDetailsLorebooks.textContent = '0 max tokens';
+    } else {
+      let totalMaxTokens = 0;
+      
+      activeBooks.forEach((book, index) => {
+        let bookMaxTokens = 0;
+        if (book.entries) {
+          book.entries.forEach(entry => {
+            if (!entry.enabled) return;
+            const text = entry.content || '';
+            const estimatedTokens = Math.ceil(text.length / (/[а-яА-ЯёЁ]/.test(text) ? 2.3 : 3.3));
+            bookMaxTokens += estimatedTokens;
+          });
+        }
+        totalMaxTokens += bookMaxTokens;
+        
+        const card = document.createElement('div');
+        card.style.cssText = 'border:1px solid var(--border-light); border-radius:6px; overflow:hidden; background:rgba(255,255,255,0.03);';
+
+        const header = document.createElement('div');
+        header.style.cssText = 'display:flex; align-items:center; justify-content:space-between; padding:8px 10px; cursor:pointer; user-select:none;';
+
+        const titleEl = document.createElement('span');
+        titleEl.style.cssText = 'font-size:12px; color:var(--text-secondary); font-weight:500;';
+        titleEl.textContent = book.name;
+
+        const rightEl = document.createElement('div');
+        rightEl.style.cssText = 'display:flex; align-items:center; gap:8px;';
+
+        const badgeEl = document.createElement('span');
+        badgeEl.style.cssText = 'font-size:11px; color:var(--text-tertiary); background:rgba(255,255,255,0.1); padding:2px 6px; border-radius:4px;';
+        badgeEl.textContent = `~${bookMaxTokens} max tokens`;
+
+        const expandIcon = document.createElement('span');
+        expandIcon.style.cssText = 'font-size:10px; color:var(--text-tertiary); transition:transform 0.2s;';
+        expandIcon.textContent = '▶';
+
+        rightEl.appendChild(badgeEl);
+        rightEl.appendChild(expandIcon);
+        header.appendChild(titleEl);
+        header.appendChild(rightEl);
+
+        const body = document.createElement('div');
+        body.style.cssText = 'padding:10px; border-top:1px solid var(--border-light); font-size:12px; color:var(--text-secondary); line-height:1.5; white-space:pre-wrap; font-family:var(--font-sans); display:none;';
+        body.textContent = `${book.entries?.length || 0} entries loaded.`;
+
+        header.addEventListener('click', () => {
+          const isOpen = body.style.display !== 'none';
+          body.style.display = isOpen ? 'none' : 'block';
+          expandIcon.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(90deg)';
+        });
+
+        card.appendChild(header);
+        card.appendChild(body);
+        contentDetailsLorebooks.appendChild(card);
+      });
+      
+      badgeDetailsLorebooks.textContent = `~${totalMaxTokens} max tokens`;
     }
   }
 }

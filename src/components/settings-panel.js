@@ -227,11 +227,13 @@ function loadSettingsToUI() {
   setRangeValue('setting-streaming-speed', 'streaming-speed-value', settings.streaming_speed || 45);
   checkField('setting-ai-comments', settings.ai_comments_enabled);
   checkField('setting-suggestions-enabled', settings.suggestions_enabled);
+  setField('setting-example-messages-mode', settings.example_messages_mode || 'chat');
   
   setField('setting-target-lang', settings.target_language || 'Russian');
   setField('setting-outgoing-lang', settings.outgoing_target_language || 'English');
   setField('setting-suggestions-lang', settings.suggestions_language || 'Russian');
   setField('setting-ai-comments-lang', settings.ai_comments_language || 'Auto');
+  setField('setting-summary-chunk-size', settings.summary_chunk_size || 10);
   
   setField('setting-genai-response-length', settings.genai_response_length || 'default');
   setField('setting-genai-speech-style', settings.genai_speech_style || 'default');
@@ -330,6 +332,7 @@ async function saveSettings() {
     api_url: getVal('setting-api-url') || current.api_url,
     prompt_token_limit: parseInt(getVal('setting-prompt-token-limit')) || current.prompt_token_limit,
     memory_enabled: getChecked('setting-memory'),
+    example_messages_mode: getVal('setting-example-messages-mode') || 'chat',
     gemma4_support: getChecked('setting-gemma4-support'),
     change_gemma4_thinking_style: getChecked('setting-change-gemma4-thinking-style'),
     gemma4_google_thinking_preset: getChecked('setting-gemma4-google-thinking-preset'),
@@ -348,6 +351,7 @@ async function saveSettings() {
     outgoing_target_language: getVal('setting-outgoing-lang'),
     suggestions_language: getVal('setting-suggestions-lang'),
     ai_comments_language: getVal('setting-ai-comments-lang'),
+    summary_chunk_size: parseInt(getVal('setting-summary-chunk-size')) || 10,
     genai_response_length: getVal('setting-genai-response-length'),
     genai_speech_style: getVal('setting-genai-speech-style'),
     genai_emoji_preferences: getVal('setting-genai-emoji-preferences'),

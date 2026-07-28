@@ -182,19 +182,31 @@ export function formatTextCompletionPrompt(messages = [], contextTemplate = {}, 
       }
 
       const pfx = formatSeq(assistantPrefix);
-      const sfx = formatSeq(assistantSuffix);
-      promptParts.push(`${pfx}${turnContent}${sfx}`);
+      const isLastMessage = i === messageHistory.length - 1;
+      
+      if (isLastMessage) {
+        // This is a prefill, do not append suffix
+        promptParts.push(`${pfx}${turnContent}`);
+      } else {
+        const sfx = formatSeq(assistantSuffix);
+        promptParts.push(`${pfx}${turnContent}${sfx}`);
+      }
     }
   }
 
   // Add Assistant Prefix prompt at the end to generate next completion turn
-  let finalAssistantPrefix = formatSeq(assistantPrefix);
-  if (contextTemplate.always_add_character_name || includeNames === 'user_assistant' || includeNames === 'all') {
-    if (!finalAssistantPrefix.includes(charName + ':')) {
-      finalAssistantPrefix += `${charName}: `;
+  // ONLY if the last message in history wasn't an assistant prefill
+  const lastMsgIsAssistant = messageHistory.length > 0 && messageHistory[messageHistory.length - 1].role === 'assistant';
+  
+  if (!lastMsgIsAssistant) {
+    let finalAssistantPrefix = formatSeq(assistantPrefix);
+    if (contextTemplate.always_add_character_name || includeNames === 'user_assistant' || includeNames === 'all') {
+      if (!finalAssistantPrefix.includes(charName + ':')) {
+        finalAssistantPrefix += `${charName}: `;
+      }
     }
+    promptParts.push(finalAssistantPrefix);
   }
-  promptParts.push(finalAssistantPrefix);
 
   let finalPrompt = promptParts.join('');
 
@@ -211,7 +223,8 @@ export function formatTextCompletionPrompt(messages = [], contextTemplate = {}, 
 
   if (contextTemplate.names_as_stop) {
     stopSet.add(`\n${userName}:`);
-    stopSet.add(`\n${charName}:`);
+    // Removed \n${charName}: to prevent immediate stop sequence triggering
+    // when the prompt ends with the character name or the model generates its own name.
   }
 
   if (contextTemplate.separators_as_stop && contextTemplate.example_separator) {

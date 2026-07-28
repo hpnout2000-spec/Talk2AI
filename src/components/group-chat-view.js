@@ -17,6 +17,7 @@ import {
 } from '../utils/helpers.js';
 import { showToast, showConfirm } from '../main.js';
 import morphdom from '../vendor/morphdom.js';
+import { parseMessageExamples } from '../utils/message-examples-parser.js';
 
 // ─── DOM refs ────────────────────────────────────────────────────────
 let messagesContainer;
@@ -321,10 +322,23 @@ export function buildGroupApiMessages(respondingChar, allCharacters, session) {
   let sys = respondingChar.system_prompt || [respondingChar.description, respondingChar.personality].filter(Boolean).join('\n\n') || `You are ${respondingChar.name}.`;
   sys = sys.replace(/\{\{user\}\}/gi, userName).replace(/\{\{char\}\}/gi, respondingChar.name);
   
-  if (respondingChar.message_examples && respondingChar.message_examples.trim()) {
-    sys += `\n\nCharacter must talk in this style: ${respondingChar.message_examples.trim()}`;
+  const exMode = settings.example_messages_mode || 'chat';
+  let exampleChatMsgs = [];
+  let exampleSystemText = '';
+
+  if (respondingChar.message_examples && respondingChar.message_examples.trim() && exMode !== 'off') {
+    const parsedEx = parseMessageExamples(respondingChar.message_examples, userName, respondingChar.name);
+    if (exMode === 'chat') {
+      exampleChatMsgs = parsedEx.messages;
+    } else if (exMode === 'system') {
+      exampleSystemText = parsedEx.formattedSystemText;
+    }
   }
-  
+
+  if (exampleSystemText) {
+    sys += `\n\n${exampleSystemText}`;
+  }
+
   sys += `\n\n[GROUP CHAT RULES]
 - You are ${respondingChar.name} in a group chat.
 - Other members: ${otherChars.map(c => c.name).join(', ')}.
@@ -332,6 +346,10 @@ export function buildGroupApiMessages(respondingChar, allCharacters, session) {
 - Respond naturally as ${respondingChar.name}.`;
 
   messages.push({ role: 'system', content: sys });
+
+  for (const exMsg of exampleChatMsgs) {
+    messages.push({ role: exMsg.role, content: `${exMsg.role === 'user' ? userName : respondingChar.name}: ${exMsg.content}` });
+  }
 
   for (const m of session.messages) {
     if (m.role === 'user') {

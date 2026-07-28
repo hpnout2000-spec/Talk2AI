@@ -455,17 +455,43 @@
                         <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
                       </svg>
                     </button>
-                    <div id="chat-plus-popover" class="popover hidden">
-                      <button id="btn-chat-toggle-imagegen" class="dropdown-option" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; width: 100%; text-align: left;">
-                        <span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
-                          <span style="font-weight: 500; font-size: var(--text-sm); color: var(--text-primary);">Image Gen</span>
-                          <span style="font-size: 11px; color: var(--text-tertiary);">Anima · ComfyUI</span>
-                        </span>
-                        <label class="toggle-switch small" style="pointer-events: none; flex-shrink: 0;">
-                          <input type="checkbox" id="chat-imagegen-toggle-check" />
-                          <span class="toggle-slider"></span>
-                        </label>
-                      </button>
+                    <div id="chat-plus-popover" class="popover hidden" style="width: 220px; padding: 0; overflow: hidden; display: block; z-index: 100; transition: height 0.3s cubic-bezier(0.2, 1, 0.1, 1); position: absolute;">
+                      <div id="chat-plus-slider" data-page="0" style="display: flex; align-items: flex-start; width: 200%; transition: transform 0.3s cubic-bezier(0.2, 1, 0.1, 1); transform: translateX(0);">
+                        <div id="chat-plus-main" style="width: 50%; padding: 6px; flex-shrink: 0; box-sizing: border-box;">
+                          <button id="btn-chat-toggle-imagegen" class="dropdown-option" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; width: 100%; text-align: left;">
+                            <span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
+                              <span style="font-weight: 500; font-size: var(--text-sm); color: var(--text-primary);">Image Gen</span>
+                              <span style="font-size: 11px; color: var(--text-tertiary);">Anima · ComfyUI</span>
+                            </span>
+                            <label class="toggle-switch small" style="pointer-events: none; flex-shrink: 0;">
+                              <input type="checkbox" id="chat-imagegen-toggle-check" />
+                              <span class="toggle-slider"></span>
+                            </label>
+                          </button>
+                          <button id="btn-chat-plus-lorebooks" class="dropdown-option" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; width: 100%; text-align: left;">
+                            <span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">
+                              <span style="font-weight: 500; font-size: var(--text-sm); color: var(--text-primary);">Lorebooks</span>
+                              <span style="font-size: 11px; color: var(--text-tertiary);">World Info</span>
+                            </span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polyline points="9 18 15 12 9 6"/></svg>
+                          </button>
+                        </div>
+                        <div id="chat-plus-lorebooks-view" style="width: 50%; padding: 0; flex-shrink: 0; display: flex; flex-direction: column; box-sizing: border-box;">
+                          <div style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border-light); cursor: pointer; background: var(--bg-tertiary);" id="btn-chat-lorebooks-back" class="hover-bg-light">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polyline points="15 18 9 12 15 6"/></svg>
+                            <span style="font-weight: 600; font-size: var(--text-xs); color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Back</span>
+                          </div>
+                          <div style="padding: 6px; display: flex; flex-direction: column; gap: 2px;" id="chat-lorebooks-list">
+                            <!-- Favorite lorebooks injected here -->
+                          </div>
+                          <div style="padding: 6px; border-top: 1px solid var(--border-light);">
+                            <button id="btn-chat-lorebooks-manage" class="dropdown-option" style="width: 100%; text-align: center; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; padding: 8px 12px; display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 600; color: var(--text-accent);">
+                              <span>Manage</span>
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -502,6 +528,9 @@
                   </div>
 
 
+
+                  <!-- Active Lorebooks Indicators Container -->
+                  <div id="active-lorebooks-container" style="display: flex; align-items: center; gap: 4px;"></div>
 
                   <!-- Image Gen Premium Pill Button Indicator -->
                   <div style="display: flex; align-items: center; gap: 4px;">
@@ -1227,6 +1256,11 @@
           </div>
         </div>
         <div id="genai-messages" class="sidebar-section"></div>
+        <!-- GenAI Floating Selection Reply Tooltip -->
+        <div id="genai-selection-reply-btn" class="genai-selection-reply-tooltip hidden">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 13px; height: 13px; flex-shrink: 0;"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+          <span>Reply</span>
+        </div>
         <div class="genai-input-area">
           <!-- Hidden File Input for Image Upload -->
           <input type="file" id="genai-image-upload-input" accept="image/*" style="display: none;">
@@ -1242,6 +1276,8 @@
               <button id="btn-genai-sc-warning-proceed" class="btn-primary small" style="padding: 2px 10px; font-size: 11px; border-radius: var(--radius-sm); background: var(--accent-primary); color: #212121; border: none; font-weight: 600; cursor: pointer;" type="button">Proceed</button>
             </div>
           </div>
+          <!-- Reply Quote Container (Cloud pill above input area) -->
+          <div id="genai-reply-quote-container" class="hidden" style="margin-bottom: 8px; display: flex; align-items: center; justify-content: center; max-width: 960px; margin-left: auto; margin-right: auto; width: 100%; position: relative; z-index: 15;"></div>
           <div class="input-container">
             <textarea id="genai-input" class="message-input" placeholder="Ask GenAI anything..." rows="1"></textarea>
 
@@ -1491,8 +1527,18 @@
               <textarea id="char-system-prompt" rows="4" placeholder="Full system prompt for the LLM..."></textarea>
             </div>
             <div class="form-group">
-              <label for="char-message-examples">Message example and behaviour</label>
-              <textarea id="char-message-examples" rows="3" placeholder="Character must talk in this style..."></textarea>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <label for="char-message-examples" style="margin: 0; font-weight: 600;">Message Examples (SillyTavern Spec V2)</label>
+                <div class="quick-insert-buttons" style="display: flex; gap: 4px;">
+                  <button type="button" id="btn-insert-start" class="btn-secondary small" style="padding: 2px 8px; font-size: 11px; height: 24px;" title="Insert <START> tag">+ &lt;START&gt;</button>
+                  <button type="button" id="btn-insert-user" class="btn-secondary small" style="padding: 2px 8px; font-size: 11px; height: 24px;" title="Insert {{user}}: tag">+ &#123;&#123;user&#125;&#125;:</button>
+                  <button type="button" id="btn-insert-char" class="btn-secondary small" style="padding: 2px 8px; font-size: 11px; height: 24px;" title="Insert {{char}}: tag">+ &#123;&#123;char&#125;&#125;:</button>
+                </div>
+              </div>
+              <small style="color: var(--text-tertiary); font-size: 11px; margin-bottom: 6px; display: block;">
+                Dialogue examples demonstrate speech style. Use <code>&lt;START&gt;</code> to separate dialogue scenes.
+              </small>
+              <textarea id="char-message-examples" rows="6" style="font-family: var(--font-mono, monospace); font-size: 12px; line-height: 1.4;" placeholder="<START>&#10;{{user}}: Hello, how are you?&#10;{{char}}: *smiles* I'm doing great! How can I help you today?&#10;<START>&#10;{{user}}: Can you assist me?&#10;{{char}}: Of course! Lead the way."></textarea>
             </div>
             <div class="form-group">
               <label for="char-first-message">First Message</label>
@@ -2327,6 +2373,14 @@
                 <span class="toggle-slider"></span>
               </label>
             </div>
+            <div class="form-group" style="margin-top: 12px;">
+              <label for="setting-example-messages-mode" style="font-size: 0.85rem; font-weight: 500; color: var(--text-secondary); margin-bottom: 6px; display: block;">Example Messages Mode</label>
+              <select id="setting-example-messages-mode" class="select-input" style="width: 100%; padding: 8px 12px; background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary);">
+                <option value="chat">Separate Chat Messages (Chat Completion)</option>
+                <option value="system">Merge into System Prompt</option>
+                <option value="off">Disabled</option>
+              </select>
+            </div>
           </div>
           <div class="modal-footer">
             <button class="btn-primary btn-full btn-save-settings">Save Changes</button>
@@ -2377,6 +2431,11 @@
                 <option value="Russian">Russian</option>
                 <option value="Spanish">Spanish</option>
               </select>
+            </div>
+            <div class="form-group">
+              <label for="setting-summary-chunk-size">Summary Chunk Size (messages per chunk)</label>
+              <input type="number" id="setting-summary-chunk-size" placeholder="10" min="2" max="100" style="width: 100%;" />
+              <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px;">How many messages to include in each Auto Summary chunk. First 3 messages of the chat are always kept as-is. Last 6 messages are never summarized.</div>
             </div>
           </div>
           <div class="modal-footer">
@@ -2889,6 +2948,121 @@
           </div>
           <div class="modal-footer">
             <button class="btn-primary btn-full btn-save-settings">Save Changes</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ─── Lorebook Settings Modal ─────────────────── -->
+      <div id="lorebook-editor-modal" class="modal-overlay hidden" style="z-index: 10000; display: none; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(2px);">
+        <div class="modal-content" style="width: 600px; max-width: 90vw; background: var(--bg-primary); border-radius: var(--radius-md); box-shadow: 0 10px 30px rgba(0,0,0,0.3); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--border-light);">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border-light); background: var(--bg-secondary);">
+            <h3 style="margin: 0; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px; color: var(--text-accent);"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+              Lorebooks
+            </h3>
+            <button id="btn-lorebook-modal-close" class="btn-icon" style="background: none; border: none; cursor: pointer; color: var(--text-secondary);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+          </div>
+          <div style="padding: 15px 20px 0 20px;">
+<details class="premium-accordion">
+                <summary>
+                  Global World Info/Lorebook activation settings
+                </summary>
+                <div style="padding: 15px; background: var(--bg-primary); display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; font-size: 12px;">
+                  <!-- Left Col -->
+                  <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <div>
+                      <div style="display:flex; justify-content:space-between;"><label>Scan Depth</label><span id="wi-global-scan-val">50</span></div>
+                      <input type="range" id="wi-global-scan" min="0" max="1000" value="50" class="premium-range" />
+                    </div>
+                    <div>
+                      <div style="display:flex; justify-content:space-between;"><label>Budget Cap</label><span id="wi-global-budget-val">500</span></div>
+                      <input type="range" id="wi-global-budget" min="0" max="5000" value="500" class="premium-range" />
+                    </div>
+                    <div>
+                      <div style="display:flex; justify-content:space-between;"><label>Max Depth</label><span id="wi-global-maxdepth-val">0</span></div>
+                      <input type="range" id="wi-global-maxdepth" min="0" max="100" value="0" class="premium-range" />
+                    </div>
+                    <div>
+                      <label style="display: block; margin-bottom: 4px;">Insertion Strategy</label>
+                      <select id="wi-global-strategy" class="premium-select" style="width: 100%;">
+                        <option value="Character Lore First">Character Lore First</option>
+                        <option value="Sorted Evenly">Sorted Evenly</option>
+                        <option value="Global Lore First">Global Lore First</option>
+                      </select>
+                    </div>
+                  </div>
+                  <!-- Mid Col -->
+                  <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <div>
+                      <div style="display:flex; justify-content:space-between;"><label>Context %</label><span id="wi-global-context-val">25</span></div>
+                      <input type="range" id="wi-global-context" min="0" max="100" value="25" class="premium-range" />
+                    </div>
+                    <div>
+                      <div style="display:flex; justify-content:space-between;"><label>Min Activations</label><span id="wi-global-min-val">0</span></div>
+                      <input type="range" id="wi-global-min" min="0" max="100" value="0" class="premium-range" />
+                    </div>
+                    <div>
+                      <div style="display:flex; justify-content:space-between;"><label>Max Recursion Steps</label><span id="wi-global-recurse-val">0</span></div>
+                      <input type="range" id="wi-global-recurse" min="0" max="10" value="0" class="premium-range" />
+                    </div>
+                  </div>
+                  <!-- Right Col (Toggles) -->
+                  <div style="display: flex; flex-direction: column; gap: 8px;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="wi-global-names" checked /> Include Names</label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="wi-global-recursive" checked /> Recursive Scan</label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="wi-global-case" /> Case-sensitive</label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="wi-global-words" checked /> Match Whole Words</label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="wi-global-groups" /> Use Group Scoring</label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;"><input type="checkbox" id="wi-global-overflow" /> Alert On Overflow</label>
+                  </div>
+                </div>
+              </details>
+</div>
+          <div style="display: flex; height: 60vh; min-height: 400px;">
+            <!-- Left Sidebar: Lorebook List -->
+            <div style="width: 200px; border-right: 1px solid var(--border-light); display: flex; flex-direction: column; background: var(--bg-tertiary);">
+              <div style="padding: 10px; display: flex; gap: 8px; border-bottom: 1px solid var(--border-light);">
+                <button id="btn-lorebook-new" class="btn-primary small" style="flex: 1;">+ New</button>
+                <button id="btn-lorebook-import" class="btn-secondary small" style="flex: 1;" title="Import SillyTavern JSON">Import</button>
+              </div>
+              <div id="lorebook-list" style="flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 4px;">
+                <!-- List items injected by JS -->
+              </div>
+            </div>
+            <!-- Right Panel: Lorebook Editor -->
+            <div id="lorebook-editor-panel" style="flex: 1; display: flex; flex-direction: column; padding: 20px; overflow-y: auto; background: var(--bg-primary);">
+              
+              <!-- Global Settings Accordion -->
+              
+              <div id="lorebook-editor-empty" style="flex: 1; display: flex; align-items: center; justify-content: center; color: var(--text-tertiary);">
+                Select or create a lorebook
+              </div>
+              <div id="lorebook-editor-content" style="display: none; flex-direction: column; gap: 20px;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
+                  <div style="flex: 1;">
+                    <label style="font-size: var(--text-xs); font-weight: 600; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px; display: block;">Book Name</label>
+                    <input type="text" id="lorebook-edit-name" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-light); border-radius: var(--radius-sm); background: var(--bg-secondary); color: var(--text-primary);" />
+                  </div>
+                  <div style="display: flex; flex-direction: column; align-items: flex-end;">
+                    <label style="font-size: var(--text-xs); font-weight: 600; color: var(--text-secondary); text-transform: uppercase; margin-bottom: 4px; display: block;">Favorite</label>
+                    <label class="toggle-switch small">
+                      <input type="checkbox" id="lorebook-edit-favorite" />
+                      <span class="toggle-slider"></span>
+                    </label>
+                  </div>
+                </div>
+                
+                <div>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <label style="font-size: var(--text-xs); font-weight: 600; color: var(--text-secondary); text-transform: uppercase;">Entries</label>
+                    <button id="btn-lorebook-add-entry" class="btn-secondary small" style="padding: 4px 8px; font-size: 11px;">+ Add Entry</button>
+                  </div>
+                  <div id="lorebook-entries-list" style="display: flex; flex-direction: column; gap: 12px;">
+                    <!-- Entries injected here -->
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -4417,16 +4591,54 @@
               </div>
 
               <!-- Auto Summary Panel -->
-              <div class="context-panel" style="border: 1px solid var(--border-light); border-radius: var(--radius-md); overflow: hidden; background: rgba(0,0,0,0.15);">
-                <div class="context-panel-header" id="header-details-summary" style="padding: 12px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; transition: background 0.2s;">
-                  <span style="font-weight: 500; font-size: var(--text-sm);">Auto Summary</span>
+              <div class="context-panel" style="border: 1px solid var(--border-light); border-radius: var(--radius-md); overflow: visible; background: rgba(0,0,0,0.15);">
+                <div class="context-panel-header" id="header-details-summary" style="padding: 12px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; transition: background 0.2s; position: relative;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <span style="font-weight: 500; font-size: var(--text-sm);">Auto Summary</span>
+                    <button id="btn-summary-settings" title="Summary Settings" style="background: transparent; border: none; color: var(--text-tertiary); cursor: pointer; font-size: 13px; padding: 2px 4px; border-radius: 4px; transition: color 0.2s; display: flex; align-items: center; justify-content: center;" onclick="event.stopPropagation();">⚙️</button>
+                  </div>
+
+                  <!-- Dropdown Menu for Summary Settings -->
+                  <div id="summary-settings-dropdown" class="summary-settings-dropdown hidden" style="position: absolute; top: 100%; left: 12px; margin-top: 4px; width: 250px; background: var(--bg-secondary, #1e1e2e); border: 1px solid var(--border-light, rgba(255,255,255,0.15)); border-radius: 8px; padding: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.6); z-index: 999; font-size: 12px; color: var(--text-primary);" onclick="event.stopPropagation();">
+                    <div style="font-weight: 600; margin-bottom: 10px; color: var(--text-primary); border-bottom: 1px solid var(--border-light); padding-bottom: 6px;">Summary Settings</div>
+                    
+                    <!-- Thinking Toggle -->
+                    <label style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; cursor: pointer; user-select: none;">
+                      <span style="color: var(--text-secondary); font-size: 12px;">Enable Thinking</span>
+                      <input type="checkbox" id="chk-summary-thinking" style="cursor: pointer;">
+                    </label>
+                    
+                    <!-- Summary Length -->
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                      <span style="color: var(--text-secondary); font-size: 11px;">Summary Length</span>
+                      <select id="select-summary-length" style="background: var(--bg-tertiary, rgba(255,255,255,0.08)); border: 1px solid var(--border-light); color: var(--text-primary); border-radius: 4px; padding: 5px 8px; font-size: 11px; outline: none; cursor: pointer; width: 100%;">
+                        <option value="short">Short (Key events & outcome)</option>
+                        <option value="default">Default (All events, ~2-3 paragraphs)</option>
+                        <option value="long">Long (Detailed events, ~5 paragraphs)</option>
+                      </select>
+                    </div>
+
+                    <!-- Injection Mode -->
+                    <div style="display: flex; flex-direction: column; gap: 4px; margin-top: 10px;">
+                      <span style="color: var(--text-secondary); font-size: 11px;">Injection Mode</span>
+                      <select id="select-summary-mode" style="background: var(--bg-tertiary, rgba(255,255,255,0.08)); border: 1px solid var(--border-light); color: var(--text-primary); border-radius: 4px; padding: 5px 8px; font-size: 11px; outline: none; cursor: pointer; width: 100%;">
+                        <option value="system">In System Prompt (Event 1, Event 2...)</option>
+                        <option value="history">In History (Between messages)</option>
+                      </select>
+                    </div>
+                  </div>
+
                   <div style="display: flex; align-items: center; gap: 8px;" onclick="event.stopPropagation();">
-                    <button id="btn-make-auto-summary" class="btn-primary small" style="padding: 2px 8px; font-size: 11px; margin: 0; cursor: pointer; border-radius: 4px; background: var(--accent-primary); border: none; color: #212121; font-weight: 600;">Make summary</button>
-                    <button id="btn-revert-auto-summary" class="btn-secondary small" style="padding: 2px 8px; font-size: 11px; margin: 0; cursor: pointer; border-radius: 4px; display: none;">Revert</button>
+                    <button id="btn-auto-summarize-all" title="Auto generate all needed summaries" style="padding: 2px 8px; font-size: 11px; height: 24px; margin: 0; cursor: pointer; border-radius: 4px; border: 1px solid var(--border-light); background: var(--bg-tertiary); color: var(--text-primary); transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 4px; font-weight: 500;">0/0</button>
+                    <button id="btn-add-summary-chunk" title="Add new summary chunk" style="display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 4px; border: 1px solid var(--border-light); background: var(--bg-tertiary); color: var(--text-primary); cursor: pointer; font-size: 16px; line-height: 1; padding: 0;">+</button>
+                    <button id="btn-revert-auto-summary" class="btn-secondary small" style="padding: 2px 8px; font-size: 11px; margin: 0; cursor: pointer; border-radius: 4px; display: none;">Revert all</button>
                     <span id="badge-details-summary" class="badge" style="background: rgba(14, 165, 233, 0.15); color: #38bdf8; padding: 2px 6px; border-radius: 4px; font-size: 11px;">0 tokens</span>
                   </div>
                 </div>
-                <div class="context-panel-content hidden" id="content-details-summary" style="padding: 12px; border-top: 1px solid var(--border-light); max-height: 250px; overflow-y: auto; font-family: var(--font-sans); font-size: var(--text-sm); line-height: 1.5; color: var(--text-secondary); background: rgba(0,0,0,0.25); white-space: pre-wrap;">
+                <div class="context-panel-content hidden" id="content-details-summary" style="padding: 8px; border-top: 1px solid var(--border-light); max-height: 350px; overflow-y: auto; background: rgba(0,0,0,0.25);">
+                  <div id="summary-chunks-list" style="display: flex; flex-direction: column; gap: 6px;">
+                    <!-- Chunk cards injected here -->
+                  </div>
                 </div>
               </div>
 
@@ -4438,6 +4650,17 @@
                 </div>
                 <div class="context-panel-content hidden" id="content-details-history" style="padding: 12px; border-top: 1px solid var(--border-light); max-height: 350px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; background: rgba(0,0,0,0.25);">
                   <!-- Message list will be injected here -->
+                </div>
+              </div>
+
+              <!-- Lorebooks Panel -->
+              <div class="context-panel" style="border: 1px solid var(--border-light); border-radius: var(--radius-md); overflow: hidden; background: rgba(0,0,0,0.15);">
+                <div class="context-panel-header" id="header-details-lorebooks" style="padding: 12px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; transition: background 0.2s;">
+                  <span style="font-weight: 500; font-size: var(--text-sm);">Lorebooks (Max Potential Budget)</span>
+                  <span id="badge-details-lorebooks" class="badge" style="background: rgba(168, 85, 247, 0.15); color: #a855f7; padding: 2px 6px; border-radius: 4px; font-size: 11px;">0 tokens</span>
+                </div>
+                <div class="context-panel-content hidden" id="content-details-lorebooks" style="padding: 12px; border-top: 1px solid var(--border-light); max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; background: rgba(0,0,0,0.25);">
+                  <!-- Lorebooks list will be injected here -->
                 </div>
               </div>
 

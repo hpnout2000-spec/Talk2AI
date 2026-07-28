@@ -844,6 +844,34 @@ body {
   flex-shrink: 0;
 }
 
+/* ─── Lorebook Active Indicator ─────────────────────────────────── */
+.lorebook-active-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  background: rgba(147, 51, 234, 0.12);
+  border: 1px solid rgba(147, 51, 234, 0.3);
+  border-radius: var(--radius-full);
+  color: #c084fc;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+  animation: lorebookPulse 2.5s ease-in-out infinite;
+  cursor: default;
+  letter-spacing: 0.02em;
+}
+
+.lorebook-active-indicator svg {
+  flex-shrink: 0;
+}
+
+@keyframes lorebookPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(147, 51, 234, 0); }
+  50% { box-shadow: 0 0 6px 2px rgba(147, 51, 234, 0.18); }
+}
+
 @keyframes imagegenPulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(99, 179, 130, 0); }
   50% { box-shadow: 0 0 6px 2px rgba(99, 179, 130, 0.18); }
@@ -1247,4 +1275,262 @@ body.advanced-animations-blur-enabled .modal-content::after {
   -webkit-backdrop-filter: blur(24px) saturate(1.1) !important;
   mask-image: radial-gradient(ellipse at center, black 0%, black 20%, transparent 60%) !important;
   -webkit-mask-image: radial-gradient(ellipse at center, black 0%, black 20%, transparent 60%) !important;
-}
+}/* Premium Lorebook UI Styles */
+details.premium-accordion {
+  margin-bottom: 20px; 
+  border: 1px solid var(--border-light); 
+  border-radius: var(--radius-md); 
+  overflow: hidden;
+  background: var(--bg-primary);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+}
+details.premium-accordion[open] {
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
+  border-color: var(--text-accent);
+}
+details.premium-accordion summary {
+  padding: 12px 16px; 
+  background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+  cursor: pointer; 
+  font-weight: 600; 
+  font-size: 13px; 
+  display: flex; 
+  justify-content: space-between; 
+  align-items: center; 
+  user-select: none;
+  list-style: none;
+  border-bottom: 1px solid transparent;
+  transition: background 0.2s, border-color 0.2s;
+}
+details.premium-accordion summary::-webkit-details-marker {
+  display: none;
+}
+details.premium-accordion summary::after {
+  content: '';
+  width: 12px;
+  height: 12px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23888'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+  background-size: contain;
+  background-repeat: no-repeat;
+  transition: transform 0.3s ease;
+}
+details.premium-accordion[open] summary {
+  border-bottom-color: var(--border-light);
+}
+details.premium-accordion[open] summary::after {
+  transform: rotate(180deg);
+}
+
+/* Custom Select styling for app-like feel */
+select.premium-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  padding: 4px 24px 4px 8px;
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23888'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  background-size: 12px;
+  transition: border-color 0.2s, background-color 0.2s;
+}
+select.premium-select:hover {
+  border-color: var(--text-accent);
+}
+select.premium-select:focus {
+  outline: none;
+  border-color: var(--text-accent);
+  box-shadow: 0 0 0 2px rgba(80, 150, 255, 0.2);
+}
+select.premium-select option {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+/* Range input styling */
+input[type=range].premium-range {
+  -webkit-appearance: none;
+  width: 100%;
+  background: transparent;
+}
+input[type=range].premium-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 14px;
+  width: 14px;
+  border-radius: 50%;
+  background: var(--text-accent, #5096ff);
+  cursor: pointer;
+  margin-top: -5px;
+  box-shadow: 0 0 4px rgba(0,0,0,0.5);
+}
+input[type=range].premium-range::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 4px;
+  cursor: pointer;
+  background: var(--border-light);
+  border-radius: 2px;
+}
+
+/* ==========================================================================
+   DARK APP-THEME LOREBOOK MODAL & FORM CONTROLS
+   ========================================================================== */
+#lorebook-editor-modal {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: #e2e8f0;
+}
+
+#lorebook-editor-modal input[type="text"],
+#lorebook-editor-modal input[type="number"],
+#lorebook-editor-modal textarea,
+#lorebook-editor-modal select,
+.input-field {
+  background-color: #1e1e24 !important;
+  color: #f1f5f9 !important;
+  border: 1px solid #334155 !important;
+  border-radius: 6px !important;
+  padding: 6px 10px !important;
+  font-size: 12px !important;
+  line-height: 1.4 !important;
+  outline: none !important;
+  box-sizing: border-box !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+#lorebook-editor-modal input[type="text"]:focus,
+#lorebook-editor-modal input[type="number"]:focus,
+#lorebook-editor-modal textarea:focus,
+#lorebook-editor-modal select:focus,
+.input-field:focus {
+  border-color: #6366f1 !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25) !important;
+}
+
+#lorebook-editor-modal input[type="text"]::placeholder,
+#lorebook-editor-modal textarea::placeholder {
+  color: #64748b !important;
+}
+
+/* Custom Select Dropdowns */
+select,
+.select-input,
+#lorebook-editor-modal select,
+select.premium-select,
+select.input-field {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  background-color: #1a1a26 !important;
+  color: #f1f1f5 !important;
+  border: 1px solid var(--border-light, rgba(255, 255, 255, 0.12)) !important;
+  border-radius: var(--radius-md, 8px) !important;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 12px center !important;
+  background-size: 14px !important;
+  padding: 8px 32px 8px 12px !important;
+  cursor: pointer !important;
+  outline: none !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+select:focus,
+.select-input:focus {
+  border-color: var(--accent-primary, #6366f1) !important;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2) !important;
+}
+
+select option,
+.select-input option,
+#lorebook-editor-modal select option {
+  background-color: #14141f !important;
+  color: #f8fafc !important;
+  padding: 10px 14px !important;
+  font-size: 14px !important;
+}
+
+select option:checked,
+select option:hover,
+.select-input option:checked {
+  background-color: #2b2b3d !important;
+  color: #ffffff !important;
+}
+
+/* Range Inputs */
+#lorebook-editor-modal input[type="range"] {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  background: #334155 !important;
+  height: 5px !important;
+  border-radius: 3px !important;
+  outline: none !important;
+}
+
+#lorebook-editor-modal input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  width: 14px !important;
+  height: 14px !important;
+  border-radius: 50% !important;
+  background: #6366f1 !important;
+  cursor: pointer !important;
+  box-shadow: 0 0 6px rgba(99, 102, 241, 0.5) !important;
+  transition: transform 0.1s ease !important;
+}
+
+#lorebook-editor-modal input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2) !important;
+}
+
+/* Accordion details styling */
+details.premium-accordion {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 100 !important;
+  margin-bottom: 16px !important;
+  border: 1px solid #334155 !important;
+  border-radius: 8px !important;
+  background: #0f172a !important;
+  overflow: hidden !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
+}
+
+details.premium-accordion summary {
+  padding: 10px 14px !important;
+  background: #1e293b !important;
+  color: #cbd5e1 !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
+  cursor: pointer !important;
+  user-select: none !important;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  list-style: none !important;
+}
+
+details.premium-accordion summary::-webkit-details-marker {
+  display: none !important;
+}
+
+/* Entry Cards */
+.lorebook-entry-card {
+  background: #1e293b !important;
+  border: 1px solid #334155 !important;
+  border-radius: 8px !important;
+  padding: 12px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
+  transition: border-color 0.2s ease !important;
+}
+
+.lorebook-entry-card:hover {
+  border-color: #475569 !important;
+}

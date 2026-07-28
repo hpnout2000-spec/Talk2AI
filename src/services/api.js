@@ -205,21 +205,86 @@ export const api = {
       }
 
       let finalMessages = preprocessMessages(messages, settings);
+      let clonedMessages = JSON.parse(JSON.stringify(messages));
       let effort = options.reasoning_effort ?? settings.reasoning_effort ?? 'none';
+      const isGenAI = options.isGenAI || false;
+      const activePresetId = isGenAI ? (settings.active_genai_generation_preset_id || 'default') : (settings.active_generation_preset_id || 'default');
+      const completionMode = isGenAI ? (settings.genai_completion_mode || 'chat_completion') : (settings.completion_mode || 'chat_completion');
 
-      if (settings.qwen35_thinking_support) {
-        if (effort === 'high') {
-          effort = 'medium';
-          if (finalMessages.length > 0 && (finalMessages[finalMessages.length - 1].role === 'user' || finalMessages[finalMessages.length - 1].role === 'tool')) {
-            finalMessages.push({
-              role: 'assistant',
-              content: "<think>Here's a thinking process:\n\n1.  **Analyze User Input:**"
-            });
-            const prefillStr = "<think>Here's a thinking process:\n\n1.  **Analyze User Input:**";
-            if (onChunk) {
-              onChunk(prefillStr);
+      let temp = options.temperature ?? (isGenAI ? settings.genai_temperature : settings.temperature);
+      let topP = options.top_p ?? (isGenAI ? settings.genai_top_p : settings.top_p);
+      let topK = options.top_k ?? (isGenAI ? settings.genai_top_k : settings.top_k);
+      let minP = options.min_p ?? (isGenAI ? settings.genai_min_p : settings.min_p) ?? 0.05;
+      let minPEnabled = options.min_p_enabled ?? (isGenAI ? settings.genai_min_p_enabled : settings.min_p_enabled) ?? true;
+
+      if (settings.qwen35_thinking_support && activePresetId === 'qwen3') {
+        const isThinking = effort === 'medium' || effort === 'high';
+        const tag = isThinking ? '/think' : '/no_think';
+        
+        if (finalMessages.length > 0) {
+          const lastMsgIndex = finalMessages.length - 1;
+          if (finalMessages[lastMsgIndex].role === 'user' || finalMessages[lastMsgIndex].role === 'tool') {
+            if (Array.isArray(finalMessages[lastMsgIndex].content)) {
+              const textPart = finalMessages[lastMsgIndex].content.find(p => p.type === 'text');
+              if (textPart) textPart.text += `\n${tag}`;
+              else finalMessages[lastMsgIndex].content.push({ type: 'text', text: `\n${tag}` });
+            } else {
+              finalMessages[lastMsgIndex].content += `\n${tag}`;
             }
           }
+        }
+        if (clonedMessages.length > 0) {
+          const lastMsgIndex = clonedMessages.length - 1;
+          if (clonedMessages[lastMsgIndex].role === 'user' || clonedMessages[lastMsgIndex].role === 'tool') {
+            if (Array.isArray(clonedMessages[lastMsgIndex].content)) {
+              const textPart = clonedMessages[lastMsgIndex].content.find(p => p.type === 'text');
+              if (textPart) textPart.text += `\n${tag}`;
+              else clonedMessages[lastMsgIndex].content.push({ type: 'text', text: `\n${tag}` });
+            } else {
+              clonedMessages[lastMsgIndex].content += `\n${tag}`;
+            }
+          }
+        }
+
+        if (isThinking) {
+          temp = 0.6;
+          minP = 0.0;
+          minPEnabled = false;
+          topP = 0.95;
+          topK = 20;
+        } else {
+          temp = 0.7;
+          minP = 0.0;
+          minPEnabled = false;
+          topP = 0.8;
+          topK = 20;
+          
+          if (finalMessages.length > 0) {
+            const lastMsgIndex = finalMessages.length - 1;
+            if (finalMessages[lastMsgIndex].role === 'user' || finalMessages[lastMsgIndex].role === 'tool') {
+              finalMessages.push({
+                role: 'assistant',
+                content: "<think>\n\n</think>\n"
+              });
+            }
+          }
+          if (clonedMessages.length > 0) {
+            const lastMsgIndex = clonedMessages.length - 1;
+            if (clonedMessages[lastMsgIndex].role === 'user' || clonedMessages[lastMsgIndex].role === 'tool') {
+              clonedMessages.push({
+                role: 'assistant',
+                content: "<think>\n\n</think>\n"
+              });
+              const prefillStr = "<think>\n\n</think>\n";
+              if (onChunk) {
+                onChunk(prefillStr);
+              }
+            }
+          }
+        }
+      } else if (settings.qwen35_thinking_support) {
+        if (effort === 'high') {
+          effort = 'medium';
         }
       } else if (settings.change_gemma4_thinking_style) {
         if (effort === 'high') {
@@ -238,13 +303,7 @@ export const api = {
         }
       }
 
-      const isGenAI = options.isGenAI || false;
-      const completionMode = isGenAI ? (settings.genai_completion_mode || 'chat_completion') : (settings.completion_mode || 'chat_completion');
-
       const maxTokens = options.max_tokens || (isGenAI ? settings.genai_max_tokens : settings.max_tokens);
-      const temp = options.temperature ?? (isGenAI ? settings.genai_temperature : settings.temperature);
-      const topP = options.top_p ?? (isGenAI ? settings.genai_top_p : settings.top_p);
-      const topK = options.top_k ?? (isGenAI ? settings.genai_top_k : settings.top_k);
       const repPenalty = options.rep_penalty ?? (isGenAI ? settings.genai_rep_penalty : settings.rep_penalty);
       const presPenalty = options.presence_penalty ?? (isGenAI ? settings.genai_presence_penalty : settings.presence_penalty) ?? 0.0;
 
@@ -255,7 +314,7 @@ export const api = {
         const instructTemplate = (settings.instruct_templates || []).find(t => t.id === instructId) || (settings.instruct_templates || [])[0] || {};
         const contextTemplate = (settings.context_templates || []).find(t => t.id === contextId) || (settings.context_templates || [])[0] || {};
 
-        const formatted = formatTextCompletionPrompt(messages, contextTemplate, instructTemplate, {
+        const formatted = formatTextCompletionPrompt(clonedMessages, contextTemplate, instructTemplate, {
           charName: options.charName || appState.currentCharacter?.name || 'Assistant',
           userName: options.userName || settings.user_name || 'User',
           charDescription: options.charDescription || appState.currentCharacter?.description || '',
@@ -294,9 +353,8 @@ export const api = {
         body.smoothing_factor = sf;
       }
       
-      const minPEnabled = options.min_p_enabled ?? (isGenAI ? settings.genai_min_p_enabled : settings.min_p_enabled) ?? true;
       if (minPEnabled) {
-        body.min_p = options.min_p ?? (isGenAI ? settings.genai_min_p : settings.min_p) ?? 0.05;
+        body.min_p = minP;
       }
 
       const adaptiveTargetEnabled = options.adaptive_target_enabled ?? (isGenAI ? settings.genai_adaptive_target_enabled : settings.adaptive_target_enabled) ?? true;
@@ -859,7 +917,25 @@ Keep the summary under 300 words. Write only the summary itself in ${language}, 
   /**
    * Generates a condensed summary of past chat messages
    */
-  async generateChatSummary(previousSummary, newMessages, userName, characterName) {
+  async generateChatSummary(previousSummary, newMessages, userName, characterName, options = {}) {
+    const summaryLength = options.summaryLength || 'default';
+    const enableThinking = options.enableThinking ?? false;
+
+    let lengthInstruction = "";
+    if (summaryLength === 'short') {
+      lengthInstruction = "Write a short, concise summary of key events and final outcome.";
+    } else if (summaryLength === 'long') {
+      lengthInstruction = "Write a detailed and comprehensive summary of ALL events in approximately 5 paragraphs.";
+    } else {
+      lengthInstruction = "Write a concise summary of ALL events, minor details, and outcome in approximately 2-3 paragraphs.";
+    }
+
+    const mandatoryRules = `MANDATORY RULES:
+1. Write only the summary itself in the same language as the conversation, without any introductory remarks, greetings, or meta-commentary.
+2. ALWAYS use explicit character names for all participants (who did what, who talked to whom, etc.). Give clear, direct descriptions of actions and events without vague metaphors or ambiguous pronouns.
+3. ${lengthInstruction}
+4. Do NOT continue chat or roleplay. You are writing a SUMMARY.`;
+
     let newMessagesText = "";
     newMessages.forEach((msg) => {
       const name = msg.role === 'user' ? userName : characterName;
@@ -869,9 +945,8 @@ Keep the summary under 300 words. Write only the summary itself in ${language}, 
 
     let systemPrompt = "";
     if (previousSummary) {
-      systemPrompt = `You are a summarization agent that writes extremely concise summaries of the conversation history.
-MANDATORY RULE: Write only the summary itself in the same language as the conversation, without any introductory remarks, greetings, or meta-commentary. Keep the summary extremely concise and short.
-do NOT continue chat or roleplay. you're writing SUMMARY.
+      systemPrompt = `You are a professional chronicler and summarization agent.
+${mandatoryRules}
 
 Here is the EXISTING SUMMARY of the conversation so far:
 """
@@ -883,18 +958,17 @@ Here are the NEW MESSAGES:
 ${newMessagesText}
 """
 
-Please update the existing summary with the new messages, maintaining an extremely concise summary of the entire conversation.`;
+Please update the existing summary with the new messages following all mandatory rules.`;
     } else {
-      systemPrompt = `You are a summarization agent that writes extremely concise summaries of the conversation history.
-MANDATORY RULE: Write only the summary itself in the same language as the conversation, without any introductory remarks, greetings, or meta-commentary. Keep the summary extremely concise and short.
-do NOT continue chat or roleplay. you're writing SUMMARY.
+      systemPrompt = `You are a professional chronicler and summarization agent.
+${mandatoryRules}
 
 Here are the MESSAGES in the conversation:
 """
 ${newMessagesText}
 """
 
-Please write an extremely concise summary of the conversation.`;
+Please write the summary of the conversation following all mandatory rules.`;
     }
 
     const messages = [
@@ -902,10 +976,19 @@ Please write an extremely concise summary of the conversation.`;
       { role: 'user', content: `Generate the conversation summary.` }
     ];
 
+    const settings = settingsStore.get();
+    const reasoningEffort = enableThinking
+      ? (settings.reasoning_effort && settings.reasoning_effort !== 'none' ? settings.reasoning_effort : 'medium')
+      : 'none';
+
     try {
-      return await this.chatCompletion(messages, { temperature: 0.5, max_tokens: 2048 });
+      return await this.chatCompletion(messages, {
+        temperature: 0.5,
+        max_tokens: summaryLength === 'long' ? 4096 : 2048,
+        reasoning_effort: reasoningEffort
+      });
     } catch (err) {
-      console.error('Chat summarization failed:', err);
+      console.error("Failed to generate chat summary:", err);
       throw err;
     }
   },

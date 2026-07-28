@@ -50,50 +50,71 @@ export const chatStore = {
     const mergedMap = new Map();
     
     // Process local first
-    parsedLocal.forEach(s => mergedMap.set(s.id, s));
+    if (Array.isArray(parsedLocal)) {
+      parsedLocal.forEach(s => {
+        if (s && s.id) mergedMap.set(s.id, s);
+      });
+    }
     
     // Process tauri, overriding if newer or if local doesn't have it
-    parsedTauri.forEach(s => {
-      if (mergedMap.has(s.id)) {
-        const localSession = mergedMap.get(s.id);
-        const tauriTime = new Date(s.updated_at || 0).getTime();
-        const localTime = new Date(localSession.updated_at || 0).getTime();
-        
-        // If tauri has more messages or is newer, pick it
-        if (tauriTime > localTime || s.messages.length > localSession.messages.length) {
+    if (Array.isArray(parsedTauri)) {
+      parsedTauri.forEach(s => {
+        if (!s || !s.id) return;
+        if (mergedMap.has(s.id)) {
+          const localSession = mergedMap.get(s.id);
+          const tauriTime = new Date(s.updated_at || 0).getTime();
+          const localTime = new Date(localSession.updated_at || 0).getTime();
+          
+          const localMsgLen = localSession.messages ? localSession.messages.length : 0;
+          const tauriMsgLen = s.messages ? s.messages.length : 0;
+
+          // If tauri has more messages or is newer, pick it
+          if (tauriTime > localTime || tauriMsgLen > localMsgLen) {
+            mergedMap.set(s.id, s);
+          }
+        } else {
           mergedMap.set(s.id, s);
         }
-      } else {
-        mergedMap.set(s.id, s);
-      }
-    });
-
-    // If running in Tauri and we successfully queried the backend, any session not in parsedTauri was deleted.
-    if (window.__TAURI_INTERNALS__ && Array.isArray(parsedTauri)) {
-      const tauriIds = new Set(parsedTauri.map(s => s.id));
-      for (const id of mergedMap.keys()) {
-        if (!tauriIds.has(id)) {
-          mergedMap.delete(id);
-        }
-      }
+      });
     }
 
     sessions[characterId] = Array.from(mergedMap.values()).sort((a, b) => {
       return new Date(b.updated_at || 0) - new Date(a.updated_at || 0);
     });
 
-    // Clean recovery: strip any active loader tags from loaded messages on startup/restart
+    // Clean recovery & summaryChunks normalization
     sessions[characterId].forEach(s => {
-      s.messages.forEach(m => {
-        if (m.content && m.content.includes('[[loader:')) {
-          if (m.original_text) {
-            m.content = m.original_text;
-          } else {
-            m.content = m.content.replace(/\n\n\[\[loader:[^\]]*\]\]/g, '').replace(/\[\[loader:[^\]]*\]\]/g, '').trim();
+      if (!s.summaryChunks && s.summary_chunks) {
+        s.summaryChunks = s.summary_chunks;
+      } else if (!s.summary_chunks && s.summaryChunks) {
+        s.summary_chunks = s.summaryChunks;
+      }
+      if (!s.summaryChunks) {
+        s.summaryChunks = [];
+        s.summary_chunks = [];
+      }
+
+      if (Array.isArray(s.messages)) {
+        s.messages.forEach(m => {
+          if (m.content && typeof m.content === 'string' && m.content.includes('[[loader:')) {
+            if (m.original_text) {
+              m.content = m.original_text;
+            } else {
+              m.content = m.content.replace(/\n\n\[\[loader:[^\]]*\]\]/g, '').replace(/\[\[loader:[^\]]*\]\]/g, '').trim();
+            }
           }
-        }
-      });
+        });
+      } else {
+        s.messages = [];
+      }
     });
+
+    // Write merged state back to LocalStorage to protect against sync mismatches
+    try {
+      localStorage.setItem(`llmchat_chats_${characterId}`, JSON.stringify(sessions[characterId]));
+    } catch (e) {
+      console.warn('Failed to cache merged chats in LocalStorage', e);
+    }
 
     return sessions[characterId];
   },
@@ -220,8 +241,26 @@ export const chatStore = {
     const targetSession = session || currentSession;
     if (!targetSession) return;
     targetSession.updated_at = new Date().toISOString();
+    if (!targetSession.summaryChunks && targetSession.summary_chunks) {
+      targetSession.summaryChunks = targetSession.summary_chunks;
+    }
+    if (!targetSession.summary_chunks && targetSession.summaryChunks) {
+      targetSession.summary_chunks = targetSession.summaryChunks;
+    }
+    if (!targetSession.summaryChunks) {
+      targetSession.summaryChunks = [];
+      targetSession.summary_chunks = [];
+    }
     const characterId = targetSession.character_id;
-    const allSessions = sessions[characterId] || [];
+    if (!characterId) return;
+
+    if (!sessions[characterId]) {
+      sessions[characterId] = [targetSession];
+    } else if (!sessions[characterId].some(s => s.id === targetSession.id)) {
+      sessions[characterId].unshift(targetSession);
+    }
+
+    const allSessions = sessions[characterId];
 
     try {
       const dataStr = JSON.stringify(allSessions);
@@ -247,7 +286,6 @@ export const chatStore = {
     }
   },
 
-
   async saveCurrentSession() {
     return this.saveSession(currentSession);
   },
@@ -269,10 +307,11 @@ export const chatStore = {
 
   async saveCharacterSettings(characterId, settings) {
     if (!characterId) return;
-    
-    await this.ensureSession(characterId);
+    if (!sessions[characterId]) sessions[characterId] = [];
     sessions[characterId].settings = settings;
-    await this.saveSessionToDisk(characterId);
+    try {
+      localStorage.setItem(`llmchat_chats_${characterId}`, JSON.stringify(sessions[characterId]));
+    } catch (e) {}
   },
 
   // Clear in-memory cache, e.g. when syncing from another device

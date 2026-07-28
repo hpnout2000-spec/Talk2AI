@@ -116,6 +116,8 @@ pub struct ChatSession {
     pub ai_comments: Vec<AiComment>,
     #[serde(default)]
     pub indicators: Option<ChatIndicators>,
+    #[serde(default, alias = "summaryChunks")]
+    pub summary_chunks: Option<Vec<serde_json::Value>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -663,14 +665,15 @@ async fn route_push_chat(
     if char_id.contains('/') || char_id.contains('\\') || char_id.contains('.') {
         return (StatusCode::BAD_REQUEST, "Invalid character_id").into_response();
     }
-    let session: ChatSession = match serde_json::from_value(chat_data.clone()) {
-        Ok(s) => s,
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("Invalid session: {}", e)).into_response(),
-    };
+    let chat_id = chat_data.get("id").and_then(|v| v.as_str()).unwrap_or("");
+    if chat_id.is_empty() || chat_id.contains('/') || chat_id.contains('\\') || chat_id.contains('.') {
+        return (StatusCode::BAD_REQUEST, "Invalid chat_id").into_response();
+    }
     let dir = get_app_dir().join("chats").join(&char_id);
     ensure_dir(&dir);
-    let path = dir.join(format!("{}.json", session.id));
-    match fs::write(&path, serde_json::to_string_pretty(&session).unwrap()) {
+    let path = dir.join(format!("{}.json", chat_id));
+    let pretty_str = serde_json::to_string_pretty(chat_data).unwrap_or_else(|_| chat_data.to_string());
+    match fs::write(&path, pretty_str) {
         Ok(_) => {
             use tauri::Emitter;
             let _ = s.app_handle.emit("host-data-updated", ());
@@ -1246,32 +1249,51 @@ fn load_memory(character_id: String) -> Result<String, String> {
 
 #[tauri::command]
 fn save_chat(character_id: String, data: String) -> Result<(), String> {
-    let session: ChatSession = serde_json::from_str(&data).map_err(|e| e.to_string())?;
+    if character_id.contains('/') || character_id.contains('\\') || character_id.contains("..") {
+        return Err("Invalid character_id".to_string());
+    }
+    let session_val: serde_json::Value = serde_json::from_str(&data).map_err(|e| format!("Invalid JSON: {}", e))?;
+    let chat_id = session_val.get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "Missing session id in chat data".to_string())?;
+
+    if chat_id.contains('/') || chat_id.contains('\\') || chat_id.contains("..") {
+        return Err("Invalid chat_id".to_string());
+    }
+
     let dir = get_app_dir().join("chats").join(&character_id);
     ensure_dir(&dir);
-    let path = dir.join(format!("{}.json", session.id));
-    fs::write(&path, serde_json::to_string_pretty(&session).unwrap())
-        .map_err(|e| e.to_string())?;
+    let path = dir.join(format!("{}.json", chat_id));
+
+    let pretty_str = serde_json::to_string_pretty(&session_val).unwrap_or(data);
+    fs::write(&path, pretty_str).map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
 fn load_chats(character_id: String) -> Result<String, String> {
+    if character_id.contains('/') || character_id.contains('\\') || character_id.contains("..") {
+        return Err("Invalid character_id".to_string());
+    }
     let dir = get_app_dir().join("chats").join(&character_id);
     ensure_dir(&dir);
-    let mut sessions: Vec<ChatSession> = Vec::new();
+    let mut sessions: Vec<serde_json::Value> = Vec::new();
     if let Ok(entries) = fs::read_dir(&dir) {
         for entry in entries.flatten() {
             if entry.path().extension().map_or(false, |e| e == "json") {
                 if let Ok(content) = fs::read_to_string(entry.path()) {
-                    if let Ok(session) = serde_json::from_str::<ChatSession>(&content) {
+                    if let Ok(session) = serde_json::from_str::<serde_json::Value>(&content) {
                         sessions.push(session);
                     }
                 }
             }
         }
     }
-    sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    sessions.sort_by(|a, b| {
+        let time_a = a.get("updated_at").and_then(|v| v.as_str()).unwrap_or("");
+        let time_b = b.get("updated_at").and_then(|v| v.as_str()).unwrap_or("");
+        time_b.cmp(time_a)
+    });
     serde_json::to_string(&sessions).map_err(|e| e.to_string())
 }
 

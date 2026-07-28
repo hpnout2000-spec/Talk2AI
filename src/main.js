@@ -33,6 +33,8 @@ import { initLightbox } from './utils/lightbox.js';
 import { initAlbumView } from './components/album-view.js';
 import { localSyncService } from './services/local-sync-service.js';
 import { genaiMemoryStore } from './services/genai-memory-store.js';
+import { lorebookStore } from './services/lorebook-store.js';
+import './components/lorebook-ui.js';
 
 // ─── Initialize App ─────────────────────────────────────────────────
 
@@ -55,14 +57,17 @@ async function init() {
     console.log('[Sync] Local sync applied. Reloading settings and GenAI memories...');
     await settingsStore.load();
     await genaiMemoryStore.load();
+    await lorebookStore.load();
     applyGlobalSettingsStyles();
     if (window.updateUserNameDisplay) window.updateUserNameDisplay();
     if (window.refreshGenAIThinkingEffortUI) window.refreshGenAIThinkingEffortUI();
+    if (window.syncLorebookIndicators) window.syncLorebookIndicators();
   });
 
   // Load settings first
   await settingsStore.load();
   await genaiMemoryStore.load();
+  await lorebookStore.load();
   const settings = settingsStore.get();
 
   // Auto-connect and sync local network client if configured

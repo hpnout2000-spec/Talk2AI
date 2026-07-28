@@ -57,6 +57,17 @@ export function initCharacterPanel() {
     addAltGreetingField();
   });
 
+  // Quick insert tags for Message Examples
+  document.getElementById('btn-insert-start')?.addEventListener('click', () => {
+    insertTextAtCursor('char-message-examples', '<START>\n');
+  });
+  document.getElementById('btn-insert-user')?.addEventListener('click', () => {
+    insertTextAtCursor('char-message-examples', '{{user}}: ');
+  });
+  document.getElementById('btn-insert-char')?.addEventListener('click', () => {
+    insertTextAtCursor('char-message-examples', '{{char}}: ');
+  });
+
   // Avatar upload
   document.getElementById('btn-upload-avatar').addEventListener('click', () => {
     document.getElementById('avatar-input').click();
@@ -566,4 +577,15 @@ function renderGalleryGrid() {
       }
     });
   });
+}
+
+function insertTextAtCursor(textareaId, text) {
+  const el = document.getElementById(textareaId);
+  if (!el) return;
+  const start = el.selectionStart || 0;
+  const end = el.selectionEnd || 0;
+  const val = el.value;
+  el.value = val.substring(0, start) + text + val.substring(end);
+  el.selectionStart = el.selectionEnd = start + text.length;
+  el.focus();
 }
