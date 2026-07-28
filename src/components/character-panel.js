@@ -7,9 +7,6 @@ import { showToast, showConfirm, closeModal, openWindow, closeWindow } from '../
 import { appState } from '../state.js';
 import { selectCharacter, updateChatHistory } from './chat.js';
 import { escapeHtml, readFileAsDataURL } from '../utils/helpers.js';
-import ExifReader from '../vendor/exifreader.js';
-import { api } from '../services/api.js';
-
 let editingCharacterId = null;
 
 export function initCharacterPanel() {
@@ -30,11 +27,13 @@ export function initCharacterPanel() {
     const { scrollTop, scrollHeight, clientHeight } = charSidebarSection;
     
     // Top blur: fades in when scrolling down
-    blurTop.style.opacity = Math.min(scrollTop / 20, 1);
+    const topOpacity = Math.min(scrollTop / 20, 1);
+    blurTop.style.opacity = topOpacity;
     
     // Bottom blur: fades out when reaching bottom
     const maxScroll = scrollHeight - clientHeight;
-    blurBottom.style.opacity = maxScroll <= 0 ? 0 : Math.min((maxScroll - scrollTop) / 20, 1);
+    const bottomOpacity = maxScroll <= 0 ? 0 : Math.min((maxScroll - scrollTop) / 20, 1);
+    blurBottom.style.opacity = bottomOpacity;
   };
 
   if (charSidebarSection) {
@@ -42,6 +41,8 @@ export function initCharacterPanel() {
     window.addEventListener('resize', updateScrollBlur);
     // Expose globally to trigger after list updates
     window.updateCharacterScrollBlur = () => setTimeout(updateScrollBlur, 50);
+    // Initial calculation
+    setTimeout(updateScrollBlur, 50);
   }
 
   // Add character button

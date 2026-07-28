@@ -251,29 +251,27 @@
   position: absolute;
   left: 0;
   right: 0;
-  height: 40px;
+  height: 48px;
   z-index: 10;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.3s ease;
+  transition: opacity 0.25s ease;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 
 .scroll-blur-overlay.top {
   top: 0;
-  background: linear-gradient(to bottom, var(--bg-secondary) 10%, transparent 100%);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  mask-image: linear-gradient(to bottom, black 40%, transparent);
-  -webkit-mask-image: linear-gradient(to bottom, black 40%, transparent);
+  background: linear-gradient(to bottom, var(--bg-secondary) 15%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black 0%, rgba(0,0,0,0.8) 30%, rgba(0,0,0,0.3) 70%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 0%, rgba(0,0,0,0.8) 30%, rgba(0,0,0,0.3) 70%, transparent 100%);
 }
 
 .scroll-blur-overlay.bottom {
   bottom: 0;
-  background: linear-gradient(to top, var(--bg-secondary) 10%, transparent 100%);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  mask-image: linear-gradient(to top, black 40%, transparent);
-  -webkit-mask-image: linear-gradient(to top, black 40%, transparent);
+  background: linear-gradient(to top, var(--bg-secondary) 15%, transparent 100%);
+  mask-image: linear-gradient(to top, black 0%, rgba(0,0,0,0.8) 30%, rgba(0,0,0,0.3) 70%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to top, black 0%, rgba(0,0,0,0.8) 30%, rgba(0,0,0,0.3) 70%, transparent 100%);
 }
 
 /* ─── Add Character Button ───────────────────────────────────────── */

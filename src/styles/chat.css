@@ -230,16 +230,17 @@ body.genai-sidebar-open .btn-toggle-right-sidebar svg {
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  background: var(--bg-tertiary);
+  background: rgba(0, 0, 0, 0.25);
   border: 1px solid var(--border-light);
   border-radius: 16px;
   height: 24px;
   box-sizing: border-box;
   transition: all 0.2s;
+  user-select: none;
 }
 
 .thinking-effort-wrapper:hover {
-  background: var(--bg-hover);
+  background: rgba(0, 0, 0, 0.4);
 }
 
 .btn-thinking-effort {
@@ -265,12 +266,12 @@ body.genai-sidebar-open .btn-toggle-right-sidebar svg {
 }
 
 .thinking-effort-wrapper.active {
-  border-color: rgba(99, 179, 130, 0.4);
-  background: rgba(99, 179, 130, 0.08);
+  border-color: var(--border-light);
+  background: var(--bg-tertiary);
 }
 
 .thinking-effort-wrapper.active:hover {
-  background: rgba(99, 179, 130, 0.15);
+  background: var(--bg-hover);
 }
 
 .thinking-effort-wrapper.active .btn-thinking-effort {
@@ -292,8 +293,8 @@ body.genai-sidebar-open .btn-toggle-right-sidebar svg {
 }
 
 .thinking-effort-wrapper.active .effort-level-label {
-  color: #68d391;
-  font-weight: 600;
+  color: var(--text-secondary);
+  font-weight: 500;
 }
 
 .btn-thinking-effort-arrow {
@@ -2486,6 +2487,7 @@ glm-thinking-snippets .glm-snippet.active {
   font-size: 13px;
   color: var(--text-secondary);
   transition: background 0.15s, color 0.15s;
+  user-select: none;
 }
 
 .dropdown-option:hover {

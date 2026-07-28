@@ -726,7 +726,7 @@ export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, t
   if (isGLM) {
     if (isActive) {
       const escapedThoughts = escapeHtml(cleanThinking);
-      return `<div class="thinking-inline thinking-inline-active"><glm-thinking-snippets thoughts="${escapedThoughts}"></glm-thinking-snippets></div>`;
+      return `<div class="thinking-inline thinking-inline-active system-timeline-item"><glm-thinking-snippets thoughts="${escapedThoughts}"></glm-thinking-snippets></div>`;
     }
     const sections = parseGLMThinkingSections(cleanThinking);
     const timeText = thinkingTime > 0 ? `Thought for ${thinkingTime} seconds` : 'Thought finished';
@@ -752,7 +752,7 @@ export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, t
       }
     }).join('\n');
 
-    return `<div class="thinking-inline glm-thinking-expanded-container">
+    return `<div class="thinking-inline glm-thinking-expanded-container system-timeline-item">
               <div class="glm-thinking-toggle" onclick="this.closest('.glm-thinking-expanded-container').classList.toggle('glm-thinking-expanded')">
                 <span class="thinking-done-text">${timeText}</span>
               </div>
@@ -764,7 +764,7 @@ export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, t
 
   if (isActive) {
     const escapedThoughts = escapeHtml(cleanThinking);
-    return `<div class="thinking-inline thinking-inline-active"><div class="thinking-inline-header"><thinking-snippets id="genai-thinking-snippets" thoughts="${escapedThoughts}"></thinking-snippets></div></div>`;
+    return `<div class="thinking-inline thinking-inline-active system-timeline-item"><div class="thinking-inline-header"><thinking-snippets id="genai-thinking-snippets" thoughts="${escapedThoughts}"></thinking-snippets></div></div>`;
   }
   let doneText = '';
   if (thinkingTime >= 5) {
@@ -772,7 +772,7 @@ export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, t
   } else {
     doneText = `thought for a few seconds.`;
   }
-  return '<div class="thinking-inline"><div class="thinking-inline-header thinking-toggle-header" onclick="this.closest(\'.thinking-inline\').classList.toggle(\'thinking-expanded\')"><span class="thinking-done-text">' + escapeHtml(doneText) + '</span><span class="thinking-chevron"> ▸</span></div><div class="thinking-inline-content">' + escapeHtml(cleanThinking).replace(/\n/g, '<br>') + '</div></div>';
+  return '<div class="thinking-inline system-timeline-item"><div class="thinking-inline-header thinking-toggle-header" onclick="this.closest(\'.thinking-inline\').classList.toggle(\'thinking-expanded\')"><span class="thinking-done-text">' + escapeHtml(doneText) + '</span><span class="thinking-chevron"> ▸</span></div><div class="thinking-inline-content">' + escapeHtml(cleanThinking).replace(/\n/g, '<br>') + '</div></div>';
 }
 
 /**

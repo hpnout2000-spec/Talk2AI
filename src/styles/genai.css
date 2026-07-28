@@ -1381,40 +1381,28 @@ body:not(.genai-fullscreen) #genai-thinking-effort-wrapper .thinking-icon-bulb {
   border: 1px solid var(--border-light);
   font-size: 11px;
   color: var(--text-secondary);
-  cursor: default;
+  cursor: pointer;
   transition: all 0.2s;
   overflow: hidden;
+  user-select: none;
 }
 
 .genai-tool-capsule:hover {
   background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.genai-tool-capsule.inactive {
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.genai-tool-capsule.inactive:hover {
+  background: rgba(0, 0, 0, 0.4);
+  color: var(--text-primary);
 }
 
 .genai-tool-capsule .close-btn {
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  width: 32px;
-  cursor: pointer;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding-right: 8px;
-  background: linear-gradient(to right, transparent 0%, var(--bg-hover) 50%, var(--bg-hover) 100%);
-  color: var(--text-secondary);
-}
-
-.genai-tool-capsule:hover .close-btn {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.genai-tool-capsule .close-btn:hover {
-  color: var(--text-primary);
+  display: none;
 }
 
 #btn-genai-brush {
@@ -1988,44 +1976,6 @@ body.genai-mode-active .btn-toggle-right-sidebar {
 
 /* Quote Cloud Pill above Input Field */
 .genai-reply-quote-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 14px;
-  background: rgba(30, 30, 32, 0.8);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 9999px;
-  color: var(--text-primary, #ffffff);
-  font-size: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
-  user-select: none;
-  transition: border-color 0.2s ease, background-color 0.2s ease;
-  position: relative;
-  max-width: 100%;
-  z-index: 20;
-}
-
-.genai-reply-quote-pill:hover {
-  border-color: rgba(255, 255, 255, 0.25);
-  background: rgba(38, 38, 42, 0.9);
-}
-
-.genai-reply-quote-icon {
-  width: 15px;
-  height: 15px;
-  color: var(--text-secondary, #a1a1aa);
-  flex-shrink: 0;
-}
-
-.genai-reply-quote-text {
-  max-width: 360px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-weight: 400;
-  color: var(--text-secondary, #d4d4d8);
   line-height: 1.3;
 }
 
@@ -2049,3 +1999,48 @@ body.genai-mode-active .btn-toggle-right-sidebar {
   color: #ffffff;
 }
 
+
+
+/* ─── GenAI System Timeline ────────────────────────────────────────── */
+
+.system-timeline-item {
+  position: relative;
+  /* padding-left removed so they align with normal text */
+  display: block;
+}
+
+/* Draw a vertical connector BELOW the item if it's followed by another system item */
+.system-timeline-item:has(+ .system-timeline-item)::after,
+.system-timeline-item:has(+ p:empty + .system-timeline-item)::after,
+.system-timeline-item:has(+ p:empty + p:empty + .system-timeline-item)::after,
+.system-timeline-item:has(+ br + .system-timeline-item)::after,
+.system-timeline-item:has(+ br + br + .system-timeline-item)::after,
+.system-timeline-item:has(+ p:empty + br + .system-timeline-item)::after {
+  content: '';
+  display: block;
+  width: 2px;
+  height: 16px;
+  background-color: var(--text-secondary);
+  opacity: 0.35;
+  margin-left: 42px;
+  margin-top: 6px;
+  margin-bottom: 2px;
+}
+
+/* Tool font & style matching Thought font style exactly */
+.genai-inline-tool, 
+.genai-inline-tool .genai-working-text,
+.genai-system-group .genai-working-text {
+  color: var(--text-secondary) !important;
+  opacity: 0.6 !important;
+  font-style: italic !important;
+  font-size: var(--text-xs) !important;
+  font-weight: 400 !important;
+  letter-spacing: 0.02em !important;
+  line-height: 1.2 !important;
+  -webkit-text-fill-color: var(--text-secondary) !important;
+}
+
+.genai-tool-pending-completed .timeline-node-icon {
+  opacity: 0.6 !important;
+}

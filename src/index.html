@@ -178,12 +178,8 @@
 
         <div id="characters-section" style="display: flex; flex-direction: column; flex: 1; min-height: 0;">
           <div id="characters-wrapper" style="position: relative; display: flex; flex: 1; min-height: 0; flex-direction: column;">
-            <div class="scroll-blur-overlay top" id="char-blur-top">
-              <div></div><div></div><div></div><div></div><div></div>
-            </div>
-            <div class="scroll-blur-overlay bottom" id="char-blur-bottom">
-              <div></div><div></div><div></div><div></div><div></div>
-            </div>
+            <div class="scroll-blur-overlay top" id="char-blur-top"></div>
+            <div class="scroll-blur-overlay bottom" id="char-blur-bottom"></div>
             <div class="sidebar-section" id="char-sidebar-section" style="flex: 1; width: 100%;">
               <div class="section-label">Characters</div>
               <div id="character-list" class="character-list"></div>
@@ -1311,6 +1307,9 @@
                             <span style="font-size: 11px; color: var(--text-tertiary);">Anima · ComfyUI</span>
                           </span>
                           <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                            <div id="btn-genai-pin-imagegen" data-skill="image-gen" title="Pin to quick access" style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 4px; background: transparent; cursor: pointer; pointer-events: auto; color: var(--text-tertiary);" class="hover-bg-light btn-pin-skill">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                            </div>
                             <div id="btn-genai-imagegen-settings" title="Image Gen Settings" style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 4px; background: var(--bg-tertiary); cursor: pointer; pointer-events: auto; color: var(--text-secondary);" class="hover-bg-light">
                               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
                             </div>
@@ -1325,10 +1324,15 @@
                             <span style="font-weight: 500; font-size: var(--text-sm); color: var(--text-primary);">Web Search</span>
                             <span style="font-size: 11px; color: var(--text-tertiary);">Internet Browser</span>
                           </span>
-                          <label class="toggle-switch small" style="pointer-events: none; flex-shrink: 0;">
-                            <input type="checkbox" id="genai-websearch-toggle-check" />
-                            <span class="toggle-slider"></span>
-                          </label>
+                          <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+                            <div id="btn-genai-pin-websearch" data-skill="web-search" title="Pin to quick access" style="width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; border-radius: 4px; background: transparent; cursor: pointer; pointer-events: auto; color: var(--text-tertiary);" class="hover-bg-light btn-pin-skill">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+                            </div>
+                            <label class="toggle-switch small" style="pointer-events: none; flex-shrink: 0;">
+                              <input type="checkbox" id="genai-websearch-toggle-check" />
+                              <span class="toggle-slider"></span>
+                            </label>
+                          </div>
                         </button>
                         <button id="btn-genai-plus-skills" class="dropdown-option" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: var(--radius-sm); border: none; background: transparent; cursor: pointer; width: 100%; text-align: left;">
                           <span style="display: flex; flex-direction: column; align-items: flex-start; gap: 2px;">

@@ -27,3 +27,11 @@ dist-ssr
 src-tauri/target
 src-tauri/gen/apple
 src-tauri/gen/android
+
+# Patch & temporary scripts
+patch*.js
+patch*.cjs
+restore-pinning.cjs
+move_accordion.cjs
+src/New folder/
+
