@@ -289,6 +289,7 @@ const DEFAULTS = {
   glm47_support: false,
   qwen35_thinking_support: false,
   legacy_jinja_support: false,
+  jinja_adaptive_thinking: true,
   extended_thinking: false,
   memory_enabled: true,
   font_size: 15,
@@ -556,7 +557,9 @@ export const settingsStore = {
 };
 
 export const SETTING_META = {
+  qwen35_thinking_support: { label: 'Qwen 3.5 thinking support', type: 'bool' },
   legacy_jinja_support: { label: 'Legacy Jinja Support', type: 'bool' },
+  jinja_adaptive_thinking: { label: 'Jinja Adaptive Thinking', type: 'bool' },
   ai_comments_enabled: { label: 'AI Comments', type: 'bool' },
   suggestions_enabled: { label: 'AI Suggestions', type: 'bool' },
   auto_translate: { label: 'Auto Translation', type: 'bool' },

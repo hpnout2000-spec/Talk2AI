@@ -1976,7 +1976,33 @@ body.genai-mode-active .btn-toggle-right-sidebar {
 
 /* Quote Cloud Pill above Input Field */
 .genai-reply-quote-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(30, 30, 32, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9999px;
+  padding: 6px 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
   line-height: 1.3;
+}
+
+.genai-reply-quote-icon {
+  width: 15px;
+  height: 15px;
+  color: var(--text-secondary, #a1a1aa);
+  flex-shrink: 0;
+}
+
+.genai-reply-quote-text {
+  color: #e4e4e7;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 300px;
 }
 
 .genai-reply-quote-close {
@@ -1999,8 +2025,6 @@ body.genai-mode-active .btn-toggle-right-sidebar {
   color: #ffffff;
 }
 
-
-
 /* ─── GenAI System Timeline ────────────────────────────────────────── */
 
 .system-timeline-item {
@@ -2022,6 +2046,7 @@ body.genai-mode-active .btn-toggle-right-sidebar {
   height: 16px;
   background-color: var(--text-secondary);
   opacity: 0.35;
+  border-radius: 2px;
   margin-left: 42px;
   margin-top: 6px;
   margin-bottom: 2px;
@@ -2039,6 +2064,15 @@ body.genai-mode-active .btn-toggle-right-sidebar {
   letter-spacing: 0.02em !important;
   line-height: 1.2 !important;
   -webkit-text-fill-color: var(--text-secondary) !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+.genai-system-group,
+.system-timeline-item,
+.genai-action-badge {
+  user-select: none !important;
+  -webkit-user-select: none !important;
 }
 
 .genai-tool-pending-completed .timeline-node-icon {

@@ -456,6 +456,12 @@ export const api = {
         body.reasoning_effort = effort;
       }
 
+      if (settings.jinja_adaptive_thinking ?? true) {
+        body.chat_template_kwargs = {
+          enable_thinking: !!(effort && effort !== 'none')
+        };
+      }
+
       try {
         if (combinedController.signal.aborted) {
           onDone();

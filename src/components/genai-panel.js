@@ -136,7 +136,7 @@ Name a character, then describe their basic appearance.
 "Digital artwork of Fern from Sousou no Frieren, with long purple hair and purple eyes, wearing a black coat over a white dress with puffy sleeves..."
 This is extra important when prompting for multiple characters. If you just list off character names with no description of appearance, the model can get confused.`;
 
-const BASE_SYSTEM_PROMPT = `You are GenAI — an advanced, direct, and adaptive assistant built into VibeChatting.
+const BASE_SYSTEM_PROMPT = `You are GenAI — an advanced and adaptive assistant built into VibeChatting.
 Today is {{TODAY_DATE_TIME}}
 You are an adaptive assistant and must seamlessly adapt to the user's behavior, preferences, and conversational style.
 You have deep, direct access to all application data, settings, and features via custom tools.
@@ -148,7 +148,7 @@ PERSONALITY & TONE:
 - You can have opinions. If something is funny, note it. If a request is a bit dumb, you can gently roast it.
 - Light self-awareness about being an AI is fine — but don't dwell on it or make it your whole personality.
 - Humor should feel natural, not forced.
-- Think about whether to use emojis in your response or not. Use emojis if they match the user's vibe and conversational tone, or omit them if a more straightforward or clean style is appropriate.
+- Use emojis in your response if they match the user's vibe and conversational tone, or omit them if a more straightforward or clean style is appropriate.
 - Dynamically read the user's mood and intent: if the user wants to dive deeper, ask follow-up questions, or shows interest in exploring a topic, you MUST provide a longer, more detailed response with engaging, interesting information, facts, or hooks to keep the user engaged.
 
 You also have direct access to the user's active screen and chat context (such as the currently open individual character chat, group chat, or game) which is appended at the very end of your system prompt under the "[APP CONTEXT]" block. Pay close attention to the character details, recent dialogue history, and settings in this context to help the user compose replies, orchestrate plots, summarize events, and manage their conversation history.
@@ -183,7 +183,7 @@ SPEECH & FORMAT RULES:
    * "message": MUST be written in the FIRST PERSON (e.g. "Yes, I want to see more drama!"). Never write AI prompts here.
    * "target": "genai" sends the message to you (the assistant). "target": "character" sends it to the active roleplay chat.
    * Do not create buttons or JSON blocks. Embed the suggestion directly into your conversational flow.
-   * Reminder: Avoid using the <suggest> tag if possible. If you must use it, integrate it as seamlessly and naturally as possible into your sentences, and do NOT use it if you already did in your recent replies.
+   * Reminder: Avoid using the <suggest> tag if possible. If you must use it, integrate it as seamlessly and naturally as possible into your sentences, and do NOT use it if you already did in your recent replies. The word in the "><" tags are the one that will be shown to the user.
    * Example:
      "In the end, we have a great story! By the way, would you like to see more <suggest target="genai" message="I want more drama!">drama</suggest>, or perhaps more <suggest target="genai" message="Let's make it a comedy.">comedy</suggest>?"
 
@@ -2919,11 +2919,14 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
                   <span class="genai-working-text" style="${onceSweepStyle} margin: 0; padding: 0;">${reqText}</span>
                   
                   <div style="display: flex; flex-direction: column; align-items: center; margin-left: 36px; margin-top: 4px; margin-bottom: 2px;">
-                    <div style="width: 2px; height: 10px; background: var(--text-secondary); opacity: 0.35;"></div>
-                    <div class="timeline-node-icon" style="width: 14px; height: 14px; border-radius: 50%; background: var(--bg-primary, #1e1e1e); border: 1.5px solid var(--text-secondary); display: flex; align-items: center; justify-content: center; z-index: 2; margin: 2px 0; box-sizing: border-box;">
-                      <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="var(--text-secondary)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                    <div style="width: 2px; height: 10px; border-radius: 2px; background: var(--text-secondary); opacity: 0.35;"></div>
+                    <div class="timeline-node-icon" style="width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; z-index: 2; margin: 2px 0;">
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="7" cy="7" r="6" stroke="var(--text-secondary)" stroke-width="1.5" stroke-opacity="0.35" fill="var(--bg-primary, #1e1e1e)"></circle>
+                        <polyline points="9.5 5 6 9 4.5 7.5" stroke="var(--text-secondary)" stroke-width="1.5" stroke-opacity="0.6" stroke-linecap="round" stroke-linejoin="round"></polyline>
+                      </svg>
                     </div>
-                    <div style="width: 2px; height: 10px; background: var(--text-secondary); opacity: 0.35;"></div>
+                    <div style="width: 2px; height: 10px; border-radius: 2px; background: var(--text-secondary); opacity: 0.35;"></div>
                   </div>
                   
                   <span class="genai-working-text" style="${onceSweepStyle} margin: 0; padding: 0;">${doneText}</span>
@@ -3717,7 +3720,8 @@ async function decideAutoThinking(signal) {
         {
           reasoning_effort: 'none',
           max_tokens: 100,
-          temperature: 0.1
+          temperature: 0.1,
+          isGenAI: true
         }
       );
     });
@@ -4399,7 +4403,8 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
           dry_base: settingsStore.get().genai_dry_base ?? 1.75,
           dry_allowed_length: settingsStore.get().genai_dry_allowed_length ?? 2,
           dry_sequence_breakers: settingsStore.get().genai_dry_sequence_breakers ?? ["\n", ":", "\"", "*"],
-          reasoning_effort: effortToUse
+          reasoning_effort: effortToUse,
+          isGenAI: true
         },
         (thinkChunk) => {
           if (!thinkingActiveGenai) {
@@ -4445,8 +4450,7 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
             renderAssistantBubble(displayState, bubbleEl, { cursor: true, streaming: true });
           }
           scrollToBottom();
-        },
-        { isGenAI: true }
+        }
       );
     });
   }
@@ -4507,7 +4511,8 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
                   }
                 },
                 {
-                  reasoning_effort: 'none'
+                  reasoning_effort: 'none',
+                  isGenAI: true
                 }
               );
             });
@@ -6545,6 +6550,7 @@ export function initGenAIPanel() {
           });
         }
         plusPopover.classList.remove('hidden');
+        syncPinIndicators();
         const mainEl = document.getElementById('genai-plus-main');
         if (mainEl) {
           plusPopover.style.height = mainEl.scrollHeight + 'px';
@@ -7213,6 +7219,19 @@ export function ensureGenaiSession() {
 }
 
 
+export function syncPinIndicators() {
+  const pinned = getPinnedGenaiSkills();
+  document.querySelectorAll('.btn-pin-skill').forEach(btn => {
+    const sId = btn.dataset.skill;
+    if (sId) {
+      const isPinned = pinned.includes(sId);
+      btn.style.color = isPinned ? 'var(--text-primary)' : 'var(--text-tertiary)';
+      const svg = btn.querySelector('svg');
+      if (svg) svg.setAttribute('fill', isPinned ? 'currentColor' : 'none');
+    }
+  });
+}
+
 export function getPinnedGenaiSkills() {
   try {
     return JSON.parse(localStorage.getItem('genaiPinnedSkills') || '[]');
@@ -7230,17 +7249,8 @@ export function togglePinGenaiSkill(skillId) {
   }
   localStorage.setItem('genaiPinnedSkills', JSON.stringify(pinned));
   updateGenaiPlusButtonState();
+  syncPinIndicators();
   if (typeof renderSkillsList === 'function') renderSkillsList();
-  
-  document.querySelectorAll('.btn-pin-skill').forEach(btn => {
-    const sId = btn.dataset.skill;
-    if (sId === skillId) {
-      const isPinned = getPinnedGenaiSkills().includes(sId);
-      btn.style.color = isPinned ? 'var(--text-primary)' : 'var(--text-tertiary)';
-      const svg = btn.querySelector('svg');
-      if(svg) svg.setAttribute('fill', isPinned ? 'currentColor' : 'none');
-    }
-  });
 }
 
 export function updateGenaiPlusButtonState() {
@@ -7332,6 +7342,7 @@ export function updateGenaiPlusButtonState() {
           }
           await setActiveSkillsForCurrentSession(updated);
           if (window.syncWebSearchIndicator) window.syncWebSearchIndicator();
+  syncPinIndicators();
           window.dispatchEvent(new CustomEvent('genai-active-skills-changed'));
         } else if (tool === 'skill') {
           const skillName = el.dataset.skillName;
