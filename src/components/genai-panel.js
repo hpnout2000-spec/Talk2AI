@@ -597,6 +597,11 @@ ${settings.genai_viewimage_enabled ? `
       - "tab": string (required) - Name of the tab.
       - "text": string (required) - The assembled text.
     - Example: {"genai_action":"show_char_tab","tab":"Personality"}
+
+48. gethistory: Retrieve the FULL chat history and summary for the active chat session.
+    - When to use: When you see a note that the chat history is not fully included in your context, and you need more history to understand the user's request.
+    - Parameters: None.
+    - Example: {"genai_action":"gethistory"}
 `);
 
   if (isCharacterCreationMode) {
@@ -656,6 +661,9 @@ function buildDynamicContext(maxMessages = 15) {
         if (maxMessages === 0) {
           parts.push(`  (Chat history omitted due to token limit)`);
         } else {
+          if (!document.body.classList.contains('genai-fullscreen')) {
+            parts.push(`  [SYSTEM NOTE: This is NOT the full chat history. To get access to it, call the command "gethistory" - it will pass the FULL chat history AND a summary as much as context allows.]`);
+          }
           const recent = activeGroupSession.messages.slice(-maxMessages);
           if (recent.length === 0) {
             parts.push(`  (No messages yet)`);
@@ -724,6 +732,9 @@ function buildDynamicContext(maxMessages = 15) {
       if (maxMessages === 0) {
         parts.push(`  (Chat history omitted due to token limit)`);
       } else {
+        if (!isFullscreen) {
+          parts.push(`  [SYSTEM NOTE: This is NOT the full chat history. To get access to it, call the command "gethistory" - it will pass the FULL chat history AND a summary as much as context allows.]`);
+        }
         const recent = session.messages.slice(-maxMessages);
         recent.forEach(m => {
           const who = m.role === 'user' ? 'User' : appState.currentCharacter.name;
@@ -1112,7 +1123,8 @@ ${skill.content}
             if (t.result && typeof t.result === 'object') {
               const cleanResult = Object.fromEntries(
                 Object.entries(t.result).filter(([k, v]) => {
-                  if (k === 'base64' || k === '_base64' || k === 'messages') return false;
+                  if (k === 'base64' || k === '_base64') return false;
+                  if (k === 'messages' && t.action && (t.action.genai_action === 'ImageRed' || t.action.genai_action === 'analyze_image')) return false;
                   if (typeof v === 'string' && v.startsWith('data:') && v.length > 200) return false;
                   return true;
                 })
@@ -1345,10 +1357,29 @@ ${ANIMA_BETTER_PROMPT_TEXT}`;
     }
   }
 
-  // Pruning Stage B: Truncate history messages LAST (keep at least the last 2 messages as fallback)
+  // Pruning Stage B: Truncate history messages LAST (keep at least the last 4 messages as fallback)
   if (totalTokens > targetLimit) {
-    while (totalTokens > targetLimit && historyMsgs.length > 2) {
+    while (totalTokens > targetLimit && historyMsgs.length > 4) {
       historyMsgs.shift();
+      totalTokens = await getExactPromptTokens(systemContent, historyMsgs);
+    }
+  }
+
+  // Pruning Stage C: If we are STILL over the limit (because we preserved the last 4 messages), forcibly truncate the largest text messages.
+  if (totalTokens > targetLimit) {
+    while (totalTokens > targetLimit) {
+      let maxIdx = -1;
+      let maxLen = 0;
+      for (let i = 0; i < historyMsgs.length; i++) {
+        if (typeof historyMsgs[i].content === 'string' && historyMsgs[i].content.length > maxLen) {
+          maxLen = historyMsgs[i].content.length;
+          maxIdx = i;
+        }
+      }
+      if (maxIdx === -1 || maxLen <= 200) break;
+      
+      const newLen = Math.floor(maxLen * 0.75);
+      historyMsgs[maxIdx].content = historyMsgs[maxIdx].content.substring(0, newLen) + '\n...[TRUNCATED TO FIT CONTEXT]';
       totalTokens = await getExactPromptTokens(systemContent, historyMsgs);
     }
   }
@@ -1397,6 +1428,41 @@ async function executeTool(action, onStatus = null, onPreview = null, onComplete
       system_prompt: char.system_prompt,
       first_message: char.first_message?.substring(0, 300),
       alternate_greetings_count: (char.alternate_greetings || []).length,
+    };
+  }
+
+  if (name === 'gethistory') {
+    let session = appState.currentChat || chatStore.getCurrentSession();
+    if (!session && appState.currentCharacter) {
+      const charSessions = chatStore.getSessions(appState.currentCharacter.id);
+      if (charSessions.length > 0) session = charSessions[0];
+    }
+    const groupViewEl = document.getElementById('group-chat-view-container');
+    const isGroupViewOpen = groupViewEl && !groupViewEl.classList.contains('hidden') && groupViewEl.style.display !== 'none';
+    if (isGroupViewOpen) {
+      session = groupChatStore.getCurrentSession?.();
+    }
+    
+    if (!session || !session.messages) {
+      return { error: 'No active chat session found.' };
+    }
+    
+    const history = session.messages.map(m => {
+      let who = 'Unknown';
+      if (m.role === 'user') {
+        who = settingsStore.get().user_name || 'User';
+      } else {
+        const char = characterStore.getById(m.character_id);
+        who = char?.name || 'Character';
+      }
+      return `${who}: ${m.translated_content || m.content}`;
+    });
+    
+    return {
+      messages_count: history.length,
+      has_summary: !!session.summary,
+      summary: session.summary || null,
+      history: history.join('\n')
     };
   }
 
@@ -2824,17 +2890,19 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
     // Strip any leftover legacy [[THINKING_BLOCK]] markers (without index) that weren't replaced
     // This can happen in extended thinking + web search when [[THINKING_BLOCK]] is added in phase 1
     // and then thinking_blocks gets populated in phase 2, leaving the legacy marker unhandled.
-    markdownHtml = markdownHtml.replace(/\[\[THINKING_BLOCK\]\]/g, '');
+    markdownHtml = markdownHtml.replace(/\[\[THINKING_BLOCK(_\d+)?\]\]/g, '');
     
     html += markdownHtml;
   } else {
-    const splitIdx = processedText.indexOf('[[THINKING_BLOCK]]');
-    if (splitIdx !== -1) {
+    let match = processedText.match(/\[\[THINKING_BLOCK(_\d+)?\]\]/);
+    if (match) {
+      const splitIdx = match.index;
+      const markerLength = match[0].length;
       html += renderMarkdown(processedText.substring(0, splitIdx));
       if (isInThinking || thinking) {
         html += createThinkingBlockHTML(thinking, isInThinking, settings.glm47_support, entry.thinking_time || 0, entry.resolved_effort || settings.genai_reasoning_effort);
       }
-      html += renderMarkdown(processedText.substring(splitIdx + 18));
+      html += renderMarkdown(processedText.substring(splitIdx + markerLength));
     } else {
       if (isInThinking || thinking) {
         html += createThinkingBlockHTML(thinking, isInThinking, settings.glm47_support, entry.thinking_time || 0, entry.resolved_effort || settings.genai_reasoning_effort);
@@ -2865,8 +2933,51 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
       let badgeHtml = '';
 
       const isWebTool = tool.action && (tool.action.genai_action === 'web_search' || tool.action.genai_action === 'web_fetch');
+      const isContextTool = tool.action && tool.action.genai_action === 'gethistory';
 
-      if (isWebTool) {
+      if (isContextTool) {
+        const onceSweepStyle = 'background: none; -webkit-background-clip: initial; background-clip: initial; color: var(--text-tertiary); -webkit-text-fill-color: var(--text-tertiary); animation: workingEnter 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;';
+        const reqText = 'Initiating context access...';
+        
+        if (tool.state === 'working') {
+          badgeHtml = `
+            <div class="genai-inline-tool genai-tool-working" id="genai-tool-${idx}">
+              <span class="genai-working-text">${reqText}</span>
+            </div>
+          `;
+        } else {
+          let summaryText = '';
+          let count = 0;
+          if (tool.state === 'done' && tool.result) {
+            count = tool.result.messages_count || 0;
+            if (tool.result.has_summary) {
+              summaryText = ' and 1 summary';
+            }
+          }
+          const doneText = `Context received: ${count}${summaryText} messages was scanned.`;
+          
+          badgeHtml = `
+            <div class="genai-system-group system-timeline-item" style="display: flex; flex-direction: column; position: relative; margin: var(--space-2) 0;">
+              <div style="display: flex; flex-direction: column; align-items: flex-start;">
+                <span class="genai-working-text" style="${onceSweepStyle} margin: 0; padding: 0;">${reqText}</span>
+                
+                <div style="display: flex; flex-direction: column; align-items: center; margin-left: 36px; margin-top: 4px; margin-bottom: 2px;">
+                  <div style="width: 2px; height: 10px; border-radius: 2px; background: var(--text-secondary); opacity: 0.35;"></div>
+                  <div class="timeline-node-icon" style="width: 14px; height: 14px; display: flex; align-items: center; justify-content: center; z-index: 2; margin: 2px 0;">
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <circle cx="7" cy="7" r="6" stroke="var(--text-secondary)" stroke-width="1.5" stroke-opacity="0.35" fill="var(--bg-primary, #1e1e1e)"></circle>
+                      <polyline points="9.5 5 6 9 4.5 7.5" stroke="var(--text-secondary)" stroke-width="1.5" stroke-opacity="0.6" stroke-linecap="round" stroke-linejoin="round"></polyline>
+                    </svg>
+                  </div>
+                  <div style="width: 2px; height: 10px; border-radius: 2px; background: var(--text-secondary); opacity: 0.35;"></div>
+                </div>
+                
+                <span class="genai-working-text" style="${onceSweepStyle} margin: 0; padding: 0;">${doneText}</span>
+              </div>
+            </div>
+          `;
+        }
+      } else if (isWebTool) {
         const groups = getWebToolGroups(entry, processedText);
         const associatedGroup = groups.find(group => group.some(g => g.index === idx)) || [];
         const firstWebTool = associatedGroup[0]?.tool;

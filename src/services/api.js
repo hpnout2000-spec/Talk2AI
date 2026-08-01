@@ -289,6 +289,16 @@ export const api = {
       } else if (settings.change_gemma4_thinking_style) {
         if (effort === 'high') {
           effort = 'medium';
+          if (finalMessages.length > 0 && (finalMessages[finalMessages.length - 1].role === 'user' || finalMessages[finalMessages.length - 1].role === 'tool')) {
+            finalMessages.push({
+              role: 'assistant',
+              content: "<|channel>thought\nThe user"
+            });
+            const prefillStr = "<|channel>thought\nThe user";
+            if (onChunk) {
+              onChunk(prefillStr);
+            }
+          }
         } else if (effort === 'medium') {
           if (finalMessages.length > 0 && (finalMessages[finalMessages.length - 1].role === 'user' || finalMessages[finalMessages.length - 1].role === 'tool')) {
             finalMessages.push({
