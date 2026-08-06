@@ -357,8 +357,8 @@ You MUST use the following JSON function calls to interact with the application 
    - When to use: When the user asks about past conversations, asks to recall chat messages, or wants to check details of an open chat.
    - Parameters:
      - "character_id": string (optional) - defaults to the active character if omitted.
-     - "session_id": string (optional) - if omitted, lists all sessions for this character. If set to "ALL", fetches recent history of all sessions. If set to a specific session ID, loads the last 40 messages of that session.
-   - Example: {"genai_action":"get_chat_history","character_id":"char_abc","session_id":"ALL"}
+     - "session_id": string (optional) - if omitted, lists all sessions for this character. If set to "CURRENT", fetches recent history of the active session. If set to "ALL", fetches recent history of all sessions. If set to a specific session ID, loads the last 40 messages of that session.
+   - Example: {"genai_action":"get_chat_history","character_id":"char_abc","session_id":"CURRENT"}
 
 3. get_ai_comments: Retrieve the history of AI comments generated in the active chat session.
    - When to use: When the user asks to see what comments the AI made about the recent conversation.
@@ -898,7 +898,15 @@ async function buildApiMessages(extraUserInstruction = null, skipSmartContextOve
     }
 
     for (const skillId of activeSkills) {
-      if (skillId === 'gelbooru') {
+      if (skillId === 'namegen') {
+        activeSkillsBlock += `You have active skill: Name Gen.
+- Purpose: Generate random names based on gender and age range via API Ninjas.
+- Absolute Mandatory Directive: If the plot or the user's request requires introducing a new character, YOU MUST first call the name generator tool.
+- To do this, you must output a JSON command specifying the gender and whether to use popular names only:
+{"genai_action":"generate_name", "gender": "boy" | "girl" | "neutral", "popular_only": true | false}
+Output this on a new line and continue writing.
+`;
+      } else if (skillId === 'gelbooru') {
         activeSkillsBlock += `You have active skill: gelbooru / Image Search Assistant.
 - Purpose: Helping user search and browse posts (images), tags, and related comments from the Gelbooru API.
 - Absolute Mandatory Directives (CRITICAL - YOU MUST FOLLOW THESE RULES WITHOUT EXCEPTION):
@@ -1410,6 +1418,33 @@ Before answering, you must use your internal monologue channel.
   return finalMessages;
 }
 
+function clearOldHistoryTools() {
+  let clearedCount = 0;
+  genaiHistory.forEach(msg => {
+    if (msg.role === 'assistant' && Array.isArray(msg.tools)) {
+      msg.tools.forEach(t => {
+        if (t.state === 'done' && t.result) {
+          const n = t.action?.genai_action;
+          if (n === 'gethistory' || n === 'get_chat_history' || n === 'get_group_chat_history') {
+            if (t.result.history !== undefined && t.result.history !== "[user deleted the context for token saving purposes.]") {
+              t.result.history = "[user deleted the context for token saving purposes.]";
+              delete t.result.summary;
+              clearedCount++;
+            } else if (t.result.messages !== undefined && t.result.messages !== "[user deleted the context for token saving purposes.]") {
+              t.result.messages = "[user deleted the context for token saving purposes.]";
+              clearedCount++;
+            }
+          }
+        }
+      });
+    }
+  });
+  if (clearedCount > 0) {
+    saveHistory();
+    if (window.renderFetchedData) window.renderFetchedData();
+  }
+}
+
 // ─── Tool Executor ──────────────────────────────────────────────────
 async function executeTool(action, onStatus = null, onPreview = null, onComplete = null) {
   const name = action?.genai_action || action?.name;
@@ -1431,7 +1466,46 @@ async function executeTool(action, onStatus = null, onPreview = null, onComplete
     };
   }
 
+  if (name === 'generate_name') {
+    const key = settingsStore.get().apininjas_key;
+    if (!key) return { error: 'API Ninjas key is not set. The user must configure it in Settings.' };
+    
+    const gender = action.gender || 'neutral';
+    
+    try {
+      if (onStatus) onStatus('Fetching name...');
+      const url = `https://api.api-ninjas.com/v1/babynames?gender=${encodeURIComponent(gender)}&popular_only=${action.popular_only !== false}`;
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: { 'X-Api-Key': key }
+      });
+      if (!res.ok) {
+        return { error: `API request failed with status: ${res.status}` };
+      }
+      const data = await res.json();
+      if (!Array.isArray(data) || data.length === 0) {
+        return { error: 'API returned an empty list of names.' };
+      }
+      
+      // API Ninjas returns array of strings
+      let randomName = data[Math.floor(Math.random() * data.length)];
+      if (randomName && typeof randomName === 'object' && randomName.name) {
+        randomName = randomName.name;
+      }
+      
+      
+      return { 
+        success: true, 
+        generated_name: randomName, 
+        gender: gender
+      };
+    } catch (err) {
+      return { error: 'Failed to fetch name: ' + err.message };
+    }
+  }
+
   if (name === 'gethistory') {
+    clearOldHistoryTools();
     let session = appState.currentChat || chatStore.getCurrentSession();
     if (!session && appState.currentCharacter) {
       const charSessions = chatStore.getSessions(appState.currentCharacter.id);
@@ -1539,6 +1613,7 @@ async function executeTool(action, onStatus = null, onPreview = null, onComplete
   }
 
   if (name === 'get_chat_history') {
+    clearOldHistoryTools();
     let characterId = action.character_id;
     if (!characterId) {
       const currentSession = chatStore.getCurrentSession();
@@ -1583,6 +1658,13 @@ async function executeTool(action, onStatus = null, onPreview = null, onComplete
     let targets = [];
     if (session_id === 'ALL') {
       targets = sessions;
+    } else if (session_id === 'CURRENT') {
+      const currentSession = chatStore.getCurrentSession();
+      if (currentSession && currentSession.character_id === characterId) {
+        targets = [currentSession];
+      } else {
+        targets = [sessions[0]]; // fallback to newest if current session mismatch
+      }
     } else {
       const s = sessions.find(x => x.id === session_id);
       if (!s) return { error: `Session "${session_id}" not found.` };
@@ -1889,6 +1971,7 @@ async function executeTool(action, onStatus = null, onPreview = null, onComplete
   }
 
   if (name === 'get_group_chat_history') {
+    clearOldHistoryTools();
     const { group_id, session_id } = action;
     const group = groupChatStore.getGroupById(group_id);
     if (!group) return { error: `Group "${group_id}" not found.` };
@@ -3948,14 +4031,15 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
       effortToUse = effectiveEffort || 'high';
       if (effortToUse === 'none') effortToUse = 'high'; // Should not happen, but fallback
       if (isMaxThinking) {
+        const nextBlockIdx = assistantEntry.thinking_blocks ? assistantEntry.thinking_blocks.length : 0;
         if (/\[\[THINKING_BLOCK(_\d+)?\]\]/.test(assistantEntry.content)) {
           assistantEntry.content = assistantEntry.content
             .replace(/\[\[THINKING_BLOCK(_\d+)?\]\]/g, '')
             .replace(/\n{3,}/g, '\n\n')
             .trim();
-          assistantEntry.content = assistantEntry.content ? assistantEntry.content + '\n\n[[THINKING_BLOCK]]\n\n' : '[[THINKING_BLOCK]]\n\n';
+          assistantEntry.content = assistantEntry.content ? assistantEntry.content + `\n\n[[THINKING_BLOCK_${nextBlockIdx}]]\n\n` : `[[THINKING_BLOCK_${nextBlockIdx}]]\n\n`;
         } else {
-          assistantEntry.content = assistantEntry.content.trim() ? assistantEntry.content + '\n\n[[THINKING_BLOCK]]\n\n' : '[[THINKING_BLOCK]]\n\n';
+          assistantEntry.content = assistantEntry.content.trim() ? assistantEntry.content + `\n\n[[THINKING_BLOCK_${nextBlockIdx}]]\n\n` : `[[THINKING_BLOCK_${nextBlockIdx}]]\n\n`;
         }
       }
       if (assistantEntry.content) {
@@ -7543,6 +7627,7 @@ export async function renderSkillsList() {
   const activeSkills = getActiveSkillsForCurrentSession();
 
   const skills = [
+    { id: 'namegen', name: 'Name Gen', description: 'API Ninjas Random Names' },
     { id: 'nhentai', name: 'nhentai / Tag Search', description: 'API v2 galleries & tag assistant' },
     { id: 'gelbooru', name: 'Gelbooru / Image Search', description: 'Booru post & tag search assistant' }
   ];
@@ -7582,7 +7667,9 @@ export async function renderSkillsList() {
       }
       e.stopPropagation();
       const skillId = el.dataset.id;
-      if (skillId === 'nhentai') {
+      if (skillId === 'namegen') {
+        await handleNamegenToggle(el);
+      } else if (skillId === 'nhentai') {
         await handleNhentaiToggle(el);
       } else if (skillId === 'gelbooru') {
         await handleGelbooruToggle(el);
@@ -7604,6 +7691,34 @@ export async function renderSkillsList() {
       }
     });
   });
+}
+
+export async function handleNamegenToggle(el) {
+  const activeSkills = getActiveSkillsForCurrentSession();
+  const isCurrentlyActive = activeSkills.includes('namegen');
+
+  if (isCurrentlyActive) {
+    if (el) el.classList.remove('active');
+    const updated = activeSkills.filter(id => id !== 'namegen');
+    await setActiveSkillsForCurrentSession(updated);
+    showToast('Name Gen skill deactivated');
+  } else {
+    // Check if API key is set
+    const key = settingsStore.get().apininjas_key;
+    if (!key) {
+      showToast('API Ninjas API Key is missing. Please set it in Settings > Connections.', 'error');
+      return;
+    }
+    if (el) el.classList.add('active');
+    const updated = [...activeSkills, 'namegen'];
+    await setActiveSkillsForCurrentSession(updated);
+    showToast('Name Gen skill activated');
+  }
+  updateGenaiPlusButtonState();
+  await renderAllSkillsList();
+  if (window.renderSkills) {
+    try { window.renderSkills(); } catch (e) {}
+  }
 }
 
 export async function handleNhentaiToggle(el) {

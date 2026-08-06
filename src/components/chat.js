@@ -753,6 +753,8 @@ export function initChat() {
   const chatPlusPopover = document.getElementById('chat-plus-popover');
   const btnChatToggleImagegen = document.getElementById('btn-chat-toggle-imagegen');
   const chatImagegenToggleCheck = document.getElementById('chat-imagegen-toggle-check');
+  const btnChatToggleNamegen = document.getElementById('btn-chat-toggle-namegen');
+  const chatNamegenToggleCheck = document.getElementById('chat-namegen-toggle-check');
 
   if (btnChatPlus && chatPlusPopover) {
     const chatPlusSlider = document.getElementById('chat-plus-slider');
@@ -766,6 +768,8 @@ export function initChat() {
       if (isHidden) {
         const enabled = settingsStore.get().comfyui_enabled;
         if (chatImagegenToggleCheck) chatImagegenToggleCheck.checked = !!enabled;
+        const namegenEnabled = settingsStore.get().namegen_enabled;
+        if (chatNamegenToggleCheck) chatNamegenToggleCheck.checked = !!namegenEnabled;
         if (chatPlusSlider) chatPlusSlider.style.transform = 'translateX(0)';
         chatPlusPopover.classList.remove('hidden');
         if (inputSettingsPopover) inputSettingsPopover.classList.add('hidden');
@@ -934,6 +938,17 @@ export function initChat() {
       }
       setTimeout(() => chatPlusPopover.classList.add('hidden'), 350);
     });
+    
+    if (btnChatToggleNamegen) {
+      btnChatToggleNamegen.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const current = settingsStore.get();
+        const newVal = !current.namegen_enabled;
+        settingsStore.save({ ...current, namegen_enabled: newVal });
+        if (chatNamegenToggleCheck) chatNamegenToggleCheck.checked = newVal;
+        setTimeout(() => chatPlusPopover.classList.add('hidden'), 350);
+      });
+    }
 
   document.addEventListener('click', (e) => {
     if (inputSettingsPopover && !inputSettingsPopover.contains(e.target) && (!btnInputSettings || !btnInputSettings.contains(e.target))) {
@@ -2315,6 +2330,10 @@ async function computeContextAndTrimHistory(character, session, signal = null) {
   if (activePersona && activePersona.description) {
     let personaStr = activePersona.description.replace(/\{\{user\}\}/gi, userName).replace(/\{\{char\}\}/gi, character.name);
     systemContentPure += `\n\n[USER PERSONA]\nThe user's persona is as follows. Treat the user as this persona:\n${personaStr}`;
+  }
+
+  if (settingsStore.get().namegen_enabled) {
+    systemContentPure += `\n\n[NAME GENERATOR ACTIVE]\nIf the plot or the user's request requires introducing a new character, YOU MUST first call the name generator tool. To do this, you must output a JSON command specifying the gender and whether to use popular names only:\n{"genai_action":"generate_name", "gender": "boy" | "girl" | "neutral", "popular_only": true | false}\nOutput this on a new line and continue writing.`;
   }
 
   const formattingInstructions = [];

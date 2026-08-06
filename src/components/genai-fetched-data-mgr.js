@@ -88,21 +88,35 @@ function getFetchedDataList() {
       msg.tools.forEach((tool, toolIdx) => {
         const action = tool.action || {};
         const name = action.genai_action;
-        if (tool.state === 'done' && (name === 'web_search' || name === 'web_fetch')) {
+        if (tool.state === 'done' && (name === 'web_search' || name === 'web_fetch' || name === 'gethistory' || name === 'get_chat_history' || name === 'get_group_chat_history')) {
           let size = 0;
           let label = '';
           let isCleared = false;
+          let extraInfo = '';
           
           if (name === 'web_search') {
             const resultsStr = typeof tool.result?.results === 'string' ? tool.result.results : JSON.stringify(tool.result?.results || '');
             size = resultsStr.length;
             label = `Web Search: "${action.query || 'unknown'}"`;
             isCleared = resultsStr === "Cleared by user." || resultsStr.includes("Cleared by user");
-          } else {
+          } else if (name === 'web_fetch') {
             const contentStr = typeof tool.result?.content === 'string' ? tool.result.content : JSON.stringify(tool.result?.content || '');
             size = contentStr.length;
             label = `Web Fetch: "${action.url || 'unknown'}"`;
             isCleared = contentStr === "Cleared by user." || contentStr.includes("Cleared by user");
+          } else {
+            const isHistory = tool.result?.history !== undefined;
+            const isMessages = tool.result?.messages !== undefined;
+            const historyStr = isHistory ? (typeof tool.result.history === 'string' ? tool.result.history : JSON.stringify(tool.result.history)) 
+                              : (isMessages ? JSON.stringify(tool.result.messages) : '');
+            
+            size = historyStr.length;
+            label = name === 'gethistory' ? 'Chat History (Context)' : 'Chat History (Specific)';
+            isCleared = historyStr.includes("user deleted the context");
+            
+            const tokensApprox = Math.round(size / 3);
+            const msgCount = tool.result?.messages_count || tool.result?.message_count || 0;
+            extraInfo = `${msgCount} messages (~${tokensApprox} tokens)`;
           }
 
           list.push({
@@ -112,6 +126,7 @@ function getFetchedDataList() {
             label,
             size,
             isCleared,
+            extraInfo,
             timestamp: msg.timestamp || new Date().toISOString()
           });
         }
@@ -184,13 +199,22 @@ export function renderFetchedData() {
       `;
     }
 
-    const sizeBadge = entry.isCleared
-      ? `<span class="memory-entry-category" style="background: rgba(255, 255, 255, 0.05); color: var(--text-tertiary); border: 1px solid var(--border-light);">0 bytes (Cleared)</span>`
-      : `<span class="memory-entry-category" style="background: rgba(14, 165, 233, 0.1); color: var(--text-accent); border: 1px solid rgba(14, 165, 233, 0.2);">${entry.size.toLocaleString()} chars</span>`;
+    let sizeBadge = '';
+    if (entry.isCleared) {
+      sizeBadge = `<span class="memory-entry-category" style="background: rgba(255, 255, 255, 0.05); color: var(--text-tertiary); border: 1px solid var(--border-light);">Cleared</span>`;
+    } else {
+      if (entry.extraInfo) {
+        sizeBadge = `<span class="memory-entry-category" style="background: rgba(14, 165, 233, 0.1); color: var(--text-accent); border: 1px solid rgba(14, 165, 233, 0.2);">${escapeHtml(entry.extraInfo)}</span>`;
+      } else {
+        sizeBadge = `<span class="memory-entry-category" style="background: rgba(14, 165, 233, 0.1); color: var(--text-accent); border: 1px solid rgba(14, 165, 233, 0.2);">${entry.size.toLocaleString()} chars</span>`;
+      }
+    }
+
+    const iconStr = (entry.name === 'gethistory' || entry.name === 'get_chat_history' || entry.name === 'get_group_chat_history') ? '💬' : '🌐';
 
     return `
       <div class="memory-entry" style="align-items: center; justify-content: space-between;">
-        <div class="memory-entry-icon" style="font-size: 16px; margin-top: 0;">🌐</div>
+        <div class="memory-entry-icon" style="font-size: 16px; margin-top: 0;">${iconStr}</div>
         <div class="memory-entry-body" style="overflow: hidden; padding-right: 8px;">
           <div class="memory-entry-content" style="font-weight: 500; font-size: var(--text-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${escapeHtml(entry.label)}">
             ${escapeHtml(entry.label)}
@@ -305,10 +329,18 @@ function clearFetchedData(msgIdx, toolIdx) {
   if (msg && Array.isArray(msg.tools)) {
     const tool = msg.tools[toolIdx];
     if (tool && tool.result) {
-      if (tool.action.genai_action === 'web_search') {
+      const actionName = tool.action.genai_action;
+      if (actionName === 'web_search') {
         tool.result.results = "Cleared by user.";
-      } else if (tool.action.genai_action === 'web_fetch') {
+      } else if (actionName === 'web_fetch') {
         tool.result.content = "Cleared by user.";
+      } else if (actionName === 'gethistory' || actionName === 'get_chat_history' || actionName === 'get_group_chat_history') {
+        if (tool.result.history !== undefined) {
+          tool.result.history = "[user deleted the context for token saving purposes.]";
+          delete tool.result.summary;
+        } else if (tool.result.messages !== undefined) {
+          tool.result.messages = "[user deleted the context for token saving purposes.]";
+        }
       }
       saveHistory();
       renderMessages();
@@ -341,13 +373,22 @@ async function clearAllFetchedData() {
       if (msg.role === 'assistant' && Array.isArray(msg.tools)) {
         msg.tools.forEach(tool => {
           const name = tool.action?.genai_action;
-          if (tool.state === 'done' && (name === 'web_search' || name === 'web_fetch') && tool.result) {
+          if (tool.state === 'done' && (name === 'web_search' || name === 'web_fetch' || name === 'gethistory' || name === 'get_chat_history' || name === 'get_group_chat_history') && tool.result) {
             if (name === 'web_search' && tool.result.results !== "Cleared by user.") {
               tool.result.results = "Cleared by user.";
               clearedCount++;
             } else if (name === 'web_fetch' && tool.result.content !== "Cleared by user.") {
               tool.result.content = "Cleared by user.";
               clearedCount++;
+            } else if (name === 'gethistory' || name === 'get_chat_history' || name === 'get_group_chat_history') {
+              if (tool.result.history !== undefined && tool.result.history !== "[user deleted the context for token saving purposes.]") {
+                tool.result.history = "[user deleted the context for token saving purposes.]";
+                delete tool.result.summary;
+                clearedCount++;
+              } else if (tool.result.messages !== undefined && tool.result.messages !== "[user deleted the context for token saving purposes.]") {
+                tool.result.messages = "[user deleted the context for token saving purposes.]";
+                clearedCount++;
+              }
             }
           }
         });

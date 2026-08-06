@@ -193,6 +193,9 @@ function loadSettingsToUI() {
   const apiUrlInput = document.getElementById('setting-api-url');
   if (apiUrlInput) apiUrlInput.value = settings.api_url;
 
+  const apiNinjasKeyInput = document.getElementById('setting-apininjas-key');
+  if (apiNinjasKeyInput) apiNinjasKeyInput.value = settings.apininjas_key || '';
+
   const promptTokenLimitInput = document.getElementById('setting-prompt-token-limit');
   if (promptTokenLimitInput) promptTokenLimitInput.value = settings.prompt_token_limit;
   
@@ -331,6 +334,7 @@ async function saveSettings() {
   const newSettings = {
     ...current,
     api_url: getVal('setting-api-url') || current.api_url,
+    apininjas_key: getVal('setting-apininjas-key'),
     prompt_token_limit: parseInt(getVal('setting-prompt-token-limit')) || current.prompt_token_limit,
     memory_enabled: getChecked('setting-memory'),
     example_messages_mode: getVal('setting-example-messages-mode') || 'chat',

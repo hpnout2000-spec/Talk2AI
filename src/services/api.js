@@ -402,10 +402,10 @@ export const api = {
           try {
             order = JSON.parse(order);
           } catch (e) {
-            order = [6, 0, 1, 3, 4, 5, 2];
+            order = [6, 0, 1, 3, 4, 2, 5];
           }
         }
-        const parsedOrder = Array.isArray(order) ? order : [6, 0, 1, 3, 4, 5, 2];
+        const parsedOrder = Array.isArray(order) ? order : [6, 0, 1, 3, 4, 2, 5];
         body.sampler_order = parsedOrder;
         body.samplers = parsedOrder;
       }
