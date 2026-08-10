@@ -2811,6 +2811,14 @@ Before answering, you must use your internal monologue channel.
   // FORCE REASONING PREFILL
   if (settings.force_reasoning && settings.reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') {
     messages.push({ role: 'assistant', content: settings.reasoning_tag_open });
+  } else if (settings.gemma4_support && (!settings.reasoning_effort || settings.reasoning_effort === 'none')) {
+    let openTag = settings.reasoning_tag_open || '<|think|>';
+    let closeTag = settings.reasoning_tag_close || '</|think|>';
+    if (settings.change_gemma4_thinking_style) {
+      openTag = '<|channel|>thought';
+      closeTag = '<channel|>';
+    }
+    messages.push({ role: 'assistant', content: `${openTag}\n${closeTag}` });
   }
 
   return messages;

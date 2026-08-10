@@ -207,6 +207,9 @@ export const api = {
       let finalMessages = preprocessMessages(messages, settings);
       let clonedMessages = JSON.parse(JSON.stringify(messages));
       let effort = options.reasoning_effort ?? settings.reasoning_effort ?? 'none';
+      if (settings.gemma4_support && (!effort || effort === 'none')) {
+        effort = 'minimal';
+      }
       const isGenAI = options.isGenAI || false;
       const activePresetId = isGenAI ? (settings.active_genai_generation_preset_id || 'default') : (settings.active_generation_preset_id || 'default');
       const completionMode = isGenAI ? (settings.genai_completion_mode || 'chat_completion') : (settings.completion_mode || 'chat_completion');
@@ -438,6 +441,11 @@ export const api = {
       if (xtcEnabled) {
         body.xtc_threshold = options.xtc_threshold ?? (isGenAI ? settings.genai_xtc_threshold : settings.xtc_threshold) ?? 0.1;
         body.xtc_probability = options.xtc_probability ?? (isGenAI ? settings.genai_xtc_probability : settings.xtc_probability) ?? 0.0;
+      }
+      const dynatempEnabled = options.dynatemp_enabled ?? (isGenAI ? settings.genai_dynatemp_enabled : settings.dynatemp_enabled);
+      if (dynatempEnabled) {
+        body.dynatemp_range = options.dynatemp_range ?? (isGenAI ? settings.genai_dynatemp_range : settings.dynatemp_range) ?? 0.0;
+        body.dynatemp_exponent = options.dynatemp_exponent ?? (isGenAI ? settings.genai_dynatemp_exponent : settings.dynatemp_exponent) ?? 1.0;
       }
       const topNSigma = getSamplerOpt('top_n_sigma');
       if (topNSigma !== null) { body.top_n_sigma = topNSigma; body.nsigma = topNSigma; }

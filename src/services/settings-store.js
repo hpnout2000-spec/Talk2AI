@@ -146,6 +146,42 @@ const DEFAULT_INSTRUCT_TEMPLATES = [
     assistant_suffix: ' </s>\n',
     system_prefix: '[INST] <<SYS>>\n',
     system_suffix: '\n<</SYS>>\n\n'
+  },
+  {
+    id: 'mistral_v3_tekken',
+    name: 'Mistral v3 Tekken',
+    activation_regex: '/mistral(-)?v3|tekken/i',
+    wrap_sequences_with_newline: false,
+    replace_macro_in_sequences: true,
+    sequences_as_stop_strings: true,
+    skip_example_dialogues: false,
+    include_names: 'none',
+    story_prefix: '<s>[INST]',
+    story_suffix: '[/INST]',
+    user_prefix: '</s>[INST]',
+    user_suffix: '[/INST]',
+    assistant_prefix: '',
+    assistant_suffix: '',
+    system_prefix: '',
+    system_suffix: ''
+  },
+  {
+    id: 'metharme',
+    name: 'Metharme',
+    activation_regex: '/metharme/i',
+    wrap_sequences_with_newline: false,
+    replace_macro_in_sequences: true,
+    sequences_as_stop_strings: true,
+    skip_example_dialogues: false,
+    include_names: 'none',
+    story_prefix: '<|system|>\n',
+    story_suffix: '\n',
+    user_prefix: '<|user|>\n',
+    user_suffix: '\n',
+    assistant_prefix: '<|model|>\n',
+    assistant_suffix: '\n',
+    system_prefix: '<|system|>\n',
+    system_suffix: '\n'
   }
 ];
 

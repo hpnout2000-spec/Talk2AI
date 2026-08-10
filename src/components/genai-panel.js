@@ -1413,6 +1413,14 @@ Before answering, you must use your internal monologue channel.
   // FORCE REASONING PREFILL
   if (settings.genai_force_reasoning && settings.genai_reasoning_tag_open && (settings.genai_reasoning_effort || 'none') !== 'none') {
     finalMessages.push({ role: 'assistant', content: settings.genai_reasoning_tag_open });
+  } else if (settings.gemma4_support && (!settings.genai_reasoning_effort || settings.genai_reasoning_effort === 'none')) {
+    let openTag = settings.genai_reasoning_tag_open || '<|think|>';
+    let closeTag = settings.genai_reasoning_tag_close || '</|think|>';
+    if (settings.change_gemma4_thinking_style) {
+      openTag = '<|channel|>thought';
+      closeTag = '<channel|>';
+    }
+    finalMessages.push({ role: 'assistant', content: `${openTag}\n${closeTag}` });
   }
 
   return finalMessages;

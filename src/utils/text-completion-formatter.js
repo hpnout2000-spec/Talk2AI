@@ -170,8 +170,14 @@ export function formatTextCompletionPrompt(messages = [], contextTemplate = {}, 
         }
       }
 
-      const pfx = formatSeq(userPrefix);
+      let pfx = formatSeq(userPrefix);
       const sfx = formatSeq(userSuffix);
+      
+      // Ensure the prefix doesn't merge directly into the content if it lacks a separator
+      if (pfx && !pfx.endsWith('\n') && !pfx.endsWith(' ')) {
+        pfx += '\n';
+      }
+      
       promptParts.push(`${pfx}${turnContent}${sfx}`);
     } else {
       let turnContent = text;
@@ -181,7 +187,13 @@ export function formatTextCompletionPrompt(messages = [], contextTemplate = {}, 
         }
       }
 
-      const pfx = formatSeq(assistantPrefix);
+      let pfx = formatSeq(assistantPrefix);
+      
+      // Ensure the prefix doesn't merge directly into the content
+      if (pfx && !pfx.endsWith('\n') && !pfx.endsWith(' ')) {
+        pfx += '\n';
+      }
+
       const isLastMessage = i === messageHistory.length - 1;
       
       if (isLastMessage) {
@@ -200,6 +212,12 @@ export function formatTextCompletionPrompt(messages = [], contextTemplate = {}, 
   
   if (!lastMsgIsAssistant) {
     let finalAssistantPrefix = formatSeq(assistantPrefix);
+    
+    // Ensure the prefix doesn't merge directly into the appended name
+    if (finalAssistantPrefix && !finalAssistantPrefix.endsWith('\n') && !finalAssistantPrefix.endsWith(' ')) {
+        finalAssistantPrefix += '\n';
+    }
+
     if (contextTemplate.always_add_character_name || includeNames === 'user_assistant' || includeNames === 'all') {
       if (!finalAssistantPrefix.includes(charName + ':')) {
         finalAssistantPrefix += `${charName}: `;

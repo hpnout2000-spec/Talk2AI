@@ -193,6 +193,10 @@ export function initAdvancedSettings() {
   setupRangeInput('adv-setting-mirostat-eta', 'adv-mirostat-eta-value', false);
   setupRangeInput('adv-setting-xtc-threshold', 'adv-xtc-threshold-value', false);
   setupRangeInput('adv-setting-xtc-probability', 'adv-xtc-probability-value', false);
+  setupRangeInput('adv-setting-dynatemp-min', 'adv-dynatemp-min-value', false);
+  setupRangeInput('adv-setting-dynatemp-max', 'adv-dynatemp-max-value', false);
+  setupRangeInput('adv-setting-dynatemp-range', 'adv-dynatemp-range-value', false);
+  setupRangeInput('adv-setting-dynatemp-exponent', 'adv-dynatemp-exponent-value', false);
   setupRangeInput('adv-setting-top-n-sigma', 'adv-top-n-sigma-value', false);
   setupRangeInput('adv-setting-rep-pen-range', 'adv-rep-pen-range-value', false);
   setupRangeInput('adv-setting-rep-pen-slope', 'adv-rep-pen-slope-value', false);
@@ -208,6 +212,10 @@ export function initAdvancedSettings() {
   setupRangeInput('adv-setting-genai-mirostat-eta', 'adv-genai-mirostat-eta-value', true);
   setupRangeInput('adv-setting-genai-xtc-threshold', 'adv-genai-xtc-threshold-value', true);
   setupRangeInput('adv-setting-genai-xtc-probability', 'adv-genai-xtc-probability-value', true);
+  setupRangeInput('adv-setting-genai-dynatemp-min', 'adv-genai-dynatemp-min-value', true);
+  setupRangeInput('adv-setting-genai-dynatemp-max', 'adv-genai-dynatemp-max-value', true);
+  setupRangeInput('adv-setting-genai-dynatemp-range', 'adv-genai-dynatemp-range-value', true);
+  setupRangeInput('adv-setting-genai-dynatemp-exponent', 'adv-genai-dynatemp-exponent-value', true);
   setupRangeInput('adv-setting-genai-top-n-sigma', 'adv-genai-top-n-sigma-value', true);
   setupRangeInput('adv-setting-genai-rep-pen-range', 'adv-genai-rep-pen-range-value', true);
   setupRangeInput('adv-setting-genai-rep-pen-slope', 'adv-genai-rep-pen-slope-value', true);
@@ -223,10 +231,12 @@ export function initAdvancedSettings() {
   };
   setupGroupToggle('adv-setting-mirostat-enabled', 'mirostat-controls');
   setupGroupToggle('adv-setting-xtc-enabled', 'xtc-controls');
+  setupGroupToggle('adv-setting-dynatemp-enabled', 'dynatemp-controls');
   setupGroupToggle('adv-setting-rep-pen-range-enabled', 'rep-pen-range-controls');
   setupGroupToggle('adv-setting-guidance-scale-enabled', 'guidance-scale-controls');
   setupGroupToggle('adv-setting-genai-mirostat-enabled', 'genai-mirostat-controls');
   setupGroupToggle('adv-setting-genai-xtc-enabled', 'genai-xtc-controls');
+  setupGroupToggle('adv-setting-genai-dynatemp-enabled', 'genai-dynatemp-controls');
   setupGroupToggle('adv-setting-genai-rep-pen-range-enabled', 'genai-rep-pen-range-controls');
   setupGroupToggle('adv-setting-genai-guidance-scale-enabled', 'genai-guidance-scale-controls');
 
@@ -260,6 +270,7 @@ export function initAdvancedSettings() {
   addToggleListener('adv-setting-tfs-enabled', false);
   addToggleListener('adv-setting-mirostat-enabled', false);
   addToggleListener('adv-setting-xtc-enabled', false);
+  addToggleListener('adv-setting-dynatemp-enabled', false);
   addToggleListener('adv-setting-top-n-sigma-enabled', false);
   addToggleListener('adv-setting-rep-pen-range-enabled', false);
   addToggleListener('adv-setting-min-tokens-enabled', false);
@@ -277,6 +288,7 @@ export function initAdvancedSettings() {
   addToggleListener('adv-setting-genai-tfs-enabled', true);
   addToggleListener('adv-setting-genai-mirostat-enabled', true);
   addToggleListener('adv-setting-genai-xtc-enabled', true);
+  addToggleListener('adv-setting-genai-dynatemp-enabled', true);
   addToggleListener('adv-setting-genai-top-n-sigma-enabled', true);
   addToggleListener('adv-setting-genai-rep-pen-range-enabled', true);
   addToggleListener('adv-setting-genai-min-tokens-enabled', true);
@@ -310,6 +322,82 @@ export function initAdvancedSettings() {
   addInputListener('adv-setting-genai-banned-strings', true);
   addInputListener('adv-setting-genai-instruct-template-select', true);
   addInputListener('adv-setting-genai-context-template-select', true);
+
+  const setupDynaTempSync = (isGenAI) => {
+    const prefix = isGenAI ? 'adv-setting-genai-' : 'adv-setting-';
+    const valPrefix = isGenAI ? 'adv-genai-' : 'adv-';
+    
+    const tempEl = document.getElementById(`${prefix}temperature`);
+    const minEl = document.getElementById(`${prefix}dynatemp-min`);
+    const maxEl = document.getElementById(`${prefix}dynatemp-max`);
+    const rangeEl = document.getElementById(`${prefix}dynatemp-range`);
+    const tempValEl = document.getElementById(`${valPrefix}temperature-value`);
+    const minValEl = document.getElementById(`${valPrefix}dynatemp-min-value`);
+    const maxValEl = document.getElementById(`${valPrefix}dynatemp-max-value`);
+    const rangeValEl = document.getElementById(`${valPrefix}dynatemp-range-value`);
+
+    if (!tempEl || !minEl || !maxEl || !rangeEl) return;
+
+    const setRangeFill = (el) => {
+      if (!el) return;
+      const min = parseFloat(el.min) || 0;
+      const max = parseFloat(el.max) || 1;
+      const val = parseFloat(el.value) || 0;
+      const pct = ((val - min) / (max - min)) * 100;
+      el.style.setProperty('--range-fill', `${pct}%`);
+    };
+
+    const updateUI = () => {
+      if (tempValEl) tempValEl.textContent = parseFloat(tempEl.value).toFixed(2);
+      if (minValEl) minValEl.textContent = parseFloat(minEl.value).toFixed(2);
+      if (maxValEl) maxValEl.textContent = parseFloat(maxEl.value).toFixed(2);
+      if (rangeValEl) rangeValEl.textContent = parseFloat(rangeEl.value).toFixed(2);
+      
+      setRangeFill(tempEl);
+      setRangeFill(minEl);
+      setRangeFill(maxEl);
+      setRangeFill(rangeEl);
+      
+      updateActiveGenerationPreset(isGenAI);
+    };
+
+    tempEl.addEventListener('input', () => {
+      const temp = parseFloat(tempEl.value);
+      const range = parseFloat(rangeEl.value);
+      minEl.value = Math.max(0, temp - range);
+      maxEl.value = Math.min(2, temp + range);
+      updateUI();
+    });
+
+    rangeEl.addEventListener('input', () => {
+      const temp = parseFloat(tempEl.value);
+      const range = parseFloat(rangeEl.value);
+      minEl.value = Math.max(0, temp - range);
+      maxEl.value = Math.min(2, temp + range);
+      updateUI();
+    });
+
+    minEl.addEventListener('input', () => {
+      let min = parseFloat(minEl.value);
+      let max = parseFloat(maxEl.value);
+      if (min > max) { max = min; maxEl.value = min; }
+      tempEl.value = (min + max) / 2;
+      rangeEl.value = (max - min) / 2;
+      updateUI();
+    });
+
+    maxEl.addEventListener('input', () => {
+      let min = parseFloat(minEl.value);
+      let max = parseFloat(maxEl.value);
+      if (max < min) { min = max; minEl.value = max; }
+      tempEl.value = (min + max) / 2;
+      rangeEl.value = (max - min) / 2;
+      updateUI();
+    });
+  };
+
+  setupDynaTempSync(false);
+  setupDynaTempSync(true);
 
   document.getElementById('adv-setting-dry-enabled')?.addEventListener('change', (e) => {
     const ctrls = document.getElementById('dry-sampler-controls');
@@ -364,7 +452,13 @@ export function initAdvancedSettings() {
     currentGenAIPresetMode = 'thinking';
     const activeId = currentSettings.active_genai_generation_preset_id;
     const preset = currentSettings.generation_presets.find(p => p.id === activeId);
-    if (preset) preset.preset_mode = 'thinking';
+    if (preset) {
+      preset.preset_mode = 'thinking';
+      if (!preset.thinking_settings) {
+        preset.thinking_settings = {};
+        updateActiveGenerationPreset(true);
+      }
+    }
     updateGenAIPresetModeUI();
     applyGenerationPreset(currentSettings.active_genai_generation_preset_id, true);
   });
@@ -400,7 +494,13 @@ export function initAdvancedSettings() {
     currentGenerationPresetMode = 'thinking';
     const activeId = currentSettings.active_generation_preset_id;
     const preset = currentSettings.generation_presets.find(p => p.id === activeId);
-    if (preset) preset.preset_mode = 'thinking';
+    if (preset) {
+      preset.preset_mode = 'thinking';
+      if (!preset.thinking_settings) {
+        preset.thinking_settings = {};
+        updateActiveGenerationPreset(false);
+      }
+    }
     updateGenerationPresetModeUI();
     applyGenerationPreset(currentSettings.active_generation_preset_id, false);
   });
@@ -638,6 +738,11 @@ function extractExtendedSamplersFromUI(isGenAI) {
     xtc_enabled: document.getElementById(`${prefix}xtc-enabled`)?.checked ?? false,
     xtc_threshold: parseFloat(document.getElementById(`${prefix}xtc-threshold`)?.value ?? 0.1),
     xtc_probability: parseFloat(document.getElementById(`${prefix}xtc-probability`)?.value ?? 0.0),
+    dynatemp_enabled: document.getElementById(`${prefix}dynatemp-enabled`)?.checked ?? false,
+    dynatemp_min: parseFloat(document.getElementById(`${prefix}dynatemp-min`)?.value ?? 0.65),
+    dynatemp_max: parseFloat(document.getElementById(`${prefix}dynatemp-max`)?.value ?? 1.35),
+    dynatemp_range: parseFloat(document.getElementById(`${prefix}dynatemp-range`)?.value ?? 0.0),
+    dynatemp_exponent: parseFloat(document.getElementById(`${prefix}dynatemp-exponent`)?.value ?? 1.0),
     top_n_sigma_enabled: document.getElementById(`${prefix}top-n-sigma-enabled`)?.checked ?? false,
     top_n_sigma: parseFloat(document.getElementById(`${prefix}top-n-sigma`)?.value ?? 0.0),
     rep_pen_range_enabled: document.getElementById(`${prefix}rep-pen-range-enabled`)?.checked ?? false,
@@ -688,6 +793,17 @@ function applyExtendedSamplersToUI(preset, isGenAI) {
   }
   setRangeValue(`${prefix}xtc-threshold`, `${valPrefix}xtc-threshold-value`, preset.xtc_threshold ?? 0.1);
   setRangeValue(`${prefix}xtc-probability`, `${valPrefix}xtc-probability-value`, preset.xtc_probability ?? 0.0);
+
+  const dynatempEnabled = preset.dynatemp_enabled ?? false;
+  if (document.getElementById(`${prefix}dynatemp-enabled`)) {
+    document.getElementById(`${prefix}dynatemp-enabled`).checked = dynatempEnabled;
+    const ctrls = document.getElementById(`${controlsPrefix}dynatemp-controls`);
+    if (ctrls) ctrls.style.display = dynatempEnabled ? 'flex' : 'none';
+  }
+  setRangeValue(`${prefix}dynatemp-min`, `${valPrefix}dynatemp-min-value`, preset.dynatemp_min ?? 0.65);
+  setRangeValue(`${prefix}dynatemp-max`, `${valPrefix}dynatemp-max-value`, preset.dynatemp_max ?? 1.35);
+  setRangeValue(`${prefix}dynatemp-range`, `${valPrefix}dynatemp-range-value`, preset.dynatemp_range ?? 0.0);
+  setRangeValue(`${prefix}dynatemp-exponent`, `${valPrefix}dynatemp-exponent-value`, preset.dynatemp_exponent ?? 1.0);
 
   if (document.getElementById(`${prefix}top-n-sigma-enabled`)) document.getElementById(`${prefix}top-n-sigma-enabled`).checked = preset.top_n_sigma_enabled ?? false;
   setRangeValue(`${prefix}top-n-sigma`, `${valPrefix}top-n-sigma-value`, preset.top_n_sigma ?? 0.0);

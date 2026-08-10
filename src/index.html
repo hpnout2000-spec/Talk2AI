@@ -3919,6 +3919,35 @@
                         </div>
                       </div>
 
+                      <!-- DynaTemp -->
+                      <div class="form-group" style="margin-bottom: 10px; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                          <label for="adv-setting-dynatemp-enabled" style="margin-bottom: 0; font-weight: 500; font-size: var(--text-sm);">DynaTemp</label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-dynatemp-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <div id="dynatemp-controls" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
+                          <div class="form-group" style="margin-bottom: 6px;">
+                            <label for="adv-setting-dynatemp-min" style="font-size: 11px;">Min Temp: <span id="adv-dynatemp-min-value">0.65</span></label>
+                            <input type="range" id="adv-setting-dynatemp-min" min="0" max="2" step="0.01" value="0.65" />
+                          </div>
+                          <div class="form-group" style="margin-bottom: 6px;">
+                            <label for="adv-setting-dynatemp-max" style="font-size: 11px;">Max Temp: <span id="adv-dynatemp-max-value">1.35</span></label>
+                            <input type="range" id="adv-setting-dynatemp-max" min="0" max="2" step="0.01" value="1.35" />
+                          </div>
+                          <div class="form-group" style="margin-bottom: 6px;">
+                            <label for="adv-setting-dynatemp-range" style="font-size: 11px;">DynaTemp Range: <span id="adv-dynatemp-range-value">0.00</span></label>
+                            <input type="range" id="adv-setting-dynatemp-range" min="0" max="2" step="0.01" value="0.00" />
+                          </div>
+                          <div class="form-group" style="margin-bottom: 0;">
+                            <label for="adv-setting-dynatemp-exponent" style="font-size: 11px;">Exponent: <span id="adv-dynatemp-exponent-value">1.00</span></label>
+                            <input type="range" id="adv-setting-dynatemp-exponent" min="0" max="5" step="0.01" value="1.00" />
+                          </div>
+                        </div>
+                      </div>
+
                       <!-- Top N-Sigma -->
                       <div class="form-group" style="margin-bottom: 10px;">
                         <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -4269,6 +4298,35 @@
                           <div class="form-group" style="margin-bottom: 0;">
                             <label for="adv-setting-genai-xtc-probability" style="font-size: 11px;">Probability: <span id="adv-genai-xtc-probability-value">0.00</span></label>
                             <input type="range" id="adv-setting-genai-xtc-probability" min="0" max="1" step="0.01" value="0.00" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- DynaTemp -->
+                      <div class="form-group" style="margin-bottom: 10px; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                          <label for="adv-setting-genai-dynatemp-enabled" style="margin-bottom: 0; font-weight: 500; font-size: var(--text-sm);">DynaTemp</label>
+                          <label class="toggle-switch" style="transform: scale(0.8);">
+                            <input type="checkbox" id="adv-setting-genai-dynatemp-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <div id="genai-dynatemp-controls" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
+                          <div class="form-group" style="margin-bottom: 6px;">
+                            <label for="adv-setting-genai-dynatemp-min" style="font-size: 11px;">Min Temp: <span id="adv-genai-dynatemp-min-value">0.65</span></label>
+                            <input type="range" id="adv-setting-genai-dynatemp-min" min="0" max="2" step="0.01" value="0.65" />
+                          </div>
+                          <div class="form-group" style="margin-bottom: 6px;">
+                            <label for="adv-setting-genai-dynatemp-max" style="font-size: 11px;">Max Temp: <span id="adv-genai-dynatemp-max-value">1.35</span></label>
+                            <input type="range" id="adv-setting-genai-dynatemp-max" min="0" max="2" step="0.01" value="1.35" />
+                          </div>
+                          <div class="form-group" style="margin-bottom: 6px;">
+                            <label for="adv-setting-genai-dynatemp-range" style="font-size: 11px;">DynaTemp Range: <span id="adv-genai-dynatemp-range-value">0.00</span></label>
+                            <input type="range" id="adv-setting-genai-dynatemp-range" min="0" max="2" step="0.01" value="0.00" />
+                          </div>
+                          <div class="form-group" style="margin-bottom: 0;">
+                            <label for="adv-setting-genai-dynatemp-exponent" style="font-size: 11px;">Exponent: <span id="adv-genai-dynatemp-exponent-value">1.00</span></label>
+                            <input type="range" id="adv-setting-genai-dynatemp-exponent" min="0" max="5" step="0.01" value="1.00" />
                           </div>
                         </div>
                       </div>
