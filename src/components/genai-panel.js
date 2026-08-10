@@ -5263,6 +5263,33 @@ function finishGeneration() {
 
   // Persist history whenever generation finishes
   saveHistory();
+
+  (async () => {
+    try {
+      const freshSettings = settingsStore.get();
+      if (freshSettings.auto_naming_enabled) {
+        const session = genaiSessions.find(s => s.id === currentGenaiSessionId);
+        if (session && !session.custom_title) {
+          const chatMessages = session.messages.filter(m => m.role !== 'system');
+          if (chatMessages.length === 2) {
+            const newName = await api.generateChatName(chatMessages, false);
+            if (newName && newName !== 'New Chat') {
+              session.title = newName;
+              session.custom_title = newName;
+              session.updated_at = new Date().toISOString();
+              try {
+                localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(genaiSessions));
+              } catch (e) {}
+              renderRecentChatsList();
+              updateGenAIHeaderTitle();
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to auto-name GenAI chat:', e);
+    }
+  })();
 }
 
 // ─── Vibe Mode Banner ────────────────────────────────────────────────
@@ -5392,8 +5419,20 @@ function saveHistory() {
     if (!isGenerating && currentGenaiSessionId && window.scheduleSmartContextAutoUpdate) {
       window.scheduleSmartContextAutoUpdate(currentGenaiSessionId);
     }
+    updateGenAIHeaderTitle();
   } catch (e) {
     console.error('Unexpected error in saveHistory:', e);
+  }
+}
+
+function updateGenAIHeaderTitle() {
+  const el = document.getElementById('genai-active-chat-title');
+  if (!el) return;
+  const session = genaiSessions.find(s => s.id === currentGenaiSessionId);
+  if (session && session.title) {
+    el.textContent = ' / ' + session.title;
+  } else {
+    el.textContent = '';
   }
 }
 
@@ -5536,6 +5575,7 @@ function createNewGenaiChat() {
 
   saveHistory();
   renderMessages();
+  updateGenAIHeaderTitle();
   window.dispatchEvent(new CustomEvent('genai-active-skills-changed'));
 }
 
@@ -5588,6 +5628,7 @@ function switchGenaiChat(id) {
     }
     saveHistory();
     renderMessages();
+    updateGenAIHeaderTitle();
     window.dispatchEvent(new CustomEvent('genai-active-skills-changed'));
   }
 }
@@ -5676,6 +5717,15 @@ function renderRecentChatsList() {
       switchGenaiChat(el.dataset.id);
       document.getElementById('genai-chat-menu-popover').classList.add('hidden');
     });
+
+    el.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      if (window.__TAURI_INTERNALS__) {
+        window.__TAURI_INTERNALS__.invoke('show_chat_context_menu', { chatId: el.dataset.id }).catch(err => {
+          console.error("Failed to show context menu:", err);
+        });
+      }
+    });
   });
   listEl.querySelectorAll('.btn-pin-chat').forEach(el => {
     el.addEventListener('click', (e) => togglePinGenaiChat(el.dataset.id, e));
@@ -5718,7 +5768,7 @@ function renderChatRow(s) {
   return `
     <div class="genai-chat-item ${isActive ? 'active-chat' : ''}" data-id="${s.id}">
       <div style="display: flex; flex-direction: column; overflow: hidden; flex: 1; padding-right: 8px;">
-        <div class="genai-chat-item-title" title="${escapeHtml(s.title)}">${escapeHtml(s.title)}</div>
+        <div class="genai-chat-item-title" data-custom-tooltip="${escapeHtml(s.title)}">${escapeHtml(s.title)}</div>
         <div class="genai-chat-item-date">${timeStr}</div>
       </div>
       <div style="display: flex; align-items: center; gap: 2px;">
@@ -7978,6 +8028,66 @@ export function getCurrentGenaiSessionId() {
 }
 window.renderRecentChatsList = renderRecentChatsList;
 export { saveHistory, renderMessages };
+
+async function renameGenaiChatNative(chatId) {
+  const session = genaiSessions.find(s => s.id === chatId);
+  if (!session) return;
+  const newName = prompt('Enter new chat name:', session.title);
+  if (newName !== null && newName.trim().length > 0) {
+    session.title = newName.trim();
+    session.custom_title = session.title;
+    session.updated_at = new Date().toISOString();
+    saveHistory();
+    renderRecentChatsList();
+    if (currentGenaiSessionId === chatId) {
+      updateGenAIHeaderTitle();
+    }
+  }
+}
+
+async function aiRenameGenaiChatNative(chatId) {
+  const session = genaiSessions.find(s => s.id === chatId);
+  if (!session) return;
+  
+  const chatMessages = session.messages.filter(m => m.role !== 'system');
+  if (chatMessages.length === 0) return;
+  
+  const originalTitle = session.title;
+  session.title = "Generating name...";
+  renderRecentChatsList();
+  if (currentGenaiSessionId === chatId) {
+    updateGenAIHeaderTitle();
+  }
+
+  try {
+    const newName = await api.generateChatName(chatMessages, true);
+    if (newName && newName !== 'New Chat') {
+      session.title = newName;
+      session.custom_title = newName;
+    } else {
+      session.title = originalTitle;
+    }
+  } catch (e) {
+    console.error('AI rename failed:', e);
+    session.title = originalTitle;
+  }
+  
+  session.updated_at = new Date().toISOString();
+  saveHistory();
+  renderRecentChatsList();
+  if (currentGenaiSessionId === chatId) {
+    updateGenAIHeaderTitle();
+  }
+}
+
+if (window.__TAURI__ && window.__TAURI__.event) {
+  window.__TAURI__.event.listen('genai_chat_context_rename', (event) => {
+    renameGenaiChatNative(event.payload);
+  });
+  window.__TAURI__.event.listen('genai_chat_context_ai_rename', (event) => {
+    aiRenameGenaiChatNative(event.payload);
+  });
+}
 // Global listener for pin buttons
 document.addEventListener('click', (e) => {
   const pinBtn = e.target.closest('.btn-pin-skill');

@@ -705,7 +705,7 @@ export function isBudgetExceededMessage(text) {
 /**
  * Generate thinking block HTML structure
  */
-export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, thinkingTime = 0, reasoningEffortSetting = null) {
+export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, thinkingTime = 0, reasoningEffortSetting = null, maxTokens = null) {
   const settings = settingsStore.get() || {};
   const effort = reasoningEffortSetting || settings.reasoning_effort;
   if (effort === 'none') {
@@ -764,7 +764,8 @@ export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, t
 
   if (isActive) {
     const escapedThoughts = escapeHtml(cleanThinking);
-    return `<div class="thinking-inline thinking-inline-active system-timeline-item"><div class="thinking-inline-header"><thinking-snippets id="genai-thinking-snippets" thoughts="${escapedThoughts}"></thinking-snippets></div></div>`;
+    const mTokens = maxTokens || settings.genai_max_tokens || settings.max_tokens || 2048;
+    return `<div class="thinking-inline thinking-inline-active system-timeline-item"><div class="thinking-inline-header"><thinking-snippets id="genai-thinking-snippets" thoughts="${escapedThoughts}" effort="${effort}" max-tokens="${mTokens}"></thinking-snippets></div></div>`;
   }
   let doneText = '';
   if (thinkingTime >= 5) {
@@ -781,85 +782,164 @@ export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, t
 class ThinkingSnippets extends HTMLElement {
   constructor() {
     super();
-    this.intervalId = null;
-    this.currentIndex = -1;
-    this.extractedSnippets = [];
-    this.placeholderPhrases = [];
+    this.isExpanded = false;
+    this.hasThoughts = false;
   }
 
   static get observedAttributes() {
-    return ['thoughts'];
+    return ['thoughts', 'effort', 'max-tokens'];
   }
 
   connectedCallback() {
-    this.placeholderPhrases = [];
-    this.lastTransitionTime = 0;
-
-    // Setup CSS Grid container for overlapping layers
-    this.style.display = 'inline-grid';
-    this.style.gridTemplateAreas = '"overlap"';
-    this.style.alignItems = 'center';
+    if (!this.isInitialized) {
+      this.isInitialized = true;
+      if (!this.hasThoughts) {
+        // Start with the exact old Working... state
+        this.style.display = 'inline-grid';
+        this.style.gridTemplateAreas = '"overlap"';
+        this.style.alignItems = 'center';
+        
+        this.innerHTML = `<span class="thinking-snippet-layer" style="grid-area: overlap;">Working...</span>`;
+        
+        // adjust initial bubble width for "Working..."
+        this.adjustBubbleWidth();
+      }
+    }
 
     const initialThoughts = this.getAttribute('thoughts') || '';
-    this.accumulateThoughts(initialThoughts);
-
-    if (this.extractedSnippets.length > 0) {
-      this.currentIndex = Math.floor(Math.random() * this.extractedSnippets.length);
-      this.innerHTML = `<span class="thinking-snippet-layer" style="grid-area: overlap;">${this.extractedSnippets[this.currentIndex]}</span>`;
-    } else {
-      // Start with a static placeholder. It will be smoothly swept away when the first real snippet arrives.
-      this.innerHTML = `<span class="thinking-snippet-layer" style="grid-area: overlap;">Working...</span>`;
+    if (initialThoughts) {
+      this.updateProgress(initialThoughts);
     }
-    
-    this.intervalId = setInterval(() => {
-      const activeList = this.extractedSnippets.length > 0 ? this.extractedSnippets : this.placeholderPhrases;
-      if (activeList.length === 0) return;
-      
-      let nextIndex;
-      if (activeList.length === 1) {
-        nextIndex = 0;
-      } else {
-        do {
-          nextIndex = Math.floor(Math.random() * activeList.length);
-        } while (nextIndex === this.currentIndex);
-      }
-      
-      this.currentIndex = nextIndex;
-      this.transitionToSnippet(activeList[this.currentIndex]);
-    }, 4000);
-
-    this.adjustBubbleWidth();
   }
 
+  transformToThinking() {
+    if (this.hasThoughts) return;
+    this.hasThoughts = true;
+    
+    this.style.display = 'block';
+    this.style.gridTemplateAreas = 'none';
+    this.innerHTML = ''; // clear Working span
+
+    // Create the main header block
+    this.header = document.createElement('div');
+    this.header.className = 'thinking-preview-header';
+    
+    this.textSpan = document.createElement('span');
+    this.textSpan.className = 'thinking-snippet-layer thinking-active';
+    this.textSpan.textContent = 'Thinking...';
+    
+    this.header.appendChild(this.textSpan);
+
+    // Progress bar container
+    this.progressContainer = document.createElement('div');
+    this.progressContainer.className = 'thinking-progress-container';
+    
+    this.progressBar = document.createElement('div');
+    this.progressBar.className = 'thinking-progress-bar';
+    this.progressContainer.appendChild(this.progressBar);
+    
+    this.header.appendChild(this.progressContainer);
+
+    // Expanded view container
+    this.expandedView = document.createElement('div');
+    this.expandedView.className = 'thinking-expanded-view';
+
+    this.appendChild(this.header);
+    this.appendChild(this.expandedView);
+
+    // Interactive click
+    this.header.addEventListener('click', () => {
+      this.isExpanded = !this.isExpanded;
+      this.header.classList.toggle('expanded', this.isExpanded);
+      this.expandedView.classList.toggle('expanded', this.isExpanded);
+      
+      const bubble = this.closest('.genai-msg-bubble');
+      if (this.isExpanded) {
+        if (bubble) {
+           bubble.style.width = '100%';
+           bubble.style.maxWidth = '100%';
+        }
+        // smooth scroll to bottom on open
+        requestAnimationFrame(() => {
+          this.expandedView.scrollTo({ top: this.expandedView.scrollHeight, behavior: 'smooth' });
+        });
+      } else {
+        if (bubble) {
+           bubble.style.maxWidth = '';
+        }
+        this.adjustBubbleWidth();
+      }
+    });
+  }
 
   attributeChangedCallback(name, oldValue, newValue) {
     if (name === 'thoughts' && newValue !== oldValue) {
-      this.accumulateThoughts(newValue);
+      this.updateProgress(newValue);
     }
   }
 
-  accumulateThoughts(thoughtsText) {
-    if (!thoughtsText) return;
-    const hadRealThoughts = this.extractedSnippets.length > 0;
-    const newSnippets = extractThinkingSnippets(thoughtsText);
-    
-    let addedNew = false;
-    for (const snip of newSnippets) {
-      if (!this.extractedSnippets.includes(snip)) {
-        this.extractedSnippets.push(snip);
-        addedNew = true;
-      }
-    }
+  smoothScrollToBottom() {
+    const isNearBottom = (this.expandedView.scrollHeight - this.expandedView.scrollTop - this.expandedView.clientHeight) < 100;
+    if (!isNearBottom) return;
 
-    if (this.extractedSnippets.length > 0) {
-      if (!hadRealThoughts) {
-        this.currentIndex = 0;
-        this.transitionToSnippet(this.extractedSnippets[0]);
-      } else if (addedNew) {
-        const latestIdx = this.extractedSnippets.length - 1;
-        this.currentIndex = latestIdx;
-        this.transitionToSnippet(this.extractedSnippets[latestIdx]);
+    if (this._isScrolling) return;
+    this._isScrolling = true;
+
+    const step = () => {
+      if (!this.isExpanded || !this.expandedView) {
+        this._isScrolling = false;
+        return;
       }
+      const target = this.expandedView.scrollHeight - this.expandedView.clientHeight;
+      const current = this.expandedView.scrollTop;
+      const diff = target - current;
+
+      if (Math.abs(diff) > 0.5) {
+        this.expandedView.scrollTop = current + diff * 0.2;
+        requestAnimationFrame(step);
+      } else {
+        this.expandedView.scrollTop = target;
+        this._isScrolling = false;
+      }
+    };
+    requestAnimationFrame(step);
+  }
+
+  updateProgress(thoughtsText) {
+    if (!thoughtsText) return;
+    
+    // Morph from Working to Thinking if not done yet
+    this.transformToThinking();
+
+    // Update expanded text (unescape and format)
+    this.expandedView.innerHTML = thoughtsText.replace(/\n/g, '<br>');
+
+    // Calculate progress
+    // 1 token ~= 4 chars roughly
+    const estimatedTokens = thoughtsText.length / 4;
+    
+    const effortMap = { 'none': 0, 'minimal': 0.1, 'low': 0.2, 'medium': 0.5, 'high': 0.8 };
+    const rawEffort = this.getAttribute('effort') || 'medium';
+    const parsedFloat = parseFloat(rawEffort);
+    const effortRatio = !isNaN(parsedFloat) && parsedFloat >= 0 && parsedFloat <= 1 
+      ? parsedFloat 
+      : (effortMap[rawEffort] !== undefined ? effortMap[rawEffort] : 0.5);
+    
+    const maxTokens = parseInt(this.getAttribute('max-tokens') || '2048', 10);
+    const maxReasoningTokens = maxTokens * effortRatio;
+
+    let progress = 0;
+    if (maxReasoningTokens > 0) {
+      progress = (estimatedTokens / maxReasoningTokens) * 100;
+      if (progress > 98) progress = 98; // Cap at 98% until finished
+    }
+    
+    this.progressBar.style.width = `${progress}%`;
+    
+    if (this.isExpanded) {
+      this.smoothScrollToBottom();
+    } else {
+      this.adjustBubbleWidth();
     }
   }
 
@@ -867,13 +947,13 @@ class ThinkingSnippets extends HTMLElement {
     const run = (retry) => {
       const bubble = this.closest('.genai-msg-bubble');
       if (!bubble || !bubble.classList.contains('thinking-only')) return;
-
-      const activeLayer = this.querySelector('.thinking-snippet-layer:not(.layer-leaving)');
+      if (this.isExpanded) return;
+      
+      const activeLayer = this.querySelector('.thinking-snippet-layer');
       if (!activeLayer) return;
 
-      // offsetWidth is more reliable than getBoundingClientRect inside inline-grid
-      const layerWidth = activeLayer.offsetWidth;
-      if (layerWidth === 0) {
+      const layerWidth = activeLayer.offsetWidth || 120; // fallback width
+      if (layerWidth === 0 && !this.hasThoughts) {
         if (retry < 3) requestAnimationFrame(() => run(retry + 1));
         return;
       }
@@ -881,59 +961,13 @@ class ThinkingSnippets extends HTMLElement {
       const style = window.getComputedStyle(bubble);
       const padH = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
       const borderH = (parseFloat(style.borderLeftWidth) || 0) + (parseFloat(style.borderRightWidth) || 0);
-      const targetWidth = layerWidth + padH + borderH + 2; // +2 for subpixel safety
-
-      const leavingLayer = this.querySelector('.thinking-snippet-layer.layer-leaving');
-      if (leavingLayer) {
-        // During transition: only grow, never shrink — leaving text is still visible
-        const current = parseFloat(bubble.style.width) || 0;
-        if (targetWidth > current) bubble.style.width = targetWidth + 'px';
-      } else {
-        bubble.style.width = targetWidth + 'px';
-      }
+      
+      // Ensure there's a min-width to accommodate text cleanly
+      const targetWidth = Math.max(layerWidth + padH + borderH + (this.hasThoughts ? 20 : 2), this.hasThoughts ? 140 : 0); 
+      
+      bubble.style.width = targetWidth + 'px';
     };
     requestAnimationFrame(() => run(0));
-  }
-
-  transitionToSnippet(text) {
-    const now = Date.now();
-    // Throttle transitions to ensure they don't happen faster than every 3 seconds
-    if (now - this.lastTransitionTime < 3000) return;
-    
-    const currentLayer = this.querySelector('.thinking-snippet-layer:not(.layer-leaving)');
-    if (currentLayer && currentLayer.textContent === text) return;
-    
-    this.lastTransitionTime = now;
-    
-    // Create new layer
-    const newLayer = document.createElement('span');
-    newLayer.className = 'thinking-snippet-layer layer-entering';
-    newLayer.style.gridArea = 'overlap';
-    newLayer.textContent = text;
-    
-    this.appendChild(newLayer);
-    
-    if (currentLayer) {
-      currentLayer.classList.add('layer-leaving');
-      currentLayer.classList.remove('layer-entering');
-      
-      // Remove old layer after animation completes, then re-settle bubble width
-      setTimeout(() => {
-        if (currentLayer.parentNode === this) {
-          this.removeChild(currentLayer);
-        }
-        // Re-run width adjustment now that the leaving layer is gone (allows shrinking)
-        this.adjustBubbleWidth();
-      }, 800);
-    }
-
-    this.adjustBubbleWidth();
-  }
-
-  disconnectedCallback() {
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-    }
   }
 }
 

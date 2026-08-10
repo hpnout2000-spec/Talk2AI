@@ -656,4 +656,45 @@ window.showToast = showToast;
 window.showConfirm = showConfirm;
 window.showPrompt = showPrompt;
 
+// Close modals when clicking on their backdrop
+document.addEventListener('click', (e) => {
+  if (e.target.classList.contains('modal-backdrop')) {
+    const modal = e.target.closest('.modal');
+    if (modal) {
+      closeWindow(modal);
+    }
+  }
+});
+
 document.addEventListener('DOMContentLoaded', init);
+
+// Global custom tooltip logic
+const globalTooltip = document.getElementById('global-custom-tooltip');
+if (globalTooltip) {
+  document.addEventListener('mousemove', (e) => {
+    const target = e.target.closest('[data-custom-tooltip]');
+    if (target) {
+      const text = target.getAttribute('data-custom-tooltip');
+      if (text) {
+        globalTooltip.textContent = text;
+        globalTooltip.classList.remove('hidden');
+
+        const tooltipRect = globalTooltip.getBoundingClientRect();
+        let left = e.clientX + 12;
+        let top = e.clientY + 12;
+
+        if (left + tooltipRect.width > window.innerWidth - 10) {
+          left = window.innerWidth - tooltipRect.width - 10;
+        }
+        if (top + tooltipRect.height > window.innerHeight - 10) {
+          top = e.clientY - tooltipRect.height - 10;
+        }
+
+        globalTooltip.style.left = left + 'px';
+        globalTooltip.style.top = top + 'px';
+        return;
+      }
+    }
+    globalTooltip.classList.add('hidden');
+  });
+}

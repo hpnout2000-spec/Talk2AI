@@ -2411,6 +2411,22 @@ async fn web_fetch(url: String) -> Result<String, String> {
 
 // ─── App Entry ──────────────────────────────────────────────────────
 
+#[tauri::command]
+fn show_chat_context_menu(app_handle: tauri::AppHandle, window: tauri::Window, chat_id: String) {
+    use tauri::menu::{Menu, MenuItemBuilder};
+    
+    let rename_id = format!("genai_rename_chat:{}", chat_id);
+    let ai_rename_id = format!("genai_ai_rename_chat:{}", chat_id);
+    
+    // In Tauri v2, we can build MenuItems using MenuItemBuilder
+    let rename_i = MenuItemBuilder::with_id(rename_id, "Rename").build(&app_handle).unwrap();
+    let ai_rename_i = MenuItemBuilder::with_id(ai_rename_id, "AI rename").build(&app_handle).unwrap();
+
+    let menu = Menu::with_items(&app_handle, &[&rename_i, &ai_rename_i]).unwrap();
+    
+    let _ = window.popup_menu(&menu);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -2460,8 +2476,25 @@ pub fn run() {
             load_genai_memories,
             get_allowed_devices,
             set_device_auth_status,
-            remove_allowed_device
+            remove_allowed_device,
+            show_chat_context_menu
         ])
+        .setup(|app| {
+            let app_handle = app.handle().clone();
+            app.on_menu_event(move |_app, event| {
+                let id_str = event.id().as_ref();
+                if id_str.starts_with("genai_rename_chat:") {
+                    let chat_id = id_str.trim_start_matches("genai_rename_chat:");
+                    use tauri::Emitter;
+                    let _ = app_handle.emit("genai_chat_context_rename", chat_id);
+                } else if id_str.starts_with("genai_ai_rename_chat:") {
+                    let chat_id = id_str.trim_start_matches("genai_ai_rename_chat:");
+                    use tauri::Emitter;
+                    let _ = app_handle.emit("genai_chat_context_ai_rename", chat_id);
+                }
+            });
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

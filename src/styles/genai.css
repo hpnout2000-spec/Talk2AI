@@ -691,7 +691,6 @@ body.genai-fullscreen .genai-fullscreen-placeholder {
 
 .genai-chat-item.active-chat {
   background: rgba(255, 255, 255, 0.05);
-  border-left: 3px solid var(--accent-primary);
 }
 
 .genai-chat-item-title {

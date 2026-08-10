@@ -1286,6 +1286,31 @@ Focus ONLY on what is known or can be directly inferred from the history. Keep t
     }
 
     return settings.prompt_token_limit || 4096;
+  },
+
+  async generateChatName(messages, isCharacterChat = true) {
+    // Collect the most recent messages (e.g. up to 5) to keep the context short
+    const recentMessages = messages.slice(-5).map(m => `${m.role === 'user' ? 'User' : 'AI'}: ${m.content}`).join('\n');
+    
+    let prompt = `You are an AI that creates very short, concise titles for chat sessions based on the provided conversation excerpt.\n`;
+    if (isCharacterChat) {
+      prompt += `Focus on the user's interaction and the AI's response, rather than the initial character greeting or description.\n`;
+    }
+    prompt += `Return ONLY the short title (maximum 3-4 words), without quotes, punctuation, or any other commentary.\n\nConversation excerpt:\n${recentMessages}\n\nTitle:`;
+
+    try {
+      const response = await this.chatCompletion([
+        { role: 'system', content: prompt }
+      ], { temperature: 0.5, max_tokens: 15 });
+      
+      let title = response.trim();
+      // Remove any surrounding quotes
+      title = title.replace(/^["']|["']$/g, '').trim();
+      return title || 'New Chat';
+    } catch (e) {
+      console.error('Failed to generate chat name:', e);
+      return 'New Chat';
+    }
   }
 };
 

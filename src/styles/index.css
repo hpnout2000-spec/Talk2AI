@@ -1534,3 +1534,26 @@ details.premium-accordion summary::-webkit-details-marker {
 .lorebook-entry-card:hover {
   border-color: #475569 !important;
 }
+
+.global-custom-tooltip {
+  position: fixed;
+  background: rgba(23, 23, 23, 0.95);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid var(--border-light);
+  color: var(--text-primary);
+  padding: 6px 10px;
+  font-size: 11px;
+  border-radius: var(--radius-md);
+  white-space: nowrap;
+  pointer-events: none !important;
+  z-index: 99999;
+  box-shadow: var(--shadow-lg);
+  opacity: 1;
+  transition: opacity var(--transition-fast);
+}
+
+.global-custom-tooltip.hidden {
+  opacity: 0;
+  pointer-events: none !important;
+}

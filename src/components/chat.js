@@ -2092,6 +2092,23 @@ async function sendMessage() {
 
               // 5. Notify GenAI (for vibe plot mode)
               notifyGenAI(originalContent, character.name);
+
+              try {
+                // 6. Auto-naming
+                const freshSettings = settingsStore.get();
+                if (freshSettings.auto_naming_enabled && !session.custom_title) {
+                  const chatMessages = session.messages.filter(m => m.role !== 'system');
+                  if (chatMessages.length === 3) {
+                    const newName = await api.generateChatName(chatMessages, true);
+                    if (newName && newName !== 'New Chat') {
+                      await chatStore.renameSession(session.id, newName, session.character_id);
+                      updateChatHistory();
+                    }
+                  }
+                }
+              } catch (e) {
+                console.warn('Failed to auto-name chat:', e);
+              }
             })();
           }
 
@@ -3502,6 +3519,23 @@ async function triggerAssistantGeneration() {
               } catch (e) {
                 console.warn('Failed to update indicators:', e);
               }
+            }
+
+            try {
+              // 5. Auto-naming
+              const freshSettings = settingsStore.get();
+              if (freshSettings.auto_naming_enabled && !session.custom_title) {
+                const chatMessages = session.messages.filter(m => m.role !== 'system');
+                if (chatMessages.length === 3) {
+                  const newName = await api.generateChatName(chatMessages, true);
+                  if (newName && newName !== 'New Chat') {
+                    await chatStore.renameSession(session.id, newName, session.character_id);
+                    updateChatHistory();
+                  }
+                }
+              }
+            } catch (e) {
+              console.warn('Failed to auto-name chat:', e);
             }
           })();
         }
