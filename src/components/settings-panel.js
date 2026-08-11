@@ -217,6 +217,7 @@ function loadSettingsToUI() {
   setRangeValue('adv-setting-rep-penalty', 'adv-rep-penalty-value', settings.rep_penalty?.toFixed(2));
   checkField('setting-memory', settings.memory_enabled);
   checkField('setting-auto-naming', settings.auto_naming_enabled);
+  checkField('setting-continuous-auto-naming', settings.continuous_auto_naming_enabled);
   checkField('setting-gemma4-support', settings.gemma4_support);
   checkField('setting-change-gemma4-thinking-style', settings.change_gemma4_thinking_style);
   checkField('setting-gemma4-google-thinking-preset', settings.gemma4_google_thinking_preset !== false);
@@ -339,6 +340,7 @@ async function saveSettings() {
     prompt_token_limit: parseInt(getVal('setting-prompt-token-limit')) || current.prompt_token_limit,
     memory_enabled: getChecked('setting-memory'),
     auto_naming_enabled: getChecked('setting-auto-naming'),
+    continuous_auto_naming_enabled: getChecked('setting-continuous-auto-naming'),
     example_messages_mode: getVal('setting-example-messages-mode') || 'chat',
     gemma4_support: getChecked('setting-gemma4-support'),
     change_gemma4_thinking_style: getChecked('setting-change-gemma4-thinking-style'),

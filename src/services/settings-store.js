@@ -330,6 +330,7 @@ const DEFAULTS = {
   extended_thinking: false,
   memory_enabled: true,
   auto_naming_enabled: false,
+  continuous_auto_naming_enabled: false,
   font_size: 15,
   genai_completion_mode: 'chat_completion',
   genai_active_instruct_template_id: 'gemma2',

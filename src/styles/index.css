@@ -3,6 +3,8 @@
    ════════════════════════════════════════════════════════════════════ */
 
 :root {
+  interpolate-size: allow-keywords;
+
   /* ─── Color Palette ────────────────────────────────────────────── */
   --bg-primary: #212121;
   --bg-secondary: #171717;
@@ -1556,4 +1558,109 @@ details.premium-accordion summary::-webkit-details-marker {
 .global-custom-tooltip.hidden {
   opacity: 0;
   pointer-events: none !important;
+}
+
+.chat-title-orange-dot {
+  width: 7px;
+  height: 7px;
+  background-color: #f97316;
+  border-radius: 50%;
+  display: inline-block;
+  margin-left: 4px;
+  align-self: flex-start;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px rgba(249, 115, 22, 0.7);
+  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: center;
+}
+
+.chat-title-orange-dot.hidden {
+  opacity: 0 !important;
+  transform: scale(0.6) !important;
+  pointer-events: none !important;
+}
+
+#genai-active-chat-title-container {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  transform: scale(1);
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: center center;
+}
+
+#genai-active-chat-title-container:active {
+  transform: scale(0.93);
+  transition: transform 0.06s ease-out;
+}
+
+/* Title Shadow Wipe Left-to-Right Animations */
+.title-anim-out {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: middle;
+}
+
+.title-anim-out::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2000px;
+  right: 100%;
+  background: linear-gradient(to right, #171717 0%, #171717 calc(100% - 120px), rgba(23, 23, 23, 0.85) calc(100% - 60px), transparent 100%);
+  animation: shadowSweepOut 0.75s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.title-anim-in {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: middle;
+}
+
+.title-anim-in::after {
+  content: '';
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2000px;
+  left: -150px;
+  background: linear-gradient(to right, transparent 0%, rgba(23, 23, 23, 0.85) 60px, #171717 120px, #171717 100%);
+  animation: shadowSweepIn 0.85s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.genai-reverse-btn {
+  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), background-color var(--transition-fast) !important;
+}
+
+.genai-reverse-btn.title-updating-hide,
+.chat-title-orange-dot.title-updating-hide {
+  opacity: 0 !important;
+  transform: scale(0.6) !important;
+  pointer-events: none !important;
+}
+
+@keyframes shadowSweepOut {
+  0% {
+    right: 100%;
+  }
+  100% {
+    right: -150px;
+  }
+}
+
+@keyframes shadowSweepIn {
+  0% {
+    left: -150px;
+  }
+  100% {
+    left: 100%;
+  }
 }

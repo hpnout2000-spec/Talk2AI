@@ -559,21 +559,22 @@ export function parseThinking(text, customOpen = null, customClose = null) {
   if (typeof text !== 'string') return { thinking: null, content: '' };
   
   const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const defaultOpen = '<\\|channel>thought|<\\|?think\\|?>|<thought>|<reasoning>';
+  const defaultOpen = '<\\|channel>thought|<\\|?think\\|?>|<thought>|<reasoning>|\\[THINKING\\]|\\[REASONING\\]';
   const openPattern = customOpen ? escapeRegExp(customOpen) + '|' + defaultOpen : defaultOpen;
   
-  const defaultClose = '<channel\\|>|<\\|?\\/think\\|?>|<\\/thought>|<\\/reasoning>';
+  const defaultClose = '<\\/\\s*think\\s*>|<\\/\\s*thought\\s*>|<\\/\\s*reasoning\\s*>|<channel\\|>|<\\/channel\\|?>|<\\|?\\/think\\|?>|<\\|end_of_thought\\|?>|<\\|thought_end\\|?>|\\[\\/think(?:ing)?\\]|\\[\\/reasoning\\]|\\[THINKING_END\\]';
   const closePattern = customClose ? escapeRegExp(customClose) + '|' + defaultClose : defaultClose;
 
   const thinkRegex = new RegExp(`(?:${openPattern})([\\s\\S]*?)(?:${closePattern})`, 'i');
   const match = text.match(thinkRegex);
   const cleanOpenRegex = new RegExp(`^(?:${openPattern})\\s*`, 'gi');
+  const cleanCloseRegex = new RegExp(`^(?:${closePattern})\\s*`, 'gi');
 
   if (match) {
     let thinking = match[1] ? match[1].trim() : '';
     thinking = thinking.replace(cleanOpenRegex, '').trim();
     let content = text.replace(thinkRegex, '').trim();
-    content = content.replace(cleanOpenRegex, '').trim();
+    content = content.replace(cleanOpenRegex, '').replace(cleanCloseRegex, '').trim();
     return { thinking, content };
   }
 
@@ -595,8 +596,8 @@ export function extractThinkingSnippets(text) {
   if (typeof text !== 'string' || !text) return [];
   
   let cleanText = text
-    .replace(/(?:<\|channel>thought|<\|?think\|?>|<reasoning>|<thought>)/gi, '')
-    .replace(/(?:<channel\|>|<\|?\/think\|?>|<\/thought>|<\/reasoning>)/gi, '')
+    .replace(/(?:<\|channel>thought|<\|?think\|?>|<reasoning>|<thought>|\[THINKING\]|\[REASONING\])/gi, '')
+    .replace(/(?:<\/s*think\s*>|<\/s*thought\s*>|<\/s*reasoning\s*>|<channel\|>|<\|?\/think\|?>|<\/thought>|<\/reasoning>|\[\/think(?:ing)?\]|\[\/reasoning\])/gi, '')
     .replace(/```[\s\S]*?```/g, '')
     .replace(/`[^`]*`/g, '')
     .replace(/[*#_\[\]\(\)]/g, ' ')
@@ -632,7 +633,7 @@ export function parseStreamThinking(text, customOpen = null, customClose = null)
   if (typeof text !== 'string') return { thinking: '', content: '', rawContent: '', isInThinking: false, thinkingStartIdx: -1, thinkingEndIdx: -1 };
   
   const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const defaultOpen = '<\\|channel>thought|<\\|?think\\|?>|<thought>|<reasoning>';
+  const defaultOpen = '<\\|channel>thought|<\\|?think\\|?>|<thought>|<reasoning>|\\[THINKING\\]|\\[REASONING\\]';
   const openPattern = customOpen ? escapeRegExp(customOpen) + '|' + defaultOpen : defaultOpen;
   const startMatch = text.match(new RegExp(openPattern, 'i'));
   
@@ -644,11 +645,12 @@ export function parseStreamThinking(text, customOpen = null, customClose = null)
   const thinkStart = startMatch[0];
   const afterStart = startIdx + thinkStart.length;
 
-  const defaultClose = '<channel\\|>|<\\|?\\/think\\|?>|<\\/thought>|<\\/reasoning>';
+  const defaultClose = '<\\/\\s*think\\s*>|<\\/\\s*thought\\s*>|<\\/\\s*reasoning\\s*>|<channel\\|>|<\\/channel\\|?>|<\\|?\\/think\\|?>|<\\|end_of_thought\\|?>|<\\|thought_end\\|?>|\\[\\/think(?:ing)?\\]|\\[\\/reasoning\\]|\\[THINKING_END\\]';
   const closePattern = customClose ? escapeRegExp(customClose) + '|' + defaultClose : defaultClose;
   const endMatch = text.substring(afterStart).match(new RegExp(closePattern, 'i'));
 
   const cleanOpenRegex = new RegExp(`^(?:${openPattern})\\s*`, 'gi');
+  const cleanCloseRegex = new RegExp(`^(?:${closePattern})\\s*`, 'gi');
 
   if (!endMatch) {
     let thinking = text.substring(afterStart);
@@ -662,7 +664,7 @@ export function parseStreamThinking(text, customOpen = null, customClose = null)
     let thinking = text.substring(afterStart, endIdx);
     thinking = thinking.replace(cleanOpenRegex, '').trim();
     const rawContent = text.substring(0, startIdx) + text.substring(endIdx + thinkEnd.length);
-    let content = rawContent.trim().replace(cleanOpenRegex, '');
+    let content = rawContent.trim().replace(cleanOpenRegex, '').replace(cleanCloseRegex, '');
     return { thinking, content, rawContent, isInThinking: false, thinkingStartIdx: startIdx, thinkingEndIdx: endIdx + thinkEnd.length };
   }
 }
@@ -799,7 +801,7 @@ class ThinkingSnippets extends HTMLElement {
         this.style.gridTemplateAreas = '"overlap"';
         this.style.alignItems = 'center';
         
-        this.innerHTML = `<span class="thinking-snippet-layer" style="grid-area: overlap;">Working...</span>`;
+        this.innerHTML = `<span class="thinking-snippet-layer" style="grid-area: overlap;">Processing...</span>`;
         
         // adjust initial bubble width for "Working..."
         this.adjustBubbleWidth();

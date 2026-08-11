@@ -666,6 +666,11 @@ document.addEventListener('click', (e) => {
   }
 });
 
+// Disable default browser context menu globally
+document.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+});
+
 document.addEventListener('DOMContentLoaded', init);
 
 // Global custom tooltip logic

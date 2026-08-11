@@ -21,7 +21,7 @@ import { nhentaiApi } from '../services/nhentai-api.js';
 import { gelbooruApi } from '../services/gelbooru-api.js';
 import { openWindow, closeWindow, showToast } from '../main.js';
 import { localSyncService } from '../services/local-sync-service.js';
-
+import { genaiEmbeddingsStore } from './genai-embeddings-store.js';
 async function invokeTauri(cmd, args = {}) {
   if (localSyncService.isClientMode) {
     if (cmd === 'save_genai_history') {
@@ -153,13 +153,7 @@ PERSONALITY & TONE:
 
 You also have direct access to the user's active screen and chat context (such as the currently open individual character chat, group chat, or game) which is appended at the very end of your system prompt under the "[APP CONTEXT]" block. Pay close attention to the character details, recent dialogue history, and settings in this context to help the user compose replies, orchestrate plots, summarize events, and manage their conversation history.
 
-========================================================================
-CRITICAL DIRECTIVE: NEVER GUESS DATABASE IDs & NEVER REQUEST THEM MANUALLY!
-========================================================================
-Guessing IDs (like "char_lele", "char_lena", "session_abc") or asking the user for database/technical IDs is strictly forbidden and will cause errors.
-Instead, you MUST proactively query the database to find the correct IDs before executing any final action!
-
-STEP-BY-STEP SEARCH WORKFLOW FOR CHARACTER/CHAT ACTIONS:
+STEP-BY-STEP SEARCH WORKFLOW FOR CHARACTER/CHAT ACTIONS (IMPORTANT! FIRST, YOU MUST DETERMINE THE USER'S INTENT. DO NOT USE ANY COMMAND IF USER'S INTENTION IS TO TALK.):
 1. Identify the Name: Look at the name of the character/group/game mentioned by the user (e.g. "Lena", "Lelyo", "Adventure Group").
 2. Check Recent Context: Scan the "Recent Characters" list in your active context below.
 3. Run Proactive Search (If ID is not found or not 100% certain):
@@ -1281,44 +1275,42 @@ ${activeSkillsBlock.trim()}
 ${ANIMA_BETTER_PROMPT_TEXT}`;
   }
 
-  // Inject Smart Context summaries of other chats
+  // Inject Smart Context summaries of other chats (RAG)
   if (settings.genai_smart_context && !skipSmartContextOverride) {
-    const otherSessions = (genaiSessions || []).filter(s => s.id !== currentGenaiSessionId && s.summary && s.summary.trim().length > 0);
-    if (otherSessions.length > 0) {
-      // Sort other sessions by updated_at desc to prioritize most recent ones first
-      otherSessions.sort((a, b) => {
-        const timeA = new Date(a.updated_at || a.created_at || 0).getTime();
-        const timeB = new Date(b.updated_at || b.created_at || 0).getTime();
-        return timeB - timeA;
-      });
-      
-      const limitChars = (settings.genai_smart_context_token_limit || 1500) * 4;
-      const selectedSessions = [];
-      let currentLength = 0;
-      
-      for (const s of otherSessions) {
-        const summaryBlock = `\n- Chat "${s.title || 'Untitled'}": ${s.summary}`;
-        if (currentLength + summaryBlock.length > limitChars) {
-          continue;
-        }
-        selectedSessions.push(s);
-        currentLength += summaryBlock.length;
+    // 1. Build Query Window (last 3 messages)
+    const activeSession = (genaiSessions || []).find(s => s.id === currentGenaiSessionId);
+    let queryText = '';
+    if (activeSession && activeSession.messages) {
+      const recentMsgs = activeSession.messages.filter(m => m.role !== 'system').slice(-3);
+      queryText = recentMsgs.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n');
+    }
+    
+    // Fallback if no recent messages
+    if (!queryText.trim()) queryText = extraUserInstruction || 'Hello';
+
+    // 2. RAG Search
+    const threshold = settings.genai_rag_score_threshold || 0.50;
+    const topK = settings.genai_rag_top_k || 3;
+    
+    // Search excluding current session
+    const allResults = await genaiEmbeddingsStore.search(queryText, {
+      topK: topK + 3, // slightly overfetch to account for current session filtering
+      threshold,
+      maxPerSession: 2
+    });
+    
+    const relevantResults = allResults
+      .filter(r => r.session_id !== currentGenaiSessionId)
+      .slice(0, topK);
+
+    if (relevantResults.length > 0) {
+      // 3. Inject
+      let contextStr = '';
+      for (const res of relevantResults) {
+        const sessionTitle = (genaiSessions || []).find(s => s.id === res.session_id)?.title || 'Untitled';
+        contextStr += `\n- [Past Chat "${sessionTitle}"]: ${res.text}`;
       }
-      
-      if (selectedSessions.length > 0) {
-        // Sort selected sessions chronologically (oldest first, newest last)
-        selectedSessions.sort((a, b) => {
-          const timeA = new Date(a.updated_at || a.created_at || 0).getTime();
-          const timeB = new Date(b.updated_at || b.created_at || 0).getTime();
-          return timeA - timeB;
-        });
-        
-        let contextStr = '';
-        for (const s of selectedSessions) {
-          contextStr += `\n- Chat "${s.title || 'Untitled'}": ${s.summary}`;
-        }
-        skillsInjection += `\n\n[Smart Context (Summaries of your other recent conversations with the user — Use this background context to stay consistent across chats):]${contextStr}`;
-      }
+      skillsInjection += `\n\n[Smart Context (Relevant past context — Use this background context to stay consistent across chats):]${contextStr}`;
     }
   }
 
@@ -3003,7 +2995,7 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
   }
 
   if (!html.trim() && streaming) {
-    html = `<span class="chat-working-placeholder">Working...</span>`;
+    html = `<span class="chat-working-placeholder">Processing...</span>`;
   }
 
   // Restore inline text suggestions AFTER markdown rendering
@@ -3578,7 +3570,7 @@ function appendMsgEl(entry) {
     bubbleEl.style.width = '';
   } else {
     if (!entry.content && !entry.thinking) {
-      bubbleEl.innerHTML = `<div class="genai-bubble-text"><span class="chat-working-placeholder">Working...</span></div>`;
+      bubbleEl.innerHTML = `<div class="genai-bubble-text"><span class="chat-working-placeholder">Processing...</span></div>`;
       bubbleEl.classList.add('thinking-only');
     } else {
       renderAssistantBubble(entry, bubbleEl);
@@ -5269,18 +5261,42 @@ function finishGeneration() {
       const freshSettings = settingsStore.get();
       if (freshSettings.auto_naming_enabled) {
         const session = genaiSessions.find(s => s.id === currentGenaiSessionId);
-        if (session && !session.custom_title) {
+        if (session) {
           const chatMessages = session.messages.filter(m => m.role !== 'system');
-          if (chatMessages.length === 2) {
+          const msgCount = chatMessages.length;
+          const lastCount = session.last_auto_named_count || (session.custom_title ? 2 : 0);
+
+          // 1. Initial auto-naming after 2 messages
+          if (lastCount === 0 && msgCount >= 2 && !session.custom_title) {
             const newName = await api.generateChatName(chatMessages, false);
             if (newName && newName !== 'New Chat') {
               session.title = newName;
-              session.custom_title = newName;
+              session.last_auto_named_count = msgCount;
               session.updated_at = new Date().toISOString();
               try {
                 localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(genaiSessions));
               } catch (e) {}
               renderRecentChatsList();
+              updateGenAIHeaderTitle();
+            }
+          }
+          // 2. Continuous auto-rename or orange dot after every 6 new messages
+          else if (lastCount > 0 && (msgCount - lastCount >= 6)) {
+            if (freshSettings.continuous_auto_naming_enabled) {
+              const newName = await api.generateChatName(chatMessages, false);
+              if (newName && newName !== 'New Chat') {
+                session.title = newName;
+                session.last_auto_named_count = msgCount;
+                session.rename_pending = false;
+                session.updated_at = new Date().toISOString();
+                try {
+                  localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(genaiSessions));
+                } catch (e) {}
+                renderRecentChatsList();
+                updateGenAIHeaderTitle();
+              }
+            } else {
+              session.rename_pending = true;
               updateGenAIHeaderTitle();
             }
           }
@@ -5427,12 +5443,59 @@ function saveHistory() {
 
 function updateGenAIHeaderTitle() {
   const el = document.getElementById('genai-active-chat-title');
+  const container = document.getElementById('genai-active-chat-title-container');
+  const dot = document.getElementById('genai-active-chat-title-dot');
   if (!el) return;
+
   const session = genaiSessions.find(s => s.id === currentGenaiSessionId);
-  if (session && session.title) {
-    el.textContent = ' / ' + session.title;
-  } else {
-    el.textContent = '';
+  const newTitleText = (session && session.title) ? ' / ' + session.title : '';
+
+  if (el.dataset.currentTitle !== newTitleText) {
+    const oldTitleText = el.dataset.currentTitle;
+    el.dataset.currentTitle = newTitleText;
+
+    if (oldTitleText !== undefined && oldTitleText !== newTitleText && el.textContent) {
+      const btnReverse = document.getElementById('btn-genai-reverse');
+      if (btnReverse) btnReverse.classList.add('title-updating-hide');
+      if (dot) dot.classList.add('title-updating-hide');
+
+      el.classList.remove('title-anim-in', 'title-anim-out');
+      void el.offsetWidth;
+      el.classList.add('title-anim-out');
+
+      setTimeout(() => {
+        el.textContent = newTitleText;
+        el.classList.remove('title-anim-out');
+        el.classList.add('title-anim-in');
+        setTimeout(() => {
+          el.classList.remove('title-anim-in');
+          if (btnReverse) btnReverse.classList.remove('title-updating-hide');
+          if (dot) dot.classList.remove('title-updating-hide');
+        }, 900);
+      }, 750);
+    } else {
+      el.textContent = newTitleText;
+    }
+  }
+
+  if (session && container) {
+    if (session.is_updating_title) {
+      if (dot) dot.classList.add('hidden');
+      container.setAttribute('data-custom-tooltip', 'Updating...');
+      const globalTooltip = document.getElementById('global-custom-tooltip');
+      if (globalTooltip && !globalTooltip.classList.contains('hidden')) {
+        globalTooltip.textContent = 'Updating...';
+      }
+    } else if (session.rename_pending) {
+      if (dot) dot.classList.remove('hidden');
+      container.setAttribute('data-custom-tooltip', 'Click to update chat name');
+    } else {
+      if (dot) dot.classList.add('hidden');
+      container.setAttribute('data-custom-tooltip', 'No name update needed');
+    }
+  } else if (container) {
+    if (dot) dot.classList.add('hidden');
+    container.removeAttribute('data-custom-tooltip');
   }
 }
 
@@ -6195,6 +6258,7 @@ export function initGenAIPanel() {
 
   loadHistory().then(() => {
     renderMessages();
+    updateGenAIHeaderTitle();
     window.dispatchEvent(new CustomEvent('genai-active-skills-changed'));
   });
 
@@ -6225,6 +6289,7 @@ export function initGenAIPanel() {
     try {
       await loadHistory();
       renderMessages();
+      updateGenAIHeaderTitle();
       window.dispatchEvent(new CustomEvent('genai-active-skills-changed'));
       if (window.refreshGenAIThinkingEffortUI) {
         window.refreshGenAIThinkingEffortUI();
@@ -6631,6 +6696,17 @@ export function initGenAIPanel() {
       saveHistory();
       renderMessages();
       inputEl.focus();
+    }
+  });
+
+  // ─── Header Active Chat Title Click (Orange Dot Rename) ───
+  const activeTitleContainer = document.getElementById('genai-active-chat-title-container');
+  activeTitleContainer?.addEventListener('click', async () => {
+    const session = genaiSessions.find(s => s.id === currentGenaiSessionId);
+    if (!session) return;
+
+    if (session.rename_pending && !session.is_updating_title) {
+      await aiRenameGenaiChatNative(session.id);
     }
   });
 
@@ -8053,23 +8129,27 @@ async function aiRenameGenaiChatNative(chatId) {
   if (chatMessages.length === 0) return;
   
   const originalTitle = session.title;
-  session.title = "Generating name...";
-  renderRecentChatsList();
+  session.is_updating_title = true;
+  session.rename_pending = false;
+
   if (currentGenaiSessionId === chatId) {
     updateGenAIHeaderTitle();
   }
 
   try {
-    const newName = await api.generateChatName(chatMessages, true);
+    const newName = await api.generateChatName(chatMessages, false);
     if (newName && newName !== 'New Chat') {
       session.title = newName;
       session.custom_title = newName;
+      session.last_auto_named_count = chatMessages.length;
     } else {
       session.title = originalTitle;
     }
   } catch (e) {
     console.error('AI rename failed:', e);
     session.title = originalTitle;
+  } finally {
+    session.is_updating_title = false;
   }
   
   session.updated_at = new Date().toISOString();

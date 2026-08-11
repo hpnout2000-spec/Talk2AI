@@ -207,7 +207,7 @@ export const api = {
       let finalMessages = preprocessMessages(messages, settings);
       let clonedMessages = JSON.parse(JSON.stringify(messages));
       let effort = options.reasoning_effort ?? settings.reasoning_effort ?? 'none';
-      if (settings.gemma4_support && (!effort || effort === 'none')) {
+      if (settings.gemma4_support && options.reasoning_effort === undefined && (!effort || effort === 'none')) {
         effort = 'minimal';
       }
       const isGenAI = options.isGenAI || false;
@@ -472,6 +472,9 @@ export const api = {
       // Add reasoning_effort parameter (KoboldCpp parameter for thinking budget)
       if (effort) {
         body.reasoning_effort = effort;
+      }
+      if (options.thinking_budget !== undefined) {
+        body.thinking_budget = options.thinking_budget;
       }
 
       if (settings.jinja_adaptive_thinking ?? true) {
@@ -1289,19 +1292,25 @@ Focus ONLY on what is known or can be directly inferred from the history. Keep t
   },
 
   async generateChatName(messages, isCharacterChat = true) {
-    // Collect the most recent messages (e.g. up to 5) to keep the context short
-    const recentMessages = messages.slice(-5).map(m => `${m.role === 'user' ? 'User' : 'AI'}: ${m.content}`).join('\n');
+    // Collect recent messages (up to 8) to evaluate context and language
+    const recentMessages = messages.slice(-8).map(m => `${m.role === 'user' ? 'User' : 'AI'}: ${m.content}`).join('\n');
     
     let prompt = `You are an AI that creates very short, concise titles for chat sessions based on the provided conversation excerpt.\n`;
     if (isCharacterChat) {
       prompt += `Focus on the user's interaction and the AI's response, rather than the initial character greeting or description.\n`;
     }
+    prompt += `CRITICAL RULE: The chat title MUST be written in the primary language in which the majority of the messages in the conversation are written (for example, if the majority of messages are in Russian, the title MUST be in Russian).\n`;
     prompt += `Return ONLY the short title (maximum 3-4 words), without quotes, punctuation, or any other commentary.\n\nConversation excerpt:\n${recentMessages}\n\nTitle:`;
 
     try {
       const response = await this.chatCompletion([
         { role: 'system', content: prompt }
-      ], { temperature: 0.5, max_tokens: 15 });
+      ], {
+        max_tokens: 30,
+        reasoning_effort: 'none',
+        thinking_budget: 0,
+        isGenAI: !isCharacterChat
+      });
       
       let title = response.trim();
       // Remove any surrounding quotes

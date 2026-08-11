@@ -1773,8 +1773,8 @@ async function sendMessage() {
   // Dynamic options override
   const apiOptions = {};
 
-  // Show Working... immediately while waiting for API response
-  contentEl.innerHTML = `<span class="chat-working-placeholder">Working...</span>`;
+  // Show Processing... immediately while waiting for API response
+  contentEl.innerHTML = `<span class="chat-working-placeholder">Processing...</span>`;
 
   // Morphdom options — shared between stream and final renders
   const morphOptions = {
@@ -1872,8 +1872,8 @@ async function sendMessage() {
             html += wrapWordsInSpans(formatted);
           }
 
-          if (!html.trim() && isStreaming) {
-            html = `<span class="chat-working-placeholder">Working...</span>`;
+          if (!cleaned.trim() && isStreaming) {
+            html += `<span class="chat-working-placeholder">Processing...</span>`;
           }
 
           const temp = document.createElement('div');
@@ -2096,13 +2096,26 @@ async function sendMessage() {
               try {
                 // 6. Auto-naming
                 const freshSettings = settingsStore.get();
-                if (freshSettings.auto_naming_enabled && !session.custom_title) {
+                if (freshSettings.auto_naming_enabled) {
                   const chatMessages = session.messages.filter(m => m.role !== 'system');
-                  if (chatMessages.length === 3) {
+                  const msgCount = chatMessages.length;
+                  const lastCount = session.last_auto_named_count || (session.custom_title ? 3 : 0);
+
+                  if (lastCount === 0 && msgCount >= 3 && !session.custom_title) {
                     const newName = await api.generateChatName(chatMessages, true);
                     if (newName && newName !== 'New Chat') {
+                      session.last_auto_named_count = msgCount;
                       await chatStore.renameSession(session.id, newName, session.character_id);
                       updateChatHistory();
+                    }
+                  } else if (lastCount > 0 && (msgCount - lastCount >= 6)) {
+                    if (freshSettings.continuous_auto_naming_enabled) {
+                      const newName = await api.generateChatName(chatMessages, true);
+                      if (newName && newName !== 'New Chat') {
+                        session.last_auto_named_count = msgCount;
+                        await chatStore.renameSession(session.id, newName, session.character_id);
+                        updateChatHistory();
+                      }
                     }
                   }
                 }
@@ -3333,8 +3346,8 @@ async function triggerAssistantGeneration() {
   let thinkingActiveInline2 = false;
   const apiOptions = {};
 
-  // Show Working... immediately while waiting for API response
-  contentEl.innerHTML = `<span class="chat-working-placeholder">Working...</span>`;
+  // Show Processing... immediately while waiting for API response
+  contentEl.innerHTML = `<span class="chat-working-placeholder">Processing...</span>`;
 
   const morphOptions2 = {
     childrenOnly: true,
@@ -3399,10 +3412,11 @@ async function triggerAssistantGeneration() {
 
       let html = '';
       if (currentIsInThinking || currentThinking) html += createThinkingBlockHTML(currentThinking, currentIsInThinking, settings.glm47_support, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort);
-      html += wrapWordsInSpans(renderMarkdown(displayContent));
+      const cleaned2 = stripJsonBlocks(displayContent, true);
+      html += wrapWordsInSpans(renderMarkdown(cleaned2));
 
-      if (!html.trim() && isStreaming2) {
-        html = `<span class="chat-working-placeholder">Working...</span>`;
+      if (!cleaned2.trim() && isStreaming2) {
+        html += `<span class="chat-working-placeholder">Processing...</span>`;
       }
 
       const temp = document.createElement('div');
@@ -3524,13 +3538,26 @@ async function triggerAssistantGeneration() {
             try {
               // 5. Auto-naming
               const freshSettings = settingsStore.get();
-              if (freshSettings.auto_naming_enabled && !session.custom_title) {
+              if (freshSettings.auto_naming_enabled) {
                 const chatMessages = session.messages.filter(m => m.role !== 'system');
-                if (chatMessages.length === 3) {
+                const msgCount = chatMessages.length;
+                const lastCount = session.last_auto_named_count || (session.custom_title ? 3 : 0);
+
+                if (lastCount === 0 && msgCount >= 3 && !session.custom_title) {
                   const newName = await api.generateChatName(chatMessages, true);
                   if (newName && newName !== 'New Chat') {
+                    session.last_auto_named_count = msgCount;
                     await chatStore.renameSession(session.id, newName, session.character_id);
                     updateChatHistory();
+                  }
+                } else if (lastCount > 0 && (msgCount - lastCount >= 6)) {
+                  if (freshSettings.continuous_auto_naming_enabled) {
+                    const newName = await api.generateChatName(chatMessages, true);
+                    if (newName && newName !== 'New Chat') {
+                      session.last_auto_named_count = msgCount;
+                      await chatStore.renameSession(session.id, newName, session.character_id);
+                      updateChatHistory();
+                    }
                   }
                 }
               }

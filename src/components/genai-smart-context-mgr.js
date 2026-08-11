@@ -7,6 +7,7 @@ import { settingsStore } from '../services/settings-store.js';
 import { getGenaiSessions, saveHistory } from './genai-panel.js';
 import { showToast, openWindow, closeWindow } from '../main.js';
 import { escapeHtml } from '../utils/helpers.js';
+import { genaiEmbeddingsStore } from './genai-embeddings-store.js';
 
 let isSyncRunning = false;
 let activeSummarizations = {}; // Keeps track of active summarization promises by session ID
@@ -375,6 +376,12 @@ export async function updateSessionSummaryIfNeeded(session, force = false) {
       // Save summary
       session.summary = finalSummary;
       saveHistory();
+      
+      // Save summary chunks to the embeddings RAG store
+      if (summaries.length > 0) {
+        await genaiEmbeddingsStore.saveSessionChunks(session.id, summaries);
+      }
+      
       console.log(`[Smart Context] Summary completed for session ${session.id}.`);
     } catch (err) {
       console.error(`[Smart Context] Failed to summarize session ${session.id}:`, err);

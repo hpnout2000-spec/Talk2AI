@@ -209,10 +209,10 @@
             </div>
           </div>
 
-          <div class="sidebar-section">
+          <div class="sidebar-section collapsed">
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-1);">
               <div id="btn-toggle-history" style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
-                <svg id="history-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; transition: transform 0.2s; transform: rotate(0deg);">
+                <svg id="history-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; transition: transform 0.2s; transform: rotate(-90deg);">
                   <polyline points="6 9 12 15 18 9"/>
                 </svg>
                 <div class="section-label" style="margin-bottom: 0;">Chat History</div>
@@ -1191,7 +1191,10 @@
                 <path d="M9 4 Q9 15 20 15 Q9 15 9 23 Q9 15 1 15 Q9 15 9 4 Z" />
               </svg>
               <span style="color: var(--text-secondary); margin-right: 4px;">GenAI Assistant</span>
-              <span id="genai-active-chat-title" style="color: var(--text-primary);"></span>
+              <span id="genai-active-chat-title-container" style="position: relative; display: inline-flex; align-items: center; cursor: pointer;">
+                <span id="genai-active-chat-title" style="color: var(--text-primary);"></span>
+                <span id="genai-active-chat-title-dot" class="chat-title-orange-dot hidden"></span>
+              </span>
               <button id="btn-genai-reverse" class="btn-icon genai-header-btn genai-reverse-btn hidden" title="Reverse last message (Undo)">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;">
                   <path d="M3 7v6h6"/>
@@ -2400,6 +2403,13 @@
               <label>Conversations auto naming</label>
               <label class="toggle-switch small">
                 <input type="checkbox" id="setting-auto-naming" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+            <div class="form-group-row nested-setting">
+              <label>Continuous auto-rename</label>
+              <label class="toggle-switch small">
+                <input type="checkbox" id="setting-continuous-auto-naming" />
                 <span class="toggle-slider"></span>
               </label>
             </div>
