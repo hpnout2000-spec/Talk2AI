@@ -2,52 +2,30 @@
    GenAI Panel — Reuses app design system, matches Comment History style
    ════════════════════════════════════════════════════════════════════ */
 
-/* ─── Open state: same mechanism as ai-sidebar-open ────────────────── */
+/* ─── Open state: handled in chat.css ────────────────── */
 body.genai-sidebar-open {
   --right-sidebar-w: 320px;
 }
 
 body.genai-sidebar-open #genai-sidebar {
-  width: var(--right-sidebar-w);
-  flex-basis: var(--right-sidebar-w);
+  margin-right: 0;
+  transform: translateX(0) scale(1);
   opacity: 1;
   pointer-events: all;
   border-color: var(--border-light);
   box-shadow: var(--shadow-lg);
-  margin-left: 0;
 }
 
-body.genai-sidebar-open .main-content {
-  margin-right: auto;
-}
+
 
 /* ─── Fullscreen state ────────────────────────────────────────────── */
-
-/* Ensure left sidebar transitions width smoothly for fullscreen collapse
-   (overrides the narrower transition in characters.css) */
-.sidebar {
-  transition: transform 0.6s cubic-bezier(0.2, 1, 0.1, 1),
-    filter 0.6s cubic-bezier(0.2, 1, 0.1, 1),
-    opacity 0.6s ease,
-    width 0.6s cubic-bezier(0.2, 1, 0.1, 1),
-    flex-basis 0.6s cubic-bezier(0.2, 1, 0.1, 1),
-    min-width 0.6s cubic-bezier(0.2, 1, 0.1, 1),
-    border-color 0.4s ease;
-}
 
 /* When fullscreen: expand GenAI to nearly the full viewport */
 body.genai-fullscreen {
   --right-sidebar-w: calc(100vw - 24px);
 }
 
-/* Slow down expanding transition to match the perceived duration of collapsing */
-body.genai-fullscreen #sidebar,
-body.genai-fullscreen .main-content,
-body.genai-fullscreen #genai-sidebar,
-body.genai-fullscreen .btn-toggle-right-sidebar,
-body.genai-fullscreen #app {
-  transition-duration: 0.8s !important;
-}
+
 
 /* Show GenAI Reverse/Undo button ONLY in fullscreen mode */
 body.genai-fullscreen .genai-reverse-btn {
@@ -69,33 +47,40 @@ body.genai-fullscreen .genai-reverse-btn {
   transform: rotate(-15deg);
 }
 
-body.genai-fullscreen #app {
-
-  gap: 0 !important;
-}
-
-/* Collapse everything left of the sidebar */
+/* Collapse left sidebar smoothly during fullscreen */
 body.genai-fullscreen #sidebar {
-  width: 0 !important;
-  flex-basis: 0 !important;
+  margin-left: calc(-1 * var(--sidebar-width) - 12px) !important;
+  transform: translateX(-40px) scale(0.94) !important;
   opacity: 0 !important;
   pointer-events: none !important;
-  overflow: hidden !important;
-  min-width: 0 !important;
   border-color: transparent !important;
-  border-width: 0 !important;
+  box-shadow: none !important;
 }
 
+/* Collapse main chat content smoothly during fullscreen */
 body.genai-fullscreen .main-content {
   width: 0 !important;
-  flex-basis: 0 !important;
-  flex-grow: 0 !important;
+  flex: 0 0 0 !important;
   opacity: 0 !important;
   pointer-events: none !important;
   overflow: hidden !important;
   min-width: 0 !important;
   border-color: transparent !important;
-  border-width: 0 !important;
+  box-shadow: none !important;
+  transform: scale(0.96) !important;
+  margin-left: -12px !important;
+  margin-right: 0 !important;
+}
+
+/* Expand GenAI smoothly to full width with exact 12px symmetry */
+body.genai-fullscreen #genai-sidebar {
+  flex-grow: 1 !important;
+  margin-right: 0 !important;
+  transform: translateX(0) scale(1) !important;
+  opacity: 1 !important;
+  pointer-events: all !important;
+  border-color: var(--border-light) !important;
+  box-shadow: var(--shadow-lg) !important;
 }
 
 /* ─── Skill Creator Mode (Split Screen) ─────────────────────────── */

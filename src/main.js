@@ -452,17 +452,6 @@ async function init() {
       const isCommentsOpen = document.body.classList.contains('ai-sidebar-open');
       
       if (isGenAIOpen || isCommentsOpen) {
-        // Apply bounce effect to the active sidebar
-        const activeSidebar = isGenAIOpen 
-          ? document.getElementById('genai-sidebar') 
-          : document.getElementById('ai-comments-sidebar');
-        
-        if (activeSidebar) {
-          activeSidebar.classList.remove('panel-bounce');
-          void activeSidebar.offsetWidth; // trigger reflow
-          activeSidebar.classList.add('panel-bounce');
-        }
-
         if (newMode) {
           // Switch to GenAI
           closeAiCommentsSidebar();

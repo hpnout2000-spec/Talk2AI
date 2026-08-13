@@ -7421,25 +7421,12 @@ export function initGenAIPanel() {
 
 // ─── Open / Close helpers (called from main.js) ───────────────────────
 export function openGenAIPanel() {
-  const sidebar = document.getElementById('genai-sidebar');
-  if (sidebar) {
-    sidebar.classList.remove('hidden');
-    sidebar.classList.remove('panel-bounce');
-    void sidebar.offsetWidth;
-    sidebar.classList.add('panel-bounce');
-  }
-
   document.body.classList.add('genai-sidebar-open');
   renderMessages();
 }
 
 export function closeGenAIPanel() {
   document.body.classList.remove('genai-sidebar-open');
-
-  setTimeout(() => {
-    const sidebar = document.getElementById('genai-sidebar');
-    if (sidebar) sidebar.classList.add('hidden');
-  }, 500);
 }
 
 // ─── Used by chat.js to notify GenAI that a vibe response arrived ─────

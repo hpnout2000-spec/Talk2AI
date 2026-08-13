@@ -4059,36 +4059,17 @@ export function renderAiCommentsHistory() {
 
 export function openAiCommentsSidebar() {
   const sidebar = document.getElementById('ai-comments-sidebar');
-  const mainContent = document.getElementById('main-content');
   if (!sidebar) return;
 
-  sidebar.classList.remove('hidden');
-  sidebar.classList.remove('panel-bounce');
-  void sidebar.offsetWidth;
-  sidebar.classList.add('panel-bounce');
-
-  if (mainContent) mainContent.classList.add('is-animating');
   document.body.classList.add('ai-sidebar-open');
 
   setTimeout(() => {
     renderAiCommentsHistory();
-  }, 300);
-
-  setTimeout(() => {
-    if (mainContent) mainContent.classList.remove('is-animating');
-  }, 600);
+  }, 200);
 }
 
 export function closeAiCommentsSidebar() {
-  const mainContent = document.getElementById('main-content');
-  if (mainContent) mainContent.classList.add('is-animating');
   document.body.classList.remove('ai-sidebar-open');
-
-  setTimeout(() => {
-    if (mainContent) mainContent.classList.remove('is-animating');
-    const sidebar = document.getElementById('ai-comments-sidebar');
-    if (sidebar) sidebar.classList.add('hidden');
-  }, 600);
 }
 
 function setupRightSidebarToggle() {
