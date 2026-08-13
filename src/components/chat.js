@@ -4093,48 +4093,58 @@ export function closeAiCommentsSidebar() {
 
 function setupRightSidebarToggle() {
   const toggleBtn = document.getElementById('btn-toggle-right-sidebar');
+  const headerToggleBtn = document.getElementById('btn-toggle-genai-header');
   const closeBtn = document.getElementById('btn-close-ai-comments-sidebar');
 
-  if (toggleBtn) {
-    toggleBtn.addEventListener('click', async () => {
-      const settings = settingsStore.get();
-      const isGenAIMode = settings.genai_mode_enabled;
+  const handleToggle = async () => {
+    const settings = settingsStore.get();
+    const isGenAIMode = settings.genai_mode_enabled;
 
-      if (isGenAIMode) {
-        const isCurrentlyOpen = document.body.classList.contains('genai-sidebar-open');
-        const genaiModule = await import('./genai-panel.js');
-        if (isCurrentlyOpen) {
-          genaiModule.closeGenAIPanel();
-        } else {
-          // Ensure comments are closed
-          document.body.classList.remove('ai-sidebar-open');
-          const commentsSidebar = document.getElementById('ai-comments-sidebar');
-          if (commentsSidebar) commentsSidebar.classList.add('hidden');
-
-          genaiModule.openGenAIPanel();
-        }
+    if (isGenAIMode) {
+      const isCurrentlyOpen = document.body.classList.contains('genai-sidebar-open');
+      const genaiModule = await import('./genai-panel.js');
+      if (isCurrentlyOpen) {
+        genaiModule.closeGenAIPanel();
+        if (headerToggleBtn) headerToggleBtn.title = 'Open GenAI Assistant';
       } else {
-        const isCurrentlyOpen = document.body.classList.contains('ai-sidebar-open');
-        if (isCurrentlyOpen) {
-          closeAiCommentsSidebar();
-        } else {
-          // Ensure genai is closed
-          document.body.classList.remove('genai-sidebar-open');
-          const genaiSidebar = document.getElementById('genai-sidebar');
-          if (genaiSidebar) genaiSidebar.classList.add('hidden');
+        // Ensure comments are closed
+        document.body.classList.remove('ai-sidebar-open');
+        const commentsSidebar = document.getElementById('ai-comments-sidebar');
+        if (commentsSidebar) commentsSidebar.classList.add('hidden');
 
-          openAiCommentsSidebar();
-        }
+        genaiModule.openGenAIPanel();
+        if (headerToggleBtn) headerToggleBtn.title = 'Close GenAI Assistant';
       }
-    });
+    } else {
+      const isCurrentlyOpen = document.body.classList.contains('ai-sidebar-open');
+      if (isCurrentlyOpen) {
+        closeAiCommentsSidebar();
+        if (headerToggleBtn) headerToggleBtn.title = 'Open Comments';
+      } else {
+        // Ensure genai is closed
+        document.body.classList.remove('genai-sidebar-open');
+        const genaiSidebar = document.getElementById('genai-sidebar');
+        if (genaiSidebar) genaiSidebar.classList.add('hidden');
+
+        openAiCommentsSidebar();
+        if (headerToggleBtn) headerToggleBtn.title = 'Close Comments';
+      }
+    }
+  };
+
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', handleToggle);
+  }
+  if (headerToggleBtn) {
+    headerToggleBtn.addEventListener('click', handleToggle);
   }
 
   if (closeBtn) {
     closeBtn.addEventListener('click', () => {
       closeAiCommentsSidebar();
+      if (headerToggleBtn) headerToggleBtn.title = 'Open Comments';
     });
   }
-
 }
 
 async function triggerIndicatorUpdate(character, session, lastUserMsg, lastAssistantMsg) {

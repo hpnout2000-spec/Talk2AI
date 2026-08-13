@@ -90,11 +90,15 @@ export function initBookView() {
   });
 
   // Custom Length Dropdown toggle
-  lengthDropdownBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const isVisible = lengthMenu.style.display === 'block';
-    lengthMenu.style.display = isVisible ? 'none' : 'block';
-  });
+  if (lengthDropdownBtn) {
+    lengthDropdownBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (lengthMenu) {
+        const isVisible = lengthMenu.style.display === 'block';
+        lengthMenu.style.display = isVisible ? 'none' : 'block';
+      }
+    });
+  }
 
   // Close length menu on click outside
   document.addEventListener('click', () => {
@@ -102,81 +106,85 @@ export function initBookView() {
   });
 
   // Clicking an option in length menu
-  lengthMenu.querySelectorAll('.dropdown-option').forEach(option => {
-    option.addEventListener('click', () => {
-      const val = option.dataset.value;
-      lengthDropdownBtn.dataset.value = val;
-      lengthLabel.textContent = option.textContent;
-      
-      lengthMenu.querySelectorAll('.dropdown-option').forEach(o => o.classList.remove('active'));
-      option.classList.add('active');
-      
-      if (val === 'custom') {
-        customLengthContainer.style.display = 'inline-flex';
-      } else {
-        customLengthContainer.style.display = 'none';
-      }
+  if (lengthMenu) {
+    lengthMenu.querySelectorAll('.dropdown-option').forEach(option => {
+      option.addEventListener('click', () => {
+        const val = option.dataset.value;
+        if (lengthDropdownBtn) lengthDropdownBtn.dataset.value = val;
+        if (lengthLabel) lengthLabel.textContent = option.textContent;
+        
+        lengthMenu.querySelectorAll('.dropdown-option').forEach(o => o.classList.remove('active'));
+        option.classList.add('active');
+        
+        if (customLengthContainer) {
+          customLengthContainer.style.display = val === 'custom' ? 'inline-flex' : 'none';
+        }
+      });
     });
-  });
+  }
 
   // Reasoning Effort Event Listeners
   updateReasoningUI();
 
-  btnReasoning.addEventListener('click', (e) => {
-    e.stopPropagation();
-    toggleReasoningEffort();
-  });
+  if (btnReasoning) {
+    btnReasoning.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleReasoningEffort();
+    });
+  }
 
   // Clicking option in reasoning menu
-  reasoningMenu.querySelectorAll('.reasoning-option').forEach(option => {
-    option.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const val = option.dataset.value;
-      
-      const updateData = { reasoning_effort: val };
-      if (val !== 'none') {
-        updateData.previous_reasoning_effort = val;
-      }
-      
-      await settingsStore.save(updateData);
-      updateReasoningUI();
-      reasoningMenu.style.display = 'none';
-      showToast(`Reasoning effort set to ${val}`, 'success');
+  if (reasoningMenu) {
+    reasoningMenu.querySelectorAll('.reasoning-option').forEach(option => {
+      option.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const val = option.dataset.value;
+        
+        const updateData = { reasoning_effort: val };
+        if (val !== 'none') {
+          updateData.previous_reasoning_effort = val;
+        }
+        
+        await settingsStore.save(updateData);
+        updateReasoningUI();
+        reasoningMenu.style.display = 'none';
+        showToast(`Reasoning effort set to ${val}`, 'success');
+      });
     });
-  });
+  }
 
   // Bottom buttons
-  btnGenerate.addEventListener('click', generateFromInstruction);
-  btnStop.addEventListener('click', stopGeneration);
-  btnDeleteStory.addEventListener('click', deleteActiveStory);
+  btnGenerate?.addEventListener('click', generateFromInstruction);
+  btnStop?.addEventListener('click', stopGeneration);
+  btnDeleteStory?.addEventListener('click', deleteActiveStory);
   
   // Settings buttons
-  btnSettings.addEventListener('click', openSettings);
-  btnSettingsClose.addEventListener('click', () => closeWindow(settingsModal));
-  btnSettingsCancel.addEventListener('click', () => closeWindow(settingsModal));
-  btnSettingsSave.addEventListener('click', saveSettings);
+  btnSettings?.addEventListener('click', openSettings);
+  btnSettingsClose?.addEventListener('click', () => closeWindow(settingsModal));
+  btnSettingsCancel?.addEventListener('click', () => closeWindow(settingsModal));
+  btnSettingsSave?.addEventListener('click', saveSettings);
 
   // Tooltip clicks
-  btnTooltipAuto.addEventListener('click', (e) => {
+  btnTooltipAuto?.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
     startAutoComplete();
   });
   
-  btnTooltipManual.addEventListener('click', (e) => {
+  btnTooltipManual?.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
     startManualComplete();
   });
 
   // Editor typing/key listeners
-  editorEl.addEventListener('input', () => {
+  editorEl?.addEventListener('input', () => {
     hideTooltip();
     showTooltipDebounced();
     autoSaveStory();
   });
 
-  editorEl.addEventListener('keydown', handleEditorKeyDown);
+  editorEl?.addEventListener('keydown', handleEditorKeyDown);
   
   // Close tooltip when clicking outside the editor
   document.addEventListener('click', (e) => {

@@ -432,6 +432,14 @@ let groupIsProgrammaticScrolling = false;
 function setupGroupScrollListener() {
   if (!messagesContainer || messagesContainer._scrollListenerAttached) return;
   messagesContainer._scrollListenerAttached = true;
+
+  const cancelProgrammatic = () => {
+    groupUserHasScrolledUp = true;
+    groupIsProgrammaticScrolling = false;
+  };
+  messagesContainer.addEventListener('wheel', cancelProgrammatic, { passive: true });
+  messagesContainer.addEventListener('touchmove', cancelProgrammatic, { passive: true });
+
   messagesContainer.addEventListener('scroll', () => {
     if (groupIsProgrammaticScrolling) return;
     const threshold = 60;

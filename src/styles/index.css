@@ -87,7 +87,7 @@
   --panel-width: 340px;
   --header-height: 60px;
   --input-area-min: 72px;
-  --chat-bottom-padding: clamp(160px, 18vh, 240px);
+  --chat-bottom-padding: clamp(130px, 15vh, 200px);
 }
 
 /* ─── Reset & Base ───────────────────────────────────────────────── */
@@ -619,20 +619,6 @@ body {
 .popover-content input[type="text"]:focus {
   border-color: #3b82f6;
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
-}
-
-.user-name-popover-wrapper .popover {
-  top: 100%;
-  right: 0;
-  margin-top: 8px;
-  width: 220px;
-}
-
-#user-name-popover {
-  top: 100%;
-  right: 0;
-  margin-top: 8px;
-  width: 220px;
 }
 
 /* Hidden */

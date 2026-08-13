@@ -20,20 +20,8 @@ class WindowManager {
 
     // Show the new window
     el.classList.remove('hidden');
+    el.classList.remove('closing');
     this.stack.push(el);
-    
-    // After modal-content's opening animation ends, clear it so CSS transitions
-    // can take over for future stacking movements (animation: forwards blocks transitions)
-    if (el.classList.contains('modal')) {
-      const content = el.querySelector('.modal-content');
-      if (content) {
-        const onEnd = () => {
-          content.style.animation = 'none';
-          content.removeEventListener('animationend', onEnd);
-        };
-        content.addEventListener('animationend', onEnd);
-      }
-    }
 
     this._updateDepths();
     
@@ -54,11 +42,6 @@ class WindowManager {
     const isModal = el.classList.contains('modal');
     
     if (isModal) {
-      // Restore animation property so the closing animation can play
-      // (we clear it after open to allow transitions to work)
-      const content = el.querySelector('.modal-content');
-      if (content) content.style.animation = '';
-
       el.classList.add('closing');
       // If we are closing the top window, immediately start moving others forward
       if (isTop) {
@@ -69,7 +52,7 @@ class WindowManager {
         el.classList.add('hidden');
         el.classList.remove('closing');
         this._finalizeClose(el);
-      }, 400); // Match animations.css duration
+      }, 250); // Match animations.css duration
     } else {
       el.classList.add('hidden');
       this._finalizeClose(el);
@@ -80,12 +63,13 @@ class WindowManager {
     const stackSize = this.stack.length;
     const effectiveStackSize = closingTop ? stackSize - 1 : stackSize;
 
-    // 1. Обновляем модалки в стеке (твой текущий код)
+    // 1. Обновляем модалки в стеке
     this.stack.forEach((el, i) => {
       // If we are closing the top window, it shouldn't be counted in the depth calculation for others
       if (closingTop && i === stackSize - 1) return;
 
       const depth = effectiveStackSize - 1 - i;
+      el.style.zIndex = 100 + i * 10;
       if (depth > 0) {
         el.style.setProperty('--ui-depth', depth);
         el.classList.add('ui-stacked');
@@ -112,6 +96,10 @@ class WindowManager {
   }
 
   _finalizeClose(el) {
+    el.style.removeProperty('z-index');
+    el.style.removeProperty('--ui-depth');
+    el.classList.remove('ui-stacked');
+    
     const index = this.stack.indexOf(el);
     if (index > -1) {
       this.stack.splice(index, 1);

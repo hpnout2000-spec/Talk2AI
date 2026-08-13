@@ -4,7 +4,8 @@
 
 import { gameStore } from '../services/game-store.js';
 import { characterStore } from '../services/character-store.js';
-import { api } from '../services/api.js';
+import { settingsStore } from '../services/settings-store.js';
+import { api, stripThinkingTags } from '../services/api.js';
 import { showPrompt } from '../main.js';
 import { uiManager } from '../utils/ui-manager.js';
 
@@ -96,7 +97,7 @@ function stripJsonBlocks(text, isStreaming = false) {
 }
 
 function tokenizeText(text) {
-  return text.match(/(\{\{char:[^}]*\}\}|\n|[ ]+|[^\s\n]+)/g) || [];
+  return text.match(/(\{\{\s*char:\s*[^}]*\}\}|\n|[ ]+|[^\s\n]+)/gi) || [];
 }
 
 function parsePartialSceneText(partialJson) {
@@ -166,7 +167,11 @@ function parsePartialExtraActions(partialJson) {
   const stringRegex = /"([^"\\]*(?:\\.[^"\\]*)*)"/g;
   let m;
   while ((m = stringRegex.exec(content)) !== null) {
-    strings.push(m[1]);
+    try {
+      strings.push(JSON.parse(`"${m[1]}"`));
+    } catch {
+      strings.push(m[1]);
+    }
   }
   return strings;
 }
@@ -203,7 +208,9 @@ function renderStreamingTextStates(states) {
   for (let i = streamingTextStates.length; i < states.length; i++) {
     const state = states[i];
     const el = document.createElement('span');
-    const color = ['green', 'red', 'white'].includes(state.color) ? state.color : 'white';
+    const allowedColors = ['green', 'red', 'white', 'yellow', 'orange', 'purple', 'blue', 'cyan', 'gold'];
+    const colorRaw = (state.color || 'white').toLowerCase();
+    const color = allowedColors.includes(colorRaw) ? colorRaw : 'white';
     el.className = `game-text-state color-${color}`;
     el.textContent = state.text;
     el.style.animationDelay = `0s`;
@@ -783,7 +790,7 @@ function renderGameCharacters() {
       
       ${hasDetails ? `
         <div class="char-details-box" style="margin-top: 6px; padding: 10px 12px; background: rgba(15, 15, 20, 0.6); border-radius: var(--radius-sm); border-left: 3px solid var(--text-accent); font-size: 0.85rem; line-height: 1.5; color: #cbd5e1; white-space: pre-line;">
-          ${char.details}
+          ${stripThinkingTags(char.details)}
         </div>
       ` : ''}
     `;
@@ -909,7 +916,12 @@ async function fetchCharacterDetails(name) {
       fullHistoryToAnalyze.push(game.currentScene);
     }
 
-    const details = await api.generateCharacterDetails(name, game.summary || '', fullHistoryToAnalyze);
+    const details = await api.generateCharacterDetails(
+      name,
+      game.summary || '',
+      fullHistoryToAnalyze,
+      { reasoning_effort: game.reasoning_effort && game.reasoning_effort !== 'none' ? game.reasoning_effort : undefined }
+    );
     
     // Save to store
     gameStore.upsertCharacter({ name, details: details.trim() });
@@ -921,6 +933,53 @@ async function fetchCharacterDetails(name) {
       btn.disabled = false;
       btn.innerHTML = originalHtml;
     }
+  }
+}
+
+async function scanGameCharactersWithAI() {
+  const game = gameStore.get();
+  if (!game) return;
+
+  const loader = document.getElementById('game-characters-loader');
+  const btnScan = document.getElementById('btn-scan-game-characters');
+  const btnAdd = document.getElementById('btn-add-game-character');
+
+  if (loader) loader.style.display = 'flex';
+  if (btnScan) btnScan.disabled = true;
+  if (btnAdd) btnAdd.disabled = true;
+
+  try {
+    const history = game.history || [];
+    const fullHistory = [...history];
+    if (game.currentScene) {
+      fullHistory.push(game.currentScene);
+    }
+
+    const foundChars = await api.extractGameCharacters(
+      game.summary || '',
+      fullHistory,
+      { reasoning_effort: game.reasoning_effort && game.reasoning_effort !== 'none' ? game.reasoning_effort : undefined }
+    );
+
+    if (foundChars && foundChars.length > 0) {
+      foundChars.forEach(item => {
+        if (typeof item === 'string') {
+          gameStore.upsertCharacter({ name: item, short_description: 'Character in your story.' });
+        } else if (item && typeof item === 'object' && item.name) {
+          gameStore.upsertCharacter(item);
+        }
+      });
+      renderGameCharacters();
+    } else {
+      alert("AI analyzed the story history, but didn't find any character names to add.");
+    }
+  } catch (err) {
+    console.error('Failed to scan characters with AI:', err);
+    alert('Failed to analyze history for characters. Check console.');
+  } finally {
+    if (loader) loader.style.display = 'none';
+    if (btnScan) btnScan.disabled = false;
+    if (btnAdd) btnAdd.disabled = false;
   }
 }
 
@@ -1093,6 +1152,11 @@ export async function initGameView() {
     btnAddGameChar.addEventListener('click', addManualCharacter);
   }
 
+  const btnScanGameChars = document.getElementById('btn-scan-game-characters');
+  if (btnScanGameChars) {
+    btnScanGameChars.addEventListener('click', scanGameCharactersWithAI);
+  }
+
   // Bind Game Character Edit Modal
   const btnCloseCharEdit = document.getElementById('btn-close-game-character-edit-modal');
   if (btnCloseCharEdit) {
@@ -1119,6 +1183,19 @@ export async function initGameView() {
   const btnSaveGameSettings = document.getElementById('btn-save-game-settings');
   if (btnSaveGameSettings) {
     btnSaveGameSettings.addEventListener('click', saveGameSettings);
+  }
+
+  // Bind Edit Active Game button in sidebar
+  const btnEditActiveGame = document.getElementById('btn-edit-active-game');
+  if (btnEditActiveGame) {
+    btnEditActiveGame.addEventListener('click', () => {
+      const activeGame = gameStore.get();
+      if (activeGame) {
+        openGameSettingsModal(activeGame.id);
+      } else {
+        alert("No active game selected to edit.");
+      }
+    });
   }
 
   // Bind Undo Last Move button
@@ -1392,7 +1469,9 @@ function renderScene(sceneData, skipText = false) {
     if (sceneData.text_states && sceneData.text_states.length > 0) {
       sceneData.text_states.forEach((state, idx) => {
         const el = document.createElement('span');
-        const color = ['green', 'red', 'white'].includes(state.color) ? state.color : 'white';
+        const allowedColors = ['green', 'red', 'white', 'yellow', 'orange', 'purple', 'blue', 'cyan', 'gold'];
+        const colorRaw = (state.color || 'white').toLowerCase();
+        const color = allowedColors.includes(colorRaw) ? colorRaw : 'white';
         el.className = `game-text-state color-${color}`;
         el.textContent = stripCharTagsForUI(state.text);
         
@@ -1519,7 +1598,8 @@ async function generateNextScene(promptIntent, actionText, noteToGM = '') {
       },
       language,
       storyPrompt,
-      existingCharacters
+      existingCharacters,
+      { reasoning_effort: state.reasoning_effort && state.reasoning_effort !== 'none' ? state.reasoning_effort : undefined }
     );
     
     // Apply stats
@@ -1546,19 +1626,42 @@ async function generateNextScene(promptIntent, actionText, noteToGM = '') {
       renderGameHistory();
     }
 
-    // ─── Separate API call: update game characters from the new scene ───
+    // ─── Update game characters from the new scene ───
     if (newScene.scene_text) {
+      // 1. Direct extraction of {{char:Name}} tags from scene text
+      const charMatches = [...newScene.scene_text.matchAll(/\{\{\s*char:\s*([^|}]+)(?:\|([^}]+))?\s*\}\}/gi)];
+      if (charMatches.length > 0) {
+        charMatches.forEach(match => {
+          const rawName = match[1];
+          const charName = cleanCharacterName(rawName);
+          if (charName && !gameStore.getCharacter(charName)) {
+            gameStore.upsertCharacter({
+              name: charName,
+              short_description: 'Character in your story.'
+            });
+          }
+        });
+        renderGameCharacters();
+      }
+
+      // 2. Separate API call: update game character descriptions
       try {
         const updatedChars = await api.updateGameCharacters(
           newScene.scene_text,
           gameStore.get().characters || [],
           gameSummary,
-          state.language || 'Russian'
+          state.language || 'Russian',
+          { reasoning_effort: state.reasoning_effort && state.reasoning_effort !== 'none' ? state.reasoning_effort : undefined }
         );
         if (updatedChars && updatedChars.length > 0) {
           updatedChars.forEach(charData => {
-            gameStore.upsertCharacter(charData);
+            if (typeof charData === 'string') {
+              gameStore.upsertCharacter({ name: charData, short_description: 'Character in your story.' });
+            } else if (charData && typeof charData === 'object' && charData.name) {
+              gameStore.upsertCharacter(charData);
+            }
           });
+          renderGameCharacters();
         }
       } catch (charErr) {
         console.warn('Character update failed (non-critical):', charErr);
@@ -1595,7 +1698,7 @@ function setLoaderVisible(visible) {
 // ─── Character Mentions ───
 function processCharacterMentions(text) {
   if (!text) return '';
-  return text.replace(/\{\{char:([^|}]+)(?:\|([^}]+))?\}\}/g, (match, name, alias) => {
+  return text.replace(/\{\{\s*char:\s*([^|}]+?)(?:\s*\|\s*([^}]+?))?\s*\}\}/gi, (match, name, alias) => {
     const displayName = alias ? alias.trim() : name.trim();
     return `<span class="char-mention" data-char-name="${name.trim()}">${displayName}</span>`;
   });

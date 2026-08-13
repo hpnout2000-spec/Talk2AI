@@ -373,6 +373,42 @@
   border: 1px solid var(--border-light);
 }
 
+.game-text-state.color-yellow,
+.game-text-state.color-gold {
+  color: #facc15;
+  background: rgba(250, 204, 21, 0.1);
+  border: 1px solid rgba(250, 204, 21, 0.3);
+  box-shadow: 0 2px 8px rgba(250, 204, 21, 0.06);
+}
+
+.game-text-state.color-orange {
+  color: #f97316;
+  background: rgba(249, 115, 22, 0.1);
+  border: 1px solid rgba(249, 115, 22, 0.3);
+  box-shadow: 0 2px 8px rgba(249, 115, 22, 0.06);
+}
+
+.game-text-state.color-purple {
+  color: #c084fc;
+  background: rgba(192, 132, 252, 0.1);
+  border: 1px solid rgba(192, 132, 252, 0.3);
+  box-shadow: 0 2px 8px rgba(192, 132, 252, 0.06);
+}
+
+.game-text-state.color-blue {
+  color: #60a5fa;
+  background: rgba(96, 165, 250, 0.1);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  box-shadow: 0 2px 8px rgba(96, 165, 250, 0.06);
+}
+
+.game-text-state.color-cyan {
+  color: #38bdf8;
+  background: rgba(56, 189, 248, 0.1);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  box-shadow: 0 2px 8px rgba(56, 189, 248, 0.06);
+}
+
 .btn-extra-action {
   flex: 1 1 auto;
   background: rgba(var(--bg-tertiary-rgb, 20, 20, 22), 0.5);

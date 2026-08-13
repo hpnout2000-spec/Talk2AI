@@ -198,7 +198,6 @@
   from {
     opacity: 0;
   }
-
   to {
     opacity: 1;
   }
@@ -208,7 +207,6 @@
   from {
     opacity: 1;
   }
-
   to {
     opacity: 0;
   }
@@ -216,39 +214,30 @@
 
 @keyframes backdropBlurIn {
   from {
-    background: rgba(0, 0, 0, 0);
-    transform: translateZ(0);
+    opacity: 0;
   }
-
   to {
-    background: rgba(0, 0, 0, 0.6);
-    transform: translateZ(0);
+    opacity: 1;
   }
 }
 
 @keyframes backdropBlurOut {
   from {
-    background: rgba(0, 0, 0, 0.6);
-    transform: translateZ(0);
+    opacity: 1;
   }
-
   to {
-    background: rgba(0, 0, 0, 0);
-    transform: translateZ(0);
+    opacity: 0;
   }
 }
 
 @keyframes modalContentOpen {
   from {
     opacity: 0;
-    transform: scale(0.9) translateY(20px) translateZ(0);
-    filter: blur(15px) brightness(1);
+    transform: scale(0.96) translateY(12px) translateZ(0);
   }
-
   to {
     opacity: 1;
     transform: scale(1) translateY(0) translateZ(0);
-    filter: blur(0) brightness(1);
   }
 }
 
@@ -256,36 +245,52 @@
   from {
     opacity: 1;
     transform: scale(1) translateY(0) translateZ(0);
-    filter: blur(0) brightness(1);
   }
-
   to {
     opacity: 0;
-    transform: scale(0.95) translateY(10px) translateZ(0);
-    filter: blur(15px) brightness(1);
+    transform: scale(0.96) translateY(8px) translateZ(0);
+  }
+}
+
+@keyframes toastSlideUp {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+@keyframes lightboxControlsIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(16px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
   }
 }
 
 /* ─── Modal Animations ───────────────────────────────────────────── */
 
 .modal {
-  animation: modalFadeIn 0.4s ease forwards;
-  will-change: transform, opacity;
+  animation: modalFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .modal.closing {
-  animation: modalFadeOut 0.4s ease forwards;
+  animation: modalFadeOut 0.25s ease forwards;
   pointer-events: none;
 }
 
 .modal-backdrop {
-  animation: backdropBlurIn 0.4s ease forwards;
-  will-change: background-color;
-  transform: translateZ(0);
+  animation: backdropBlurIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transition: opacity 0.35s ease;
 }
 
 /* ─── Scroll Optimization ────────────────────────────────────────── */
-
 
 .modal-body,
 .panel-body,
@@ -297,89 +302,67 @@
 }
 
 .modal.closing .modal-backdrop {
-  animation: backdropBlurOut 0.4s ease forwards;
+  animation: backdropBlurOut 0.25s ease forwards;
 }
 
 .modal-content {
-  animation: modalContentOpen 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: modalContentOpen 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   will-change: transform, opacity, filter;
 }
 
 .modal.closing .modal-content {
-  animation: modalContentClose 0.4s ease forwards;
+  animation: modalContentClose 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 /* ─── Stacked Depth Effect ───────────────────────────────────────── */
 
-.ui-stacked {
-  --depth: var(--ui-depth, 1);
-  pointer-events: none !important;
-  user-select: none !important;
-}
-
-/* Background elements that are not modals (sidebar, main content, right panel) */
-.sidebar.ui-stacked,
-.main-content.ui-stacked,
-.side-panel.ui-stacked,
-.right-sidebar.ui-stacked:not(.hidden),
-.modal.ui-stacked .modal-content {
-  --scale-factor: calc(1 - (var(--depth) * 0.04));
-  --y-offset: calc(var(--depth) * -1.5rem);
-  --brightness-factor: calc(1 - (var(--depth) * 0.15));
-  --blur-amount: calc(var(--depth) * 4px);
-
-  transform: scale(var(--scale-factor)) translateY(var(--y-offset)) translateZ(0) !important;
-  filter: blur(var(--blur-amount)) brightness(var(--brightness-factor)) !important;
-  will-change: transform, filter !important;
-  backdrop-filter: none !important;
-}
-
-/* Ensure smooth transitions for all components that participate in stacking */
+/* Base transitions for components that participate in stacking */
 .sidebar,
 .main-content,
 .modal-content,
 .side-panel,
 .right-sidebar {
-  /* Explicitly define base state for transitions to avoid jumping from 'none' */
-  transform: scale(1) translateY(0) translateZ(0);
-  filter: blur(0) brightness(1);
+  --depth: 0;
+  --scale-factor: 1;
+  --y-offset: 0px;
+  --brightness-factor: 1;
+  --blur-amount: 0px;
 
-  transition: transform 0.6s cubic-bezier(0.2, 1, 0.1, 1),
-    filter 0.6s cubic-bezier(0.2, 1, 0.1, 1),
-    opacity 0.6s ease,
-    backdrop-filter 0.6s ease,
-    width 0.6s cubic-bezier(0.2, 1, 0.1, 1),
-    flex-basis 0.6s cubic-bezier(0.2, 1, 0.1, 1),
-    flex-grow 0.6s cubic-bezier(0.2, 1, 0.1, 1),
-    flex-shrink 0.6s cubic-bezier(0.2, 1, 0.1, 1),
-    margin 0.6s cubic-bezier(0.2, 1, 0.1, 1),
-    border-radius 0.6s cubic-bezier(0.2, 1, 0.1, 1);
+  transform: scale(var(--scale-factor)) translateY(var(--y-offset)) translateZ(0);
+  filter: blur(var(--blur-amount)) brightness(var(--brightness-factor));
+
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+    filter 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.35s ease;
 }
 
-/* Liquid motion blur effect during layout transitions (for chat area only) */
-.main-content.is-animating {
-  animation: liquidBlur 0.6s cubic-bezier(0.2, 1, 0.1, 1) forwards;
-  pointer-events: none;
+/* Background elements that are stacked (sidebar, main-content, right-sidebar, and background modals) */
+.sidebar.ui-stacked,
+.main-content.ui-stacked,
+.side-panel.ui-stacked,
+.right-sidebar.ui-stacked:not(.hidden),
+.modal.ui-stacked .modal-content {
+  --depth: var(--ui-depth, 1);
+  --scale-factor: calc(1 - (var(--depth) * 0.045));
+  --y-offset: calc(var(--depth) * -1.6rem);
+  --brightness-factor: calc(1 - (var(--depth) * 0.16));
+  --blur-amount: calc(var(--depth) * 4px);
+
+  transform: scale(var(--scale-factor)) translateY(var(--y-offset)) translateZ(0) !important;
+  filter: blur(var(--blur-amount)) brightness(var(--brightness-factor)) !important;
+  pointer-events: none !important;
+  user-select: none !important;
 }
 
-@keyframes liquidBlur {
-  0% { 
-    filter: blur(0) brightness(1) saturate(1);
-    transform: scale(1) translateZ(0);
-  }
-  35% {
-    filter: blur(10px) brightness(0.9) saturate(0.85);
-    transform: scale(0.975) translateZ(0);
-  }
-  100% {
-    filter: blur(0) brightness(1) saturate(1);
-    transform: scale(1) translateZ(0);
-  }
+.ui-stacked {
+  pointer-events: none !important;
+  user-select: none !important;
 }
 
-/* Special case for modal backdrop when stacked: hide it more or dim it */
+/* Modal backdrop dimming when stacked */
 .modal.ui-stacked .modal-backdrop {
-  opacity: 0.4 !important;
+  opacity: 0.45;
+  transition: opacity 0.35s ease;
 }
 
 /* ─── Utility Classes ────────────────────────────────────────────── */

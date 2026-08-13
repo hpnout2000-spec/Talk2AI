@@ -5,7 +5,12 @@ import { generateId } from '../utils/helpers.js';
 
 function cleanCharacterName(name) {
   if (!name) return '';
-  return name.replace(/\{\{char:/g, '').replace(/\}\}/g, '').replace(/char:/g, '').trim();
+  let clean = String(name);
+  const match = clean.match(/\{\{\s*char:\s*([^|}]+)(?:\|([^}]+))?\s*\}\}/i);
+  if (match) {
+    clean = match[1];
+  }
+  return clean.replace(/\{\{\s*char:/gi, '').replace(/\}\}/g, '').replace(/char:/gi, '').trim();
 }
 
 let gamesState = {
@@ -129,10 +134,11 @@ export const gameStore = {
 
   upsertCharacter(charData) {
     const game = this.get();
-    if (!game) return;
+    if (!game || !charData) return;
     if (!game.characters) game.characters = [];
     
     const cleanedName = cleanCharacterName(charData.name);
+    if (!cleanedName) return;
     charData.name = cleanedName;
 
     const idx = game.characters.findIndex(c => cleanCharacterName(c.name).toLowerCase() === cleanedName.toLowerCase());

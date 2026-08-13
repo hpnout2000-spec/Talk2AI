@@ -51,9 +51,10 @@ export function initCharacterPanel() {
   });
 
   // Modal controls
-  document.querySelector('.btn-close-modal').addEventListener('click', closeCharacterEditor);
-  document.getElementById('btn-cancel-character').addEventListener('click', closeCharacterEditor);
-  document.getElementById('btn-save-character').addEventListener('click', saveCharacter);
+  const charModal = document.getElementById('character-modal');
+  charModal?.querySelector('.btn-close-modal')?.addEventListener('click', closeCharacterEditor);
+  document.getElementById('btn-cancel-character')?.addEventListener('click', closeCharacterEditor);
+  document.getElementById('btn-save-character')?.addEventListener('click', saveCharacter);
   document.getElementById('btn-add-alt-greeting')?.addEventListener('click', () => {
     addAltGreetingField();
   });
@@ -155,7 +156,7 @@ export function initCharacterPanel() {
   });
 
   // Close modal on backdrop click
-  document.querySelector('.modal-backdrop')?.addEventListener('click', closeCharacterEditor);
+  charModal?.querySelector('.modal-backdrop')?.addEventListener('click', closeCharacterEditor);
 
   // AI Character Generation
   document.getElementById('btn-ai-generate').addEventListener('click', async () => {
@@ -194,7 +195,7 @@ Do not include any Markdown formatting like \`\`\`json or any other text. Return
       const response = await api.chatCompletion(messages, { max_tokens: 4000, temperature: 0.7 });
       
       // Strip any thinking blocks
-      const cleanResponse = response.replace(/(?:<\|?think\|?>|<reasoning>|<\|channel>thought)([\s\S]*?)(?:<\|?\/think\|?>|<\/reasoning>|<channel\|>)/gi, '');
+      const cleanResponse = response.replace(/(?:<\|?think\|?>|<reasoning>|<\|?channel\|?>?thought)([\s\S]*?)(?:<\|?\/think\|?>|<\/reasoning>|<channel\|>)/gi, '');
       
       const jsonMatch = cleanResponse.match(/\{[\s\S]*\}/);
       if (jsonMatch) {

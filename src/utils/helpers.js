@@ -559,7 +559,7 @@ export function parseThinking(text, customOpen = null, customClose = null) {
   if (typeof text !== 'string') return { thinking: null, content: '' };
   
   const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const defaultOpen = '<\\|channel>thought|<\\|?think\\|?>|<thought>|<reasoning>|\\[THINKING\\]|\\[REASONING\\]';
+  const defaultOpen = '<\\|channel\\|?thought|<\\|?think\\|?>|<thought>|<reasoning>|\\[THINKING\\]|\\[REASONING\\]';
   const openPattern = customOpen ? escapeRegExp(customOpen) + '|' + defaultOpen : defaultOpen;
   
   const defaultClose = '<\\/\\s*think\\s*>|<\\/\\s*thought\\s*>|<\\/\\s*reasoning\\s*>|<channel\\|>|<\\/channel\\|?>|<\\|?\\/think\\|?>|<\\|end_of_thought\\|?>|<\\|thought_end\\|?>|\\[\\/think(?:ing)?\\]|\\[\\/reasoning\\]|\\[THINKING_END\\]';
@@ -596,7 +596,7 @@ export function extractThinkingSnippets(text) {
   if (typeof text !== 'string' || !text) return [];
   
   let cleanText = text
-    .replace(/(?:<\|channel>thought|<\|?think\|?>|<reasoning>|<thought>|\[THINKING\]|\[REASONING\])/gi, '')
+    .replace(/(?:<\|channel\|?thought|<\|?think\|?>|<reasoning>|<thought>|\[THINKING\]|\[REASONING\])/gi, '')
     .replace(/(?:<\/s*think\s*>|<\/s*thought\s*>|<\/s*reasoning\s*>|<channel\|>|<\|?\/think\|?>|<\/thought>|<\/reasoning>|\[\/think(?:ing)?\]|\[\/reasoning\])/gi, '')
     .replace(/```[\s\S]*?```/g, '')
     .replace(/`[^`]*`/g, '')
@@ -633,7 +633,7 @@ export function parseStreamThinking(text, customOpen = null, customClose = null)
   if (typeof text !== 'string') return { thinking: '', content: '', rawContent: '', isInThinking: false, thinkingStartIdx: -1, thinkingEndIdx: -1 };
   
   const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const defaultOpen = '<\\|channel>thought|<\\|?think\\|?>|<thought>|<reasoning>|\\[THINKING\\]|\\[REASONING\\]';
+  const defaultOpen = '<\\|channel\\|?thought|<\\|?think\\|?>|<thought>|<reasoning>|\\[THINKING\\]|\\[REASONING\\]';
   const openPattern = customOpen ? escapeRegExp(customOpen) + '|' + defaultOpen : defaultOpen;
   const startMatch = text.match(new RegExp(openPattern, 'i'));
   
@@ -719,7 +719,7 @@ export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, t
   }
 
   const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const defaultOpen = '<\\|channel>thought|<\\|?think\\|?>|<thought>|<reasoning>';
+  const defaultOpen = '<\\|channel\\|?thought|<\\|?think\\|?>|<thought>|<reasoning>';
   const openPattern = settings.reasoning_tag_open ? escapeRegExp(settings.reasoning_tag_open) + '|' + defaultOpen : defaultOpen;
   const cleanOpenRegex = new RegExp(`^(?:${openPattern})\\s*`, 'gi');
 
@@ -849,6 +849,20 @@ class ThinkingSnippets extends HTMLElement {
     this.appendChild(this.header);
     this.appendChild(this.expandedView);
 
+    this.userHasScrolledUp = false;
+    const cancelProgrammatic = () => {
+      this.userHasScrolledUp = true;
+      this._isScrolling = false;
+    };
+    this.expandedView.addEventListener('wheel', cancelProgrammatic, { passive: true });
+    this.expandedView.addEventListener('touchmove', cancelProgrammatic, { passive: true });
+    
+    this.expandedView.addEventListener('scroll', () => {
+      if (this._isScrolling) return;
+      const distanceFromBottom = this.expandedView.scrollHeight - this.expandedView.scrollTop - this.expandedView.clientHeight;
+      this.userHasScrolledUp = distanceFromBottom > 60;
+    }, { passive: true });
+
     // Interactive click
     this.header.addEventListener('click', () => {
       this.isExpanded = !this.isExpanded;
@@ -881,8 +895,7 @@ class ThinkingSnippets extends HTMLElement {
   }
 
   smoothScrollToBottom() {
-    const isNearBottom = (this.expandedView.scrollHeight - this.expandedView.scrollTop - this.expandedView.clientHeight) < 100;
-    if (!isNearBottom) return;
+    if (this.userHasScrolledUp) return;
 
     if (this._isScrolling) return;
     this._isScrolling = true;
@@ -1022,16 +1035,28 @@ export function wrapWordsInSpans(htmlString, useNewAnimation = false, revealedWo
   let skipBlockTag = '';
   let skipBlockDepth = 0;
   const limit = useNewAnimation ? (revealedWordsCount + 10) : Infinity;
+  const tagStack = [];
+
   const processedParts = parts.map(part => {
     if (part.startsWith('<')) { 
       const lower = part.toLowerCase();
-      
-      // If we are beyond the limit, only allow closing tags to keep HTML valid
+      const isClosing = lower.startsWith('</');
+      const tagMatch = lower.match(/^<\/?([a-z0-9]+)/i);
+      const tagName = tagMatch ? tagMatch[1] : '';
+
+      // If we are beyond the limit, only allow closing tags for tags that were actually opened
       if (useNewAnimation && charIndex >= limit) {
-        if (lower.startsWith('</')) {
+        if (isClosing && tagStack.length > 0 && tagStack[tagStack.length - 1] === tagName) {
+          tagStack.pop();
           return part;
         }
         return '';
+      }
+
+      if (!isClosing && !lower.endsWith('/>') && tagName && !['br', 'hr', 'img', 'input', 'meta', 'link'].includes(tagName)) {
+        tagStack.push(tagName);
+      } else if (isClosing && tagStack.length > 0 && tagStack[tagStack.length - 1] === tagName) {
+        tagStack.pop();
       }
       
       if (lower.startsWith('<pre') || lower.startsWith('<code')) inSkipTag = true;
@@ -1056,7 +1081,6 @@ export function wrapWordsInSpans(htmlString, useNewAnimation = false, revealedWo
       return part;
     }
     if (inSkipTag || inTableTag || inSkipBlock) return part;
-    
     
     if (!part.trim()) {
       charIndex += part.length;
@@ -1092,6 +1116,15 @@ export function wrapWordsInSpans(htmlString, useNewAnimation = false, revealedWo
       }
     }).join('');
   });
+
+  // Safely close any tags left open before the limit
+  if (useNewAnimation && charIndex >= limit) {
+    while (tagStack.length > 0) {
+      const unclosed = tagStack.pop();
+      processedParts.push(`</${unclosed}>`);
+    }
+  }
+
   wrapWordsInSpans.lastTotalChars = charIndex;
   return processedParts.join('');
 }

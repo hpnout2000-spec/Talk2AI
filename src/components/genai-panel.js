@@ -1390,7 +1390,7 @@ ${ANIMA_BETTER_PROMPT_TEXT}`;
   if (settings.change_gemma4_thinking_style && settings.genai_reasoning_effort === 'medium') {
     systemContent += `\n\nCORE INSTRUCTION:
 Before answering, you must use your internal monologue channel.
-1. When you enter the <|channel|>thought channel, think in the first person ("I"). Think like a curious, analytical researcher. 
+1. When you enter the <|channel>thought channel, think in the first person ("I"). Think like a curious, analytical researcher. 
 2. Do NOT use bullet points or asterisks (*) for every line. Write in natural, cohesive paragraphs.
 3. Structure your logic, verify assumptions, and prepare the response.
 4. After closing the thought channel with <channel|>, provide your final response.
@@ -1411,7 +1411,7 @@ Before answering, you must use your internal monologue channel.
     let openTag = settings.genai_reasoning_tag_open || '<|think|>';
     let closeTag = settings.genai_reasoning_tag_close || '</|think|>';
     if (settings.change_gemma4_thinking_style) {
-      openTag = '<|channel|>thought';
+      openTag = '<|channel>thought';
       closeTag = '<channel|>';
     }
     finalMessages.push({ role: 'assistant', content: `${openTag}\n${closeTag}` });
@@ -2586,6 +2586,10 @@ function resultBadgeForAction(action, result) {
 
 // ─── Flying Text Animation Helper ────────────────────────────────────
 function animateFlyingText(startEl, text, destEl, callback) {
+  if (!startEl || !destEl) {
+    if (callback) callback();
+    return;
+  }
   const startRect = startEl.getBoundingClientRect();
   const destRect = destEl.getBoundingClientRect();
 
@@ -2611,11 +2615,17 @@ function animateFlyingText(startEl, text, destEl, callback) {
   clone.style.opacity = '0';
   clone.style.filter = 'blur(1px)';
 
-  // Cleanup after transition
-  clone.addEventListener('transitionend', () => {
-    clone.remove();
-    callback();
-  }, { once: true });
+  let cleanedUp = false;
+  const finish = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
+    if (clone.isConnected) clone.remove();
+    if (callback) callback();
+  };
+
+  // Cleanup after transition with fallback
+  clone.addEventListener('transitionend', finish, { once: true });
+  setTimeout(finish, 850);
 }
 
 // ─── GenAI Animations & Height Transitions Helpers ──────────────────
@@ -3589,6 +3599,14 @@ let genaiIsProgrammaticScrolling = false;
 function setupGenaiScrollListener() {
   if (!messagesEl || messagesEl._scrollListenerAttached) return;
   messagesEl._scrollListenerAttached = true;
+
+  const cancelProgrammatic = () => {
+    genaiUserHasScrolledUp = true;
+    genaiIsProgrammaticScrolling = false;
+  };
+  messagesEl.addEventListener('wheel', cancelProgrammatic, { passive: true });
+  messagesEl.addEventListener('touchmove', cancelProgrammatic, { passive: true });
+
   messagesEl.addEventListener('scroll', () => {
     if (genaiIsProgrammaticScrolling) return;
     const threshold = 60;
@@ -7403,7 +7421,6 @@ export function initGenAIPanel() {
 
 // ─── Open / Close helpers (called from main.js) ───────────────────────
 export function openGenAIPanel() {
-  const mainContent = document.getElementById('main-content');
   const sidebar = document.getElementById('genai-sidebar');
   if (sidebar) {
     sidebar.classList.remove('hidden');
@@ -7411,27 +7428,18 @@ export function openGenAIPanel() {
     void sidebar.offsetWidth;
     sidebar.classList.add('panel-bounce');
   }
-  if (mainContent) mainContent.classList.add('is-animating');
 
   document.body.classList.add('genai-sidebar-open');
   renderMessages();
-
-  setTimeout(() => {
-    if (mainContent) mainContent.classList.remove('is-animating');
-  }, 600);
 }
 
 export function closeGenAIPanel() {
-  const mainContent = document.getElementById('main-content');
-  if (mainContent) mainContent.classList.add('is-animating');
-
   document.body.classList.remove('genai-sidebar-open');
 
   setTimeout(() => {
-    if (mainContent) mainContent.classList.remove('is-animating');
     const sidebar = document.getElementById('genai-sidebar');
     if (sidebar) sidebar.classList.add('hidden');
-  }, 600);
+  }, 500);
 }
 
 // ─── Used by chat.js to notify GenAI that a vibe response arrived ─────

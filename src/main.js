@@ -98,11 +98,20 @@ async function init() {
 
   // Update user name display
   const userNameDisplay = document.getElementById('user-name-display');
+  const userMorphContainer = document.getElementById('user-name-morph-container');
   const updateUserNameDisplay = () => {
     const settings = settingsStore.get();
     const chatOverride = appState.currentChat?.user_name;
+    const name = chatOverride || settings.user_name || 'User';
     if (userNameDisplay) {
-      userNameDisplay.textContent = chatOverride || settings.user_name || 'User';
+      userNameDisplay.textContent = name;
+    }
+    if (userMorphContainer) {
+      requestAnimationFrame(() => {
+        const textWidth = userNameDisplay?.scrollWidth || 30;
+        const triggerWidth = Math.max(90, Math.min(180, textWidth + 56));
+        userMorphContainer.style.setProperty('--morph-collapsed-width', `${triggerWidth}px`);
+      });
     }
   };
   updateUserNameDisplay();
@@ -110,31 +119,64 @@ async function init() {
   // Expose to window so other files can trigger it
   window.updateUserNameDisplay = updateUserNameDisplay;
 
-  // User name click handler
+  // User persona morphing container logic
   const btnSetName = document.getElementById('btn-set-user-name');
-  const userNamePopover = document.getElementById('user-name-popover');
+  const btnCloseUserMorph = document.getElementById('btn-close-user-morph');
   const userNameInput = document.getElementById('user-name-edit-input');
   const userNameChatOnly = document.getElementById('user-name-chat-only');
   const btnConfirmName = document.getElementById('btn-confirm-name');
   const btnPersonas = document.getElementById('btn-personas');
 
+  function openUserMorph() {
+    const settings = settingsStore.get();
+    const chatOverride = appState.currentChat?.user_name;
+    if (userNameInput) {
+      userNameInput.value = chatOverride || settings.user_name || 'User';
+    }
+    if (userNameChatOnly) {
+      userNameChatOnly.checked = !!chatOverride;
+    }
+    userMorphContainer?.classList.add('open');
+    setTimeout(() => userNameInput?.focus(), 150);
+  }
+
+  function closeUserMorph() {
+    userMorphContainer?.classList.remove('open');
+  }
+
   if (btnSetName) {
     btnSetName.addEventListener('click', (e) => {
       e.stopPropagation();
-      const settings = settingsStore.get();
-      const chatOverride = appState.currentChat?.user_name;
-      userNameInput.value = chatOverride || settings.user_name || 'User';
-      userNameChatOnly.checked = !!chatOverride;
-      
-      userNamePopover.classList.toggle('hidden');
-      if (!userNamePopover.classList.contains('hidden')) {
-        setTimeout(() => userNameInput.focus(), 50);
+      if (userMorphContainer?.classList.contains('open')) {
+        closeUserMorph();
+      } else {
+        openUserMorph();
       }
     });
   }
 
+  if (btnCloseUserMorph) {
+    btnCloseUserMorph.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeUserMorph();
+    });
+  }
+
+  // Prevent clicks inside morph container from bubbling up
+  userMorphContainer?.addEventListener('click', (e) => {
+    e.stopPropagation();
+  });
+
+  // Close morph container on outside click
+  document.addEventListener('click', (e) => {
+    if (userMorphContainer?.classList.contains('open')) {
+      closeUserMorph();
+    }
+  });
+
   if (btnConfirmName) {
-    btnConfirmName.addEventListener('click', async () => {
+    btnConfirmName.addEventListener('click', async (e) => {
+      e.stopPropagation();
       const newName = userNameInput.value.trim();
       if (newName !== '') {
         const isChatOnly = userNameChatOnly.checked;
@@ -149,18 +191,42 @@ async function init() {
           }
         }
         updateUserNameDisplay();
-        userNamePopover.classList.add('hidden');
+        closeUserMorph();
         showToast(`Name updated to ${newName}`);
       }
     });
   }
 
   // Handle Enter key in name input
-  userNameInput.addEventListener('keydown', (e) => {
+  userNameInput?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
-      btnConfirmName.click();
+      btnConfirmName?.click();
     }
   });
+
+  // ─── Left Sidebar Collapse / Expand Logic ─────────────────────────────
+  const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
+  const savedSidebarCollapsed = localStorage.getItem('sidebar_collapsed') === 'true';
+  if (savedSidebarCollapsed) {
+    document.body.classList.add('sidebar-collapsed');
+    if (btnToggleSidebar) btnToggleSidebar.title = 'Expand sidebar';
+  }
+
+  function toggleLeftSidebar() {
+    const isCollapsed = document.body.classList.toggle('sidebar-collapsed');
+    if (btnToggleSidebar) {
+      btnToggleSidebar.title = isCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
+    }
+    localStorage.setItem('sidebar_collapsed', isCollapsed ? 'true' : 'false');
+  }
+
+  if (btnToggleSidebar) {
+    btnToggleSidebar.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleLeftSidebar();
+    });
+  }
+  window.toggleLeftSidebar = toggleLeftSidebar;
 
   // Personas modal logic
   const personaModal = document.getElementById('persona-modal');
@@ -216,7 +282,7 @@ async function init() {
 
   if (btnPersonas) {
     btnPersonas.addEventListener('click', () => {
-      userNamePopover.classList.add('hidden');
+      closeUserMorph();
       openWindow(personaModal);
       const chatOverride = appState.currentChat?.persona_id;
       personaChatOnly.checked = !!chatOverride;
@@ -676,30 +742,37 @@ document.addEventListener('DOMContentLoaded', init);
 // Global custom tooltip logic
 const globalTooltip = document.getElementById('global-custom-tooltip');
 if (globalTooltip) {
+  let tooltipRafId = null;
   document.addEventListener('mousemove', (e) => {
     const target = e.target.closest('[data-custom-tooltip]');
     if (target) {
       const text = target.getAttribute('data-custom-tooltip');
       if (text) {
-        globalTooltip.textContent = text;
-        globalTooltip.classList.remove('hidden');
+        const clientX = e.clientX;
+        const clientY = e.clientY;
+        if (tooltipRafId) cancelAnimationFrame(tooltipRafId);
+        tooltipRafId = requestAnimationFrame(() => {
+          globalTooltip.textContent = text;
+          globalTooltip.classList.remove('hidden');
 
-        const tooltipRect = globalTooltip.getBoundingClientRect();
-        let left = e.clientX + 12;
-        let top = e.clientY + 12;
+          const tooltipRect = globalTooltip.getBoundingClientRect();
+          let left = clientX + 12;
+          let top = clientY + 12;
 
-        if (left + tooltipRect.width > window.innerWidth - 10) {
-          left = window.innerWidth - tooltipRect.width - 10;
-        }
-        if (top + tooltipRect.height > window.innerHeight - 10) {
-          top = e.clientY - tooltipRect.height - 10;
-        }
+          if (left + tooltipRect.width > window.innerWidth - 10) {
+            left = window.innerWidth - tooltipRect.width - 10;
+          }
+          if (top + tooltipRect.height > window.innerHeight - 10) {
+            top = clientY - tooltipRect.height - 10;
+          }
 
-        globalTooltip.style.left = left + 'px';
-        globalTooltip.style.top = top + 'px';
+          globalTooltip.style.left = left + 'px';
+          globalTooltip.style.top = top + 'px';
+        });
         return;
       }
     }
+    if (tooltipRafId) cancelAnimationFrame(tooltipRafId);
     globalTooltip.classList.add('hidden');
   });
 }

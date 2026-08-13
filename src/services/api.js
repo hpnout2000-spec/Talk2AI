@@ -136,6 +136,114 @@ function preprocessMessages(messages, settings) {
   return merged;
 }
 
+export function stripThinkingTags(text) {
+  if (!text) return '';
+  let clean = String(text).trim();
+
+  // 1. Strip standard <think>...</think> blocks
+  clean = clean.replace(/<think>[\s\S]*?<\/think>/gi, '');
+
+  // 2. Strip <|channel>thought or <|channel|>thought blocks completely
+  clean = clean.replace(/<\|?channel\|?>?thought[\s\S]*?(?=<\|?channel\|?>?commentary|<\|?channel\|?>?call|<\|?channel\|?>?final_response|\n\n[A-Z0-9#*-]|\n\n\S|$)/gi, '');
+  clean = clean.replace(/<\|?channel\|?>?thought/gi, '');
+
+  // 3. Strip any prefill strings inserted by system
+  clean = clean.replace(/^The user[\s\S]*?(?=\n\n|$)/gi, '');
+  clean = clean.replace(/^Okay, let me think really quickly[\s\S]*?(?=\n\n|$)/gi, '');
+
+  // 4. Strip any remaining <|channel... tags
+  clean = clean.replace(/<\|?channel\|?>?[a-z_]*/gi, '');
+  clean = clean.replace(/<\/think>/gi, '');
+  clean = clean.replace(/<think>/gi, '');
+
+  return clean.trim();
+}
+
+export function extractJsonFromText(text) {
+  if (!text) return null;
+  let clean = stripThinkingTags(text);
+
+  // 2. Extract contents of markdown ```json ... ``` or ``` ... ``` if present
+  const markdownMatches = [...clean.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/gi)];
+  for (const m of markdownMatches) {
+    if (m[1]) {
+      try {
+        const parsed = JSON.parse(m[1].trim());
+        if (parsed) return parsed;
+      } catch (e) {
+        // try next match
+      }
+    }
+  }
+
+  // 3. Extract all candidate JSON array/object blocks using a parser loop
+  const candidates = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escape = false;
+
+  for (let i = 0; i < clean.length; i++) {
+    const char = clean[i];
+    if (inString) {
+      if (escape) {
+        escape = false;
+      } else if (char === '\\') {
+        escape = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (char === '{' || char === '[') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (char === '}' || char === ']') {
+      if (depth > 0) {
+        depth--;
+        if (depth === 0 && start !== -1) {
+          candidates.push(clean.substring(start, i + 1));
+          start = -1;
+        }
+      }
+    }
+  }
+
+  // Try parsing candidates (reverse order first to get final response if multiple)
+  for (let i = candidates.length - 1; i >= 0; i--) {
+    try {
+      const parsed = JSON.parse(candidates[i]);
+      if (parsed !== null && parsed !== undefined) return parsed;
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  // Fallback: search simple boundary
+  const firstBrace = clean.search(/[\{\[]/);
+  if (firstBrace !== -1) {
+    const isArray = clean[firstBrace] === '[';
+    const lastBrace = isArray ? clean.lastIndexOf(']') : clean.lastIndexOf('}');
+    if (lastBrace > firstBrace) {
+      const fallback = clean.substring(firstBrace, lastBrace + 1);
+      try {
+        return JSON.parse(fallback);
+      } catch (e) {
+        // ignore
+      }
+    }
+  }
+
+  console.error("extractJsonFromText failed to find valid JSON in text:", text);
+  return null;
+}
+
 export const api = {
   /**
    * Check if the API server is reachable
@@ -717,7 +825,7 @@ export const api = {
   /**
    * Generates a new game scene in JSON format for the Interactive Game Mode
    */
-  async generateGameScene(currentStats, previousSceneText, playerAction, prompt, noteToGM = '', gameSummary = '', remainingHistory = [], onChunk = null, language = 'English', storyPrompt = '', existingCharacters = []) {
+  async generateGameScene(currentStats, previousSceneText, playerAction, prompt, noteToGM = '', gameSummary = '', remainingHistory = [], onChunk = null, language = 'English', storyPrompt = '', existingCharacters = [], options = {}) {
     const settings = settingsStore.get();
     const customPrompt = settings.game_system_prompt || "You are a Game Master in an interactive text RPG.";
     let lengthPrompt = "";
@@ -812,6 +920,10 @@ Generate the next scene. Your JSON must strictly follow this schema:
 
     return new Promise((resolve, reject) => {
       let fullResponse = '';
+      const chatOptions = { ...options };
+      if (chatOptions.reasoning_effort === undefined && settings.reasoning_effort) {
+        chatOptions.reasoning_effort = settings.reasoning_effort;
+      }
       this.streamChat(
         messages,
         null, // signal
@@ -823,20 +935,19 @@ Generate the next scene. Your JSON must strictly follow this schema:
         },
         () => {
           try {
-            let cleanText = fullResponse.trim();
-            if (cleanText.startsWith('```json')) {
-              cleanText = cleanText.replace(/^```json/m, '').replace(/```$/m, '').trim();
-            } else if (cleanText.startsWith('```')) {
-              cleanText = cleanText.replace(/^```/m, '').replace(/```$/m, '').trim();
+            const parsed = extractJsonFromText(fullResponse);
+            if (parsed) {
+              resolve(parsed);
+            } else {
+              reject(new Error("Failed to parse game scene JSON"));
             }
-            resolve(JSON.parse(cleanText));
           } catch (err) {
             console.error('Failed to parse final JSON from game scene stream:', err, fullResponse);
             reject(err);
           }
         },
         (err) => reject(err),
-        { temperature: 0.7, max_tokens: 2048 }
+        chatOptions
       );
     });
   },
@@ -845,7 +956,7 @@ Generate the next scene. Your JSON must strictly follow this schema:
    * Extracts and updates game characters from the latest scene (separate API call after scene generation)
    * Returns an array of character objects: [{ name, short_description }]
    */
-  async updateGameCharacters(sceneText, existingCharacters = [], gameSummary = '', language = 'English') {
+  async updateGameCharacters(sceneText, existingCharacters = [], gameSummary = '', language = 'English', options = {}) {
     let existingCharsBlock = '';
     if (existingCharacters && existingCharacters.length > 0) {
       existingCharsBlock = `\nCurrently known characters:\n${existingCharacters.map(c => `- ${c.name}: ${c.short_description || 'No description'}`).join('\n')}\n`;
@@ -870,14 +981,9 @@ Example response:
     ];
 
     try {
-      const response = await this.chatCompletion(messages, { temperature: 0.3, max_tokens: 1536 });
-      let cleanText = response.trim();
-      if (cleanText.startsWith('```json')) {
-        cleanText = cleanText.replace(/^```json/m, '').replace(/```$/m, '').trim();
-      } else if (cleanText.startsWith('```')) {
-        cleanText = cleanText.replace(/^```/m, '').replace(/```$/m, '').trim();
-      }
-      return JSON.parse(cleanText);
+      const response = await this.chatCompletion(messages, { ...options });
+      const parsed = extractJsonFromText(response);
+      return Array.isArray(parsed) ? parsed : [];
     } catch (err) {
       console.error('Failed to update game characters:', err);
       return [];
@@ -1023,7 +1129,7 @@ Please write the summary of the conversation following all mandatory rules.`;
   /**
    * Generates a list of characters mentioned in the adventure history
    */
-  async extractGameCharacters(gameSummary, history) {
+  async extractGameCharacters(gameSummary, history, options = {}) {
     let scenesText = "";
     if (gameSummary) {
       scenesText += `SUMMARY OF PREVIOUS ADVENTURE:\n${gameSummary}\n\n`;
@@ -1039,7 +1145,7 @@ Please write the summary of the conversation following all mandatory rules.`;
     const systemPrompt = `You are an expert RPG Assistant. Analyze the following story summary and history, and identify all characters (both main and supporting) that participated or were mentioned in the game.
 This includes both named characters (e.g. "John", "Lena") and unnamed/generic characters if they played a notable role in the scene (e.g. "Some guy", "Mysterious stranger", "Tavern keeper", "Goblin scout").
 Do not include the player character ("Player", "Герой", "Игрок") unless they have a specific named identity mentioned in the history.
-Return your response ONLY as a JSON array of strings containing the character names/descriptions in English (e.g. ["John", "Some guy", "Tavern keeper"]). Do not include any formatting, markdown code blocks, or greetings. Just the clean JSON array.`;
+Return your response ONLY as a JSON array of strings or objects containing the character names/descriptions. Do not include any formatting, markdown code blocks, or greetings. Just the clean JSON array.`;
 
     const messages = [
       { role: 'system', content: systemPrompt },
@@ -1047,14 +1153,14 @@ Return your response ONLY as a JSON array of strings containing the character na
     ];
 
     try {
-      const response = await this.chatCompletion(messages, { temperature: 0.3, max_tokens: 1024 });
-      let cleanText = response.trim();
-      if (cleanText.startsWith('```json')) {
-        cleanText = cleanText.replace(/^```json/m, '').replace(/```$/m, '').trim();
-      } else if (cleanText.startsWith('```')) {
-        cleanText = cleanText.replace(/^```/m, '').replace(/```$/m, '').trim();
+      const response = await this.chatCompletion(messages, { ...options });
+      const parsed = extractJsonFromText(response);
+      if (Array.isArray(parsed)) return parsed;
+      if (parsed && typeof parsed === 'object') {
+        const arrayProp = Object.values(parsed).find(val => Array.isArray(val));
+        if (arrayProp) return arrayProp;
       }
-      return JSON.parse(cleanText);
+      return [];
     } catch (err) {
       console.error('Failed to extract characters:', err);
       return [];
@@ -1064,7 +1170,7 @@ Return your response ONLY as a JSON array of strings containing the character na
   /**
    * Generates a detailed profile description for a given character based on adventure history
    */
-  async generateCharacterDetails(characterName, gameSummary, history) {
+  async generateCharacterDetails(characterName, gameSummary, history, options = {}) {
     let scenesText = "";
     if (gameSummary) {
       scenesText += `SUMMARY OF PREVIOUS ADVENTURE:\n${gameSummary}\n\n`;
@@ -1091,7 +1197,8 @@ Focus ONLY on what is known or can be directly inferred from the history. Keep t
     ];
 
     try {
-      return await this.chatCompletion(messages, { temperature: 0.5, max_tokens: 1536 });
+      const response = await this.chatCompletion(messages, { ...options });
+      return stripThinkingTags(response);
     } catch (err) {
       console.error('Failed to generate character details:', err);
       throw err;
