@@ -1872,7 +1872,7 @@ async function sendMessage() {
             html += wrapWordsInSpans(formatted);
           }
 
-          if (!cleaned.trim() && isStreaming) {
+          if (!cleaned.trim() && isStreaming && !isInThinking) {
             html += `<span class="chat-working-placeholder">Processing...</span>`;
           }
 
@@ -1886,6 +1886,7 @@ async function sendMessage() {
             getOrCreateChatCursor();
             repositionChatCursor(contentEl);
           }
+          scrollToBottom(false);
         };
 
         if (isNewAnimation) {
@@ -3159,61 +3160,39 @@ async function swipeGreeting(messageId, direction) {
   loadChat(appState.currentChat);
 }
 
-function scrollToBottom() {
+let userHasScrolledUp = false;
+let isProgrammaticScrolling = false;
+
+function setupScrollListener() {
+  if (!messagesContainer || messagesContainer._scrollListenerAttached) return;
+  messagesContainer._scrollListenerAttached = true;
+  messagesContainer.addEventListener('scroll', () => {
+    if (isProgrammaticScrolling) return;
+    const threshold = 60;
+    const distanceFromBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight;
+    userHasScrolledUp = distanceFromBottom > threshold;
+  }, { passive: true });
+}
+
+function scrollToBottom(force = false) {
+  if (!messagesContainer) return;
+  setupScrollListener();
+
+  if (force) {
+    userHasScrolledUp = false;
+  } else if (userHasScrolledUp) {
+    return;
+  }
+
   requestAnimationFrame(() => {
-    const messages = Array.from(messagesContainer.querySelectorAll('.message'));
-    if (messages.length > 0) {
-      const lastMsg = messages[messages.length - 1];
-      const containerRect = messagesContainer.getBoundingClientRect();
-      const lastRect = lastMsg.getBoundingClientRect();
-      
-      const lastBottom = lastRect.bottom - containerRect.top + messagesContainer.scrollTop;
-      const maxScrollTop = messagesContainer.scrollHeight - containerRect.height;
-      
-      let targetScrollTop = maxScrollTop;
-      
-      let lastUserMsg = null;
-      let lastAssistantMsg = null;
-      
-      for (let i = messages.length - 1; i >= 0; i--) {
-        const msg = messages[i];
-        if (msg.classList.contains('user')) {
-          if (!lastUserMsg) lastUserMsg = msg;
-        } else {
-          if (!lastAssistantMsg) lastAssistantMsg = msg;
-        }
-        if (lastUserMsg && lastAssistantMsg) break;
-      }
-      
-      if (lastUserMsg && lastAssistantMsg) {
-        const userIndex = messages.indexOf(lastUserMsg);
-        const assistantIndex = messages.indexOf(lastAssistantMsg);
-        const firstEl = userIndex < assistantIndex ? lastUserMsg : lastAssistantMsg;
-        const lastEl = lastMsg;
-        
-        const firstRect = firstEl.getBoundingClientRect();
-        const lastRect = lastEl.getBoundingClientRect();
-        
-        const firstTop = firstRect.top - containerRect.top + messagesContainer.scrollTop;
-        const lastBottom = lastRect.bottom - containerRect.top + messagesContainer.scrollTop;
-        const combinedHeight = lastBottom - firstTop;
-        
-        if (combinedHeight < containerRect.height - 40) {
-          targetScrollTop = Math.max(0, firstTop - 20);
-          targetScrollTop = Math.min(targetScrollTop, maxScrollTop);
-        }
-      } else {
-        const lastTop = lastRect.top - containerRect.top + messagesContainer.scrollTop;
-        if (lastBottom - lastTop < containerRect.height - 40) {
-          targetScrollTop = Math.max(0, lastTop - 20);
-          targetScrollTop = Math.min(targetScrollTop, maxScrollTop);
-        }
-      }
-      
-      messagesContainer.scrollTop = targetScrollTop;
-    } else {
-      messagesContainer.scrollTop = messagesContainer.scrollHeight;
-    }
+    if (!messagesContainer) return;
+    isProgrammaticScrolling = true;
+    const maxScrollTop = messagesContainer.scrollHeight - messagesContainer.clientHeight;
+    messagesContainer.scrollTop = Math.max(0, maxScrollTop);
+
+    setTimeout(() => {
+      isProgrammaticScrolling = false;
+    }, 60);
   });
 }
 window.scrollToBottom = scrollToBottom;
@@ -3384,8 +3363,11 @@ async function triggerAssistantGeneration() {
       if (thinkingText2) {
         currentThinking = thinkingText2;
         currentIsInThinking = thinkingActive2;
-        const parsed = useGLM ? parseGLMThinking(fullResponse) : parseStreamThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
-        displayContent = parsed.content;
+        let cleanResponseForParsing = fullResponse;
+        if (settings.force_reasoning && settings.reasoning_tag_open && cleanResponseForParsing.startsWith(settings.reasoning_tag_open)) {
+          cleanResponseForParsing = cleanResponseForParsing.substring(settings.reasoning_tag_open.length);
+        }
+        displayContent = cleanResponseForParsing;
       } else {
         const parsed = useGLM ? parseGLMThinking(fullResponse) : parseStreamThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
         currentThinking = parsed.thinking;
@@ -3415,7 +3397,7 @@ async function triggerAssistantGeneration() {
       const cleaned2 = stripJsonBlocks(displayContent, true);
       html += wrapWordsInSpans(renderMarkdown(cleaned2));
 
-      if (!cleaned2.trim() && isStreaming2) {
+      if (!cleaned2.trim() && isStreaming2 && !currentIsInThinking) {
         html += `<span class="chat-working-placeholder">Processing...</span>`;
       }
 
@@ -3452,28 +3434,44 @@ async function triggerAssistantGeneration() {
         }
         const useGLM = settings.glm47_support && !/<(?:think|thought|reasoning|\|channel>thought)/i.test(fullResponse);
         let parsedThinking2, parsedContent2;
-        if (thinkingText2) {
-          parsedThinking2 = thinkingText2;
-          const parsed = useGLM ? parseGLMThinking(fullResponse) : parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
-          parsedContent2 = parsed.content;
-        } else {
-          const parsed = useGLM ? parseGLMThinking(fullResponse) : parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
-          parsedThinking2 = parsed.thinking;
-          parsedContent2 = parsed.content;
-        }
+        try {
+          if (thinkingText2) {
+            parsedThinking2 = thinkingText2;
+            let cleanResponseForParsing = fullResponse;
+            if (settings.force_reasoning && settings.reasoning_tag_open && cleanResponseForParsing.startsWith(settings.reasoning_tag_open)) {
+              cleanResponseForParsing = cleanResponseForParsing.substring(settings.reasoning_tag_open.length);
+            }
+            parsedContent2 = cleanResponseForParsing;
+          } else {
+            const parsed = useGLM ? parseGLMThinking(fullResponse) : parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
+            parsedThinking2 = parsed.thinking;
+            parsedContent2 = parsed.content;
+          }
 
-        removeChatCursor();
-        let finalHtml = '';
-        if (parsedThinking2) {
-            if (thinkingTime === 0) thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
-            finalHtml += createThinkingBlockHTML(parsedThinking2, false, settings.glm47_support, thinkingTime, settings.reasoning_effort);
-        }
-        finalHtml += wrapWordsInSpans(renderMarkdown(parsedContent2));
+          removeChatCursor();
+          let finalHtml = '';
+          if (parsedThinking2) {
+              if (thinkingTime === 0) thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
+              finalHtml += createThinkingBlockHTML(parsedThinking2, false, settings.glm47_support, thinkingTime, settings.reasoning_effort);
+          }
+          const cleaned = stripJsonBlocks(parsedContent2, false);
+          let formatted = renderMarkdown(cleaned);
+          formatted = processCharacterMentions(formatted);
+          
+          const isNewAnimation = settings.new_streaming_animation;
+          if (isNewAnimation) {
+            finalHtml += wrapWordsInSpans(formatted, true, Infinity, settings.streaming_speed || 45);
+          } else {
+            finalHtml += wrapWordsInSpans(formatted);
+          }
 
-        const tempFinal = document.createElement('div');
-        tempFinal.className = contentEl.className;
-        tempFinal.innerHTML = finalHtml;
-        morphdom(contentEl, tempFinal, morphOptions2);
+          const tempFinal = document.createElement('div');
+          tempFinal.className = contentEl.className;
+          tempFinal.innerHTML = finalHtml;
+          morphdom(contentEl, tempFinal, morphOptions2);
+        } catch (e) {
+          console.error("Error finalizing regenerate UI:", e);
+        }
 
         let originalContent = parsedContent2;
 

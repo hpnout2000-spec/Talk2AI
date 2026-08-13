@@ -322,6 +322,7 @@ export function initAdvancedSettings() {
   addInputListener('adv-setting-genai-banned-strings', true);
   addInputListener('adv-setting-genai-instruct-template-select', true);
   addInputListener('adv-setting-genai-context-template-select', true);
+  addInputListener('adv-setting-genai-system-prompt', true);
 
   const setupDynaTempSync = (isGenAI) => {
     const prefix = isGenAI ? 'adv-setting-genai-' : 'adv-setting-';
@@ -896,6 +897,11 @@ function applyGenerationPreset(presetId, isGenAI) {
       genaiBreakersInput.value = typeof genaiBreakersVal === 'string' ? genaiBreakersVal : JSON.stringify(genaiBreakersVal);
     }
 
+    const genaiSystemPromptEl = document.getElementById('adv-setting-genai-system-prompt');
+    if (genaiSystemPromptEl) {
+      genaiSystemPromptEl.value = source.genai_system_prompt_addition ?? '';
+    }
+
     applyExtendedSamplersToUI(source, true);
   } else {
     currentSettings.active_generation_preset_id = presetId;
@@ -1001,6 +1007,7 @@ function saveAsNewGenerationPreset(isGenAI) {
     } catch (e) {
       preset.dry_sequence_breakers = ["\n", ":", "\"", "*"];
     }
+    preset.genai_system_prompt_addition = document.getElementById('adv-setting-genai-system-prompt')?.value.trim() || '';
     Object.assign(preset, extractExtendedSamplersFromUI(true));
     currentSettings.active_genai_generation_preset_id = id;
   } else {
@@ -1073,7 +1080,7 @@ async function resetGenerationPreset(isGenAI) {
     return;
   }
 
-  const stdDefaults = { typical_p: 1.0, typical_p_enabled: false, frequency_penalty: 0.0, frequency_penalty_enabled: false, top_a: 0.0, top_a_enabled: false, tfs: 1.0, tfs_enabled: false, mirostat_enabled: false, mirostat_mode: 0, mirostat_tau: 5.0, mirostat_eta: 0.1, xtc_enabled: false, xtc_threshold: 0.1, xtc_probability: 0.0, top_n_sigma_enabled: false, top_n_sigma: 0.0, rep_pen_range_enabled: false, rep_pen_range: 0, rep_pen_slope: 1.0, min_tokens_enabled: false, min_tokens: 0, guidance_scale_enabled: false, guidance_scale: 1.0, negative_prompt: '', ignore_eos: false, banned_strings: '' };
+  const stdDefaults = { typical_p: 1.0, typical_p_enabled: false, frequency_penalty: 0.0, frequency_penalty_enabled: false, top_a: 0.0, top_a_enabled: false, tfs: 1.0, tfs_enabled: false, mirostat_enabled: false, mirostat_mode: 0, mirostat_tau: 5.0, mirostat_eta: 0.1, xtc_enabled: false, xtc_threshold: 0.1, xtc_probability: 0.0, top_n_sigma_enabled: false, top_n_sigma: 0.0, rep_pen_range_enabled: false, rep_pen_range: 0, rep_pen_slope: 1.0, min_tokens_enabled: false, min_tokens: 0, guidance_scale_enabled: false, guidance_scale: 1.0, negative_prompt: '', ignore_eos: false, banned_strings: '', genai_system_prompt_addition: '' };
 
   const defaultPresets = [
     { id: 'default', name: 'Default', max_tokens: 2048, temperature: 0.7, top_p: 0.9, top_k: 40, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: true, adaptive_decay: 0.9, adaptive_decay_enabled: true, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...stdDefaults },
@@ -1243,6 +1250,7 @@ function updateActiveGenerationPreset(isGenAI) {
     } catch (e) {
       target.dry_sequence_breakers = ["\n", ":", "\"", "*"];
     }
+    target.genai_system_prompt_addition = document.getElementById('adv-setting-genai-system-prompt')?.value.trim() || '';
     Object.assign(target, extractExtendedSamplersFromUI(true));
     
     // Sync to other tab if it uses the same custom preset

@@ -1288,20 +1288,22 @@ ${ANIMA_BETTER_PROMPT_TEXT}`;
     // Fallback if no recent messages
     if (!queryText.trim()) queryText = extraUserInstruction || 'Hello';
 
-    // 2. RAG Search
+    // Inject Current Session Summary directly
+    if (activeSession && activeSession.summary) {
+      skillsInjection += `\n\n[Smart Context (Current Chat Summary - Context of earlier messages):]\n${activeSession.summary}`;
+    }
+
+    // 2. RAG Search for other sessions
     const threshold = settings.genai_rag_score_threshold || 0.50;
     const topK = settings.genai_rag_top_k || 3;
     
     // Search excluding current session
-    const allResults = await genaiEmbeddingsStore.search(queryText, {
-      topK: topK + 3, // slightly overfetch to account for current session filtering
+    const relevantResults = await genaiEmbeddingsStore.search(queryText, {
+      topK,
       threshold,
-      maxPerSession: 2
+      maxPerSession: 2,
+      excludeSessionId: currentGenaiSessionId
     });
-    
-    const relevantResults = allResults
-      .filter(r => r.session_id !== currentGenaiSessionId)
-      .slice(0, topK);
 
     if (relevantResults.length > 0) {
       // 3. Inject
@@ -3581,8 +3583,36 @@ function appendMsgEl(entry) {
   return el;
 }
 
-function scrollToBottom() {
-  requestAnimationFrame(() => { messagesEl.scrollTop = messagesEl.scrollHeight; });
+let genaiUserHasScrolledUp = false;
+let genaiIsProgrammaticScrolling = false;
+
+function setupGenaiScrollListener() {
+  if (!messagesEl || messagesEl._scrollListenerAttached) return;
+  messagesEl._scrollListenerAttached = true;
+  messagesEl.addEventListener('scroll', () => {
+    if (genaiIsProgrammaticScrolling) return;
+    const threshold = 60;
+    const distanceFromBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight;
+    genaiUserHasScrolledUp = distanceFromBottom > threshold;
+  }, { passive: true });
+}
+
+function scrollToBottom(force = false) {
+  if (!messagesEl) return;
+  setupGenaiScrollListener();
+
+  if (force) {
+    genaiUserHasScrolledUp = false;
+  } else if (genaiUserHasScrolledUp) {
+    return;
+  }
+
+  requestAnimationFrame(() => {
+    if (!messagesEl) return;
+    genaiIsProgrammaticScrolling = true;
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    setTimeout(() => { genaiIsProgrammaticScrolling = false; }, 60);
+  });
 }
 
 // ─── Streaming with tool detection ──────────────────────────────────
@@ -5718,6 +5748,7 @@ function deleteGenaiChat(id, e) {
 
   if (confirm('Are you sure you want to delete this chat?')) {
     genaiSessions = genaiSessions.filter(s => s.id !== id);
+    genaiEmbeddingsStore.removeSession(id).catch(console.error);
 
     if (currentGenaiSessionId === id) {
       if (genaiSessions.length > 0) {

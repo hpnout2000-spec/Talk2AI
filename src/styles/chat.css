@@ -655,18 +655,48 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
   font-size: 0.88em;
   color: var(--text-secondary);
   white-space: pre-wrap;
+  word-break: break-word;
   line-height: 1.6;
-  opacity: 0.75;
+  opacity: 0;
   max-height: 0;
   overflow: hidden;
-  transition: max-height 0.35s ease, opacity 0.3s ease, margin-top 0.25s ease;
+  contain: inline-size;
+  transition: max-height 0.4s cubic-bezier(0.16, 1, 0.3, 1), 
+              opacity 0.35s ease, 
+              margin-top 0.3s ease;
   margin-top: 0;
 }
 
 .thinking-inline.thinking-expanded .thinking-inline-content {
-  max-height: 600px;
+  max-height: 550px;
+  overflow-y: auto;
+  contain: none;
   opacity: 0.85;
   margin-top: var(--space-2);
+  scrollbar-color: var(--border-light, rgba(255, 255, 255, 0.2)) transparent;
+  scrollbar-width: thin;
+}
+
+.thinking-inline-content::-webkit-scrollbar,
+.thinking-expanded-view::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+.thinking-inline-content::-webkit-scrollbar-track,
+.thinking-expanded-view::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.thinking-inline-content::-webkit-scrollbar-thumb,
+.thinking-expanded-view::-webkit-scrollbar-thumb {
+  background: var(--border-light, rgba(255, 255, 255, 0.15));
+  border-radius: 4px;
+}
+
+.thinking-inline-content::-webkit-scrollbar-thumb:hover,
+.thinking-expanded-view::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary, rgba(255, 255, 255, 0.3));
 }
 
 .thinking-inline.thinking-expanded .thinking-chevron {
@@ -2671,6 +2701,7 @@ glm-thinking-snippets .glm-snippet.active {
   height: 0;
   opacity: 0;
   overflow: hidden;
+  contain: inline-size;
   margin-top: 0;
   padding: 0;
   color: var(--text-secondary);
@@ -2682,11 +2713,11 @@ glm-thinking-snippets .glm-snippet.active {
   background: transparent;
   border: none;
   box-shadow: none;
-  transition: max-height 0.6s cubic-bezier(0.16, 1, 0.3, 1), 
-              height 0.6s cubic-bezier(0.16, 1, 0.3, 1), 
-              opacity 0.5s cubic-bezier(0.16, 1, 0.3, 1),
-              margin-top 0.5s ease,
-              padding 0.5s ease;
+  transition: max-height 0.5s cubic-bezier(0.16, 1, 0.3, 1), 
+              height 0.5s cubic-bezier(0.16, 1, 0.3, 1), 
+              opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              margin-top 0.4s ease,
+              padding 0.4s ease;
   -webkit-mask-image: linear-gradient(to bottom, transparent 0px, black 16px, black 100%);
   mask-image: linear-gradient(to bottom, transparent 0px, black 16px, black 100%);
 }
@@ -2695,8 +2726,11 @@ glm-thinking-snippets .glm-snippet.active {
   max-height: 80px;
   opacity: 1;
   overflow-y: auto;
+  contain: none;
   margin-top: 8px;
   padding: 6px 0 0 0;
+  scrollbar-color: var(--border-light, rgba(255, 255, 255, 0.2)) transparent;
+  scrollbar-width: thin;
 }
 .thinking-snippet-layer.thinking-active {
   animation: none !important;

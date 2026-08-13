@@ -213,12 +213,13 @@ export const genaiEmbeddingsStore = {
   /**
    * Retrieves relevant chunks using cosine similarity and diversity rules.
    * @param {string} queryText The user's query with context window
-   * @param {object} options { topK, threshold, maxPerSession }
+   * @param {object} options { topK, threshold, maxPerSession, excludeSessionId }
    */
   async search(queryText, options = {}) {
     const topK = options.topK || 3;
     const threshold = options.threshold || 0.6;
     const maxPerSession = options.maxPerSession || 2;
+    const excludeSessionId = options.excludeSessionId;
 
     // If currently downloading the model, don't block the user's chat. Just skip RAG.
     if (isInitializing) {
@@ -254,6 +255,8 @@ export const genaiEmbeddingsStore = {
     const sessionCounts = {};
 
     for (const rec of scored) {
+      if (excludeSessionId && rec.session_id === excludeSessionId) continue;
+      
       if (results.length >= topK) break;
       if (rec.score < threshold) continue;
 

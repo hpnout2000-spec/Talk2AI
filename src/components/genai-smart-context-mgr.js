@@ -252,6 +252,7 @@ export function renderSmartContextChats() {
         const hasSummary = session.summary && session.summary.trim().length > 0;
         if (hasSummary) {
           session.summary = '';
+          genaiEmbeddingsStore.removeSession(session.id).catch(console.error);
           saveHistory();
           renderSmartContextChats();
           if (window.renderRecentChatsList) {
@@ -281,6 +282,7 @@ export async function updateSessionSummaryIfNeeded(session, force = false) {
   if (messages.length === 0) {
     if (session.summary) {
       session.summary = '';
+      genaiEmbeddingsStore.removeSession(session.id).catch(console.error);
       saveHistory();
       renderSmartContextChats();
     }
@@ -380,6 +382,8 @@ export async function updateSessionSummaryIfNeeded(session, force = false) {
       // Save summary chunks to the embeddings RAG store
       if (summaries.length > 0) {
         await genaiEmbeddingsStore.saveSessionChunks(session.id, summaries);
+      } else {
+        await genaiEmbeddingsStore.removeSession(session.id);
       }
       
       console.log(`[Smart Context] Summary completed for session ${session.id}.`);
