@@ -559,10 +559,10 @@ export function parseThinking(text, customOpen = null, customClose = null) {
   if (typeof text !== 'string') return { thinking: null, content: '' };
   
   const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const defaultOpen = '<\\|channel\\|?thought|<\\|?think\\|?>|<thought>|<reasoning>|\\[THINKING\\]|\\[REASONING\\]';
+  const defaultOpen = '<\\|?\\s*channel\\s*\\|?>?\\s*thought|<\\|?\\s*think(?:ing)?\\s*\\|?>|<\\|?\\s*thought\\s*\\|?>|<\\|?\\s*reasoning\\s*\\|?>|\\[THINKING\\]|\\[REASONING\\]';
   const openPattern = customOpen ? escapeRegExp(customOpen) + '|' + defaultOpen : defaultOpen;
   
-  const defaultClose = '<\\/\\s*think\\s*>|<\\/\\s*thought\\s*>|<\\/\\s*reasoning\\s*>|<channel\\|>|<\\/channel\\|?>|<\\|?\\/think\\|?>|<\\|end_of_thought\\|?>|<\\|thought_end\\|?>|\\[\\/think(?:ing)?\\]|\\[\\/reasoning\\]|\\[THINKING_END\\]';
+  const defaultClose = '<\\/\\s*think(?:ing)?\\s*>|<\\/\\s*thought\\s*>|<\\/\\s*reasoning\\s*>|<\\|?\\s*\\/?\\s*channel\\s*\\|?>|<\\|?\\s*\\/\\s*think\\s*\\|?>|<\\|?\\s*\\/\\s*thought\\s*\\|?>|<\\|end_of_thought\\|?>|<\\|thought_end\\|?>|\\[\\/think(?:ing)?\\]|\\[\\/reasoning\\]|\\[THINKING_END\\]';
   const closePattern = customClose ? escapeRegExp(customClose) + '|' + defaultClose : defaultClose;
 
   const thinkRegex = new RegExp(`(?:${openPattern})([\\s\\S]*?)(?:${closePattern})`, 'i');
@@ -596,8 +596,8 @@ export function extractThinkingSnippets(text) {
   if (typeof text !== 'string' || !text) return [];
   
   let cleanText = text
-    .replace(/(?:<\|channel\|?thought|<\|?think\|?>|<reasoning>|<thought>|\[THINKING\]|\[REASONING\])/gi, '')
-    .replace(/(?:<\/s*think\s*>|<\/s*thought\s*>|<\/s*reasoning\s*>|<channel\|>|<\|?\/think\|?>|<\/thought>|<\/reasoning>|\[\/think(?:ing)?\]|\[\/reasoning\])/gi, '')
+    .replace(/(?:<\|?\s*channel\s*\|?>?\s*thought|<\|?\s*think(?:ing)?\s*\|?>|<thought>|<reasoning>|\[THINKING\]|\[REASONING\])/gi, '')
+    .replace(/(?:<\/s*think(?:ing)?\s*>|<\/s*thought\s*>|<\/s*reasoning\s*>|<\|?\s*\/?\s*channel\s*\|?>|<\|?\s*\/\s*think\s*\|?>|<\/thought>|<\/reasoning>|\[\/think(?:ing)?\]|\[\/reasoning\]|\[THINKING_END\])/gi, '')
     .replace(/```[\s\S]*?```/g, '')
     .replace(/`[^`]*`/g, '')
     .replace(/[*#_\[\]\(\)]/g, ' ')
@@ -633,7 +633,7 @@ export function parseStreamThinking(text, customOpen = null, customClose = null)
   if (typeof text !== 'string') return { thinking: '', content: '', rawContent: '', isInThinking: false, thinkingStartIdx: -1, thinkingEndIdx: -1 };
   
   const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const defaultOpen = '<\\|channel\\|?thought|<\\|?think\\|?>|<thought>|<reasoning>|\\[THINKING\\]|\\[REASONING\\]';
+  const defaultOpen = '<\\|?\\s*channel\\s*\\|?>?\\s*thought|<\\|?\\s*think(?:ing)?\\s*\\|?>|<\\|?\\s*thought\\s*\\|?>|<\\|?\\s*reasoning\\s*\\|?>|\\[THINKING\\]|\\[REASONING\\]';
   const openPattern = customOpen ? escapeRegExp(customOpen) + '|' + defaultOpen : defaultOpen;
   const startMatch = text.match(new RegExp(openPattern, 'i'));
   
@@ -645,7 +645,7 @@ export function parseStreamThinking(text, customOpen = null, customClose = null)
   const thinkStart = startMatch[0];
   const afterStart = startIdx + thinkStart.length;
 
-  const defaultClose = '<\\/\\s*think\\s*>|<\\/\\s*thought\\s*>|<\\/\\s*reasoning\\s*>|<channel\\|>|<\\/channel\\|?>|<\\|?\\/think\\|?>|<\\|end_of_thought\\|?>|<\\|thought_end\\|?>|\\[\\/think(?:ing)?\\]|\\[\\/reasoning\\]|\\[THINKING_END\\]';
+  const defaultClose = '<\\/\\s*think(?:ing)?\\s*>|<\\/\\s*thought\\s*>|<\\/\\s*reasoning\\s*>|<\\|?\\s*\\/?\\s*channel\\s*\\|?>|<\\|?\\s*\\/\\s*think\\s*\\|?>|<\\|?\\s*\\/\\s*thought\\s*\\|?>|<\\|end_of_thought\\|?>|<\\|thought_end\\|?>|\\[\\/think(?:ing)?\\]|\\[\\/reasoning\\]|\\[THINKING_END\\]';
   const closePattern = customClose ? escapeRegExp(customClose) + '|' + defaultClose : defaultClose;
   const endMatch = text.substring(afterStart).match(new RegExp(closePattern, 'i'));
 
@@ -719,7 +719,7 @@ export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, t
   }
 
   const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const defaultOpen = '<\\|channel\\|?thought|<\\|?think\\|?>|<thought>|<reasoning>';
+  const defaultOpen = '<\\|?\\s*channel\\s*\\|?>?\\s*thought|<\\|?\\s*think(?:ing)?\\s*\\|?>|<\\|?\\s*thought\\s*\\|?>|<\\|?\\s*reasoning\\s*\\|?>|\\[THINKING\\]|\\[REASONING\\]';
   const openPattern = settings.reasoning_tag_open ? escapeRegExp(settings.reasoning_tag_open) + '|' + defaultOpen : defaultOpen;
   const cleanOpenRegex = new RegExp(`^(?:${openPattern})\\s*`, 'gi');
 

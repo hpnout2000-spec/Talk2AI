@@ -1814,7 +1814,8 @@ async function sendMessage() {
       if (!isStreaming) return;
 
       try {
-        const useGLM = settings.glm47_support && !/<(?:think|thought|reasoning|\|channel>thought)/i.test(fullResponse);
+        const isInlineThought = /<(?:think|thought|reasoning|\|?channel\|?>?thought)/i.test(fullResponse);
+        const useGLM = settings.glm47_support && !isInlineThought;
         let displayContent, currentThinking, currentIsInThinking;
         if (thinkingText) {
           // delta.reasoning_content path: thinking comes separately
@@ -1859,7 +1860,7 @@ async function sendMessage() {
           let html = '';
           const showThinking = isInThinking || thinking;
           if (showThinking) {
-            html += createThinkingBlockHTML(thinking, isInThinking, settings.glm47_support, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort);
+            html += createThinkingBlockHTML(thinking, isInThinking, useGLM, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort);
           }
           const cleaned = stripJsonBlocks(dc, true);
           let formatted = renderMarkdown(cleaned);
@@ -1949,9 +1950,8 @@ async function sendMessage() {
         } else {
           renderChatContent(displayContent, currentThinking, currentIsInThinking, 0);
         }
-      } catch (err) {
-        console.error("STREAM CHUNK ERROR:", err);
-        showToast("Streaming UI error: " + err.message, "error");
+      } catch (e) {
+        console.error("Schedule update error:", e);
       }
     });
   }
@@ -1980,7 +1980,8 @@ async function sendMessage() {
         }
 
         const finalizeUI = async () => {
-          const useGLM = settings.glm47_support && !/<(?:think|thought|reasoning|\|channel>thought)/i.test(fullResponse);
+          const isInlineThought = /<(?:think|thought|reasoning|\|?channel\|?>?thought)/i.test(fullResponse);
+          const useGLM = settings.glm47_support && !isInlineThought;
           let parsedThinking, parsedContent;
           try {
             if (thinkingText) {
@@ -2000,7 +2001,7 @@ async function sendMessage() {
             let finalHtml = '';
             if (parsedThinking) {
               if (thinkingTime === 0) thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
-              finalHtml += createThinkingBlockHTML(parsedThinking, false, settings.glm47_support, thinkingTime, settings.reasoning_effort);
+              finalHtml += createThinkingBlockHTML(parsedThinking, false, useGLM, thinkingTime, settings.reasoning_effort);
             }
             const cleaned = stripJsonBlocks(parsedContent, false);
             let formatted = renderMarkdown(cleaned);
@@ -2902,7 +2903,7 @@ function appendMessage(msg, isStreaming = false, character = null) {
   let msgContent = (msg.translated_content && !msg.show_original) ? msg.translated_content : msg.content;
 
   // Auto-recovery: if the message has no thinking block saved, but the content contains tags, parse them!
-  if (!msgThinking && msgContent && /<(?:think|thought|reasoning|\|channel>thought)/i.test(msgContent)) {
+  if (!msgThinking && msgContent && /<(?:think|thought|reasoning|\|?channel\|?>?thought)/i.test(msgContent)) {
     const parsed = parseThinking(msgContent, settings.reasoning_tag_open, settings.reasoning_tag_close);
     if (parsed.thinking) {
       msgThinking = parsed.thinking;
@@ -2911,7 +2912,7 @@ function appendMessage(msg, isStreaming = false, character = null) {
   }
 
   if (msgThinking) {
-    contentHtml += createThinkingBlockHTML(msgThinking, false, settings.glm47_support, msg.thinking_time || 0, settings.reasoning_effort);
+    contentHtml += createThinkingBlockHTML(msgThinking, false, false, msg.thinking_time || 0, settings.reasoning_effort);
   }
 
   const cleanedContent = stripJsonBlocks(msgContent, isStreaming);
@@ -3358,7 +3359,8 @@ async function triggerAssistantGeneration() {
       appState.updateScheduled = false;
       if (!isStreaming2) return;
 
-      const useGLM = settings.glm47_support && !/<(?:think|thought|reasoning|\|channel>thought)/i.test(fullResponse);
+      const isInlineThought = /<(?:think|thought|reasoning|\|?channel\|?>?thought)/i.test(fullResponse);
+      const useGLM = settings.glm47_support && !isInlineThought;
       let displayContent, currentThinking, currentIsInThinking;
       if (thinkingText2) {
         currentThinking = thinkingText2;
@@ -3393,7 +3395,7 @@ async function triggerAssistantGeneration() {
       if (!hasReceivedFirstChunk2) return;
 
       let html = '';
-      if (currentIsInThinking || currentThinking) html += createThinkingBlockHTML(currentThinking, currentIsInThinking, settings.glm47_support, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort);
+      if (currentIsInThinking || currentThinking) html += createThinkingBlockHTML(currentThinking, currentIsInThinking, useGLM, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort);
       const cleaned2 = stripJsonBlocks(displayContent, true);
       html += wrapWordsInSpans(renderMarkdown(cleaned2));
 
@@ -3432,7 +3434,8 @@ async function triggerAssistantGeneration() {
           thinkingActive2 = false;
           if (thinkingTime === 0) thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
         }
-        const useGLM = settings.glm47_support && !/<(?:think|thought|reasoning|\|channel>thought)/i.test(fullResponse);
+        const isInlineThought = /<(?:think|thought|reasoning|\|?channel\|?>?thought)/i.test(fullResponse);
+        const useGLM = settings.glm47_support && !isInlineThought;
         let parsedThinking2, parsedContent2;
         try {
           if (thinkingText2) {
@@ -3452,7 +3455,7 @@ async function triggerAssistantGeneration() {
           let finalHtml = '';
           if (parsedThinking2) {
               if (thinkingTime === 0) thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
-              finalHtml += createThinkingBlockHTML(parsedThinking2, false, settings.glm47_support, thinkingTime, settings.reasoning_effort);
+              finalHtml += createThinkingBlockHTML(parsedThinking2, false, useGLM, thinkingTime, settings.reasoning_effort);
           }
           const cleaned = stripJsonBlocks(parsedContent2, false);
           let formatted = renderMarkdown(cleaned);
