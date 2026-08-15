@@ -2063,3 +2063,10 @@ body.genai-mode-active .btn-toggle-right-sidebar {
 .genai-tool-pending-completed .timeline-node-icon {
   opacity: 0.6 !important;
 }
+
+/* Smart Context Advanced Settings Toggle */
+#btn-toggle-sc-advanced:hover {
+  background: var(--bg-hover) !important;
+}
+
+

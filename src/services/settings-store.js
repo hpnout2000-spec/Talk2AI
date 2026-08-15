@@ -233,6 +233,62 @@ const DEFAULT_CONTEXT_TEMPLATES = [
   }
 ];
 
+const STD_SAMPLER_DEFAULTS = {
+  dynatemp_enabled: false,
+  dynatemp_min: 0.65,
+  dynatemp_max: 1.35,
+  dynatemp_range: 0.0,
+  dynatemp_exponent: 1.0,
+  typical_p: 1.0,
+  typical_p_enabled: false,
+  frequency_penalty: 0.0,
+  frequency_penalty_enabled: false,
+  top_a: 0.0,
+  top_a_enabled: false,
+  tfs: 1.0,
+  tfs_enabled: false,
+  mirostat_enabled: false,
+  mirostat_mode: 0,
+  mirostat_tau: 5.0,
+  mirostat_eta: 0.1,
+  xtc_enabled: false,
+  xtc_threshold: 0.10,
+  xtc_probability: 0.0,
+  top_n_sigma_enabled: false,
+  top_n_sigma: 0.0,
+  rep_pen_range_enabled: false,
+  rep_pen_range: 0,
+  rep_pen_slope: 1.0,
+  dry_penalty_last_n_enabled: false,
+  dry_penalty_last_n: 0,
+  smoothing_curve_enabled: false,
+  smoothing_curve: 1.0,
+  min_tokens_enabled: false,
+  min_tokens: 0,
+  guidance_scale_enabled: false,
+  guidance_scale: 1.0,
+  negative_prompt: '',
+  ignore_eos_enabled: false,
+  ignore_eos: false,
+  banned_strings_enabled: false,
+  banned_strings: '',
+  sampler_order_enabled: false,
+  sampler_order: [6, 0, 1, 3, 4, 2, 5],
+  genai_system_prompt_addition: ''
+};
+
+export const DEFAULT_GENERATION_PRESETS = [
+  { id: 'default', name: 'Default', completion_mode: 'chat_completion', active_instruct_template_id: 'gemma2', active_context_template_id: 'gemma2', max_tokens: 2048, temperature: 0.7, top_p: 0.9, top_k: 40, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: true, adaptive_decay: 0.9, adaptive_decay_enabled: true, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...STD_SAMPLER_DEFAULTS },
+  { id: 'glm47flash', name: 'GLM 4.7 Flash (Creative)', completion_mode: 'chat_completion', active_instruct_template_id: 'gemma2', active_context_template_id: 'gemma2', max_tokens: 6000, temperature: 1.0, top_p: 0.95, top_k: 40, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...STD_SAMPLER_DEFAULTS },
+  { id: 'glm46', name: 'GLM 4.6 (Unsloth)', completion_mode: 'chat_completion', active_instruct_template_id: 'gemma2', active_context_template_id: 'gemma2', max_tokens: 2048, temperature: 0.8, top_p: 0.6, top_k: 2, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: true, adaptive_decay: 0.9, adaptive_decay_enabled: true, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...STD_SAMPLER_DEFAULTS },
+  { id: 'qwen3', name: 'Qwen 3 (Unsloth)', completion_mode: 'chat_completion', active_instruct_template_id: 'chatml', active_context_template_id: 'standard', max_tokens: 4000, temperature: 0.6, top_p: 0.95, top_k: 20, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.0, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...STD_SAMPLER_DEFAULTS },
+  { id: 'qwen35stable', name: 'Qwen 3.5 MoE (stable)', completion_mode: 'chat_completion', active_instruct_template_id: 'chatml', active_context_template_id: 'standard', max_tokens: 4000, temperature: 0.65, top_p: 0.95, top_k: 20, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: false, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 1.6, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...STD_SAMPLER_DEFAULTS },
+  { id: 'qwen35official', name: 'Qwen 3.5 MoE (Official)', completion_mode: 'chat_completion', active_instruct_template_id: 'chatml', active_context_template_id: 'standard', max_tokens: 4000, temperature: 1.0, top_p: 0.95, top_k: 20, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: false, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 1.5, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...STD_SAMPLER_DEFAULTS },
+  { id: 'gemma4creative', name: 'Gemma 4 (Creative)', completion_mode: 'chat_completion', active_instruct_template_id: 'gemma2', active_context_template_id: 'gemma2', max_tokens: 3000, temperature: 1.5, top_p: 1.0, top_k: 64, rep_penalty: 1.0, smoothing_factor: 1.5, min_p: 0.05, min_p_enabled: false, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: true, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...STD_SAMPLER_DEFAULTS },
+  { id: 'gemma4stable', name: 'Gemma 4 (Stable)', completion_mode: 'chat_completion', active_instruct_template_id: 'gemma2', active_context_template_id: 'gemma2', max_tokens: 3000, temperature: 1.0, top_p: 1.0, top_k: 64, rep_penalty: 1.1, smoothing_factor: 1.5, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.4, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...STD_SAMPLER_DEFAULTS },
+  { id: 'mistral32', name: 'Mistral 3.2 / Cydonia', completion_mode: 'text_completion', active_instruct_template_id: 'mistral', active_context_template_id: 'mistral', max_tokens: 2048, temperature: 0.7, top_p: 0.9, top_k: 40, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: true, adaptive_decay: 0.9, adaptive_decay_enabled: true, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...STD_SAMPLER_DEFAULTS }
+];
+
 const DEFAULTS = {
   api_url: 'http://localhost:5001',
   apininjas_key: '',
@@ -262,6 +318,11 @@ const DEFAULTS = {
   dry_sequence_breakers: ["\n", ":", "\"", "*"],
 
   // Extended Samplers (disabled by default)
+  dynatemp_enabled: false,
+  dynatemp_min: 0.65,
+  dynatemp_max: 1.35,
+  dynatemp_range: 0.0,
+  dynatemp_exponent: 1.0,
   typical_p_enabled: false,
   typical_p: 1.0,
   frequency_penalty_enabled: false,
@@ -299,17 +360,7 @@ const DEFAULTS = {
   sampler_order: [6, 0, 1, 3, 4, 2, 5],
 
   active_generation_preset_id: 'default',
-  generation_presets: [
-    { id: 'default', name: 'Default', completion_mode: 'chat_completion', active_instruct_template_id: 'gemma2', active_context_template_id: 'gemma2', max_tokens: 2048, temperature: 0.7, top_p: 0.9, top_k: 40, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: true, adaptive_decay: 0.9, adaptive_decay_enabled: true, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], typical_p: 1.0, typical_p_enabled: false, frequency_penalty: 0.0, frequency_penalty_enabled: false, top_a: 0.0, top_a_enabled: false, tfs: 1.0, tfs_enabled: false, mirostat_enabled: false, mirostat_mode: 0, mirostat_tau: 5.0, mirostat_eta: 0.1, xtc_enabled: false, xtc_threshold: 0.1, xtc_probability: 0.0, top_n_sigma_enabled: false, top_n_sigma: 0.0, rep_pen_range_enabled: false, rep_pen_range: 0, rep_pen_slope: 1.0, min_tokens_enabled: false, min_tokens: 0, guidance_scale_enabled: false, guidance_scale: 1.0, negative_prompt: '', ignore_eos: false, banned_strings: '', genai_system_prompt_addition: '' },
-    { id: 'glm47flash', name: 'GLM 4.7 Flash (Creative)', completion_mode: 'chat_completion', active_instruct_template_id: 'gemma2', active_context_template_id: 'gemma2', max_tokens: 6000, temperature: 1.0, top_p: 0.95, top_k: 40, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], typical_p: 1.0, typical_p_enabled: false, frequency_penalty: 0.0, frequency_penalty_enabled: false, top_a: 0.0, top_a_enabled: false, tfs: 1.0, tfs_enabled: false, mirostat_enabled: false, mirostat_mode: 0, mirostat_tau: 5.0, mirostat_eta: 0.1, xtc_enabled: false, xtc_threshold: 0.1, xtc_probability: 0.0, top_n_sigma_enabled: false, top_n_sigma: 0.0, rep_pen_range_enabled: false, rep_pen_range: 0, rep_pen_slope: 1.0, min_tokens_enabled: false, min_tokens: 0, guidance_scale_enabled: false, guidance_scale: 1.0, negative_prompt: '', ignore_eos: false, banned_strings: '', genai_system_prompt_addition: '' },
-    { id: 'glm46', name: 'GLM 4.6 (Unsloth)', completion_mode: 'chat_completion', active_instruct_template_id: 'gemma2', active_context_template_id: 'gemma2', max_tokens: 2048, temperature: 0.8, top_p: 0.6, top_k: 2, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: true, adaptive_decay: 0.9, adaptive_decay_enabled: true, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], typical_p: 1.0, typical_p_enabled: false, frequency_penalty: 0.0, frequency_penalty_enabled: false, top_a: 0.0, top_a_enabled: false, tfs: 1.0, tfs_enabled: false, mirostat_enabled: false, mirostat_mode: 0, mirostat_tau: 5.0, mirostat_eta: 0.1, xtc_enabled: false, xtc_threshold: 0.1, xtc_probability: 0.0, top_n_sigma_enabled: false, top_n_sigma: 0.0, rep_pen_range_enabled: false, rep_pen_range: 0, rep_pen_slope: 1.0, min_tokens_enabled: false, min_tokens: 0, guidance_scale_enabled: false, guidance_scale: 1.0, negative_prompt: '', ignore_eos: false, banned_strings: '', genai_system_prompt_addition: '' },
-    { id: 'qwen3', name: 'Qwen 3 (Unsloth)', completion_mode: 'chat_completion', active_instruct_template_id: 'chatml', active_context_template_id: 'standard', max_tokens: 4000, temperature: 0.6, top_p: 0.95, top_k: 20, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.0, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], typical_p: 1.0, typical_p_enabled: false, frequency_penalty: 0.0, frequency_penalty_enabled: false, top_a: 0.0, top_a_enabled: false, tfs: 1.0, tfs_enabled: false, mirostat_enabled: false, mirostat_mode: 0, mirostat_tau: 5.0, mirostat_eta: 0.1, xtc_enabled: false, xtc_threshold: 0.1, xtc_probability: 0.0, top_n_sigma_enabled: false, top_n_sigma: 0.0, rep_pen_range_enabled: false, rep_pen_range: 0, rep_pen_slope: 1.0, min_tokens_enabled: false, min_tokens: 0, guidance_scale_enabled: false, guidance_scale: 1.0, negative_prompt: '', ignore_eos: false, banned_strings: '', genai_system_prompt_addition: '' },
-    { id: 'qwen35stable', name: 'Qwen 3.5 MoE (stable)', completion_mode: 'chat_completion', active_instruct_template_id: 'chatml', active_context_template_id: 'standard', max_tokens: 4000, temperature: 0.65, top_p: 0.95, top_k: 20, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: false, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 1.6, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], typical_p: 1.0, typical_p_enabled: false, frequency_penalty: 0.0, frequency_penalty_enabled: false, top_a: 0.0, top_a_enabled: false, tfs: 1.0, tfs_enabled: false, mirostat_enabled: false, mirostat_mode: 0, mirostat_tau: 5.0, mirostat_eta: 0.1, xtc_enabled: false, xtc_threshold: 0.1, xtc_probability: 0.0, top_n_sigma_enabled: false, top_n_sigma: 0.0, rep_pen_range_enabled: false, rep_pen_range: 0, rep_pen_slope: 1.0, min_tokens_enabled: false, min_tokens: 0, guidance_scale_enabled: false, guidance_scale: 1.0, negative_prompt: '', ignore_eos: false, banned_strings: '', genai_system_prompt_addition: '' },
-    { id: 'qwen35official', name: 'Qwen 3.5 MoE (Official)', completion_mode: 'chat_completion', active_instruct_template_id: 'chatml', active_context_template_id: 'standard', max_tokens: 4000, temperature: 1.0, top_p: 0.95, top_k: 20, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: false, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 1.5, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], typical_p: 1.0, typical_p_enabled: false, frequency_penalty: 0.0, frequency_penalty_enabled: false, top_a: 0.0, top_a_enabled: false, tfs: 1.0, tfs_enabled: false, mirostat_enabled: false, mirostat_mode: 0, mirostat_tau: 5.0, mirostat_eta: 0.1, xtc_enabled: false, xtc_threshold: 0.1, xtc_probability: 0.0, top_n_sigma_enabled: false, top_n_sigma: 0.0, rep_pen_range_enabled: false, rep_pen_range: 0, rep_pen_slope: 1.0, min_tokens_enabled: false, min_tokens: 0, guidance_scale_enabled: false, guidance_scale: 1.0, negative_prompt: '', ignore_eos: false, banned_strings: '', genai_system_prompt_addition: '' },
-    { id: 'gemma4creative', name: 'Gemma 4 (Creative)', completion_mode: 'chat_completion', active_instruct_template_id: 'gemma2', active_context_template_id: 'gemma2', max_tokens: 3000, temperature: 1.5, top_p: 1.0, top_k: 64, rep_penalty: 1.0, smoothing_factor: 1.5, min_p: 0.05, min_p_enabled: false, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: true, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], typical_p: 1.0, typical_p_enabled: false, frequency_penalty: 0.0, frequency_penalty_enabled: false, top_a: 0.0, top_a_enabled: false, tfs: 1.0, tfs_enabled: false, mirostat_enabled: false, mirostat_mode: 0, mirostat_tau: 5.0, mirostat_eta: 0.1, xtc_enabled: false, xtc_threshold: 0.1, xtc_probability: 0.0, top_n_sigma_enabled: false, top_n_sigma: 0.0, rep_pen_range_enabled: false, rep_pen_range: 0, rep_pen_slope: 1.0, min_tokens_enabled: false, min_tokens: 0, guidance_scale_enabled: false, guidance_scale: 1.0, negative_prompt: '', ignore_eos: false, banned_strings: '', genai_system_prompt_addition: '' },
-    { id: 'gemma4stable', name: 'Gemma 4 (Stable)', completion_mode: 'chat_completion', active_instruct_template_id: 'gemma2', active_context_template_id: 'gemma2', max_tokens: 3000, temperature: 1.0, top_p: 1.0, top_k: 64, rep_penalty: 1.1, smoothing_factor: 1.5, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.4, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], typical_p: 1.0, typical_p_enabled: false, frequency_penalty: 0.0, frequency_penalty_enabled: false, top_a: 0.0, top_a_enabled: false, tfs: 1.0, tfs_enabled: false, mirostat_enabled: false, mirostat_mode: 0, mirostat_tau: 5.0, mirostat_eta: 0.1, xtc_enabled: false, xtc_threshold: 0.1, xtc_probability: 0.0, top_n_sigma_enabled: false, top_n_sigma: 0.0, rep_pen_range_enabled: false, rep_pen_range: 0, rep_pen_slope: 1.0, min_tokens_enabled: false, min_tokens: 0, guidance_scale_enabled: false, guidance_scale: 1.0, negative_prompt: '', ignore_eos: false, banned_strings: '', genai_system_prompt_addition: '' },
-    { id: 'mistral32', name: 'Mistral 3.2 / Cydonia', completion_mode: 'text_completion', active_instruct_template_id: 'mistral', active_context_template_id: 'mistral', max_tokens: 2048, temperature: 0.7, top_p: 0.9, top_k: 40, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: true, adaptive_decay: 0.9, adaptive_decay_enabled: true, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], typical_p: 1.0, typical_p_enabled: false, frequency_penalty: 0.0, frequency_penalty_enabled: false, top_a: 0.0, top_a_enabled: false, tfs: 1.0, tfs_enabled: false, mirostat_enabled: false, mirostat_mode: 0, mirostat_tau: 5.0, mirostat_eta: 0.1, xtc_enabled: false, xtc_threshold: 0.1, xtc_probability: 0.0, top_n_sigma_enabled: false, top_n_sigma: 0.0, rep_pen_range_enabled: false, rep_pen_range: 0, rep_pen_slope: 1.0, min_tokens_enabled: false, min_tokens: 0, guidance_scale_enabled: false, guidance_scale: 1.0, negative_prompt: '', ignore_eos: false, banned_strings: '', genai_system_prompt_addition: '' }
-  ],
+  generation_presets: DEFAULT_GENERATION_PRESETS,
   user_name: 'User',
   active_persona_id: 'default',
   personas: [
@@ -348,6 +399,11 @@ const DEFAULTS = {
   genai_adaptive_decay: 0.9,
   genai_adaptive_decay_enabled: true,
   genai_presence_penalty: 0.0,
+  genai_dynatemp_enabled: false,
+  genai_dynatemp_min: 0.65,
+  genai_dynatemp_max: 1.35,
+  genai_dynatemp_range: 0.0,
+  genai_dynatemp_exponent: 1.0,
   genai_dry_multiplier_enabled: false,
   genai_dry_multiplier: 0.8,
   genai_dry_base: 1.75,

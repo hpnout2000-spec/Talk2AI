@@ -87,7 +87,7 @@
 
 3. **User Persona Morph Container:**
    - Unified single container for button and expanded popover.
-   - Uses continuous `border-radius: 20px` in both states (40px height = pill; 196px height = rounded card) with `cubic-bezier(0.25, 1, 0.35, 1)` easing.
+   - Smoothly morphs between states (44px height = pill with `border-radius: 22px`; 196px height = rounded card with `border-radius: 20px`) with `cubic-bezier(0.25, 1, 0.35, 1)` easing.
    - Width is dynamically computed from name length via `--morph-collapsed-width`.
 
 4. **Window Depth & Stacking Engine:**

@@ -403,6 +403,7 @@ body {
   border-radius: var(--radius-full);
   outline: none;
   margin-top: var(--space-1);
+  cursor: pointer;
 }
 
 .form-group input[type="range"]::-webkit-slider-thumb {
@@ -413,13 +414,13 @@ body {
   background: var(--accent-primary);
   border-radius: 50%;
   cursor: pointer;
-  box-shadow: 0 0 8px var(--accent-primary-glow);
+  box-shadow: none;
   transition: all var(--transition-fast);
 }
 
 .form-group input[type="range"]::-webkit-slider-thumb:hover {
   transform: scale(1.2);
-  box-shadow: 0 0 16px var(--accent-primary-glow);
+  box-shadow: none;
 }
 
 .form-group-row {
@@ -1419,7 +1420,6 @@ input[type=range].premium-range::-webkit-slider-runnable-track {
   line-height: 1.4 !important;
   outline: none !important;
   box-sizing: border-box !important;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
 }
 
 #lorebook-editor-modal input[type="text"]:focus,
@@ -1499,7 +1499,7 @@ select option:hover,
   border-radius: 50% !important;
   background: #6366f1 !important;
   cursor: pointer !important;
-  box-shadow: 0 0 6px rgba(99, 102, 241, 0.5) !important;
+  box-shadow: none !important;
   transition: transform 0.1s ease !important;
 }
 

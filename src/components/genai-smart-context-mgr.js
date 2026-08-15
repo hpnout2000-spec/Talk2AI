@@ -33,12 +33,64 @@ export function initSmartContextMgr() {
     return;
   }
 
+  const btnRagInstall = document.getElementById('btn-rag-model-install');
+  const labelRagStatus = document.getElementById('label-rag-model-status');
+  const btnRagReindex = document.getElementById('btn-rag-reindex-all');
+  const btnToggleAdvanced = document.getElementById('btn-toggle-sc-advanced');
+  const contentAdvanced = document.getElementById('content-sc-advanced');
+  const chevronAdvanced = document.getElementById('chevron-sc-advanced');
+
+  if (btnToggleAdvanced && contentAdvanced) {
+    btnToggleAdvanced.addEventListener('click', () => {
+      const isHidden = contentAdvanced.classList.toggle('hidden');
+      if (chevronAdvanced) {
+        chevronAdvanced.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(180deg)';
+      }
+    });
+  }
+
+  function updateRagModelUI() {
+    if (!btnRagInstall || !labelRagStatus) return;
+    
+    const isInstalledOnDisk = localStorage.getItem('smart_context_model_installed') === 'true';
+
+    if (genaiEmbeddingsStore.isModelLoaded() || isInstalledOnDisk) {
+      labelRagStatus.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" style="width: 12px; height: 12px; display: inline-block; vertical-align: middle; margin-right: 2px;">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        Installed
+      `;
+      btnRagInstall.disabled = true;
+      btnRagInstall.style.opacity = '0.7';
+      btnRagInstall.style.cursor = 'default';
+      
+      // Auto-load silently in the background if installed but not loaded in memory yet
+      if (!genaiEmbeddingsStore.isModelLoaded() && !genaiEmbeddingsStore.isModelInitializing()) {
+        genaiEmbeddingsStore.init(false).then(updateRagModelUI);
+      }
+    } else if (genaiEmbeddingsStore.isModelInitializing()) {
+      labelRagStatus.textContent = 'Installing...';
+      btnRagInstall.disabled = true;
+      btnRagInstall.style.opacity = '0.7';
+      btnRagInstall.style.cursor = 'default';
+    } else {
+      labelRagStatus.textContent = 'Install';
+      btnRagInstall.disabled = false;
+      btnRagInstall.style.opacity = '1';
+      btnRagInstall.style.cursor = 'pointer';
+    }
+  }
+
   // Open modal from settings
   if (btnOpen) {
     btnOpen.addEventListener('click', () => {
       openWindow(modal);
       loadSettingsToSC();
       renderSmartContextChats();
+      updateRagModelUI();
+      const sessions = getGenaiSessions() || [];
+      genaiEmbeddingsStore.migrateExistingSummaries(sessions).then(updateRagModelUI);
     });
   }
 
@@ -54,6 +106,42 @@ export function initSmartContextMgr() {
       openWindow(modal);
       loadSettingsToSC();
       renderSmartContextChats();
+      updateRagModelUI();
+      const sessions = getGenaiSessions() || [];
+      genaiEmbeddingsStore.migrateExistingSummaries(sessions).then(updateRagModelUI);
+    });
+  }
+
+  // RAG Model Install button
+  if (btnRagInstall) {
+    btnRagInstall.addEventListener('click', async () => {
+      if (genaiEmbeddingsStore.isModelLoaded() || genaiEmbeddingsStore.isModelInitializing()) return;
+      labelRagStatus.textContent = 'Installing...';
+      btnRagInstall.disabled = true;
+      btnRagInstall.style.opacity = '0.7';
+      await genaiEmbeddingsStore.init(true);
+      updateRagModelUI();
+    });
+  }
+
+  // Re-index all summaries button
+  if (btnRagReindex) {
+    btnRagReindex.addEventListener('click', async () => {
+      btnRagReindex.disabled = true;
+      btnRagReindex.style.opacity = '0.7';
+      const initialText = btnRagReindex.querySelector('span')?.textContent || 'Re-index all summaries';
+      const span = btnRagReindex.querySelector('span');
+      if (span) span.textContent = 'Re-indexing...';
+
+      try {
+        const sessions = getGenaiSessions() || [];
+        await genaiEmbeddingsStore.reindexAllSummaries(sessions);
+      } finally {
+        btnRagReindex.disabled = false;
+        btnRagReindex.style.opacity = '1';
+        if (span) span.textContent = initialText;
+        updateRagModelUI();
+      }
     });
   }
 
@@ -136,6 +224,14 @@ export function initSmartContextMgr() {
   window.isSmartContextRunning = () => {
     return Object.keys(activeSummarizations).length > 0 || isSyncRunning;
   };
+
+  // Run migration in background after a short delay so it doesn't block startup
+  setTimeout(async () => {
+    const sessions = getGenaiSessions() || [];
+    if (sessions.length > 0) {
+      await genaiEmbeddingsStore.migrateExistingSummaries(sessions);
+    }
+  }, 5000);
 }
 
 function loadSettingsToSC() {
@@ -331,7 +427,7 @@ export async function updateSessionSummaryIfNeeded(session, force = false) {
         const payload = [
           {
             role: 'system',
-            content: "You are a summarization agent that writes extremely concise summaries of the conversation history. MANDATORY RULE: Write a brief summary of what happened in the conversation chunk (literally 50-100 words). Return ONLY the summary, no other text. do NOT continue chat or roleplay. you're writing SUMMARY."
+            content: "You are a summarization agent that writes extremely concise summaries of the conversation history. MANDATORY RULE 1: Write a brief summary of what happened in the conversation chunk (literally 50-100 words). MANDATORY RULE 2: The summary MUST ALWAYS be written strictly in English, regardless of the language used in the conversation. Return ONLY the summary in English, no other text. Do NOT continue chat or roleplay. You're writing SUMMARY."
           },
           {
             role: 'user',
@@ -358,7 +454,7 @@ export async function updateSessionSummaryIfNeeded(session, force = false) {
         const payload = [
           {
             role: 'system',
-            content: "You are a summarization agent that writes extremely concise summaries of the conversation history. MANDATORY RULE: Merge multiple conversation summaries into one coherent, extremely concise summary (literally 50-100 words). Return ONLY the summary, no other text. do NOT continue chat or roleplay. you're writing SUMMARY."
+            content: "You are a summarization agent that writes comprehensive summaries of the conversation history. MANDATORY RULE 1: Merge multiple conversation summaries into one coherent, comprehensive summary (recommended length: 300-400 words). MANDATORY RULE 2: The summary MUST ALWAYS be written strictly in English, regardless of the language used in the conversation. Return ONLY the summary in English, no other text. Do NOT continue chat or roleplay. You're writing SUMMARY."
           },
           {
             role: 'user',
@@ -375,13 +471,15 @@ export async function updateSessionSummaryIfNeeded(session, force = false) {
         finalSummary = combined ? combined.trim() : '';
       }
 
-      // Save summary
+      // Save summary and all intermediate chunks to session
       session.summary = finalSummary;
+      session.summary_chunks = summaries;
       saveHistory();
       
-      // Save summary chunks to the embeddings RAG store
-      if (summaries.length > 0) {
-        await genaiEmbeddingsStore.saveSessionChunks(session.id, summaries);
+      // Save all summary chunks (both intermediate and final) to the embeddings RAG store
+      const allChunksToIndex = summaries.length > 1 && finalSummary ? [...summaries, finalSummary] : summaries;
+      if (allChunksToIndex.length > 0) {
+        await genaiEmbeddingsStore.saveSessionChunks(session.id, allChunksToIndex);
       } else {
         await genaiEmbeddingsStore.removeSession(session.id);
       }

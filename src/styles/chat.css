@@ -276,9 +276,9 @@ body.ai-sidebar-open #btn-toggle-genai-header .icon-arrow-right {
 .user-name-morph-container {
   position: relative;
   width: var(--morph-collapsed-width, 108px);
-  height: 40px;
+  height: 44px;
   box-sizing: border-box;
-  border-radius: 20px;
+  border-radius: 22px;
   background: rgba(255, 255, 255, 0.04);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -326,7 +326,7 @@ body.ai-sidebar-open #btn-toggle-genai-header .icon-arrow-right {
   top: 0;
   left: 0;
   right: 0;
-  height: 40px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;

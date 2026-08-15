@@ -2,7 +2,7 @@
    Advanced Settings Component — System Prompt & Generation
    ════════════════════════════════════════════════════════════════════ */
 
-import { settingsStore } from '../services/settings-store.js';
+import { settingsStore, DEFAULT_GENERATION_PRESETS } from '../services/settings-store.js';
 import { showToast, showConfirm, closeModal, openWindow, closeWindow } from '../main.js';
 
 let modal;
@@ -33,69 +33,59 @@ function updateGenerationPresetModeUI() {
   
   if (isGenerationPresetSync) {
     btnSync.classList.add('active');
-    btnSync.style.color = 'var(--accent-primary)';
-    if (togglesContainer) {
-      togglesContainer.style.opacity = '0.5';
-      togglesContainer.style.pointerEvents = 'none';
-    }
+    if (togglesContainer) togglesContainer.classList.add('disabled');
   } else {
     btnSync.classList.remove('active');
-    btnSync.style.color = 'var(--text-secondary)';
-    if (togglesContainer) {
-      togglesContainer.style.opacity = '1';
-      togglesContainer.style.pointerEvents = 'auto';
-    }
+    if (togglesContainer) togglesContainer.classList.remove('disabled');
   }
   
   if (currentGenerationPresetMode === 'none') {
-    btnNone.style.background = 'var(--bg-secondary)';
-    btnNone.style.color = 'var(--text-primary)';
-    btnThinking.style.background = 'transparent';
-    btnThinking.style.color = 'var(--text-secondary)';
+    btnNone.classList.add('active');
+    btnThinking.classList.remove('active');
   } else {
-    btnThinking.style.background = 'var(--bg-secondary)';
-    btnThinking.style.color = 'var(--text-primary)';
-    btnNone.style.background = 'transparent';
-    btnNone.style.color = 'var(--text-secondary)';
+    btnThinking.classList.add('active');
+    btnNone.classList.remove('active');
   }
 }
 
 function updateGenAIPresetModeUI() {
-  const btnNone = document.getElementById('btn-preset-mode-none');
-  const btnThinking = document.getElementById('btn-preset-mode-thinking');
-  const btnSync = document.getElementById('btn-preset-mode-sync');
-  const togglesContainer = document.getElementById('preset-mode-toggles');
+  const btnNone = document.getElementById('btn-preset-mode-none') || document.getElementById('btn-genai-preset-mode-none');
+  const btnThinking = document.getElementById('btn-preset-mode-thinking') || document.getElementById('btn-genai-preset-mode-thinking');
+  const btnSync = document.getElementById('btn-preset-mode-sync') || document.getElementById('btn-genai-preset-mode-sync');
+  const togglesContainer = document.getElementById('preset-mode-toggles') || document.getElementById('genai-preset-mode-toggles');
   
   if (!btnNone || !btnThinking || !btnSync) return;
   
   if (isGenAIPresetSync) {
     btnSync.classList.add('active');
-    btnSync.style.color = 'var(--accent-primary)';
-    if (togglesContainer) {
-      togglesContainer.style.opacity = '0.5';
-      togglesContainer.style.pointerEvents = 'none';
-    }
+    if (togglesContainer) togglesContainer.classList.add('disabled');
   } else {
     btnSync.classList.remove('active');
-    btnSync.style.color = 'var(--text-secondary)';
-    if (togglesContainer) {
-      togglesContainer.style.opacity = '1';
-      togglesContainer.style.pointerEvents = 'auto';
-    }
+    if (togglesContainer) togglesContainer.classList.remove('disabled');
   }
   
   if (currentGenAIPresetMode === 'none') {
-    btnNone.style.background = 'var(--bg-secondary)';
-    btnNone.style.color = 'var(--text-primary)';
-    btnThinking.style.background = 'transparent';
-    btnThinking.style.color = 'var(--text-secondary)';
+    btnNone.classList.add('active');
+    btnThinking.classList.remove('active');
   } else {
-    btnThinking.style.background = 'var(--bg-secondary)';
-    btnThinking.style.color = 'var(--text-primary)';
-    btnNone.style.background = 'transparent';
-    btnNone.style.color = 'var(--text-secondary)';
+    btnThinking.classList.add('active');
+    btnNone.classList.remove('active');
   }
 }
+
+function updateAllToggleVisualStates() {
+  document.querySelectorAll('.sampler-control-row .toggle-switch input[type="checkbox"]').forEach(cb => {
+    const row = cb.closest('.sampler-control-row');
+    if (row) {
+      if (cb.checked) {
+        row.classList.remove('is-disabled');
+      } else {
+        row.classList.add('is-disabled');
+      }
+    }
+  });
+}
+
 export function initAdvancedSettings() {
   modal = document.getElementById('advanced-settings-modal');
   btnClose = modal.querySelector('.btn-close-advanced');
@@ -255,7 +245,10 @@ export function initAdvancedSettings() {
   });
 
   const addToggleListener = (id, isGenAI) => {
-    document.getElementById(id)?.addEventListener('change', () => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', () => {
+      updateAllToggleVisualStates();
       updateActiveGenerationPreset(isGenAI);
     });
   };
@@ -409,9 +402,8 @@ export function initAdvancedSettings() {
     if (ctrls) ctrls.style.display = e.target.checked ? 'flex' : 'none';
   });
 
-  // Generation Presets Management
-  document.getElementById('generation-preset-select')?.addEventListener('change', (e) => applyGenerationPreset(e.target.value, false));
-  document.getElementById('genai-preset-select')?.addEventListener('change', (e) => applyGenerationPreset(e.target.value, true));
+  // Custom Generation & GenAI Presets Dropdowns
+  initCustomPresetDropdowns();
   
   document.getElementById('btn-add-generation-preset')?.addEventListener('click', () => saveAsNewGenerationPreset(false));
   document.getElementById('btn-add-genai-preset')?.addEventListener('click', () => saveAsNewGenerationPreset(true));
@@ -695,30 +687,479 @@ function loadSettingsToUI() {
   if (currentSettings.active_genai_generation_preset_id) {
     applyGenerationPreset(currentSettings.active_genai_generation_preset_id, true);
   }
+  updateAllToggleVisualStates();
 }
 
-function renderGenerationPresetsUI() {
-  const genSelect = document.getElementById('generation-preset-select');
-  const genaiSelect = document.getElementById('genai-preset-select');
-  if (!genSelect || !genaiSelect) return;
+let generationPresetSearchQuery = '';
+let generationPresetSortMode = 'default';
+let generationPresetSelectionMode = false;
+let generationPresetSelectedIds = new Set();
+let generationPresetDeleteConfirming = false;
 
-  genSelect.innerHTML = '';
-  genaiSelect.innerHTML = '';
+let genaiPresetSearchQuery = '';
+let genaiPresetSortMode = 'default';
+let genaiPresetSelectionMode = false;
+let genaiPresetSelectedIds = new Set();
+let genaiPresetDeleteConfirming = false;
 
-  currentSettings.generation_presets.forEach(p => {
-    const opt1 = document.createElement('option');
-    opt1.value = p.id;
-    opt1.textContent = p.name;
-    genSelect.appendChild(opt1);
+let currentContextMenuPreset = null; // { id, isGenAI }
 
-    const opt2 = document.createElement('option');
-    opt2.value = p.id;
-    opt2.textContent = p.name;
-    genaiSelect.appendChild(opt2);
+function showPresetContextMenu(e, presetId, isGenAI) {
+  const menu = document.getElementById('preset-context-menu');
+  if (!menu) return;
+
+  currentContextMenuPreset = { id: presetId, isGenAI };
+  const isDefault = DEFAULT_GENERATION_PRESETS.some(dp => dp.id === presetId);
+  const deleteBtn = document.getElementById('btn-ctx-delete-preset');
+
+  if (deleteBtn) {
+    if (isDefault) {
+      deleteBtn.classList.add('disabled');
+      deleteBtn.title = 'Default presets cannot be deleted';
+    } else {
+      deleteBtn.classList.remove('disabled');
+      deleteBtn.title = '';
+    }
+  }
+
+  menu.classList.remove('hidden');
+
+  // Position near mouse
+  const menuWidth = 140;
+  const menuHeight = 80;
+  let posX = e.clientX;
+  let posY = e.clientY;
+
+  if (posX + menuWidth > window.innerWidth - 10) {
+    posX = window.innerWidth - menuWidth - 10;
+  }
+  if (posY + menuHeight > window.innerHeight - 10) {
+    posY = window.innerHeight - menuHeight - 10;
+  }
+
+  menu.style.left = `${posX}px`;
+  menu.style.top = `${posY}px`;
+}
+
+function hidePresetContextMenu() {
+  const menu = document.getElementById('preset-context-menu');
+  if (menu) menu.classList.add('hidden');
+  currentContextMenuPreset = null;
+}
+
+function updatePresetSelectionBarUI(isGenAI) {
+  const prefix = isGenAI ? 'genai-' : 'generation-';
+  const bar = document.getElementById(`${prefix}preset-selection-bar`);
+  const isSelectionMode = isGenAI ? genaiPresetSelectionMode : generationPresetSelectionMode;
+  const selectedIds = isGenAI ? genaiPresetSelectedIds : generationPresetSelectedIds;
+  const isConfirming = isGenAI ? genaiPresetDeleteConfirming : generationPresetDeleteConfirming;
+
+  if (!bar) return;
+
+  if (!isSelectionMode) {
+    bar.classList.add('hidden');
+    return;
+  }
+
+  bar.classList.remove('hidden');
+  const countEl = document.getElementById(`${prefix}preset-selection-count`);
+  const confirmMsg = document.getElementById(`${prefix}preset-confirm-msg`);
+  const deleteBtn = document.getElementById(`btn-${prefix}preset-bulk-delete`);
+  const deleteText = document.getElementById(`${prefix}preset-bulk-delete-text`);
+  const count = selectedIds.size;
+
+  if (isConfirming) {
+    countEl?.classList.add('hidden');
+    confirmMsg?.classList.remove('hidden');
+    deleteBtn?.classList.add('confirming');
+    if (deleteText) deleteText.textContent = 'Delete';
+    if (deleteBtn) deleteBtn.disabled = false;
+  } else {
+    countEl?.classList.remove('hidden');
+    confirmMsg?.classList.add('hidden');
+    deleteBtn?.classList.remove('confirming');
+    if (countEl) countEl.textContent = `${count} selected`;
+    if (deleteText) deleteText.textContent = count > 0 ? `Delete (${count})` : 'Delete';
+    if (deleteBtn) deleteBtn.disabled = (count === 0);
+  }
+}
+
+function initCustomPresetDropdowns() {
+  const setupDropdown = (isGenAI) => {
+    const prefix = isGenAI ? 'genai-' : 'generation-';
+    const trigger = document.getElementById(`btn-${prefix}preset-trigger`);
+    const menu = document.getElementById(`${prefix}preset-menu`);
+    const searchWrap = document.getElementById(`${prefix}preset-search-wrap`);
+    const searchToggleBtn = document.getElementById(`btn-${prefix}preset-search-toggle`);
+    const searchInput = document.getElementById(`${prefix}preset-search-input`);
+    const searchClearBtn = document.getElementById(`btn-${prefix}preset-search-clear`);
+    const sortToggleBtn = document.getElementById(`btn-${prefix}preset-sort-toggle`);
+    const sortLabel = document.getElementById(`${prefix}preset-sort-label`);
+    const cancelSelectBtn = document.getElementById(`btn-${prefix}preset-cancel-select`);
+    const bulkDeleteBtn = document.getElementById(`btn-${prefix}preset-bulk-delete`);
+
+    if (!trigger || !menu) return;
+
+    // Toggle dropdown open/close
+    trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      hidePresetContextMenu();
+      const otherPrefix = isGenAI ? 'generation-' : 'genai-';
+      document.getElementById(`${otherPrefix}preset-menu`)?.classList.add('hidden');
+      document.getElementById(`btn-${otherPrefix}preset-trigger`)?.classList.remove('open');
+
+      const isHidden = menu.classList.contains('hidden');
+      if (isHidden) {
+        menu.classList.remove('hidden');
+        trigger.classList.add('open');
+        renderGenerationPresetsUI(isGenAI);
+      } else {
+        menu.classList.add('hidden');
+        trigger.classList.remove('open');
+        if (isGenAI) {
+          genaiPresetSelectionMode = false;
+          genaiPresetSelectedIds.clear();
+          genaiPresetDeleteConfirming = false;
+        } else {
+          generationPresetSelectionMode = false;
+          generationPresetSelectedIds.clear();
+          generationPresetDeleteConfirming = false;
+        }
+      }
+    });
+
+    // Search Toggle Button (expands search input)
+    searchToggleBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!searchWrap) return;
+      const isActive = searchWrap.classList.toggle('search-active');
+      if (isActive) {
+        searchInput?.focus();
+      } else {
+        if (searchInput) searchInput.value = '';
+        if (isGenAI) genaiPresetSearchQuery = '';
+        else generationPresetSearchQuery = '';
+        searchClearBtn?.classList.add('hidden');
+        renderGenerationPresetsUI(isGenAI);
+      }
+    });
+
+    // Search Input Typing
+    searchInput?.addEventListener('input', (e) => {
+      const q = e.target.value;
+      if (isGenAI) genaiPresetSearchQuery = q;
+      else generationPresetSearchQuery = q;
+
+      if (q.trim().length > 0) {
+        searchClearBtn?.classList.remove('hidden');
+      } else {
+        searchClearBtn?.classList.add('hidden');
+      }
+      renderGenerationPresetsUI(isGenAI);
+    });
+
+    // Search Clear Button
+    searchClearBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (searchInput) {
+        searchInput.value = '';
+        searchInput.focus();
+      }
+      if (isGenAI) genaiPresetSearchQuery = '';
+      else generationPresetSearchQuery = '';
+      searchClearBtn.classList.add('hidden');
+      renderGenerationPresetsUI(isGenAI);
+    });
+
+    // Sort Toggle Button (Date / A-Z)
+    sortToggleBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      let currentSort = isGenAI ? genaiPresetSortMode : generationPresetSortMode;
+      const nextSort = currentSort === 'default' ? 'name' : 'default';
+      if (isGenAI) genaiPresetSortMode = nextSort;
+      else generationPresetSortMode = nextSort;
+
+      if (sortLabel) sortLabel.textContent = nextSort === 'name' ? 'A-Z' : 'Date';
+      if (sortToggleBtn) {
+        sortToggleBtn.dataset.sort = nextSort;
+        sortToggleBtn.title = `Sort: ${nextSort === 'name' ? 'A-Z (Alphabetical)' : 'Date (Creation order)'}`;
+      }
+      renderGenerationPresetsUI(isGenAI);
+    });
+
+    // Multi-select cancel button
+    cancelSelectBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (isGenAI) {
+        genaiPresetSelectionMode = false;
+        genaiPresetSelectedIds.clear();
+        genaiPresetDeleteConfirming = false;
+      } else {
+        generationPresetSelectionMode = false;
+        generationPresetSelectedIds.clear();
+        generationPresetDeleteConfirming = false;
+      }
+      renderGenerationPresetsUI(isGenAI);
+    });
+
+    // Multi-select bulk delete button (with smooth expanding confirmation)
+    bulkDeleteBtn?.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const selectedIds = isGenAI ? genaiPresetSelectedIds : generationPresetSelectedIds;
+      const isConfirming = isGenAI ? genaiPresetDeleteConfirming : generationPresetDeleteConfirming;
+
+      if (selectedIds.size === 0) return;
+
+      if (!isConfirming) {
+        if (isGenAI) genaiPresetDeleteConfirming = true;
+        else generationPresetDeleteConfirming = true;
+        updatePresetSelectionBarUI(isGenAI);
+      } else {
+        // Execute deletion of selected presets
+        const count = selectedIds.size;
+
+        currentSettings.generation_presets = currentSettings.generation_presets.filter(p => !selectedIds.has(p.id));
+
+        if (isGenAI && selectedIds.has(currentSettings.active_genai_generation_preset_id)) {
+          currentSettings.active_genai_generation_preset_id = 'default';
+          applyGenerationPreset('default', true);
+        } else if (!isGenAI && selectedIds.has(currentSettings.active_generation_preset_id)) {
+          currentSettings.active_generation_preset_id = 'default';
+          applyGenerationPreset('default', false);
+        }
+
+        if (isGenAI) {
+          genaiPresetSelectionMode = false;
+          genaiPresetSelectedIds.clear();
+          genaiPresetDeleteConfirming = false;
+        } else {
+          generationPresetSelectionMode = false;
+          generationPresetSelectedIds.clear();
+          generationPresetDeleteConfirming = false;
+        }
+
+        await settingsStore.save({ generation_presets: currentSettings.generation_presets });
+
+        showToast(`Deleted ${count} preset${count > 1 ? 's' : ''}`);
+        renderGenerationPresetsUI();
+      }
+    });
+  };
+
+  setupDropdown(false);
+  setupDropdown(true);
+
+  // Setup context menu actions
+  document.getElementById('btn-ctx-select-preset')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!currentContextMenuPreset) return;
+    const { id, isGenAI } = currentContextMenuPreset;
+    hidePresetContextMenu();
+
+    if (isGenAI) {
+      genaiPresetSelectionMode = true;
+      genaiPresetSelectedIds.clear();
+      if (!DEFAULT_GENERATION_PRESETS.some(dp => dp.id === id)) {
+        genaiPresetSelectedIds.add(id);
+      }
+      genaiPresetDeleteConfirming = false;
+    } else {
+      generationPresetSelectionMode = true;
+      generationPresetSelectedIds.clear();
+      if (!DEFAULT_GENERATION_PRESETS.some(dp => dp.id === id)) {
+        generationPresetSelectedIds.add(id);
+      }
+      generationPresetDeleteConfirming = false;
+    }
+
+    renderGenerationPresetsUI(isGenAI);
   });
 
-  genSelect.value = currentSettings.active_generation_preset_id || 'default';
-  genaiSelect.value = currentSettings.active_genai_generation_preset_id || 'default';
+  document.getElementById('btn-ctx-delete-preset')?.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    if (!currentContextMenuPreset) return;
+    const { id, isGenAI } = currentContextMenuPreset;
+    hidePresetContextMenu();
+
+    if (DEFAULT_GENERATION_PRESETS.some(dp => dp.id === id)) {
+      showToast('Cannot delete default presets');
+      return;
+    }
+
+    const preset = currentSettings.generation_presets.find(p => p.id === id);
+    const confirm = await showConfirm('Delete Preset', `Delete preset "${preset ? preset.name : ''}"?`);
+    if (confirm) {
+      currentSettings.generation_presets = currentSettings.generation_presets.filter(p => p.id !== id);
+      if (isGenAI && currentSettings.active_genai_generation_preset_id === id) {
+        currentSettings.active_genai_generation_preset_id = 'default';
+        applyGenerationPreset('default', true);
+      } else if (!isGenAI && currentSettings.active_generation_preset_id === id) {
+        currentSettings.active_generation_preset_id = 'default';
+        applyGenerationPreset('default', false);
+      }
+      
+      await settingsStore.save({ generation_presets: currentSettings.generation_presets });
+      
+      showToast('Preset deleted');
+      renderGenerationPresetsUI();
+    }
+  });
+
+  // Close menus when clicking outside
+  document.addEventListener('click', (e) => {
+    hidePresetContextMenu();
+
+    const genWrap = document.getElementById('generation-preset-dropdown-wrap');
+    const genaiWrap = document.getElementById('genai-preset-dropdown-wrap');
+    if (genWrap && !genWrap.contains(e.target)) {
+      document.getElementById('generation-preset-menu')?.classList.add('hidden');
+      document.getElementById('btn-generation-preset-trigger')?.classList.remove('open');
+      generationPresetSelectionMode = false;
+      generationPresetSelectedIds.clear();
+      generationPresetDeleteConfirming = false;
+    }
+    if (genaiWrap && !genaiWrap.contains(e.target)) {
+      document.getElementById('genai-preset-menu')?.classList.add('hidden');
+      document.getElementById('btn-genai-preset-trigger')?.classList.remove('open');
+      genaiPresetSelectionMode = false;
+      genaiPresetSelectedIds.clear();
+      genaiPresetDeleteConfirming = false;
+    }
+  });
+}
+
+function renderGenerationPresetsUI(targetIsGenAI = null) {
+  const renderSingle = (isGenAI) => {
+    const prefix = isGenAI ? 'genai-' : 'generation-';
+    const listEl = document.getElementById(`${prefix}preset-list`);
+    const nameEl = document.getElementById(`${prefix}preset-selected-name`);
+    if (!listEl) return;
+
+    const activeId = isGenAI ? currentSettings.active_genai_generation_preset_id : currentSettings.active_generation_preset_id;
+    const activePreset = currentSettings.generation_presets.find(p => p.id === activeId);
+    if (nameEl) {
+      nameEl.textContent = activePreset ? activePreset.name : 'Default';
+    }
+
+    const isSelectionMode = isGenAI ? genaiPresetSelectionMode : generationPresetSelectionMode;
+    const selectedIds = isGenAI ? genaiPresetSelectedIds : generationPresetSelectedIds;
+
+    const searchQuery = (isGenAI ? genaiPresetSearchQuery : generationPresetSearchQuery).trim().toLowerCase();
+    const sortMode = isGenAI ? genaiPresetSortMode : generationPresetSortMode;
+
+    let items = [...(currentSettings.generation_presets || [])];
+
+    if (searchQuery) {
+      items = items.filter(p => p.name.toLowerCase().includes(searchQuery));
+    }
+
+    if (sortMode === 'name') {
+      items.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+    }
+
+    listEl.innerHTML = '';
+
+    if (items.length === 0) {
+      const emptyEl = document.createElement('div');
+      emptyEl.className = 'preset-no-results';
+      emptyEl.textContent = searchQuery ? 'No presets match search' : 'No presets available';
+      listEl.appendChild(emptyEl);
+      updatePresetSelectionBarUI(isGenAI);
+      return;
+    }
+
+    items.forEach(p => {
+      const isSelected = p.id === activeId;
+      const isDefault = DEFAULT_GENERATION_PRESETS.some(dp => dp.id === p.id);
+      const isChecked = selectedIds.has(p.id);
+
+      const itemBtn = document.createElement('button');
+      itemBtn.type = 'button';
+      itemBtn.className = `custom-preset-option ${!isSelectionMode && isSelected ? 'active' : ''} ${isSelectionMode ? 'selectable' : ''} ${isChecked ? 'is-selected' : ''}`;
+      itemBtn.dataset.id = p.id;
+
+      if (isSelectionMode) {
+        itemBtn.innerHTML = `
+          <div class="custom-preset-option-left">
+            <div class="preset-option-checkbox ${isChecked ? 'checked' : ''} ${isDefault ? 'disabled' : ''}" title="${isDefault ? 'Default presets cannot be deleted' : ''}">
+              ${isChecked ? `
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width: 9px; height: 9px;">
+                  <polyline points="20 6 9 17 4 12"></polyline>
+                </svg>
+              ` : ''}
+            </div>
+            <span class="custom-preset-option-title">${p.name}</span>
+            ${isDefault ? '<span class="custom-preset-option-badge">Default</span>' : ''}
+          </div>
+        `;
+      } else {
+        itemBtn.innerHTML = `
+          <div class="custom-preset-option-left">
+            <span class="custom-preset-option-title">${p.name}</span>
+            ${isDefault ? '<span class="custom-preset-option-badge">Default</span>' : ''}
+          </div>
+          ${isSelected ? `
+            <svg class="custom-preset-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+          ` : ''}
+        `;
+      }
+
+      // Left click handler
+      itemBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        hidePresetContextMenu();
+
+        if (isSelectionMode) {
+          if (isDefault) {
+            showToast('Default presets cannot be deleted');
+            return;
+          }
+          if (selectedIds.has(p.id)) {
+            selectedIds.delete(p.id);
+          } else {
+            selectedIds.add(p.id);
+          }
+          if (isGenAI) genaiPresetDeleteConfirming = false;
+          else generationPresetDeleteConfirming = false;
+          renderGenerationPresetsUI(isGenAI);
+        } else {
+          const menu = document.getElementById(`${prefix}preset-menu`);
+          const trigger = document.getElementById(`btn-${prefix}preset-trigger`);
+          if (menu) menu.classList.add('hidden');
+          if (trigger) trigger.classList.remove('open');
+
+          if (isGenAI) {
+            currentSettings.active_genai_generation_preset_id = p.id;
+          } else {
+            currentSettings.active_generation_preset_id = p.id;
+          }
+
+          applyGenerationPreset(p.id, isGenAI);
+          renderGenerationPresetsUI(isGenAI);
+        }
+      });
+
+      // Right click context menu handler
+      itemBtn.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        showPresetContextMenu(e, p.id, isGenAI);
+      });
+
+      listEl.appendChild(itemBtn);
+    });
+
+    updatePresetSelectionBarUI(isGenAI);
+  };
+
+  if (targetIsGenAI === null) {
+    renderSingle(false);
+    renderSingle(true);
+  } else {
+    renderSingle(targetIsGenAI);
+  }
 }
 
 function extractExtendedSamplersFromUI(isGenAI) {
@@ -964,6 +1405,7 @@ function applyGenerationPreset(presetId, isGenAI) {
 
     applyExtendedSamplersToUI(source, false);
   }
+  updateAllToggleVisualStates();
 }
 
 function saveAsNewGenerationPreset(isGenAI) {
@@ -1069,40 +1511,26 @@ async function deleteGenerationPreset(isGenAI) {
       currentSettings.active_generation_preset_id = 'default';
       applyGenerationPreset('default', false);
     }
+    await settingsStore.save({ generation_presets: currentSettings.generation_presets });
     renderGenerationPresetsUI();
   }
 }
 
 async function resetGenerationPreset(isGenAI) {
   const activeId = isGenAI ? currentSettings.active_genai_generation_preset_id : currentSettings.active_generation_preset_id;
-  if (!activeId || (!activeId.startsWith('default') && !activeId.startsWith('glm') && !activeId.startsWith('qwen') && !activeId.startsWith('gemma'))) {
+  const originalPreset = DEFAULT_GENERATION_PRESETS.find(p => p.id === activeId);
+  if (!originalPreset) {
     showToast("Only standard presets can be reset to default");
     return;
   }
 
-  const stdDefaults = { typical_p: 1.0, typical_p_enabled: false, frequency_penalty: 0.0, frequency_penalty_enabled: false, top_a: 0.0, top_a_enabled: false, tfs: 1.0, tfs_enabled: false, mirostat_enabled: false, mirostat_mode: 0, mirostat_tau: 5.0, mirostat_eta: 0.1, xtc_enabled: false, xtc_threshold: 0.1, xtc_probability: 0.0, top_n_sigma_enabled: false, top_n_sigma: 0.0, rep_pen_range_enabled: false, rep_pen_range: 0, rep_pen_slope: 1.0, min_tokens_enabled: false, min_tokens: 0, guidance_scale_enabled: false, guidance_scale: 1.0, negative_prompt: '', ignore_eos: false, banned_strings: '', genai_system_prompt_addition: '' };
-
-  const defaultPresets = [
-    { id: 'default', name: 'Default', max_tokens: 2048, temperature: 0.7, top_p: 0.9, top_k: 40, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: true, adaptive_decay: 0.9, adaptive_decay_enabled: true, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...stdDefaults },
-    { id: 'glm47flash', name: 'GLM 4.7 Flash (Creative)', max_tokens: 6000, temperature: 1.0, top_p: 0.95, top_k: 40, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...stdDefaults },
-    { id: 'glm46', name: 'GLM 4.6 (Unsloth)', max_tokens: 2048, temperature: 0.8, top_p: 0.6, top_k: 2, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: true, adaptive_decay: 0.9, adaptive_decay_enabled: true, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...stdDefaults },
-    { id: 'qwen3', name: 'Qwen 3 (Unsloth)', max_tokens: 4000, temperature: 0.6, top_p: 0.95, top_k: 20, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.0, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...stdDefaults },
-    { id: 'qwen35stable', name: 'Qwen 3.5 MoE (stable)', max_tokens: 4000, temperature: 0.65, top_p: 0.95, top_k: 20, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: false, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 1.6, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...stdDefaults },
-    { id: 'qwen35official', name: 'Qwen 3.5 MoE (Official)', max_tokens: 4000, temperature: 1.0, top_p: 0.95, top_k: 20, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: false, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 1.5, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...stdDefaults },
-    { id: 'gemma4creative', name: 'Gemma 4 (Creative)', max_tokens: 3000, temperature: 1.5, top_p: 1.0, top_k: 64, rep_penalty: 1.0, smoothing_factor: 1.5, min_p: 0.05, min_p_enabled: false, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: true, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...stdDefaults },
-    { id: 'gemma4stable', name: 'Gemma 4 (Stable)', max_tokens: 3000, temperature: 1.0, top_p: 1.0, top_k: 64, rep_penalty: 1.1, smoothing_factor: 1.5, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.4, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...stdDefaults }
-  ];
-
-  const originalPreset = defaultPresets.find(p => p.id === activeId);
-  if (originalPreset) {
-    const confirm = await showConfirm('Reset Preset', 'Reset this preset to its standard values?');
-    if (confirm) {
-      const presetIndex = currentSettings.generation_presets.findIndex(p => p.id === activeId);
-      if (presetIndex !== -1) {
-        currentSettings.generation_presets[presetIndex] = { ...originalPreset };
-        applyGenerationPreset(activeId, isGenAI);
-        showToast('Preset reset to defaults');
-      }
+  const confirm = await showConfirm('Reset Preset', `Reset "${originalPreset.name}" to its standard factory values?`);
+  if (confirm) {
+    const presetIndex = currentSettings.generation_presets.findIndex(p => p.id === activeId);
+    if (presetIndex !== -1) {
+      currentSettings.generation_presets[presetIndex] = JSON.parse(JSON.stringify(originalPreset));
+      applyGenerationPreset(activeId, isGenAI);
+      showToast('Preset reset to defaults');
     }
   }
 }
@@ -1188,13 +1616,29 @@ function updateEditingPreset() {
   }
 }
 
+function formatRangeBadgeValue(input) {
+  if (!input) return '';
+  const step = parseFloat(input.step) || 1;
+  const val = parseFloat(input.value) || 0;
+  if (step >= 1 && Number.isInteger(parseFloat(input.min))) {
+    return Math.round(val).toString();
+  }
+  if (step <= 0.05) {
+    return val.toFixed(2);
+  }
+  if (step < 1) {
+    return val.toFixed(2);
+  }
+  return val.toString();
+}
+
 function setupRangeInput(inputId, valueId, isGenAI = null) {
   const input = document.getElementById(inputId);
   const valueEl = document.getElementById(valueId);
   if (!input || !valueEl) return;
 
   input.addEventListener('input', () => {
-    valueEl.textContent = input.value;
+    valueEl.textContent = formatRangeBadgeValue(input);
     const min = parseFloat(input.min);
     const max = parseFloat(input.max);
     const val = parseFloat(input.value);
@@ -1363,12 +1807,12 @@ function updateActiveGenerationPreset(isGenAI) {
 function setRangeValue(inputId, valueId, value) {
   const input = document.getElementById(inputId);
   const valueEl = document.getElementById(valueId);
-  if (input) {
+  if (input && value !== undefined && value !== null) {
     input.value = value;
-    if (valueEl) valueEl.textContent = value;
+    if (valueEl) valueEl.textContent = formatRangeBadgeValue(input);
     const min = parseFloat(input.min);
     const max = parseFloat(input.max);
-    const pct = ((value - min) / (max - min)) * 100;
+    const pct = ((parseFloat(value) - min) / (max - min)) * 100;
     input.style.setProperty('--range-fill', `${pct}%`);
   }
 }
@@ -1403,6 +1847,11 @@ async function saveAll() {
         return ["\n", ":", "\"", "*"];
       }
     })(),
+    dynatemp_enabled: document.getElementById('adv-setting-dynatemp-enabled') ? document.getElementById('adv-setting-dynatemp-enabled').checked : (currentSettings.dynatemp_enabled ?? false),
+    dynatemp_min: parseFloat(document.getElementById('adv-setting-dynatemp-min')?.value ?? (currentSettings.dynatemp_min ?? 0.65)),
+    dynatemp_max: parseFloat(document.getElementById('adv-setting-dynatemp-max')?.value ?? (currentSettings.dynatemp_max ?? 1.35)),
+    dynatemp_range: parseFloat(document.getElementById('adv-setting-dynatemp-range')?.value ?? (currentSettings.dynatemp_range ?? 0.0)),
+    dynatemp_exponent: parseFloat(document.getElementById('adv-setting-dynatemp-exponent')?.value ?? (currentSettings.dynatemp_exponent ?? 1.0)),
     active_generation_preset_id: currentSettings.active_generation_preset_id,
 
     genai_max_tokens: parseInt(document.getElementById('adv-setting-genai-max-tokens').value),
@@ -1430,6 +1879,11 @@ async function saveAll() {
         return ["\n", ":", "\"", "*"];
       }
     })(),
+    genai_dynatemp_enabled: document.getElementById('adv-setting-genai-dynatemp-enabled') ? document.getElementById('adv-setting-genai-dynatemp-enabled').checked : (currentSettings.genai_dynatemp_enabled ?? false),
+    genai_dynatemp_min: parseFloat(document.getElementById('adv-setting-genai-dynatemp-min')?.value ?? (currentSettings.genai_dynatemp_min ?? 0.65)),
+    genai_dynatemp_max: parseFloat(document.getElementById('adv-setting-genai-dynatemp-max')?.value ?? (currentSettings.genai_dynatemp_max ?? 1.35)),
+    genai_dynatemp_range: parseFloat(document.getElementById('adv-setting-genai-dynatemp-range')?.value ?? (currentSettings.genai_dynatemp_range ?? 0.0)),
+    genai_dynatemp_exponent: parseFloat(document.getElementById('adv-setting-genai-dynatemp-exponent')?.value ?? (currentSettings.genai_dynatemp_exponent ?? 1.0)),
     active_genai_generation_preset_id: currentSettings.active_genai_generation_preset_id,
     genai_system_prompt_addition: document.getElementById('adv-setting-genai-system-prompt') ? document.getElementById('adv-setting-genai-system-prompt').value.trim() : (currentSettings.genai_system_prompt_addition || ""),
     

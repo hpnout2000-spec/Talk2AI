@@ -2873,9 +2873,9 @@
             </h2>
             <button class="btn-icon btn-close-submodal" id="btn-close-smart-context" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
           </div>
-          <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px; max-height: 60vh; overflow-y: auto;">
+          <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px; max-height: 75vh; overflow-y: auto;">
             <!-- Settings row -->
-            <div style="background: var(--bg-tertiary); border: 1px solid var(--border-light); padding: 16px; border-radius: var(--radius-lg); display: flex; flex-direction: column; gap: 12px;">
+            <div style="background: var(--bg-tertiary); border: 1px solid var(--border-light); padding: 16px; border-radius: var(--radius-lg); display: flex; flex-direction: column; gap: 12px; flex-shrink: 0;">
               <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
                 <label style="font-weight: 600; font-size: var(--text-sm); color: var(--text-primary);">Token Limit for Summaries</label>
                 <div style="display: flex; align-items: center; gap: 8px;">
@@ -2893,10 +2893,55 @@
               </div>
             </div>
 
+            <!-- Advanced Settings Collapsible Card -->
+            <div style="background: var(--bg-tertiary); border: 1px solid var(--border-light); border-radius: var(--radius-lg); overflow: hidden; margin-top: 2px; flex-shrink: 0;">
+              <!-- Header / Toggle Button -->
+              <button id="btn-toggle-sc-advanced" type="button" style="width: 100%; padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; background: transparent; border: none; cursor: pointer; user-select: none; color: var(--text-primary); text-align: left; transition: background var(--transition-fast);">
+                <div style="display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: var(--text-sm);">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px; color: var(--text-secondary);">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                  </svg>
+                  <span>Advanced Settings</span>
+                </div>
+                <svg id="chevron-sc-advanced" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px; color: var(--text-secondary); transition: transform 0.2s ease;">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </button>
+
+              <!-- Collapsible Content -->
+              <div id="content-sc-advanced" class="hidden" style="padding: 0 16px 16px 16px; display: flex; flex-direction: column; gap: 14px; border-top: 1px solid var(--border-light); padding-top: 14px;">
+                <!-- RAG Model Item -->
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+                  <div>
+                    <div style="font-weight: 600; font-size: var(--text-sm); color: var(--text-primary);">RAG Model</div>
+                    <div style="font-size: var(--text-xs); color: var(--text-secondary);">multilingual-e5-small (~118 MB)</div>
+                  </div>
+                  <button id="btn-rag-model-install" class="btn-secondary" type="button" style="padding: 6px 14px; font-size: var(--text-xs); font-weight: 600; border-radius: var(--radius-md); display: flex; align-items: center; gap: 6px; cursor: pointer; background: var(--bg-primary); border: 1px solid var(--border-light); color: var(--text-primary);">
+                    <span id="label-rag-model-status">Install</span>
+                  </button>
+                </div>
+
+                <!-- Reindex All Summaries Item -->
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; border-top: 1px solid var(--border-light); padding-top: 14px; flex-wrap: wrap;">
+                  <div>
+                    <div style="font-weight: 600; font-size: var(--text-sm); color: var(--text-primary);">Vector Index</div>
+                    <div style="font-size: var(--text-xs); color: var(--text-secondary);">Re-generate embeddings for all saved summaries</div>
+                  </div>
+                  <button id="btn-rag-reindex-all" class="btn-secondary" type="button" style="padding: 6px 14px; font-size: var(--text-xs); font-weight: 600; border-radius: var(--radius-md); display: flex; align-items: center; gap: 6px; cursor: pointer; background: var(--bg-primary); border: 1px solid var(--border-light); color: var(--text-primary);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;">
+                      <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                    </svg>
+                    <span>Re-index all summaries</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <!-- List of Chats -->
-            <div style="display: flex; flex-direction: column; gap: 8px;">
-              <h3 style="font-size: var(--text-sm); font-weight: 600; color: var(--text-secondary); margin: 0;">Recent Chats Summary Status</h3>
-              <div id="smart-context-chats-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto; padding-right: 4px;">
+            <div style="display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; min-height: 120px;">
+              <h3 style="font-size: var(--text-sm); font-weight: 600; color: var(--text-secondary); margin: 0; flex-shrink: 0;">Recent Chats Summary Status</h3>
+              <div id="smart-context-chats-list" style="display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto; padding-right: 4px; flex: 1 1 auto;">
                 <!-- List will be dynamically populated -->
               </div>
             </div>
@@ -3772,230 +3817,463 @@
 
                 <!-- Generation Tab -->
                 <div id="tab-generation" class="tab-content">
-                  <div class="settings-grid">
-                    <div class="settings-section">
-                      <div class="presets-row-container">
-                        <h3>Presets</h3>
-                        <div class="preset-controls-group">
-                          <select id="generation-preset-select" class="form-control preset-select-control">
-                          </select>
-                          <button id="btn-add-generation-preset" class="btn-secondary small preset-btn-add" title="Save current settings as a new preset">Save As New</button>
-                          <button id="btn-reset-generation-preset" class="btn-secondary small preset-btn-reset" title="Reset current default preset to original values">Reset</button>
-                          <button id="btn-delete-generation-preset" class="btn-icon small text-error preset-btn-delete" title="Delete current preset">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                          </button>
-                        </div>
-                      </div>
-
-                      <div class="preset-mode-group" style="display: flex; gap: 8px; margin-top: 8px; margin-bottom: 4px; align-items: center; height: 28px;">
-                        <div id="generation-preset-mode-toggles" style="display: flex; background: var(--bg-tertiary); border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border-light); flex: 1; height: 100%; transition: opacity 0.2s;">
-                          <button id="btn-generation-preset-mode-none" class="preset-mode-btn active" style="flex: 1; border: none; background: var(--bg-secondary); color: var(--text-primary); cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s;">None</button>
-                          <button id="btn-generation-preset-mode-thinking" class="preset-mode-btn" style="flex: 1; border: none; border-left: 1px solid var(--border-light); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s;">Thinking</button>
-                        </div>
-                        <button id="btn-generation-preset-mode-sync" class="btn-icon small active" title="Sync settings between modes" style="width: 28px; height: 100%; background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-sm); color: var(--accent-primary); padding: 0; display: flex; align-items: center; justify-content: center; transition: all 0.2s;">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;">
-                            <polyline points="1 4 1 10 7 10"></polyline>
-                            <polyline points="23 20 23 14 17 14"></polyline>
-                            <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"></path>
+                  <div class="presets-row-container">
+                    <h3>Generation Presets</h3>
+                    <div class="preset-controls-group">
+                      <!-- Custom Generation Preset Dropdown -->
+                      <div class="custom-preset-dropdown-wrap" id="generation-preset-dropdown-wrap">
+                        <button type="button" class="custom-preset-trigger" id="btn-generation-preset-trigger">
+                          <span class="custom-preset-name" id="generation-preset-selected-name">Default</span>
+                          <svg class="custom-preset-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="6 9 12 15 18 9"></polyline>
                           </svg>
                         </button>
-                      </div>
+                        <div class="custom-preset-menu hidden" id="generation-preset-menu">
+                          <div class="custom-preset-menu-header">
+                            <div class="preset-search-wrap" id="generation-preset-search-wrap">
+                              <button type="button" class="preset-header-btn btn-preset-search-toggle" id="btn-generation-preset-search-toggle" title="Search presets">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;">
+                                  <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                </svg>
+                              </button>
+                              <input type="text" class="preset-search-input" id="generation-preset-search-input" placeholder="Search..." autocomplete="off" />
+                              <button type="button" class="preset-search-clear hidden" id="btn-generation-preset-search-clear" title="Clear search">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 11px; height: 11px;">
+                                  <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                              </button>
+                            </div>
+                            <button type="button" class="preset-header-btn btn-preset-sort-toggle" id="btn-generation-preset-sort-toggle" title="Sort order" data-sort="default">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;">
+                                <path d="M3 6h18M6 12h12M10 18h4"></path>
+                              </svg>
+                              <span class="sort-label" id="generation-preset-sort-label">Date</span>
+                            </button>
+                          </div>
+                          <div class="custom-preset-list" id="generation-preset-list"></div>
 
-                      <div class="form-group" style="margin-top: 12px; margin-bottom: 12px;">
-                        <label for="adv-setting-completion-mode" style="font-weight: 600;">Completion Mode</label>
-                        <select id="adv-setting-completion-mode" class="form-control" style="background: var(--bg-tertiary);">
-                          <option value="chat_completion">Chat Completion (Standard API)</option>
-                          <option value="text_completion">Text Completion (SillyTavern Prompt Engine)</option>
-                        </select>
-                      </div>
-
-                      <div id="text-completion-templates-group" style="display: none; flex-direction: column; gap: 8px; margin-bottom: 16px; padding: 12px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
-                        <div class="form-group" style="margin-bottom: 6px;">
-                          <label for="adv-setting-instruct-template-select" style="font-size: 12px;">Instruct Template</label>
-                          <select id="adv-setting-instruct-template-select" class="form-control" style="font-size: 12px;"></select>
+                          <!-- Multi-select Action Bar -->
+                          <div class="preset-selection-bar hidden" id="generation-preset-selection-bar">
+                            <div class="preset-selection-bar-left">
+                              <span class="preset-selection-count" id="generation-preset-selection-count">0 selected</span>
+                              <span class="preset-confirm-msg hidden" id="generation-preset-confirm-msg">Are you sure?</span>
+                            </div>
+                            <div class="preset-selection-bar-right">
+                              <button type="button" class="preset-selection-btn btn-preset-cancel-select" id="btn-generation-preset-cancel-select" title="Exit selection">Cancel</button>
+                              <button type="button" class="preset-selection-btn btn-preset-bulk-delete" id="btn-generation-preset-bulk-delete" title="Delete selected presets">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                <span class="btn-bulk-delete-text" id="generation-preset-bulk-delete-text">Delete</span>
+                              </button>
+                            </div>
+                          </div>
                         </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                          <label for="adv-setting-context-template-select" style="font-size: 12px;">Context Template</label>
-                          <select id="adv-setting-context-template-select" class="form-control" style="font-size: 12px;"></select>
-                        </div>
                       </div>
 
-                      <hr style="border: none; border-top: 1px solid var(--border-light); margin-bottom: 16px;">
-                      
-                      <h3>Model Parameters</h3>
-                      <div class="form-group">
-                        <label for="adv-setting-max-tokens">Max Tokens: <span id="adv-max-tokens-value">2048</span></label>
-                        <input type="range" id="adv-setting-max-tokens" min="1500" max="8000" step="50" value="2048" />
+                      <button id="btn-add-generation-preset" class="btn-secondary small preset-btn-add" title="Save current settings as a new preset">Save As New</button>
+                      <button id="btn-reset-generation-preset" class="btn-secondary small preset-btn-reset" title="Reset current default preset to original values">Reset</button>
+                      <button id="btn-delete-generation-preset" class="btn-icon small text-error preset-btn-delete" title="Delete current preset">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Preset Mode Switcher (Standard / Thinking + Sync) -->
+                  <div class="preset-mode-group">
+                    <div id="generation-preset-mode-toggles" class="preset-mode-toggles">
+                      <button id="btn-generation-preset-mode-none" class="preset-mode-btn active" title="Standard generation parameters">Standard</button>
+                      <button id="btn-generation-preset-mode-thinking" class="preset-mode-btn" title="Thinking mode parameters">Thinking</button>
+                    </div>
+                    <button id="btn-generation-preset-mode-sync" class="preset-mode-sync active" title="Synchronize Standard & Thinking settings">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;">
+                        <polyline points="1 4 1 10 7 10"></polyline>
+                        <polyline points="23 20 23 14 17 14"></polyline>
+                        <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"></path>
+                      </svg>
+                    </button>
+                  </div>
+
+                  <!-- 2-Column Sampler Dashboard Grid -->
+                  <div class="sampler-dashboard-grid">
+                    
+                    <!-- Card 1: Core Sampling & Entropy -->
+                    <div class="sampler-card">
+                      <div class="sampler-card-header">
+                        <h4 class="sampler-card-title">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                          <span>Core Sampling & Length</span>
+                        </h4>
                       </div>
-                      <div class="form-group">
-                        <label for="adv-setting-temperature">Temperature: <span id="adv-temperature-value">0.7</span></label>
-                        <input type="range" id="adv-setting-temperature" min="0" max="2" step="0.05" value="0.7" />
+
+                      <!-- Max Tokens -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-setting-max-tokens">Max Tokens</label>
+                          <span id="adv-max-tokens-value" class="sampler-badge">2048</span>
+                        </div>
+                        <input type="range" id="adv-setting-max-tokens" min="64" max="8192" step="32" value="2048" />
+                        <p class="sampler-hint">Maximum output tokens generated per turn.</p>
                       </div>
-                      <div class="form-group">
-                        <label for="adv-setting-top-p">Top-P: <span id="adv-top-p-value">0.90</span></label>
-                        <input type="range" id="adv-setting-top-p" min="0" max="1" step="0.01" value="0.9" />
+
+                      <!-- Min Tokens -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <div class="sampler-label-left">
+                            <label for="adv-setting-min-tokens">Min Tokens</label>
+                          </div>
+                          <div class="sampler-label-right">
+                            <span id="adv-min-tokens-value" class="sampler-badge">0</span>
+                            <label class="toggle-switch">
+                              <input type="checkbox" id="adv-setting-min-tokens-enabled" />
+                              <span class="toggle-slider"></span>
+                            </label>
+                          </div>
+                        </div>
+                        <input type="range" id="adv-setting-min-tokens" min="0" max="500" step="5" value="0" />
+                        <p class="sampler-hint">Guarantees minimum generation length before stopping.</p>
                       </div>
-                      <div class="form-group">
-                        <label for="adv-setting-top-k">Top-K: <span id="adv-top-k-value">40</span></label>
-                        <input type="range" id="adv-setting-top-k" min="0" max="200" step="1" value="40" />
+
+                      <!-- Temperature -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-setting-temperature">Temperature</label>
+                          <span id="adv-temperature-value" class="sampler-badge">0.70</span>
+                        </div>
+                        <input type="range" id="adv-setting-temperature" min="0" max="2" step="0.01" value="0.7" />
+                        <p class="sampler-hint">Controls randomness. Lower = focused & deterministic, higher = creative.</p>
                       </div>
-                      <div class="form-group">
-                        <label for="adv-setting-rep-penalty">Repetition Penalty: <span id="adv-rep-penalty-value">1.0</span></label>
-                        <input type="range" id="adv-setting-rep-penalty" min="1" max="2" step="0.01" value="1.0" />
-                      </div>
-                      <div class="form-group">
-                        <label for="adv-setting-smoothing-factor">Smoothing Factor: <span id="adv-smoothing-factor-value">0</span></label>
-                        <input type="range" id="adv-setting-smoothing-factor" min="0" max="5" step="0.05" value="0" />
-                        <p class="form-hint" style="margin-top: 4px; font-size: 11px;">Quadratic sampling. High values (1.5 - 2.5) stabilize high temperature generations.</p>
-                      </div>
-                      <hr style="border: none; border-top: 1px solid var(--border-light); margin-bottom: 16px;">
-                      
-                      <h3>Advanced Samplers</h3>
-                      <div class="form-group">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                          <label for="adv-setting-min-p" style="margin-bottom: 0;">Min-P: <span id="adv-min-p-value">0.05</span></label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
-                            <input type="checkbox" id="adv-setting-min-p-enabled" checked />
+
+                      <!-- DynaTemp Accordion -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-setting-dynatemp-enabled" style="font-weight: 600;">Dynamic Temperature (DynaTemp)</label>
+                          <label class="toggle-switch">
+                            <input type="checkbox" id="adv-setting-dynatemp-enabled" />
                             <span class="toggle-slider"></span>
                           </label>
+                        </div>
+                        <p class="sampler-hint">Dynamically scales temperature based on token entropy.</p>
+                        
+                        <div id="dynatemp-controls" class="sampler-nested-box">
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-dynatemp-min">Min Temp</label>
+                              <span id="adv-dynatemp-min-value" class="sampler-badge">0.65</span>
+                            </div>
+                            <input type="range" id="adv-setting-dynatemp-min" min="0" max="2" step="0.01" value="0.65" />
+                          </div>
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-dynatemp-max">Max Temp</label>
+                              <span id="adv-dynatemp-max-value" class="sampler-badge">1.35</span>
+                            </div>
+                            <input type="range" id="adv-setting-dynatemp-max" min="0" max="2" step="0.01" value="1.35" />
+                          </div>
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-dynatemp-range">Range</label>
+                              <span id="adv-dynatemp-range-value" class="sampler-badge">0.00</span>
+                            </div>
+                            <input type="range" id="adv-setting-dynatemp-range" min="0" max="2" step="0.01" value="0.00" />
+                          </div>
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-dynatemp-exponent">Exponent</label>
+                              <span id="adv-dynatemp-exponent-value" class="sampler-badge">1.00</span>
+                            </div>
+                            <input type="range" id="adv-setting-dynatemp-exponent" min="0" max="5" step="0.01" value="1.00" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Card 2: Probability & Truncation -->
+                    <div class="sampler-card">
+                      <div class="sampler-card-header">
+                        <h4 class="sampler-card-title">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/></svg>
+                          <span>Probability & Truncation</span>
+                        </h4>
+                      </div>
+
+                      <!-- Top-P -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-setting-top-p">Top-P (Nucleus)</label>
+                          <span id="adv-top-p-value" class="sampler-badge">0.90</span>
+                        </div>
+                        <input type="range" id="adv-setting-top-p" min="0" max="1" step="0.01" value="0.9" />
+                        <p class="sampler-hint">Samples only from tokens with cumulative probability &le; P.</p>
+                      </div>
+
+                      <!-- Top-K -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-setting-top-k">Top-K</label>
+                          <span id="adv-top-k-value" class="sampler-badge">40</span>
+                        </div>
+                        <input type="range" id="adv-setting-top-k" min="0" max="200" step="1" value="40" />
+                        <p class="sampler-hint">Limits choices to the K highest probability tokens (0 = disabled).</p>
+                      </div>
+
+                      <!-- Min-P -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <div class="sampler-label-left">
+                            <label for="adv-setting-min-p">Min-P</label>
+                          </div>
+                          <div class="sampler-label-right">
+                            <span id="adv-min-p-value" class="sampler-badge">0.05</span>
+                            <label class="toggle-switch">
+                              <input type="checkbox" id="adv-setting-min-p-enabled" checked />
+                              <span class="toggle-slider"></span>
+                            </label>
+                          </div>
                         </div>
                         <input type="range" id="adv-setting-min-p" min="0" max="1" step="0.01" value="0.05" />
+                        <p class="sampler-hint">Cuts tokens with probability &lt; Min-P &times; top token prob.</p>
                       </div>
-                      <div class="form-group">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                          <label for="adv-setting-adaptive-target" style="margin-bottom: 0;">Adaptive Target: <span id="adv-adaptive-target-value">0.80</span></label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
-                            <input type="checkbox" id="adv-setting-adaptive-target-enabled" checked />
-                            <span class="toggle-slider"></span>
-                          </label>
+
+                      <!-- Adaptive Target -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <div class="sampler-label-left">
+                            <label for="adv-setting-adaptive-target">Adaptive Target</label>
+                          </div>
+                          <div class="sampler-label-right">
+                            <span id="adv-adaptive-target-value" class="sampler-badge">0.80</span>
+                            <label class="toggle-switch">
+                              <input type="checkbox" id="adv-setting-adaptive-target-enabled" checked />
+                              <span class="toggle-slider"></span>
+                            </label>
+                          </div>
                         </div>
                         <input type="range" id="adv-setting-adaptive-target" min="0" max="1" step="0.01" value="0.80" />
                       </div>
-                      <div class="form-group">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                          <label for="adv-setting-adaptive-decay" style="margin-bottom: 0;">Adaptive Decay: <span id="adv-adaptive-decay-value">0.90</span></label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
-                            <input type="checkbox" id="adv-setting-adaptive-decay-enabled" checked />
-                            <span class="toggle-slider"></span>
-                          </label>
+
+                      <!-- Adaptive Decay -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <div class="sampler-label-left">
+                            <label for="adv-setting-adaptive-decay">Adaptive Decay</label>
+                          </div>
+                          <div class="sampler-label-right">
+                            <span id="adv-adaptive-decay-value" class="sampler-badge">0.90</span>
+                            <label class="toggle-switch">
+                              <input type="checkbox" id="adv-setting-adaptive-decay-enabled" checked />
+                              <span class="toggle-slider"></span>
+                            </label>
+                          </div>
                         </div>
                         <input type="range" id="adv-setting-adaptive-decay" min="0" max="1" step="0.01" value="0.90" />
                       </div>
-                      <div class="form-group">
-                        <label for="adv-setting-presence-penalty">Presence Penalty: <span id="adv-presence-penalty-value">0.00</span></label>
-                        <input type="range" id="adv-setting-presence-penalty" min="-2.0" max="2.0" step="0.05" value="0.00" />
-                      </div>
-                      
-                      <div class="form-group" style="margin-top: 12px; padding: 12px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                          <label for="adv-setting-dry-enabled" style="margin-bottom: 0; font-weight: 500; font-size: var(--text-sm);">Dry Sampler</label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
-                            <input type="checkbox" id="adv-setting-dry-enabled" />
-                            <span class="toggle-slider"></span>
-                          </label>
-                        </div>
-                        <div id="dry-sampler-controls" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
-                          <div class="form-group" style="margin-bottom: 8px;">
-                            <label for="adv-setting-dry-multiplier" style="font-size: 11px;">Multiplier: <span id="adv-dry-multiplier-value">0.8</span></label>
-                            <input type="range" id="adv-setting-dry-multiplier" min="0.0" max="2.0" step="0.05" value="0.8" />
+
+                      <!-- TFS (Tail Free Sampling) -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <div class="sampler-label-left">
+                            <label for="adv-setting-tfs">Tail Free Sampling (TFS)</label>
                           </div>
-                          <div class="form-group" style="margin-bottom: 8px;">
-                            <label for="adv-setting-dry-base" style="font-size: 11px;">Base: <span id="adv-dry-base-value">1.75</span></label>
-                            <input type="range" id="adv-setting-dry-base" min="1.0" max="3.0" step="0.05" value="1.75" />
+                          <div class="sampler-label-right">
+                            <span id="adv-tfs-value" class="sampler-badge">1.00</span>
+                            <label class="toggle-switch">
+                              <input type="checkbox" id="adv-setting-tfs-enabled" />
+                              <span class="toggle-slider"></span>
+                            </label>
                           </div>
-                          <div class="form-group" style="margin-bottom: 8px;">
-                            <label for="adv-setting-dry-allowed-length" style="font-size: 11px;">Allowed Length: <span id="adv-dry-allowed-length-value">2</span></label>
-                            <input type="range" id="adv-setting-dry-allowed-length" min="0" max="10" step="1" value="2" />
-                          </div>
-                          <div class="form-group" style="margin-bottom: 0;">
-                            <label for="adv-setting-dry-sequence-breakers" style="font-size: 11px; margin-bottom: 4px; display: block;">Sequence Breakers (JSON array)</label>
-                            <input type="text" id="adv-setting-dry-sequence-breakers" class="form-control" style="font-size: 11px; padding: 4px 8px; height: 28px;" value='["\n", ":", "\"", "*"]' />
-                          </div>
-                        </div>
-                      </div>
-
-                      <hr style="border: none; border-top: 1px solid var(--border-light); margin-bottom: 16px;">
-                      
-                      <h3>Reasoning Formatting</h3>
-                      <div class="form-group-row">
-                        <label>Force Reasoning</label>
-                        <label class="toggle-switch">
-                          <input type="checkbox" id="adv-setting-force-reasoning" />
-                          <span class="toggle-slider"></span>
-                        </label>
-                      </div>
-                      <div class="form-group">
-                        <label for="adv-setting-reasoning-open">Open Tag</label>
-                        <input type="text" id="adv-setting-reasoning-open" class="form-control" placeholder="<think>" />
-                      </div>
-                      <div class="form-group">
-                        <label for="adv-setting-reasoning-close">Close Tag</label>
-                        <input type="text" id="adv-setting-reasoning-close" class="form-control" placeholder="</think>" />
-                      </div>
-
-                      <hr style="border: none; border-top: 1px solid var(--border-light); margin: 20px 0 16px 0;">
-                      
-                      <h3>Extended Samplers</h3>
-
-                      <!-- Typical P -->
-                      <div class="form-group" style="margin-bottom: 10px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                          <label for="adv-setting-typical-p" style="margin-bottom: 0;">Typical P: <span id="adv-typical-p-value">1.00</span></label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
-                            <input type="checkbox" id="adv-setting-typical-p-enabled" />
-                            <span class="toggle-slider"></span>
-                          </label>
-                        </div>
-                        <input type="range" id="adv-setting-typical-p" min="0" max="1" step="0.01" value="1.00" />
-                      </div>
-
-                      <!-- Frequency Penalty -->
-                      <div class="form-group" style="margin-bottom: 10px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                          <label for="adv-setting-frequency-penalty" style="margin-bottom: 0;">Frequency Penalty: <span id="adv-frequency-penalty-value">0.00</span></label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
-                            <input type="checkbox" id="adv-setting-frequency-penalty-enabled" />
-                            <span class="toggle-slider"></span>
-                          </label>
-                        </div>
-                        <input type="range" id="adv-setting-frequency-penalty" min="-2.0" max="2.0" step="0.05" value="0.00" />
-                      </div>
-
-                      <!-- Top-A -->
-                      <div class="form-group" style="margin-bottom: 10px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                          <label for="adv-setting-top-a" style="margin-bottom: 0;">Top-A: <span id="adv-top-a-value">0.00</span></label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
-                            <input type="checkbox" id="adv-setting-top-a-enabled" />
-                            <span class="toggle-slider"></span>
-                          </label>
-                        </div>
-                        <input type="range" id="adv-setting-top-a" min="0" max="1" step="0.01" value="0.00" />
-                      </div>
-
-                      <!-- TFS -->
-                      <div class="form-group" style="margin-bottom: 10px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                          <label for="adv-setting-tfs" style="margin-bottom: 0;">Tail Free Sampling (TFS): <span id="adv-tfs-value">1.00</span></label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
-                            <input type="checkbox" id="adv-setting-tfs-enabled" />
-                            <span class="toggle-slider"></span>
-                          </label>
                         </div>
                         <input type="range" id="adv-setting-tfs" min="0" max="1" step="0.01" value="1.00" />
                       </div>
 
-                      <!-- Mirostat -->
-                      <div class="form-group" style="margin-bottom: 10px; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                          <label for="adv-setting-mirostat-enabled" style="margin-bottom: 0; font-weight: 500; font-size: var(--text-sm);">Mirostat Sampling</label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
+                      <!-- Top-A -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <div class="sampler-label-left">
+                            <label for="adv-setting-top-a">Top-A</label>
+                          </div>
+                          <div class="sampler-label-right">
+                            <span id="adv-top-a-value" class="sampler-badge">0.00</span>
+                            <label class="toggle-switch">
+                              <input type="checkbox" id="adv-setting-top-a-enabled" />
+                              <span class="toggle-slider"></span>
+                            </label>
+                          </div>
+                        </div>
+                        <input type="range" id="adv-setting-top-a" min="0" max="1" step="0.01" value="0.00" />
+                      </div>
+
+                      <!-- Typical P -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <div class="sampler-label-left">
+                            <label for="adv-setting-typical-p">Typical P</label>
+                          </div>
+                          <div class="sampler-label-right">
+                            <span id="adv-typical-p-value" class="sampler-badge">1.00</span>
+                            <label class="toggle-switch">
+                              <input type="checkbox" id="adv-setting-typical-p-enabled" />
+                              <span class="toggle-slider"></span>
+                            </label>
+                          </div>
+                        </div>
+                        <input type="range" id="adv-setting-typical-p" min="0" max="1" step="0.01" value="1.00" />
+                      </div>
+
+                      <!-- Top N-Sigma -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <div class="sampler-label-left">
+                            <label for="adv-setting-top-n-sigma">Top N-Sigma</label>
+                          </div>
+                          <div class="sampler-label-right">
+                            <span id="adv-top-n-sigma-value" class="sampler-badge">0.00</span>
+                            <label class="toggle-switch">
+                              <input type="checkbox" id="adv-setting-top-n-sigma-enabled" />
+                              <span class="toggle-slider"></span>
+                            </label>
+                          </div>
+                        </div>
+                        <input type="range" id="adv-setting-top-n-sigma" min="0" max="5" step="0.05" value="0.00" />
+                      </div>
+                    </div>
+
+                    <!-- Card 3: Repetition & Variety -->
+                    <div class="sampler-card">
+                      <div class="sampler-card-header">
+                        <h4 class="sampler-card-title">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                          <span>Repetition & Penalties</span>
+                        </h4>
+                      </div>
+
+                      <!-- Repetition Penalty -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-setting-rep-penalty">Repetition Penalty</label>
+                          <span id="adv-rep-penalty-value" class="sampler-badge">1.00</span>
+                        </div>
+                        <input type="range" id="adv-setting-rep-penalty" min="1" max="2" step="0.01" value="1.0" />
+                        <p class="sampler-hint">Penalizes repeatedly generated tokens (1.0 = inactive).</p>
+                      </div>
+
+                      <!-- Rep Penalty Range & Slope Accordion -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-setting-rep-pen-range-enabled" style="font-weight: 600;">Rep Penalty Range & Slope</label>
+                          <label class="toggle-switch">
+                            <input type="checkbox" id="adv-setting-rep-pen-range-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        
+                        <div id="rep-pen-range-controls" class="sampler-nested-box">
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-rep-pen-range">Range (Tokens)</label>
+                              <span id="adv-rep-pen-range-value" class="sampler-badge">0</span>
+                            </div>
+                            <input type="range" id="adv-setting-rep-pen-range" min="0" max="4096" step="32" value="0" />
+                          </div>
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-rep-pen-slope">Slope</label>
+                              <span id="adv-rep-pen-slope-value" class="sampler-badge">1.00</span>
+                            </div>
+                            <input type="range" id="adv-setting-rep-pen-slope" min="0" max="5" step="0.1" value="1.0" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Presence Penalty -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-setting-presence-penalty">Presence Penalty</label>
+                          <span id="adv-presence-penalty-value" class="sampler-badge">0.00</span>
+                        </div>
+                        <input type="range" id="adv-setting-presence-penalty" min="-2.0" max="2.0" step="0.05" value="0.00" />
+                        <p class="sampler-hint">Encourages introducing new words regardless of frequency.</p>
+                      </div>
+
+                      <!-- Frequency Penalty -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <div class="sampler-label-left">
+                            <label for="adv-setting-frequency-penalty">Frequency Penalty</label>
+                          </div>
+                          <div class="sampler-label-right">
+                            <span id="adv-frequency-penalty-value" class="sampler-badge">0.00</span>
+                            <label class="toggle-switch">
+                              <input type="checkbox" id="adv-setting-frequency-penalty-enabled" />
+                              <span class="toggle-slider"></span>
+                            </label>
+                          </div>
+                        </div>
+                        <input type="range" id="adv-setting-frequency-penalty" min="-2.0" max="2.0" step="0.05" value="0.00" />
+                        <p class="sampler-hint">Penalizes tokens proportional to how often they have appeared.</p>
+                      </div>
+
+                      <!-- Dry Sampler Accordion -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-setting-dry-enabled" style="font-weight: 600;">DRY Sampler (Don't Repeat Yourself)</label>
+                          <label class="toggle-switch">
+                            <input type="checkbox" id="adv-setting-dry-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <p class="sampler-hint">Advanced n-gram repetition breaker designed for local LLMs.</p>
+                        
+                        <div id="dry-sampler-controls" class="sampler-nested-box">
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-dry-multiplier">Multiplier</label>
+                              <span id="adv-dry-multiplier-value" class="sampler-badge">0.80</span>
+                            </div>
+                            <input type="range" id="adv-setting-dry-multiplier" min="0.0" max="2.0" step="0.05" value="0.8" />
+                          </div>
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-dry-base">Base</label>
+                              <span id="adv-dry-base-value" class="sampler-badge">1.75</span>
+                            </div>
+                            <input type="range" id="adv-setting-dry-base" min="1.0" max="3.0" step="0.05" value="1.75" />
+                          </div>
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-dry-allowed-length">Allowed Length</label>
+                              <span id="adv-dry-allowed-length-value" class="sampler-badge">2</span>
+                            </div>
+                            <input type="range" id="adv-setting-dry-allowed-length" min="0" max="10" step="1" value="2" />
+                          </div>
+                          <div class="sampler-control-row">
+                            <label for="adv-setting-dry-sequence-breakers" style="font-size: 11px;">Sequence Breakers (JSON array)</label>
+                            <input type="text" id="adv-setting-dry-sequence-breakers" class="sampler-inline-input" value='["\n", ":", "\"", "*"]' />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Card 4: Expert & Guidance -->
+                    <div class="sampler-card">
+                      <div class="sampler-card-header">
+                        <h4 class="sampler-card-title">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                          <span>Expert Samplers & Guidance</span>
+                        </h4>
+                      </div>
+
+                      <!-- Mirostat Accordion -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-setting-mirostat-enabled" style="font-weight: 600;">Mirostat Sampling</label>
+                          <label class="toggle-switch">
                             <input type="checkbox" id="adv-setting-mirostat-enabled" />
                             <span class="toggle-slider"></span>
                           </label>
                         </div>
-                        <div id="mirostat-controls" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
-                          <div class="form-group" style="margin-bottom: 6px;">
+                        <p class="sampler-hint">Adaptive algorithm that regulates output entropy / perplexity.</p>
+                        
+                        <div id="mirostat-controls" class="sampler-nested-box">
+                          <div class="sampler-control-row">
                             <label for="adv-setting-mirostat-mode" style="font-size: 11px;">Mirostat Mode</label>
                             <select id="adv-setting-mirostat-mode" class="form-control" style="font-size: 11px; padding: 4px 8px; height: 28px;">
                               <option value="0">Disabled (0)</option>
@@ -4003,382 +4281,627 @@
                               <option value="2">Mirostat 2.0 (2)</option>
                             </select>
                           </div>
-                          <div class="form-group" style="margin-bottom: 6px;">
-                            <label for="adv-setting-mirostat-tau" style="font-size: 11px;">Mirostat Tau: <span id="adv-mirostat-tau-value">5.0</span></label>
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-mirostat-tau">Tau (Target Entropy)</label>
+                              <span id="adv-mirostat-tau-value" class="sampler-badge">5.0</span>
+                            </div>
                             <input type="range" id="adv-setting-mirostat-tau" min="0" max="10" step="0.1" value="5.0" />
                           </div>
-                          <div class="form-group" style="margin-bottom: 0;">
-                            <label for="adv-setting-mirostat-eta" style="font-size: 11px;">Mirostat Eta: <span id="adv-mirostat-eta-value">0.10</span></label>
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-mirostat-eta">Eta (Learning Rate)</label>
+                              <span id="adv-mirostat-eta-value" class="sampler-badge">0.10</span>
+                            </div>
                             <input type="range" id="adv-setting-mirostat-eta" min="0" max="1" step="0.01" value="0.10" />
                           </div>
                         </div>
                       </div>
 
-                      <!-- XTC -->
-                      <div class="form-group" style="margin-bottom: 10px; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                          <label for="adv-setting-xtc-enabled" style="margin-bottom: 0; font-weight: 500; font-size: var(--text-sm);">XTC Sampler</label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
+                      <!-- XTC Accordion -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-setting-xtc-enabled" style="font-weight: 600;">XTC Sampler (Exclude Top Choices)</label>
+                          <label class="toggle-switch">
                             <input type="checkbox" id="adv-setting-xtc-enabled" />
                             <span class="toggle-slider"></span>
                           </label>
                         </div>
-                        <div id="xtc-controls" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
-                          <div class="form-group" style="margin-bottom: 6px;">
-                            <label for="adv-setting-xtc-threshold" style="font-size: 11px;">Threshold: <span id="adv-xtc-threshold-value">0.10</span></label>
+                        <p class="sampler-hint">Forces creative word choices by removing top-probability tokens.</p>
+                        
+                        <div id="xtc-controls" class="sampler-nested-box">
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-xtc-threshold">Threshold</label>
+                              <span id="adv-xtc-threshold-value" class="sampler-badge">0.10</span>
+                            </div>
                             <input type="range" id="adv-setting-xtc-threshold" min="0" max="1" step="0.01" value="0.10" />
                           </div>
-                          <div class="form-group" style="margin-bottom: 0;">
-                            <label for="adv-setting-xtc-probability" style="font-size: 11px;">Probability: <span id="adv-xtc-probability-value">0.00</span></label>
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-xtc-probability">Probability</label>
+                              <span id="adv-xtc-probability-value" class="sampler-badge">0.00</span>
+                            </div>
                             <input type="range" id="adv-setting-xtc-probability" min="0" max="1" step="0.01" value="0.00" />
                           </div>
                         </div>
                       </div>
 
-                      <!-- DynaTemp -->
-                      <div class="form-group" style="margin-bottom: 10px; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                          <label for="adv-setting-dynatemp-enabled" style="margin-bottom: 0; font-weight: 500; font-size: var(--text-sm);">DynaTemp</label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
-                            <input type="checkbox" id="adv-setting-dynatemp-enabled" />
-                            <span class="toggle-slider"></span>
-                          </label>
+                      <!-- Smoothing Factor -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-setting-smoothing-factor">Smoothing Factor</label>
+                          <span id="adv-smoothing-factor-value" class="sampler-badge">0.00</span>
                         </div>
-                        <div id="dynatemp-controls" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
-                          <div class="form-group" style="margin-bottom: 6px;">
-                            <label for="adv-setting-dynatemp-min" style="font-size: 11px;">Min Temp: <span id="adv-dynatemp-min-value">0.65</span></label>
-                            <input type="range" id="adv-setting-dynatemp-min" min="0" max="2" step="0.01" value="0.65" />
-                          </div>
-                          <div class="form-group" style="margin-bottom: 6px;">
-                            <label for="adv-setting-dynatemp-max" style="font-size: 11px;">Max Temp: <span id="adv-dynatemp-max-value">1.35</span></label>
-                            <input type="range" id="adv-setting-dynatemp-max" min="0" max="2" step="0.01" value="1.35" />
-                          </div>
-                          <div class="form-group" style="margin-bottom: 6px;">
-                            <label for="adv-setting-dynatemp-range" style="font-size: 11px;">DynaTemp Range: <span id="adv-dynatemp-range-value">0.00</span></label>
-                            <input type="range" id="adv-setting-dynatemp-range" min="0" max="2" step="0.01" value="0.00" />
-                          </div>
-                          <div class="form-group" style="margin-bottom: 0;">
-                            <label for="adv-setting-dynatemp-exponent" style="font-size: 11px;">Exponent: <span id="adv-dynatemp-exponent-value">1.00</span></label>
-                            <input type="range" id="adv-setting-dynatemp-exponent" min="0" max="5" step="0.01" value="1.00" />
-                          </div>
-                        </div>
+                        <input type="range" id="adv-setting-smoothing-factor" min="0" max="5" step="0.05" value="0" />
+                        <p class="sampler-hint">Quadratic curve sampling. Stabilizes high temperature generations (1.5 - 2.5).</p>
                       </div>
 
-                      <!-- Top N-Sigma -->
-                      <div class="form-group" style="margin-bottom: 10px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                          <label for="adv-setting-top-n-sigma" style="margin-bottom: 0;">Top N-Sigma: <span id="adv-top-n-sigma-value">0.00</span></label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
-                            <input type="checkbox" id="adv-setting-top-n-sigma-enabled" />
-                            <span class="toggle-slider"></span>
-                          </label>
-                        </div>
-                        <input type="range" id="adv-setting-top-n-sigma" min="0" max="5" step="0.05" value="0.00" />
-                      </div>
-
-                      <!-- Repetition Penalty Range & Slope -->
-                      <div class="form-group" style="margin-bottom: 10px; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                          <label for="adv-setting-rep-pen-range-enabled" style="margin-bottom: 0; font-weight: 500; font-size: var(--text-sm);">Rep Penalty Range & Slope</label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
-                            <input type="checkbox" id="adv-setting-rep-pen-range-enabled" />
-                            <span class="toggle-slider"></span>
-                          </label>
-                        </div>
-                        <div id="rep-pen-range-controls" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
-                          <div class="form-group" style="margin-bottom: 6px;">
-                            <label for="adv-setting-rep-pen-range" style="font-size: 11px;">Range (Tokens): <span id="adv-rep-pen-range-value">0</span></label>
-                            <input type="range" id="adv-setting-rep-pen-range" min="0" max="4096" step="32" value="0" />
-                          </div>
-                          <div class="form-group" style="margin-bottom: 0;">
-                            <label for="adv-setting-rep-pen-slope" style="font-size: 11px;">Slope: <span id="adv-rep-pen-slope-value">1.0</span></label>
-                            <input type="range" id="adv-setting-rep-pen-slope" min="0" max="5" step="0.1" value="1.0" />
-                          </div>
-                        </div>
-                      </div>
-
-                      <!-- Min Tokens -->
-                      <div class="form-group" style="margin-bottom: 10px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                          <label for="adv-setting-min-tokens" style="margin-bottom: 0;">Min Tokens: <span id="adv-min-tokens-value">0</span></label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
-                            <input type="checkbox" id="adv-setting-min-tokens-enabled" />
-                            <span class="toggle-slider"></span>
-                          </label>
-                        </div>
-                        <input type="range" id="adv-setting-min-tokens" min="0" max="500" step="5" value="0" />
-                      </div>
-
-                      <!-- Guidance Scale (CFG) & Negative Prompt -->
-                      <div class="form-group" style="margin-bottom: 10px; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                          <label for="adv-setting-guidance-scale-enabled" style="margin-bottom: 0; font-weight: 500; font-size: var(--text-sm);">Classifier-Free Guidance (CFG)</label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
+                      <!-- CFG Accordion -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-setting-guidance-scale-enabled" style="font-weight: 600;">Classifier-Free Guidance (CFG)</label>
+                          <label class="toggle-switch">
                             <input type="checkbox" id="adv-setting-guidance-scale-enabled" />
                             <span class="toggle-slider"></span>
                           </label>
                         </div>
-                        <div id="guidance-scale-controls" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
-                          <div class="form-group" style="margin-bottom: 6px;">
-                            <label for="adv-setting-guidance-scale" style="font-size: 11px;">Guidance Scale: <span id="adv-guidance-scale-value">1.0</span></label>
+                        
+                        <div id="guidance-scale-controls" class="sampler-nested-box">
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-guidance-scale">Guidance Scale</label>
+                              <span id="adv-guidance-scale-value" class="sampler-badge">1.00</span>
+                            </div>
                             <input type="range" id="adv-setting-guidance-scale" min="1.0" max="3.0" step="0.05" value="1.0" />
                           </div>
-                          <div class="form-group" style="margin-bottom: 0;">
-                            <label for="adv-setting-negative-prompt" style="font-size: 11px; margin-bottom: 4px; display: block;">Negative Prompt</label>
-                            <input type="text" id="adv-setting-negative-prompt" class="form-control" style="font-size: 11px; padding: 4px 8px; height: 28px;" placeholder="Negative text prompt..." />
+                          <div class="sampler-control-row">
+                            <label for="adv-setting-negative-prompt" style="font-size: 11px;">Negative Prompt</label>
+                            <input type="text" id="adv-setting-negative-prompt" class="sampler-inline-input" placeholder="Negative text prompt..." />
                           </div>
                         </div>
                       </div>
-
-                      <!-- Ignore EOS & Banned Strings -->
-                      <div class="form-group-row" style="margin-bottom: 10px;">
-                        <label for="adv-setting-ignore-eos">Ignore EOS Token</label>
-                        <label class="toggle-switch">
-                          <input type="checkbox" id="adv-setting-ignore-eos" />
-                          <span class="toggle-slider"></span>
-                        </label>
-                      </div>
-
-                      <div class="form-group" style="margin-bottom: 10px;">
-                        <label for="adv-setting-banned-strings">Banned Strings (comma separated)</label>
-                        <input type="text" id="adv-setting-banned-strings" class="form-control" placeholder='e.g. "As an AI", "In conclusion"' />
-                      </div>
                     </div>
-                  </div>
-                </div>
 
-                <!-- GenAI Generation Tab -->
-                <div id="tab-genai-generation" class="tab-content">
-                  <div class="settings-grid">
-                    <div class="settings-section">
-                      <div class="presets-row-container">
-                        <h3>GenAI Presets</h3>
-                        <div class="preset-controls-group">
-                          <select id="genai-preset-select" class="form-control preset-select-control">
-                          </select>
-                          <button id="btn-add-genai-preset" class="btn-secondary small preset-btn-add" title="Save current settings as a new preset">Save As New</button>
-                          <button id="btn-reset-genai-preset" class="btn-secondary small preset-btn-reset" title="Reset current default preset to original values">Reset</button>
-                          <button id="btn-delete-genai-preset" class="btn-icon small text-error preset-btn-delete" title="Delete current preset">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                          </button>
-                        </div>
+                    <!-- Card 5: Completion Engine & Templates (Full Width) -->
+                    <div class="sampler-card sampler-card-full">
+                      <div class="sampler-card-header">
+                        <h4 class="sampler-card-title">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                          <span>Engine & Templates</span>
+                        </h4>
                       </div>
 
-                      <div class="preset-mode-group" style="display: flex; gap: 8px; margin-top: 8px; margin-bottom: 4px; align-items: center; height: 28px;">
-                        <div id="preset-mode-toggles" style="display: flex; background: var(--bg-tertiary); border-radius: var(--radius-sm); overflow: hidden; border: 1px solid var(--border-light); flex: 1; height: 100%; transition: opacity 0.2s;">
-                          <button id="btn-preset-mode-none" class="preset-mode-btn active" style="flex: 1; border: none; background: var(--bg-secondary); color: var(--text-primary); cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s;">None</button>
-                          <button id="btn-preset-mode-thinking" class="preset-mode-btn" style="flex: 1; border: none; border-left: 1px solid var(--border-light); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.2s;">Thinking</button>
-                        </div>
-                        <button id="btn-preset-mode-sync" class="btn-icon small active" title="Sync settings between modes" style="width: 28px; height: 100%; background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-sm); color: var(--accent-primary); padding: 0; display: flex; align-items: center; justify-content: center; transition: all 0.2s;">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;">
-                            <polyline points="1 4 1 10 7 10"></polyline>
-                            <polyline points="23 20 23 14 17 14"></polyline>
-                            <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"></path>
-                          </svg>
-                        </button>
-                      </div>
-
-                      <div class="form-group" style="margin-top: 12px; margin-bottom: 12px;">
-                        <label for="adv-setting-genai-completion-mode" style="font-weight: 600;">GenAI Completion Mode</label>
-                        <select id="adv-setting-genai-completion-mode" class="form-control" style="background: var(--bg-tertiary);">
+                      <div class="sampler-control-row">
+                        <label for="adv-setting-completion-mode" style="font-weight: 600;">Completion Mode</label>
+                        <select id="adv-setting-completion-mode" class="form-control" style="background: var(--bg-tertiary);">
                           <option value="chat_completion">Chat Completion (Standard API)</option>
                           <option value="text_completion">Text Completion (SillyTavern Prompt Engine)</option>
                         </select>
                       </div>
 
-                      <div id="genai-text-completion-templates-group" style="display: none; flex-direction: column; gap: 8px; margin-bottom: 16px; padding: 12px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
-                        <div class="form-group" style="margin-bottom: 6px;">
-                          <label for="adv-setting-genai-instruct-template-select" style="font-size: 12px;">Instruct Template</label>
-                          <select id="adv-setting-genai-instruct-template-select" class="form-control" style="font-size: 12px;"></select>
+                      <div id="text-completion-templates-group" class="sampler-nested-box">
+                        <div class="sampler-control-row">
+                          <label for="adv-setting-instruct-template-select" style="font-size: 12px;">Instruct Template</label>
+                          <select id="adv-setting-instruct-template-select" class="form-control" style="font-size: 12px;"></select>
                         </div>
-                        <div class="form-group" style="margin-bottom: 0;">
-                          <label for="adv-setting-genai-context-template-select" style="font-size: 12px;">Context Template</label>
-                          <select id="adv-setting-genai-context-template-select" class="form-control" style="font-size: 12px;"></select>
+                        <div class="sampler-control-row">
+                          <label for="adv-setting-context-template-select" style="font-size: 12px;">Context Template</label>
+                          <select id="adv-setting-context-template-select" class="form-control" style="font-size: 12px;"></select>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Card 6: Reasoning & Constraints (Full Width) -->
+                    <div class="sampler-card sampler-card-full">
+                      <div class="sampler-card-header">
+                        <h4 class="sampler-card-title">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                          <span>Reasoning Formatting & Constraints</span>
+                        </h4>
+                      </div>
+
+                      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
+                        <!-- Reasoning Section -->
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                          <div class="sampler-label-wrap">
+                            <label for="adv-setting-force-reasoning" style="font-weight: 600;">Force Reasoning Tags</label>
+                            <label class="toggle-switch">
+                              <input type="checkbox" id="adv-setting-force-reasoning" />
+                              <span class="toggle-slider"></span>
+                            </label>
+                          </div>
+                          <div style="display: flex; gap: 8px;">
+                            <div style="flex: 1;">
+                              <label for="adv-setting-reasoning-open" style="font-size: 11px; color: var(--text-tertiary);">Open Tag</label>
+                              <input type="text" id="adv-setting-reasoning-open" class="sampler-inline-input" placeholder="<think>" />
+                            </div>
+                            <div style="flex: 1;">
+                              <label for="adv-setting-reasoning-close" style="font-size: 11px; color: var(--text-tertiary);">Close Tag</label>
+                              <input type="text" id="adv-setting-reasoning-close" class="sampler-inline-input" placeholder="</think>" />
+                            </div>
+                          </div>
+                        </div>
+
+                        <!-- Constraints Section -->
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                          <div class="sampler-label-wrap">
+                            <label for="adv-setting-ignore-eos" style="font-weight: 600;">Ignore EOS Token</label>
+                            <label class="toggle-switch">
+                              <input type="checkbox" id="adv-setting-ignore-eos" />
+                              <span class="toggle-slider"></span>
+                            </label>
+                          </div>
+                          <div>
+                            <label for="adv-setting-banned-strings" style="font-size: 11px; color: var(--text-tertiary);">Banned Strings (comma separated)</label>
+                            <input type="text" id="adv-setting-banned-strings" class="sampler-inline-input" placeholder='e.g. "As an AI", "In conclusion"' />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+                </div>
+
+                <!-- GenAI Generation Tab -->
+                <div id="tab-genai-generation" class="tab-content">
+                  <div class="presets-row-container">
+                    <h3>GenAI Presets</h3>
+                    <div class="preset-controls-group">
+                      <!-- Custom GenAI Preset Dropdown -->
+                      <div class="custom-preset-dropdown-wrap" id="genai-preset-dropdown-wrap">
+                        <button type="button" class="custom-preset-trigger" id="btn-genai-preset-trigger">
+                          <span class="custom-preset-name" id="genai-preset-selected-name">Default</span>
+                          <svg class="custom-preset-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                          </svg>
+                        </button>
+                        <div class="custom-preset-menu hidden" id="genai-preset-menu">
+                          <div class="custom-preset-menu-header">
+                            <div class="preset-search-wrap" id="genai-preset-search-wrap">
+                              <button type="button" class="preset-header-btn btn-preset-search-toggle" id="btn-genai-preset-search-toggle" title="Search presets">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;">
+                                  <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                </svg>
+                              </button>
+                              <input type="text" class="preset-search-input" id="genai-preset-search-input" placeholder="Search..." autocomplete="off" />
+                              <button type="button" class="preset-search-clear hidden" id="btn-genai-preset-search-clear" title="Clear search">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 11px; height: 11px;">
+                                  <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                              </button>
+                            </div>
+                            <button type="button" class="preset-header-btn btn-preset-sort-toggle" id="btn-genai-preset-sort-toggle" title="Sort order" data-sort="default">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;">
+                                <path d="M3 6h18M6 12h12M10 18h4"></path>
+                              </svg>
+                              <span class="sort-label" id="genai-preset-sort-label">Date</span>
+                            </button>
+                          </div>
+                          <div class="custom-preset-list" id="genai-preset-list"></div>
+
+                          <!-- Multi-select Action Bar -->
+                          <div class="preset-selection-bar hidden" id="genai-preset-selection-bar">
+                            <div class="preset-selection-bar-left">
+                              <span class="preset-selection-count" id="genai-preset-selection-count">0 selected</span>
+                              <span class="preset-confirm-msg hidden" id="genai-preset-confirm-msg">Are you sure?</span>
+                            </div>
+                            <div class="preset-selection-bar-right">
+                              <button type="button" class="preset-selection-btn btn-preset-cancel-select" id="btn-genai-preset-cancel-select" title="Exit selection">Cancel</button>
+                              <button type="button" class="preset-selection-btn btn-preset-bulk-delete" id="btn-genai-preset-bulk-delete" title="Delete selected presets">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                <span class="btn-bulk-delete-text" id="genai-preset-bulk-delete-text">Delete</span>
+                              </button>
+                            </div>
+                          </div>
                         </div>
                       </div>
 
-                      <hr style="border: none; border-top: 1px solid var(--border-light); margin-bottom: 16px;">
-                      
-                      <h3>GenAI Parameters</h3>
-                      <div class="form-group">
-                        <label for="adv-setting-genai-max-tokens">Max Tokens: <span id="adv-genai-max-tokens-value">2048</span></label>
-                        <input type="range" id="adv-setting-genai-max-tokens" min="150" max="8000" step="50" value="2048" />
+                      <button id="btn-add-genai-preset" class="btn-secondary small preset-btn-add" title="Save current settings as a new preset">Save As New</button>
+                      <button id="btn-reset-genai-preset" class="btn-secondary small preset-btn-reset" title="Reset current default preset to original values">Reset</button>
+                      <button id="btn-delete-genai-preset" class="btn-icon small text-error preset-btn-delete" title="Delete current preset">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- Preset Mode Switcher (Standard / Thinking + Sync) -->
+                  <div class="preset-mode-group">
+                    <div id="preset-mode-toggles" class="preset-mode-toggles">
+                      <button id="btn-preset-mode-none" class="preset-mode-btn active" title="Standard GenAI parameters">Standard</button>
+                      <button id="btn-preset-mode-thinking" class="preset-mode-btn" title="Thinking mode GenAI parameters">Thinking</button>
+                    </div>
+                    <button id="btn-preset-mode-sync" class="preset-mode-sync active" title="Synchronize Standard & Thinking settings">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 14px; height: 14px;">
+                        <polyline points="1 4 1 10 7 10"></polyline>
+                        <polyline points="23 20 23 14 17 14"></polyline>
+                        <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"></path>
+                      </svg>
+                    </button>
+                  </div>
+
+                  <!-- 2-Column Sampler Dashboard Grid -->
+                  <div class="sampler-dashboard-grid">
+                    
+                    <!-- Card 1: Core Sampling & Entropy -->
+                    <div class="sampler-card">
+                      <div class="sampler-card-header">
+                        <h4 class="sampler-card-title">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                          <span>GenAI Core Sampling & Length</span>
+                        </h4>
                       </div>
-                      <div class="form-group">
-                        <label for="adv-setting-genai-temperature">Temperature: <span id="adv-genai-temperature-value">0.7</span></label>
-                        <input type="range" id="adv-setting-genai-temperature" min="0" max="2" step="0.05" value="0.7" />
+
+                      <!-- Max Tokens -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-setting-genai-max-tokens">Max Tokens</label>
+                          <span id="adv-genai-max-tokens-value" class="sampler-badge">2048</span>
+                        </div>
+                        <input type="range" id="adv-setting-genai-max-tokens" min="64" max="8192" step="32" value="2048" />
+                        <p class="sampler-hint">Maximum output tokens for assistant replies.</p>
                       </div>
-                      <div class="form-group">
-                        <label for="adv-setting-genai-top-p">Top-P: <span id="adv-genai-top-p-value">0.90</span></label>
-                        <input type="range" id="adv-setting-genai-top-p" min="0" max="1" step="0.01" value="0.9" />
+
+                      <!-- Min Tokens -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <div class="sampler-label-left">
+                            <label for="adv-setting-genai-min-tokens">Min Tokens</label>
+                          </div>
+                          <div class="sampler-label-right">
+                            <span id="adv-genai-min-tokens-value" class="sampler-badge">0</span>
+                            <label class="toggle-switch">
+                              <input type="checkbox" id="adv-setting-genai-min-tokens-enabled" />
+                              <span class="toggle-slider"></span>
+                            </label>
+                          </div>
+                        </div>
+                        <input type="range" id="adv-setting-genai-min-tokens" min="0" max="500" step="5" value="0" />
+                        <p class="sampler-hint">Guarantees minimum generation length before stopping.</p>
                       </div>
-                      <div class="form-group">
-                        <label for="adv-setting-genai-top-k">Top-K: <span id="adv-genai-top-k-value">40</span></label>
-                        <input type="range" id="adv-setting-genai-top-k" min="0" max="200" step="1" value="40" />
+
+                      <!-- Temperature -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-setting-genai-temperature">Temperature</label>
+                          <span id="adv-genai-temperature-value" class="sampler-badge">0.70</span>
+                        </div>
+                        <input type="range" id="adv-setting-genai-temperature" min="0" max="2" step="0.01" value="0.7" />
+                        <p class="sampler-hint">Controls randomness for assistant output.</p>
                       </div>
-                      <div class="form-group">
-                        <label for="adv-setting-genai-rep-penalty">Repetition Penalty: <span id="adv-genai-rep-penalty-value">1.0</span></label>
-                        <input type="range" id="adv-setting-genai-rep-penalty" min="1" max="2" step="0.01" value="1.0" />
-                      </div>
-                      <div class="form-group">
-                        <label for="adv-setting-genai-smoothing-factor">Smoothing Factor: <span id="adv-genai-smoothing-factor-value">0</span></label>
-                        <input type="range" id="adv-setting-genai-smoothing-factor" min="0" max="5" step="0.05" value="0" />
-                        <p class="form-hint" style="margin-top: 4px; font-size: 11px;">Quadratic sampling for GenAI requests.</p>
-                      </div>
-                      <hr style="border: none; border-top: 1px solid var(--border-light); margin-bottom: 16px;">
-                      
-                      <h3>Advanced Samplers</h3>
-                      <div class="form-group">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                          <label for="adv-setting-genai-min-p" style="margin-bottom: 0;">Min-P: <span id="adv-genai-min-p-value">0.05</span></label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
-                            <input type="checkbox" id="adv-setting-genai-min-p-enabled" checked />
+
+                      <!-- DynaTemp Accordion -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-setting-genai-dynatemp-enabled" style="font-weight: 600;">Dynamic Temperature (DynaTemp)</label>
+                          <label class="toggle-switch">
+                            <input type="checkbox" id="adv-setting-genai-dynatemp-enabled" />
                             <span class="toggle-slider"></span>
                           </label>
                         </div>
-                        <input type="range" id="adv-setting-genai-min-p" min="0" max="1" step="0.01" value="0.05" />
+                        <p class="sampler-hint">Dynamically scales temperature based on token entropy.</p>
+                        
+                        <div id="genai-dynatemp-controls" class="sampler-nested-box">
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-genai-dynatemp-min">Min Temp</label>
+                              <span id="adv-genai-dynatemp-min-value" class="sampler-badge">0.65</span>
+                            </div>
+                            <input type="range" id="adv-setting-genai-dynatemp-min" min="0" max="2" step="0.01" value="0.65" />
+                          </div>
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-genai-dynatemp-max">Max Temp</label>
+                              <span id="adv-genai-dynatemp-max-value" class="sampler-badge">1.35</span>
+                            </div>
+                            <input type="range" id="adv-setting-genai-dynatemp-max" min="0" max="2" step="0.01" value="1.35" />
+                          </div>
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-genai-dynatemp-range">Range</label>
+                              <span id="adv-genai-dynatemp-range-value" class="sampler-badge">0.00</span>
+                            </div>
+                            <input type="range" id="adv-setting-genai-dynatemp-range" min="0" max="2" step="0.01" value="0.00" />
+                          </div>
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-genai-dynatemp-exponent">Exponent</label>
+                              <span id="adv-genai-dynatemp-exponent-value" class="sampler-badge">1.00</span>
+                            </div>
+                            <input type="range" id="adv-setting-genai-dynatemp-exponent" min="0" max="5" step="0.01" value="1.00" />
+                          </div>
+                        </div>
                       </div>
-                      <div class="form-group">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                          <label for="adv-setting-genai-adaptive-target" style="margin-bottom: 0;">Adaptive Target: <span id="adv-genai-adaptive-target-value">0.80</span></label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
-                            <input type="checkbox" id="adv-setting-genai-adaptive-target-enabled" checked />
-                            <span class="toggle-slider"></span>
-                          </label>
+                    </div>
+
+                    <!-- Card 2: Probability & Truncation -->
+                    <div class="sampler-card">
+                      <div class="sampler-card-header">
+                        <h4 class="sampler-card-title">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/></svg>
+                          <span>Probability & Truncation</span>
+                        </h4>
+                      </div>
+
+                      <!-- Top-P -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-setting-genai-top-p">Top-P (Nucleus)</label>
+                          <span id="adv-genai-top-p-value" class="sampler-badge">0.90</span>
+                        </div>
+                        <input type="range" id="adv-setting-genai-top-p" min="0" max="1" step="0.01" value="0.9" />
+                        <p class="sampler-hint">Samples only from tokens with cumulative probability &le; P.</p>
+                      </div>
+
+                      <!-- Top-K -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-setting-genai-top-k">Top-K</label>
+                          <span id="adv-genai-top-k-value" class="sampler-badge">40</span>
+                        </div>
+                        <input type="range" id="adv-setting-genai-top-k" min="0" max="200" step="1" value="40" />
+                        <p class="sampler-hint">Limits choices to the K highest probability tokens (0 = disabled).</p>
+                      </div>
+
+                      <!-- Min-P -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <div class="sampler-label-left">
+                            <label for="adv-setting-genai-min-p">Min-P</label>
+                          </div>
+                          <div class="sampler-label-right">
+                            <span id="adv-genai-min-p-value" class="sampler-badge">0.05</span>
+                            <label class="toggle-switch">
+                              <input type="checkbox" id="adv-setting-genai-min-p-enabled" checked />
+                              <span class="toggle-slider"></span>
+                            </label>
+                          </div>
+                        </div>
+                        <input type="range" id="adv-setting-genai-min-p" min="0" max="1" step="0.01" value="0.05" />
+                        <p class="sampler-hint">Cuts tokens with probability &lt; Min-P &times; top token prob.</p>
+                      </div>
+
+                      <!-- Adaptive Target -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <div class="sampler-label-left">
+                            <label for="adv-setting-genai-adaptive-target">Adaptive Target</label>
+                          </div>
+                          <div class="sampler-label-right">
+                            <span id="adv-genai-adaptive-target-value" class="sampler-badge">0.80</span>
+                            <label class="toggle-switch">
+                              <input type="checkbox" id="adv-setting-genai-adaptive-target-enabled" checked />
+                              <span class="toggle-slider"></span>
+                            </label>
+                          </div>
                         </div>
                         <input type="range" id="adv-setting-genai-adaptive-target" min="0" max="1" step="0.01" value="0.80" />
                       </div>
-                      <div class="form-group">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                          <label for="adv-setting-genai-adaptive-decay" style="margin-bottom: 0;">Adaptive Decay: <span id="adv-genai-adaptive-decay-value">0.90</span></label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
-                            <input type="checkbox" id="adv-setting-genai-adaptive-decay-enabled" checked />
-                            <span class="toggle-slider"></span>
-                          </label>
+
+                      <!-- Adaptive Decay -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <div class="sampler-label-left">
+                            <label for="adv-setting-genai-adaptive-decay">Adaptive Decay</label>
+                          </div>
+                          <div class="sampler-label-right">
+                            <span id="adv-genai-adaptive-decay-value" class="sampler-badge">0.90</span>
+                            <label class="toggle-switch">
+                              <input type="checkbox" id="adv-setting-genai-adaptive-decay-enabled" checked />
+                              <span class="toggle-slider"></span>
+                            </label>
+                          </div>
                         </div>
                         <input type="range" id="adv-setting-genai-adaptive-decay" min="0" max="1" step="0.01" value="0.90" />
                       </div>
-                      <div class="form-group">
-                        <label for="adv-setting-genai-presence-penalty">Presence Penalty: <span id="adv-genai-presence-penalty-value">0.00</span></label>
-                        <input type="range" id="adv-setting-genai-presence-penalty" min="-2.0" max="2.0" step="0.05" value="0.00" />
-                      </div>
-                      
-                      <div class="form-group" style="margin-top: 12px; padding: 12px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                          <label for="adv-setting-genai-dry-enabled" style="margin-bottom: 0; font-weight: 500; font-size: var(--text-sm);">Dry Sampler</label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
-                            <input type="checkbox" id="adv-setting-genai-dry-enabled" />
-                            <span class="toggle-slider"></span>
-                          </label>
-                        </div>
-                        <div id="genai-dry-sampler-controls" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
-                          <div class="form-group" style="margin-bottom: 8px;">
-                            <label for="adv-setting-genai-dry-multiplier" style="font-size: 11px;">Multiplier: <span id="adv-genai-dry-multiplier-value">0.8</span></label>
-                            <input type="range" id="adv-setting-genai-dry-multiplier" min="0.0" max="2.0" step="0.05" value="0.8" />
+
+                      <!-- TFS (Tail Free Sampling) -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <div class="sampler-label-left">
+                            <label for="adv-setting-genai-tfs">Tail Free Sampling (TFS)</label>
                           </div>
-                          <div class="form-group" style="margin-bottom: 8px;">
-                            <label for="adv-setting-genai-dry-base" style="font-size: 11px;">Base: <span id="adv-genai-dry-base-value">1.75</span></label>
-                            <input type="range" id="adv-setting-genai-dry-base" min="1.0" max="3.0" step="0.05" value="1.75" />
+                          <div class="sampler-label-right">
+                            <span id="adv-genai-tfs-value" class="sampler-badge">1.00</span>
+                            <label class="toggle-switch">
+                              <input type="checkbox" id="adv-setting-genai-tfs-enabled" />
+                              <span class="toggle-slider"></span>
+                            </label>
                           </div>
-                          <div class="form-group" style="margin-bottom: 8px;">
-                            <label for="adv-setting-genai-dry-allowed-length" style="font-size: 11px;">Allowed Length: <span id="adv-genai-dry-allowed-length-value">2</span></label>
-                            <input type="range" id="adv-setting-genai-dry-allowed-length" min="0" max="10" step="1" value="2" />
-                          </div>
-                          <div class="form-group" style="margin-bottom: 0;">
-                            <label for="adv-setting-genai-dry-sequence-breakers" style="font-size: 11px; margin-bottom: 4px; display: block;">Sequence Breakers (JSON array)</label>
-                            <input type="text" id="adv-setting-genai-dry-sequence-breakers" class="form-control" style="font-size: 11px; padding: 4px 8px; height: 28px;" value='["\n", ":", "\"", "*"]' />
-                          </div>
-                        </div>
-                      </div>
-
-                      <div class="form-group" style="margin-top: var(--space-4); display: flex; flex-direction: column;">
-                        <label for="adv-setting-genai-system-prompt">Change System Prompt</label>
-                        <textarea id="adv-setting-genai-system-prompt" class="textarea-premium" placeholder="Enter custom instructions to append to the system prompt..."></textarea>
-                        <p class="form-hint" style="margin-top: 4px; font-size: 11px;">This text will be appended to the end of the GenAI system prompt.</p>
-                      </div>
-
-                      <hr style="border: none; border-top: 1px solid var(--border-light); margin: 16px 0;">
-                      
-                      <h3>Reasoning Formatting</h3>
-                      <div class="form-group-row">
-                        <label>Force Reasoning</label>
-                        <label class="toggle-switch">
-                          <input type="checkbox" id="adv-setting-genai-force-reasoning" />
-                          <span class="toggle-slider"></span>
-                        </label>
-                      </div>
-                      <div class="form-group">
-                        <label for="adv-setting-genai-reasoning-open">Open Tag</label>
-                        <input type="text" id="adv-setting-genai-reasoning-open" class="form-control" placeholder="<think>" />
-                      </div>
-                      <div class="form-group">
-                        <label for="adv-setting-genai-reasoning-close">Close Tag</label>
-                        <input type="text" id="adv-setting-genai-reasoning-close" class="form-control" placeholder="</think>" />
-                      </div>
-
-                      <hr style="border: none; border-top: 1px solid var(--border-light); margin: 20px 0 16px 0;">
-                      
-                      <h3>Extended Samplers</h3>
-
-                      <!-- Typical P -->
-                      <div class="form-group" style="margin-bottom: 10px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                          <label for="adv-setting-genai-typical-p" style="margin-bottom: 0;">Typical P: <span id="adv-genai-typical-p-value">1.00</span></label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
-                            <input type="checkbox" id="adv-setting-genai-typical-p-enabled" />
-                            <span class="toggle-slider"></span>
-                          </label>
-                        </div>
-                        <input type="range" id="adv-setting-genai-typical-p" min="0" max="1" step="0.01" value="1.00" />
-                      </div>
-
-                      <!-- Frequency Penalty -->
-                      <div class="form-group" style="margin-bottom: 10px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                          <label for="adv-setting-genai-frequency-penalty" style="margin-bottom: 0;">Frequency Penalty: <span id="adv-genai-frequency-penalty-value">0.00</span></label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
-                            <input type="checkbox" id="adv-setting-genai-frequency-penalty-enabled" />
-                            <span class="toggle-slider"></span>
-                          </label>
-                        </div>
-                        <input type="range" id="adv-setting-genai-frequency-penalty" min="-2.0" max="2.0" step="0.05" value="0.00" />
-                      </div>
-
-                      <!-- Top-A -->
-                      <div class="form-group" style="margin-bottom: 10px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                          <label for="adv-setting-genai-top-a" style="margin-bottom: 0;">Top-A: <span id="adv-genai-top-a-value">0.00</span></label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
-                            <input type="checkbox" id="adv-setting-genai-top-a-enabled" />
-                            <span class="toggle-slider"></span>
-                          </label>
-                        </div>
-                        <input type="range" id="adv-setting-genai-top-a" min="0" max="1" step="0.01" value="0.00" />
-                      </div>
-
-                      <!-- TFS -->
-                      <div class="form-group" style="margin-bottom: 10px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                          <label for="adv-setting-genai-tfs" style="margin-bottom: 0;">Tail Free Sampling (TFS): <span id="adv-genai-tfs-value">1.00</span></label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
-                            <input type="checkbox" id="adv-setting-genai-tfs-enabled" />
-                            <span class="toggle-slider"></span>
-                          </label>
                         </div>
                         <input type="range" id="adv-setting-genai-tfs" min="0" max="1" step="0.01" value="1.00" />
                       </div>
 
-                      <!-- Mirostat -->
-                      <div class="form-group" style="margin-bottom: 10px; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                          <label for="adv-setting-genai-mirostat-enabled" style="margin-bottom: 0; font-weight: 500; font-size: var(--text-sm);">Mirostat Sampling</label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
+                      <!-- Top-A -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <div class="sampler-label-left">
+                            <label for="adv-setting-genai-top-a">Top-A</label>
+                          </div>
+                          <div class="sampler-label-right">
+                            <span id="adv-genai-top-a-value" class="sampler-badge">0.00</span>
+                            <label class="toggle-switch">
+                              <input type="checkbox" id="adv-setting-genai-top-a-enabled" />
+                              <span class="toggle-slider"></span>
+                            </label>
+                          </div>
+                        </div>
+                        <input type="range" id="adv-setting-genai-top-a" min="0" max="1" step="0.01" value="0.00" />
+                      </div>
+
+                      <!-- Typical P -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <div class="sampler-label-left">
+                            <label for="adv-setting-genai-typical-p">Typical P</label>
+                          </div>
+                          <div class="sampler-label-right">
+                            <span id="adv-genai-typical-p-value" class="sampler-badge">1.00</span>
+                            <label class="toggle-switch">
+                              <input type="checkbox" id="adv-setting-genai-typical-p-enabled" />
+                              <span class="toggle-slider"></span>
+                            </label>
+                          </div>
+                        </div>
+                        <input type="range" id="adv-setting-genai-typical-p" min="0" max="1" step="0.01" value="1.00" />
+                      </div>
+
+                      <!-- Top N-Sigma -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <div class="sampler-label-left">
+                            <label for="adv-setting-genai-top-n-sigma">Top N-Sigma</label>
+                          </div>
+                          <div class="sampler-label-right">
+                            <span id="adv-genai-top-n-sigma-value" class="sampler-badge">0.00</span>
+                            <label class="toggle-switch">
+                              <input type="checkbox" id="adv-setting-genai-top-n-sigma-enabled" />
+                              <span class="toggle-slider"></span>
+                            </label>
+                          </div>
+                        </div>
+                        <input type="range" id="adv-setting-genai-top-n-sigma" min="0" max="5" step="0.05" value="0.00" />
+                      </div>
+                    </div>
+
+                    <!-- Card 3: Repetition & Variety -->
+                    <div class="sampler-card">
+                      <div class="sampler-card-header">
+                        <h4 class="sampler-card-title">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                          <span>Repetition & Penalties</span>
+                        </h4>
+                      </div>
+
+                      <!-- Repetition Penalty -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-setting-genai-rep-penalty">Repetition Penalty</label>
+                          <span id="adv-genai-rep-penalty-value" class="sampler-badge">1.00</span>
+                        </div>
+                        <input type="range" id="adv-setting-genai-rep-penalty" min="1" max="2" step="0.01" value="1.0" />
+                        <p class="sampler-hint">Penalizes repeatedly generated tokens (1.0 = inactive).</p>
+                      </div>
+
+                      <!-- Rep Penalty Range & Slope Accordion -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-setting-genai-rep-pen-range-enabled" style="font-weight: 600;">Rep Penalty Range & Slope</label>
+                          <label class="toggle-switch">
+                            <input type="checkbox" id="adv-setting-genai-rep-pen-range-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        
+                        <div id="genai-rep-pen-range-controls" class="sampler-nested-box">
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-genai-rep-pen-range">Range (Tokens)</label>
+                              <span id="adv-genai-rep-pen-range-value" class="sampler-badge">0</span>
+                            </div>
+                            <input type="range" id="adv-setting-genai-rep-pen-range" min="0" max="4096" step="32" value="0" />
+                          </div>
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-genai-rep-pen-slope">Slope</label>
+                              <span id="adv-genai-rep-pen-slope-value" class="sampler-badge">1.00</span>
+                            </div>
+                            <input type="range" id="adv-setting-genai-rep-pen-slope" min="0" max="5" step="0.1" value="1.0" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Presence Penalty -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-setting-genai-presence-penalty">Presence Penalty</label>
+                          <span id="adv-genai-presence-penalty-value" class="sampler-badge">0.00</span>
+                        </div>
+                        <input type="range" id="adv-setting-genai-presence-penalty" min="-2.0" max="2.0" step="0.05" value="0.00" />
+                        <p class="sampler-hint">Encourages introducing new words regardless of frequency.</p>
+                      </div>
+
+                      <!-- Frequency Penalty -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <div class="sampler-label-left">
+                            <label for="adv-setting-genai-frequency-penalty">Frequency Penalty</label>
+                          </div>
+                          <div class="sampler-label-right">
+                            <span id="adv-genai-frequency-penalty-value" class="sampler-badge">0.00</span>
+                            <label class="toggle-switch">
+                              <input type="checkbox" id="adv-setting-genai-frequency-penalty-enabled" />
+                              <span class="toggle-slider"></span>
+                            </label>
+                          </div>
+                        </div>
+                        <input type="range" id="adv-setting-genai-frequency-penalty" min="-2.0" max="2.0" step="0.05" value="0.00" />
+                        <p class="sampler-hint">Penalizes tokens proportional to how often they have appeared.</p>
+                      </div>
+
+                      <!-- Dry Sampler Accordion -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-setting-genai-dry-enabled" style="font-weight: 600;">DRY Sampler (Don't Repeat Yourself)</label>
+                          <label class="toggle-switch">
+                            <input type="checkbox" id="adv-setting-genai-dry-enabled" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <p class="sampler-hint">Advanced n-gram repetition breaker for assistant output.</p>
+                        
+                        <div id="genai-dry-sampler-controls" class="sampler-nested-box">
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-genai-dry-multiplier">Multiplier</label>
+                              <span id="adv-genai-dry-multiplier-value" class="sampler-badge">0.80</span>
+                            </div>
+                            <input type="range" id="adv-setting-genai-dry-multiplier" min="0.0" max="2.0" step="0.05" value="0.8" />
+                          </div>
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-genai-dry-base">Base</label>
+                              <span id="adv-genai-dry-base-value" class="sampler-badge">1.75</span>
+                            </div>
+                            <input type="range" id="adv-setting-genai-dry-base" min="1.0" max="3.0" step="0.05" value="1.75" />
+                          </div>
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-genai-dry-allowed-length">Allowed Length</label>
+                              <span id="adv-genai-dry-allowed-length-value" class="sampler-badge">2</span>
+                            </div>
+                            <input type="range" id="adv-setting-genai-dry-allowed-length" min="0" max="10" step="1" value="2" />
+                          </div>
+                          <div class="sampler-control-row">
+                            <label for="adv-setting-genai-dry-sequence-breakers" style="font-size: 11px;">Sequence Breakers (JSON array)</label>
+                            <input type="text" id="adv-setting-genai-dry-sequence-breakers" class="sampler-inline-input" value='["\n", ":", "\"", "*"]' />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Card 4: Expert & Guidance -->
+                    <div class="sampler-card">
+                      <div class="sampler-card-header">
+                        <h4 class="sampler-card-title">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+                          <span>Expert Samplers & Guidance</span>
+                        </h4>
+                      </div>
+
+                      <!-- Mirostat Accordion -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-setting-genai-mirostat-enabled" style="font-weight: 600;">Mirostat Sampling</label>
+                          <label class="toggle-switch">
                             <input type="checkbox" id="adv-setting-genai-mirostat-enabled" />
                             <span class="toggle-slider"></span>
                           </label>
                         </div>
-                        <div id="genai-mirostat-controls" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
-                          <div class="form-group" style="margin-bottom: 6px;">
+                        <p class="sampler-hint">Adaptive algorithm that regulates output entropy / perplexity.</p>
+                        
+                        <div id="genai-mirostat-controls" class="sampler-nested-box">
+                          <div class="sampler-control-row">
                             <label for="adv-setting-genai-mirostat-mode" style="font-size: 11px;">Mirostat Mode</label>
                             <select id="adv-setting-genai-mirostat-mode" class="form-control" style="font-size: 11px; padding: 4px 8px; height: 28px;">
                               <option value="0">Disabled (0)</option>
@@ -4386,147 +4909,172 @@
                               <option value="2">Mirostat 2.0 (2)</option>
                             </select>
                           </div>
-                          <div class="form-group" style="margin-bottom: 6px;">
-                            <label for="adv-setting-genai-mirostat-tau" style="font-size: 11px;">Mirostat Tau: <span id="adv-genai-mirostat-tau-value">5.0</span></label>
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-genai-mirostat-tau">Tau (Target Entropy)</label>
+                              <span id="adv-genai-mirostat-tau-value" class="sampler-badge">5.0</span>
+                            </div>
                             <input type="range" id="adv-setting-genai-mirostat-tau" min="0" max="10" step="0.1" value="5.0" />
                           </div>
-                          <div class="form-group" style="margin-bottom: 0;">
-                            <label for="adv-setting-genai-mirostat-eta" style="font-size: 11px;">Mirostat Eta: <span id="adv-genai-mirostat-eta-value">0.10</span></label>
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-genai-mirostat-eta">Eta (Learning Rate)</label>
+                              <span id="adv-genai-mirostat-eta-value" class="sampler-badge">0.10</span>
+                            </div>
                             <input type="range" id="adv-setting-genai-mirostat-eta" min="0" max="1" step="0.01" value="0.10" />
                           </div>
                         </div>
                       </div>
 
-                      <!-- XTC -->
-                      <div class="form-group" style="margin-bottom: 10px; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                          <label for="adv-setting-genai-xtc-enabled" style="margin-bottom: 0; font-weight: 500; font-size: var(--text-sm);">XTC Sampler</label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
+                      <!-- XTC Accordion -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-setting-genai-xtc-enabled" style="font-weight: 600;">XTC Sampler (Exclude Top Choices)</label>
+                          <label class="toggle-switch">
                             <input type="checkbox" id="adv-setting-genai-xtc-enabled" />
                             <span class="toggle-slider"></span>
                           </label>
                         </div>
-                        <div id="genai-xtc-controls" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
-                          <div class="form-group" style="margin-bottom: 6px;">
-                            <label for="adv-setting-genai-xtc-threshold" style="font-size: 11px;">Threshold: <span id="adv-genai-xtc-threshold-value">0.10</span></label>
+                        <p class="sampler-hint">Forces creative word choices by removing top-probability tokens.</p>
+                        
+                        <div id="genai-xtc-controls" class="sampler-nested-box">
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-genai-xtc-threshold">Threshold</label>
+                              <span id="adv-genai-xtc-threshold-value" class="sampler-badge">0.10</span>
+                            </div>
                             <input type="range" id="adv-setting-genai-xtc-threshold" min="0" max="1" step="0.01" value="0.10" />
                           </div>
-                          <div class="form-group" style="margin-bottom: 0;">
-                            <label for="adv-setting-genai-xtc-probability" style="font-size: 11px;">Probability: <span id="adv-genai-xtc-probability-value">0.00</span></label>
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-genai-xtc-probability">Probability</label>
+                              <span id="adv-genai-xtc-probability-value" class="sampler-badge">0.00</span>
+                            </div>
                             <input type="range" id="adv-setting-genai-xtc-probability" min="0" max="1" step="0.01" value="0.00" />
                           </div>
                         </div>
                       </div>
 
-                      <!-- DynaTemp -->
-                      <div class="form-group" style="margin-bottom: 10px; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                          <label for="adv-setting-genai-dynatemp-enabled" style="margin-bottom: 0; font-weight: 500; font-size: var(--text-sm);">DynaTemp</label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
-                            <input type="checkbox" id="adv-setting-genai-dynatemp-enabled" />
-                            <span class="toggle-slider"></span>
-                          </label>
+                      <!-- Smoothing Factor -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-setting-genai-smoothing-factor">Smoothing Factor</label>
+                          <span id="adv-genai-smoothing-factor-value" class="sampler-badge">0.00</span>
                         </div>
-                        <div id="genai-dynatemp-controls" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
-                          <div class="form-group" style="margin-bottom: 6px;">
-                            <label for="adv-setting-genai-dynatemp-min" style="font-size: 11px;">Min Temp: <span id="adv-genai-dynatemp-min-value">0.65</span></label>
-                            <input type="range" id="adv-setting-genai-dynatemp-min" min="0" max="2" step="0.01" value="0.65" />
-                          </div>
-                          <div class="form-group" style="margin-bottom: 6px;">
-                            <label for="adv-setting-genai-dynatemp-max" style="font-size: 11px;">Max Temp: <span id="adv-genai-dynatemp-max-value">1.35</span></label>
-                            <input type="range" id="adv-setting-genai-dynatemp-max" min="0" max="2" step="0.01" value="1.35" />
-                          </div>
-                          <div class="form-group" style="margin-bottom: 6px;">
-                            <label for="adv-setting-genai-dynatemp-range" style="font-size: 11px;">DynaTemp Range: <span id="adv-genai-dynatemp-range-value">0.00</span></label>
-                            <input type="range" id="adv-setting-genai-dynatemp-range" min="0" max="2" step="0.01" value="0.00" />
-                          </div>
-                          <div class="form-group" style="margin-bottom: 0;">
-                            <label for="adv-setting-genai-dynatemp-exponent" style="font-size: 11px;">Exponent: <span id="adv-genai-dynatemp-exponent-value">1.00</span></label>
-                            <input type="range" id="adv-setting-genai-dynatemp-exponent" min="0" max="5" step="0.01" value="1.00" />
-                          </div>
-                        </div>
+                        <input type="range" id="adv-setting-genai-smoothing-factor" min="0" max="5" step="0.05" value="0" />
+                        <p class="sampler-hint">Quadratic curve sampling for GenAI assistant.</p>
                       </div>
 
-                      <!-- Top N-Sigma -->
-                      <div class="form-group" style="margin-bottom: 10px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                          <label for="adv-setting-genai-top-n-sigma" style="margin-bottom: 0;">Top N-Sigma: <span id="adv-genai-top-n-sigma-value">0.00</span></label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
-                            <input type="checkbox" id="adv-setting-genai-top-n-sigma-enabled" />
-                            <span class="toggle-slider"></span>
-                          </label>
-                        </div>
-                        <input type="range" id="adv-setting-genai-top-n-sigma" min="0" max="5" step="0.05" value="0.00" />
-                      </div>
-
-                      <!-- Repetition Penalty Range & Slope -->
-                      <div class="form-group" style="margin-bottom: 10px; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                          <label for="adv-setting-genai-rep-pen-range-enabled" style="margin-bottom: 0; font-weight: 500; font-size: var(--text-sm);">Rep Penalty Range & Slope</label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
-                            <input type="checkbox" id="adv-setting-genai-rep-pen-range-enabled" />
-                            <span class="toggle-slider"></span>
-                          </label>
-                        </div>
-                        <div id="genai-rep-pen-range-controls" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
-                          <div class="form-group" style="margin-bottom: 6px;">
-                            <label for="adv-setting-genai-rep-pen-range" style="font-size: 11px;">Range (Tokens): <span id="adv-genai-rep-pen-range-value">0</span></label>
-                            <input type="range" id="adv-setting-genai-rep-pen-range" min="0" max="4096" step="32" value="0" />
-                          </div>
-                          <div class="form-group" style="margin-bottom: 0;">
-                            <label for="adv-setting-genai-rep-pen-slope" style="font-size: 11px;">Slope: <span id="adv-genai-rep-pen-slope-value">1.0</span></label>
-                            <input type="range" id="adv-setting-genai-rep-pen-slope" min="0" max="5" step="0.1" value="1.0" />
-                          </div>
-                        </div>
-                      </div>
-
-                      <!-- Min Tokens -->
-                      <div class="form-group" style="margin-bottom: 10px;">
-                        <div style="display: flex; justify-content: space-between; align-items: center;">
-                          <label for="adv-setting-genai-min-tokens" style="margin-bottom: 0;">Min Tokens: <span id="adv-genai-min-tokens-value">0</span></label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
-                            <input type="checkbox" id="adv-setting-genai-min-tokens-enabled" />
-                            <span class="toggle-slider"></span>
-                          </label>
-                        </div>
-                        <input type="range" id="adv-setting-genai-min-tokens" min="0" max="500" step="5" value="0" />
-                      </div>
-
-                      <!-- Guidance Scale (CFG) & Negative Prompt -->
-                      <div class="form-group" style="margin-bottom: 10px; padding: 10px; background: var(--bg-secondary); border-radius: var(--radius-sm); border: 1px solid var(--border-light);">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                          <label for="adv-setting-genai-guidance-scale-enabled" style="margin-bottom: 0; font-weight: 500; font-size: var(--text-sm);">Classifier-Free Guidance (CFG)</label>
-                          <label class="toggle-switch" style="transform: scale(0.8);">
+                      <!-- CFG Accordion -->
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-setting-genai-guidance-scale-enabled" style="font-weight: 600;">Classifier-Free Guidance (CFG)</label>
+                          <label class="toggle-switch">
                             <input type="checkbox" id="adv-setting-genai-guidance-scale-enabled" />
                             <span class="toggle-slider"></span>
                           </label>
                         </div>
-                        <div id="genai-guidance-scale-controls" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
-                          <div class="form-group" style="margin-bottom: 6px;">
-                            <label for="adv-setting-genai-guidance-scale" style="font-size: 11px;">Guidance Scale: <span id="adv-genai-guidance-scale-value">1.0</span></label>
+                        
+                        <div id="genai-guidance-scale-controls" class="sampler-nested-box">
+                          <div class="sampler-control-row">
+                            <div class="sampler-label-wrap">
+                              <label for="adv-setting-genai-guidance-scale">Guidance Scale</label>
+                              <span id="adv-genai-guidance-scale-value" class="sampler-badge">1.00</span>
+                            </div>
                             <input type="range" id="adv-setting-genai-guidance-scale" min="1.0" max="3.0" step="0.05" value="1.0" />
                           </div>
-                          <div class="form-group" style="margin-bottom: 0;">
-                            <label for="adv-setting-genai-negative-prompt" style="font-size: 11px; margin-bottom: 4px; display: block;">Negative Prompt</label>
-                            <input type="text" id="adv-setting-genai-negative-prompt" class="form-control" style="font-size: 11px; padding: 4px 8px; height: 28px;" placeholder="Negative text prompt..." />
+                          <div class="sampler-control-row">
+                            <label for="adv-setting-genai-negative-prompt" style="font-size: 11px;">Negative Prompt</label>
+                            <input type="text" id="adv-setting-genai-negative-prompt" class="sampler-inline-input" placeholder="Negative text prompt..." />
                           </div>
                         </div>
                       </div>
+                    </div>
 
-                      <!-- Ignore EOS & Banned Strings -->
-                      <div class="form-group-row" style="margin-bottom: 10px;">
-                        <label for="adv-setting-genai-ignore-eos">Ignore EOS Token</label>
-                        <label class="toggle-switch">
-                          <input type="checkbox" id="adv-setting-genai-ignore-eos" />
-                          <span class="toggle-slider"></span>
-                        </label>
+                    <!-- Card 5: Completion Engine & Templates (Full Width) -->
+                    <div class="sampler-card sampler-card-full">
+                      <div class="sampler-card-header">
+                        <h4 class="sampler-card-title">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                          <span>GenAI Engine & Templates</span>
+                        </h4>
                       </div>
 
-                      <div class="form-group" style="margin-bottom: 10px;">
-                        <label for="adv-setting-genai-banned-strings">Banned Strings (comma separated)</label>
-                        <input type="text" id="adv-setting-genai-banned-strings" class="form-control" placeholder='e.g. "As an AI", "In conclusion"' />
+                      <div class="sampler-control-row">
+                        <label for="adv-setting-genai-completion-mode" style="font-weight: 600;">GenAI Completion Mode</label>
+                        <select id="adv-setting-genai-completion-mode" class="form-control" style="background: var(--bg-tertiary);">
+                          <option value="chat_completion">Chat Completion (Standard API)</option>
+                          <option value="text_completion">Text Completion (SillyTavern Prompt Engine)</option>
+                        </select>
+                      </div>
+
+                      <div id="genai-text-completion-templates-group" class="sampler-nested-box">
+                        <div class="sampler-control-row">
+                          <label for="adv-setting-genai-instruct-template-select" style="font-size: 12px;">Instruct Template</label>
+                          <select id="adv-setting-genai-instruct-template-select" class="form-control" style="font-size: 12px;"></select>
+                        </div>
+                        <div class="sampler-control-row">
+                          <label for="adv-setting-genai-context-template-select" style="font-size: 12px;">Context Template</label>
+                          <select id="adv-setting-genai-context-template-select" class="form-control" style="font-size: 12px;"></select>
+                        </div>
                       </div>
                     </div>
+
+                    <!-- Card 6: Reasoning & Custom Instructions (Full Width) -->
+                    <div class="sampler-card sampler-card-full">
+                      <div class="sampler-card-header">
+                        <h4 class="sampler-card-title">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                          <span>GenAI Instructions, Reasoning & Constraints</span>
+                        </h4>
+                      </div>
+
+                      <!-- GenAI System Prompt Addition -->
+                      <div class="sampler-control-row">
+                        <label for="adv-setting-genai-system-prompt" style="font-weight: 600;">GenAI Custom Instructions</label>
+                        <textarea id="adv-setting-genai-system-prompt" class="textarea-premium" placeholder="Enter custom instructions to append to the GenAI system prompt..."></textarea>
+                        <p class="sampler-hint">Appended to the end of the GenAI system prompt.</p>
+                      </div>
+
+                      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 4px;">
+                        <!-- Reasoning Section -->
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                          <div class="sampler-label-wrap">
+                            <label for="adv-setting-genai-force-reasoning" style="font-weight: 600;">Force Reasoning Tags</label>
+                            <label class="toggle-switch">
+                              <input type="checkbox" id="adv-setting-genai-force-reasoning" />
+                              <span class="toggle-slider"></span>
+                            </label>
+                          </div>
+                          <div style="display: flex; gap: 8px;">
+                            <div style="flex: 1;">
+                              <label for="adv-setting-genai-reasoning-open" style="font-size: 11px; color: var(--text-tertiary);">Open Tag</label>
+                              <input type="text" id="adv-setting-genai-reasoning-open" class="sampler-inline-input" placeholder="<think>" />
+                            </div>
+                            <div style="flex: 1;">
+                              <label for="adv-setting-genai-reasoning-close" style="font-size: 11px; color: var(--text-tertiary);">Close Tag</label>
+                              <input type="text" id="adv-setting-genai-reasoning-close" class="sampler-inline-input" placeholder="</think>" />
+                            </div>
+                          </div>
+                        </div>
+
+                        <!-- Constraints Section -->
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                          <div class="sampler-label-wrap">
+                            <label for="adv-setting-genai-ignore-eos" style="font-weight: 600;">Ignore EOS Token</label>
+                            <label class="toggle-switch">
+                              <input type="checkbox" id="adv-setting-genai-ignore-eos" />
+                              <span class="toggle-slider"></span>
+                            </label>
+                          </div>
+                          <div>
+                            <label for="adv-setting-genai-banned-strings" style="font-size: 11px; color: var(--text-tertiary);">Banned Strings (comma separated)</label>
+                            <input type="text" id="adv-setting-genai-banned-strings" class="sampler-inline-input" placeholder='e.g. "As an AI", "In conclusion"' />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
                   </div>
                 </div>
 
@@ -4915,8 +5463,25 @@
         </button>
       </div>
     </div>
-    
     <div id="global-custom-tooltip" class="global-custom-tooltip hidden"></div>
+
+    <!-- Floating Preset Context Menu (Right Click) -->
+    <div id="preset-context-menu" class="preset-context-menu hidden">
+      <button type="button" class="preset-context-menu-item" id="btn-ctx-select-preset">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <polyline points="9 11 12 14 22 4"></polyline>
+        </svg>
+        <span>Select</span>
+      </button>
+      <button type="button" class="preset-context-menu-item preset-context-menu-item-delete" id="btn-ctx-delete-preset">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;">
+          <polyline points="3 6 5 6 21 6"></polyline>
+          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+        </svg>
+        <span>Delete</span>
+      </button>
+    </div>
 
     <!-- SVG Filters for Advanced Blur & Chromatic Aberration -->
     <svg style="position: absolute; width: 0; height: 0; pointer-events: none;">

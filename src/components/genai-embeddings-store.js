@@ -6,7 +6,8 @@ import { pipeline, env } from '../vendor/transformers.js';
 
 // Configuration
 env.allowLocalModels = false; // Force downloading from HuggingFace Hub (cached locally by browser)
-const MODEL_NAME = 'Xenova/paraphrase-multilingual-MiniLM-L12-v2';
+// We upgrade to E5 which is much more advanced for multilingual tasks
+const MODEL_NAME = 'Xenova/multilingual-e5-small';
 const DB_NAME = 'genai_embeddings_db';
 const STORE_NAME = 'vectors';
 
@@ -19,7 +20,8 @@ let isInitializing = false;
 function openDB() {
   return new Promise((resolve, reject) => {
     if (db) return resolve(db);
-    const request = window.indexedDB.open(DB_NAME, 1);
+    // Increment version to 2 to flush old vectors (incompatible models)
+    const request = window.indexedDB.open(DB_NAME, 2);
     
     request.onerror = (e) => reject(e.target.error);
     request.onsuccess = (e) => {
@@ -28,11 +30,11 @@ function openDB() {
     };
     request.onupgradeneeded = (e) => {
       const database = e.target.result;
-      if (!database.objectStoreNames.contains(STORE_NAME)) {
-        // We'll use a composite key for uniqueness, e.g., `${session_id}_${chunk_index}`
-        const store = database.createObjectStore(STORE_NAME, { keyPath: 'id' });
-        store.createIndex('session_id', 'session_id', { unique: false });
+      if (database.objectStoreNames.contains(STORE_NAME)) {
+        database.deleteObjectStore(STORE_NAME);
       }
+      const store = database.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      store.createIndex('session_id', 'session_id', { unique: false });
     };
   });
 }
@@ -122,13 +124,15 @@ export const genaiEmbeddingsStore = {
       await openDB();
       console.log('[Embeddings] Downloading/Loading model:', MODEL_NAME);
       if (showToasts && window.showToast) {
-        window.showToast('Smart Context: Downloading search model (~45 MB)... This will take a moment on first run.', 'info');
+        window.showToast('Smart Context: Downloading advanced search model (~118 MB)... This will take a moment on first run.', 'info');
       }
-      // We use feature-extraction pipeline
+      // We use feature-extraction pipeline with 8-bit quantization for performance and memory
       extractorPipeline = await pipeline('feature-extraction', MODEL_NAME, {
-        dtype: 'fp32' // standard Float32 for JS arrays
+        dtype: 'q8'
       });
       console.log('[Embeddings] Model loaded successfully.');
+      localStorage.setItem('smart_context_model_installed', 'true');
+      
       if (showToasts && window.showToast) {
         window.showToast('Smart Context: Model loaded successfully!', 'success');
       }
@@ -144,12 +148,16 @@ export const genaiEmbeddingsStore = {
     }
   },
 
-  async getVector(text) {
+  async getVector(text, isQuery = false) {
     if (!extractorPipeline) await this.init();
     if (!extractorPipeline) throw new Error('Embeddings pipeline not initialized');
 
+    // E5 models require 'query: ' or 'passage: ' prefixes
+    const prefix = isQuery ? 'query: ' : 'passage: ';
+    const formattedText = text.startsWith('query:') || text.startsWith('passage:') ? text : prefix + text;
+
     // Run the text through the model
-    const output = await extractorPipeline(text, { pooling: 'mean', normalize: true });
+    const output = await extractorPipeline(formattedText, { pooling: 'mean', normalize: true });
     // Convert Tensor to standard JS Array
     return Array.from(output.data);
   },
@@ -186,7 +194,7 @@ export const genaiEmbeddingsStore = {
       // Changed or New
       try {
         console.log(`[Embeddings] Vectorizing chunk ${i} for session ${sessionId}...`);
-        const embedding = await this.getVector(text);
+        const embedding = await this.getVector(text, false);
         
         await putVector({
           id,
@@ -232,7 +240,7 @@ export const genaiEmbeddingsStore = {
 
     let queryVector;
     try {
-      queryVector = await this.getVector(queryText);
+      queryVector = await this.getVector(queryText, true); // use 'query: '
     } catch (e) {
       console.error('[Embeddings] Failed to vectorize query:', e);
       return [];
@@ -279,10 +287,123 @@ export const genaiEmbeddingsStore = {
    * Remove all vectors for a given session (e.g., when a chat is deleted)
    */
   async removeSession(sessionId) {
-    if (!await this.init()) return;
+    if (!await this.init(false)) return;
     const existing = await getVectorsBySession(sessionId);
     for (const rec of existing) {
       await deleteVector(rec.id);
+    }
+  },
+
+  isModelLoaded() {
+    return !!extractorPipeline;
+  },
+
+  isModelInitializing() {
+    return isInitializing;
+  },
+
+  /**
+   * Migrate existing summaries from localStorage into the vector database
+   */
+  async migrateExistingSummaries(sessions) {
+    try {
+      const sessionsWithSummaries = (sessions || []).filter(s => s.summary && s.summary.trim().length > 0);
+      if (sessionsWithSummaries.length === 0) {
+        console.log('[Embeddings] No existing summaries found to index.');
+        return;
+      }
+
+      const allVectors = await getAllVectors();
+      const existingSessionIds = new Set(allVectors.map(v => v.session_id));
+      const missing = sessionsWithSummaries.filter(s => !existingSessionIds.has(s.id));
+
+      if (missing.length === 0) {
+        console.log('[Embeddings] All session summaries are already indexed in vector DB.');
+        return;
+      }
+
+      console.log(`[Embeddings] Found ${missing.length} unindexed session summaries. Initializing model...`);
+      if (window.showToast) {
+        window.showToast(`Smart Context: Indexing ${missing.length} chats into RAG database...`, 'info');
+      }
+
+      if (!await this.init(true)) {
+        console.error('[Embeddings] Cannot migrate: Model initialization failed');
+        return;
+      }
+
+      for (let i = 0; i < missing.length; i++) {
+        const session = missing[i];
+        console.log(`[Embeddings] Indexing (${i + 1}/${missing.length}): ${session.title || session.id}`);
+        const chunks = (session.summary_chunks && session.summary_chunks.length > 0)
+          ? (session.summary_chunks.length > 1 && session.summary ? [...session.summary_chunks, session.summary] : session.summary_chunks)
+          : (session.summary ? [session.summary] : []);
+        if (chunks.length > 0) {
+          await this.saveSessionChunks(session.id, chunks);
+        }
+      }
+      
+      console.log('[Embeddings] Migration complete.');
+      if (window.showToast) {
+        window.showToast(`Smart Context: ${missing.length} chats added to RAG successfully!`, 'success');
+      }
+    } catch (e) {
+      console.error('[Embeddings] Failed to migrate existing summaries:', e);
+    }
+  },
+
+  /**
+   * Re-index all saved summaries from scratch
+   */
+  async reindexAllSummaries(sessions) {
+    const sessionsWithSummaries = (sessions || []).filter(s => s.summary && s.summary.trim().length > 0);
+    if (sessionsWithSummaries.length === 0) {
+      if (window.showToast) {
+        window.showToast('Smart Context: No chat summaries found to index', 'info');
+      }
+      return;
+    }
+
+    if (window.showToast) {
+      window.showToast(`Smart Context: Re-indexing ${sessionsWithSummaries.length} chat summaries...`, 'info');
+    }
+
+    if (!await this.init(true)) {
+      if (window.showToast) {
+        window.showToast('Smart Context: Failed to load search model', 'error');
+      }
+      return;
+    }
+
+    try {
+      const dbInstance = await openDB();
+      const tx = dbInstance.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      await new Promise((resolve, reject) => {
+        const req = store.clear();
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+      });
+
+      for (let i = 0; i < sessionsWithSummaries.length; i++) {
+        const session = sessionsWithSummaries[i];
+        console.log(`[Embeddings] Re-indexing (${i + 1}/${sessionsWithSummaries.length}): ${session.title || session.id}`);
+        const chunks = (session.summary_chunks && session.summary_chunks.length > 0)
+          ? (session.summary_chunks.length > 1 && session.summary ? [...session.summary_chunks, session.summary] : session.summary_chunks)
+          : (session.summary ? [session.summary] : []);
+        if (chunks.length > 0) {
+          await this.saveSessionChunks(session.id, chunks);
+        }
+      }
+
+      if (window.showToast) {
+        window.showToast(`Smart Context: Re-indexed ${sessionsWithSummaries.length} chat summaries successfully!`, 'success');
+      }
+    } catch (e) {
+      console.error('[Embeddings] Re-index failed:', e);
+      if (window.showToast) {
+        window.showToast('Smart Context: Re-indexing failed', 'error');
+      }
     }
   }
 };
