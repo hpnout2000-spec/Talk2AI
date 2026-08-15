@@ -51,8 +51,29 @@ export const gameStore = {
       gamesState = parsedLocal;
     }
     
-    // Ensure structure
-    if (!gamesState.games) gamesState.games = [];
+    // Ensure structure & deduplicate by ID (keeping the newest copy)
+    const uniqueGames = new Map();
+    const rawList = Array.isArray(gamesState.games) ? gamesState.games : [];
+    rawList.forEach(g => {
+      if (!g || !g.id) return;
+      if (uniqueGames.has(g.id)) {
+        const prev = uniqueGames.get(g.id);
+        const prevTime = new Date(prev.updated_at || prev.created_at || 0).getTime();
+        const curTime = new Date(g.updated_at || g.created_at || 0).getTime();
+        if (curTime >= prevTime) {
+          uniqueGames.set(g.id, g);
+        }
+      } else {
+        uniqueGames.set(g.id, g);
+      }
+    });
+
+    gamesState.games = Array.from(uniqueGames.values());
+
+    // Auto-heal storage if duplicate records were pruned
+    if (rawList.length !== gamesState.games.length) {
+      this.save();
+    }
     
     return gamesState;
   },

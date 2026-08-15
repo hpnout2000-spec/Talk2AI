@@ -74,7 +74,12 @@ export const characterStore = {
   },
 
   getAll() {
-    return [...characters];
+    const seen = new Set();
+    return characters.filter(c => {
+      if (!c || !c.id || seen.has(c.id)) return false;
+      seen.add(c.id);
+      return true;
+    });
   },
 
   getById(id) {

@@ -120,7 +120,13 @@ export const chatStore = {
   },
 
   getSessions(characterId) {
-    return sessions[characterId] || [];
+    const list = sessions[characterId] || [];
+    const seen = new Set();
+    return list.filter(s => {
+      if (!s || !s.id || seen.has(s.id)) return false;
+      seen.add(s.id);
+      return true;
+    });
   },
 
   getCurrentSession() {

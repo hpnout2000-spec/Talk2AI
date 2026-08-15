@@ -2096,7 +2096,7 @@
       <!-- Storage Settings -->
       <div id="modal-settings-storage" class="modal hidden">
         <div class="modal-backdrop"></div>
-        <div class="modal-content" style="max-width: 680px; height: 85vh; display: flex; flex-direction: column;">
+        <div class="modal-content" style="max-width: 720px; height: 88vh; display: flex; flex-direction: column;">
           <div class="modal-header">
             <h2 style="display: flex; align-items: center; gap: 12px;">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 22px; height: 22px; color: var(--text-accent);">
@@ -2109,83 +2109,140 @@
             </h2>
             <button class="btn-icon btn-close-submodal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
           </div>
-          <div class="modal-body" style="display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-5);">
+          <div class="modal-body" style="display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4);">
             <!-- Total Storage Bar & Legend Summary -->
-            <div style="background: var(--bg-tertiary); border: 1px solid var(--border-light); border-radius: var(--radius-lg); padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-3);">
+            <div style="background: var(--bg-tertiary); border: 1px solid var(--border-light); border-radius: var(--radius-lg); padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2);">
               <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div style="font-size: var(--text-sm); font-weight: 500; color: var(--text-secondary);">Total Space Scanned</div>
                 <div id="storage-total-size" style="font-size: var(--text-lg); font-weight: 700; color: var(--text-accent);">Calculating...</div>
               </div>
               
               <!-- Dynamic Diagram -->
-              <div style="width: 100%; height: 12px; border-radius: var(--radius-full); background: var(--bg-primary); overflow: hidden; display: flex; cursor: pointer;" id="storage-chart-bar">
+              <div style="width: 100%; height: 10px; border-radius: var(--radius-full); background: var(--bg-primary); overflow: hidden; display: flex; cursor: pointer;" id="storage-chart-bar">
                 <div id="storage-bar-chars" style="width: 0%; background: #4caf50; transition: width 0.3s ease; position: relative;" title="Characters" data-category="chars"></div>
-                <div id="storage-bar-chats" style="width: 0%; background: #2196f3; transition: width 0.3s ease; position: relative;" title="Chat History" data-category="chats"></div>
-                <div id="storage-bar-genai" style="width: 0%; background: #9c27b0; transition: width 0.3s ease; position: relative;" title="GenAI History" data-category="genai"></div>
+                <div id="storage-bar-chats" style="width: 0%; background: #2196f3; transition: width 0.3s ease; position: relative;" title="Chats" data-category="chats"></div>
+                <div id="storage-bar-groups" style="width: 0%; background: #00bcd4; transition: width 0.3s ease; position: relative;" title="Groups" data-category="groups"></div>
+                <div id="storage-bar-games" style="width: 0%; background: #e91e63; transition: width 0.3s ease; position: relative;" title="RPG Games" data-category="games"></div>
+                <div id="storage-bar-genai" style="width: 0%; background: #9c27b0; transition: width 0.3s ease; position: relative;" title="GenAI" data-category="genai"></div>
+                <div id="storage-bar-lorebooks" style="width: 0%; background: #3f51b5; transition: width 0.3s ease; position: relative;" title="Lorebooks" data-category="lorebooks"></div>
+                <div id="storage-bar-albums" style="width: 0%; background: #009688; transition: width 0.3s ease; position: relative;" title="Albums" data-category="albums"></div>
                 <div id="storage-bar-images" style="width: 0%; background: #ff9800; transition: width 0.3s ease; position: relative;" title="Images" data-category="images"></div>
               </div>
               
               <!-- Compact Interactive Legend -->
-              <div id="storage-legend" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-2); font-size: var(--text-xs); cursor: pointer;">
-                <div class="storage-legend-item" data-category="chars" style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2); background: rgba(76, 175, 80, 0.05); border: 1px solid rgba(76, 175, 80, 0.15); border-radius: var(--radius-sm); transition: all var(--transition-fast);">
-                  <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #4caf50; display: inline-block;"></span>Characters</span>
-                  <span id="storage-val-chars" style="color: var(--text-primary); font-weight: 600;">0 MB</span>
+              <div id="storage-legend" class="storage-legend-grid">
+                <div class="storage-legend-item" data-category="chars">
+                  <span class="legend-label"><span class="legend-dot" style="background: #4caf50;"></span>Chars</span>
+                  <span id="storage-val-chars" class="legend-val">0 KB</span>
                 </div>
-                <div class="storage-legend-item" data-category="chats" style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2); background: rgba(33, 150, 243, 0.05); border: 1px solid rgba(33, 150, 243, 0.15); border-radius: var(--radius-sm); transition: all var(--transition-fast);">
-                  <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #2196f3; display: inline-block;"></span>Chats</span>
-                  <span id="storage-val-chats" style="color: var(--text-primary); font-weight: 600;">0 MB</span>
+                <div class="storage-legend-item" data-category="chats">
+                  <span class="legend-label"><span class="legend-dot" style="background: #2196f3;"></span>Chats</span>
+                  <span id="storage-val-chats" class="legend-val">0 KB</span>
                 </div>
-                <div class="storage-legend-item" data-category="genai" style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2); background: rgba(156, 39, 176, 0.05); border: 1px solid rgba(156, 39, 176, 0.15); border-radius: var(--radius-sm); transition: all var(--transition-fast);">
-                  <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #9c27b0; display: inline-block;"></span>GenAI Chats</span>
-                  <span id="storage-val-genai" style="color: var(--text-primary); font-weight: 600;">0 MB</span>
+                <div class="storage-legend-item" data-category="groups">
+                  <span class="legend-label"><span class="legend-dot" style="background: #00bcd4;"></span>Groups</span>
+                  <span id="storage-val-groups" class="legend-val">0 KB</span>
                 </div>
-                <div class="storage-legend-item" data-category="images" style="display: flex; justify-content: space-between; align-items: center; padding: var(--space-2); background: rgba(255, 152, 0, 0.05); border: 1px solid rgba(255, 152, 0, 0.15); border-radius: var(--radius-sm); transition: all var(--transition-fast);">
-                  <span style="display: flex; align-items: center; gap: 6px;"><span style="width: 8px; height: 8px; border-radius: 50%; background: #ff9800; display: inline-block;"></span>Images</span>
-                  <span id="storage-val-images" style="color: var(--text-primary); font-weight: 600;">0 MB</span>
+                <div class="storage-legend-item" data-category="games">
+                  <span class="legend-label"><span class="legend-dot" style="background: #e91e63;"></span>RPG</span>
+                  <span id="storage-val-games" class="legend-val">0 KB</span>
+                </div>
+                <div class="storage-legend-item" data-category="genai">
+                  <span class="legend-label"><span class="legend-dot" style="background: #9c27b0;"></span>GenAI</span>
+                  <span id="storage-val-genai" class="legend-val">0 KB</span>
+                </div>
+                <div class="storage-legend-item" data-category="lorebooks">
+                  <span class="legend-label"><span class="legend-dot" style="background: #3f51b5;"></span>Lore</span>
+                  <span id="storage-val-lorebooks" class="legend-val">0 KB</span>
+                </div>
+                <div class="storage-legend-item" data-category="albums">
+                  <span class="legend-label"><span class="legend-dot" style="background: #009688;"></span>Albums</span>
+                  <span id="storage-val-albums" class="legend-val">0 KB</span>
+                </div>
+                <div class="storage-legend-item" data-category="images">
+                  <span class="legend-label"><span class="legend-dot" style="background: #ff9800;"></span>Images</span>
+                  <span id="storage-val-images" class="legend-val">0 KB</span>
                 </div>
               </div>
             </div>
 
-            <!-- Redesigned Tabs Segmented Control -->
-            <div class="storage-tabs">
-              <div class="storage-tab active" data-category="all">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:16px; height:16px;"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
-                <span>All</span>
-              </div>
-              <div class="storage-tab" data-category="chars">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:16px; height:16px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                <span>Characters</span>
-              </div>
-              <div class="storage-tab" data-category="chats">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:16px; height:16px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                <span>Chats</span>
-              </div>
-              <div class="storage-tab" data-category="genai">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:16px; height:16px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                <span>GenAI</span>
-              </div>
-              <div class="storage-tab" data-category="images">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:16px; height:16px;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                <span>Images</span>
+            <!-- Categories Tabs -->
+            <div class="storage-tabs-container">
+              <div class="storage-tabs">
+                <div class="storage-tab active" data-category="all">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px; height:14px;"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+                  <span>All</span>
+                  <span class="storage-tab-count" id="storage-count-all">0</span>
+                </div>
+                <div class="storage-tab" data-category="chars">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px; height:14px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  <span>Chars</span>
+                  <span class="storage-tab-count" id="storage-count-chars">0</span>
+                </div>
+                <div class="storage-tab" data-category="chats">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px; height:14px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                  <span>Chats</span>
+                  <span class="storage-tab-count" id="storage-count-chats">0</span>
+                </div>
+                <div class="storage-tab" data-category="groups">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px; height:14px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                  <span>Groups</span>
+                  <span class="storage-tab-count" id="storage-count-groups">0</span>
+                </div>
+                <div class="storage-tab" data-category="games">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px; height:14px;"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="6" cy="12" r="1.5"/><circle cx="18" cy="12" r="1.5"/><path d="M10 12h4"/><path d="M12 10v4"/></svg>
+                  <span>RPG</span>
+                  <span class="storage-tab-count" id="storage-count-games">0</span>
+                </div>
+                <div class="storage-tab" data-category="genai">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px; height:14px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                  <span>GenAI</span>
+                  <span class="storage-tab-count" id="storage-count-genai">0</span>
+                </div>
+                <div class="storage-tab" data-category="lorebooks">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px; height:14px;"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                  <span>Lore</span>
+                  <span class="storage-tab-count" id="storage-count-lorebooks">0</span>
+                </div>
+                <div class="storage-tab" data-category="albums">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px; height:14px;"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                  <span>Albums</span>
+                  <span class="storage-tab-count" id="storage-count-albums">0</span>
+                </div>
+                <div class="storage-tab" data-category="images">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:14px; height:14px;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                  <span>Images</span>
+                  <span class="storage-tab-count" id="storage-count-images">0</span>
+                </div>
               </div>
             </div>
 
-            <!-- Search, Sort & Multi-select Toolbar -->
-            <div style="display: flex; gap: var(--space-2); align-items: center; justify-content: space-between; background: var(--bg-tertiary); border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 8px 12px; flex-wrap: wrap;">
-              <div class="search-box small" style="flex: 1; min-width: 180px; margin-bottom: 0; position: relative; display: flex; align-items: center;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="position: absolute; left: 10px; top: 50% !important; transform: translateY(-50%) !important; width: 14px; height: 14px; color: var(--text-secondary); pointer-events: none;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                <input type="text" id="storage-search-input" placeholder="Search items..." style="height: 28px; padding-left: 32px !important; font-size: 11px; width: 100%; border: 1px solid var(--border-light); background: var(--bg-primary); border-radius: var(--radius-sm); color: var(--text-primary); outline: none;" />
+            <!-- Search, Quick Filters, Sort & Multi-select Toolbar -->
+            <div class="storage-toolbar">
+              <div class="search-box small" style="flex: 1; min-width: 150px; margin-bottom: 0; position: relative; display: flex; align-items: center;">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="position: absolute; left: 10px; top: 50% !important; transform: translateY(-50%) !important; width: 13px; height: 13px; color: var(--text-secondary); pointer-events: none;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="storage-search-input" placeholder="Search items..." style="height: 28px; padding-left: 30px !important; font-size: 11px; width: 100%; border: 1px solid var(--border-light); background: var(--bg-primary); border-radius: var(--radius-sm); color: var(--text-primary); outline: none;" />
               </div>
               
-              <div style="display: flex; gap: var(--space-3); align-items: center; flex-shrink: 0;">
-                <div style="display: flex; gap: 6px;">
-                  <button id="btn-storage-select-all" class="btn-secondary small" style="padding: 4px 10px; height: 28px; font-size: 11px; cursor: pointer;">Select All</button>
-                  <button id="btn-storage-deselect-all" class="btn-secondary small" style="padding: 4px 10px; height: 28px; font-size: 11px; cursor: pointer;">Deselect All</button>
+              <!-- Quick Smart Action Filter Pills -->
+              <div style="display: flex; gap: 4px; align-items: center;">
+                <button id="btn-storage-filter-empty" class="storage-quick-pill" title="Filter items with 0 messages/entries">Empty (0)</button>
+                <button id="btn-storage-filter-old" class="storage-quick-pill" title="Filter items older than 30 days">&gt;30 Days</button>
+              </div>
+
+              <div style="display: flex; gap: 6px; align-items: center; flex-shrink: 0;">
+                <div style="display: flex; gap: 4px;">
+                  <button id="btn-storage-select-all" class="btn-secondary small" style="padding: 3px 8px; height: 28px; font-size: 11px; cursor: pointer;">Select All</button>
+                  <button id="btn-storage-deselect-all" class="btn-secondary small" style="padding: 3px 8px; height: 28px; font-size: 11px; cursor: pointer;">Deselect</button>
                 </div>
                 
                 <select id="storage-sort-select" style="background: var(--bg-primary); border: 1px solid var(--border-light); color: var(--text-primary); font-size: 11px; padding: 2px var(--space-2); border-radius: var(--radius-sm); outline: none; cursor: pointer; height: 28px;">
                   <option value="size">Size (Largest)</option>
+                  <option value="size-asc">Size (Smallest)</option>
                   <option value="date">Date (Newest)</option>
+                  <option value="date-asc">Date (Oldest)</option>
+                  <option value="name">Name (A-Z)</option>
+                  <option value="messages">Messages (Most)</option>
                 </select>
               </div>
             </div>
@@ -2198,7 +2255,7 @@
               
               <!-- Interactive List -->
               <div id="storage-cleanup-list" class="storage-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
-                <div id="storage-cleanup-stats" style="font-size: var(--text-sm); font-weight: 500; color: var(--text-tertiary); text-align: center; padding: 40px 0;">Scanning...</div>
+                <div id="storage-cleanup-stats" style="font-size: var(--text-sm); font-weight: 500; color: var(--text-tertiary); text-align: center; padding: 40px 0;">Scanning application database...</div>
               </div>
               
               <div class="scroll-blur-overlay bottom" id="storage-scroll-overlay-bottom" style="position: absolute; bottom: 0; left: 0; right: 0; height: 24px; background: linear-gradient(to top, var(--bg-secondary) 0%, transparent 100%); z-index: 5; pointer-events: none; opacity: 0; transition: opacity var(--transition-fast);">
@@ -2208,9 +2265,32 @@
           </div>
           
           <!-- Modal Action Footer -->
-          <div class="modal-footer" style="background: var(--bg-tertiary); border-top: 1px solid var(--border-subtle); padding: var(--space-4) var(--space-6); display: flex; align-items: center; justify-content: space-between;">
-            <div id="storage-selected-stats" style="font-size: var(--text-sm); color: var(--text-secondary); font-weight: 500;">0 items selected</div>
+          <div class="modal-footer" style="background: var(--bg-tertiary); border-top: 1px solid var(--border-subtle); padding: var(--space-3) var(--space-5); display: flex; align-items: center; justify-content: space-between;">
+            <div id="storage-selected-stats" style="font-size: var(--text-sm); color: var(--text-secondary); font-weight: 500;">0 items selected (0 KB)</div>
             <button id="btn-storage-cleanup" class="btn-primary" style="background: var(--error); color: #fff; box-shadow: none;" disabled>Select items to delete</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Storage Item Inspection Modal -->
+      <div id="modal-storage-inspect" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content" style="max-width: 520px; max-height: 85vh; display: flex; flex-direction: column;">
+          <div class="modal-header">
+            <h2 style="display: flex; align-items: center; gap: 10px; font-size: var(--text-base);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 18px; height: 18px; color: var(--text-accent);">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              Item Inspection
+            </h2>
+            <button class="btn-icon" id="btn-close-storage-inspect"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          </div>
+          <div class="modal-body" id="storage-inspect-body" style="padding: var(--space-4); overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-3);">
+            <!-- Populated via storage-panel.js -->
+          </div>
+          <div class="modal-footer" style="background: var(--bg-tertiary); border-top: 1px solid var(--border-subtle); padding: var(--space-3) var(--space-4); display: flex; justify-content: flex-end; gap: var(--space-2);">
+            <button class="btn-secondary small" id="btn-storage-inspect-close">Close</button>
+            <button class="btn-primary small" id="btn-storage-inspect-delete" style="background: var(--error); color: #fff;">Delete Item</button>
           </div>
         </div>
       </div>

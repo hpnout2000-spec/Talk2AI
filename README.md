@@ -79,6 +79,7 @@ To run a fast, private, and unlimited search engine on your local machine:
 ## Future Roadmap
 - **Book Authoring:** An automated agent system to write, review, and structure entire novels or books interactively.
 - **Advanced Animations:** I'll improve the streaming animations soon.
+- **Storage Analyzer:** The Storage Analyzer tool is currently broken/under maintenance and will be fixed in a future update.
 
 ## System Requirements
 - **Supported Models:**
