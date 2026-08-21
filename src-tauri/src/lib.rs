@@ -1982,26 +1982,27 @@ fn strip_html_tags(html: &str) -> String {
 }
 
 fn percent_decode(s: &str) -> String {
-    let mut decoded = String::new();
-    let mut chars = s.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '%' {
-            let mut hex = String::new();
-            if let Some(h1) = chars.next() { hex.push(h1); }
-            if let Some(h2) = chars.next() { hex.push(h2); }
-            if let Ok(val) = u8::from_str_radix(&hex, 16) {
-                decoded.push(val as char);
-            } else {
-                decoded.push('%');
-                decoded.push_str(&hex);
+    let mut bytes: Vec<u8> = Vec::new();
+    let s_bytes = s.as_bytes();
+    let mut i = 0;
+    while i < s_bytes.len() {
+        if s_bytes[i] == b'%' && i + 2 < s_bytes.len() {
+            if let Ok(hex_str) = std::str::from_utf8(&s_bytes[i + 1..i + 3]) {
+                if let Ok(hex_val) = u8::from_str_radix(hex_str, 16) {
+                    bytes.push(hex_val);
+                    i += 3;
+                    continue;
+                }
             }
-        } else if c == '+' {
-            decoded.push(' ');
-        } else {
-            decoded.push(c);
+        } else if s_bytes[i] == b'+' {
+            bytes.push(b' ');
+            i += 1;
+            continue;
         }
+        bytes.push(s_bytes[i]);
+        i += 1;
     }
-    decoded
+    String::from_utf8_lossy(&bytes).to_string()
 }
 
 fn parse_ddg_html(html: &str) -> String {
@@ -2016,7 +2017,12 @@ fn parse_ddg_html(html: &str) -> String {
                 if raw_url.contains("uddg=") {
                     if let Some(uddg_idx) = raw_url.find("uddg=") {
                         let enc_url = &raw_url[uddg_idx + 5..];
-                        percent_decode(enc_url)
+                        let clean_enc = if let Some(amp_idx) = enc_url.find('&') {
+                            &enc_url[..amp_idx]
+                        } else {
+                            enc_url
+                        };
+                        percent_decode(clean_enc)
                     } else {
                         raw_url.to_string()
                     }

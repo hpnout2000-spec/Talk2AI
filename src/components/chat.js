@@ -1482,7 +1482,7 @@ export function loadChat(session) {
   }
   renderIndicators();
   updateContextIndicator();
-  scrollToBottom();
+  scrollToBottom(true);
   updateChatHistory();
   window.dispatchEvent(new CustomEvent('genai-active-skills-changed'));
   if (window.syncLorebookIndicators) window.syncLorebookIndicators();
@@ -1787,6 +1787,12 @@ async function sendMessage() {
         if (to.hasAttribute('thoughts')) {
           from.setAttribute('thoughts', to.getAttribute('thoughts'));
         }
+        if (to.hasAttribute('effort')) {
+          from.setAttribute('effort', to.getAttribute('effort'));
+        }
+        if (to.hasAttribute('max-tokens')) {
+          from.setAttribute('max-tokens', to.getAttribute('max-tokens'));
+        }
         return false;
       }
       // Force clearing of display: none style when elements should no longer be hidden
@@ -1860,7 +1866,7 @@ async function sendMessage() {
           let html = '';
           const showThinking = isInThinking || thinking;
           if (showThinking) {
-            html += createThinkingBlockHTML(thinking, isInThinking, useGLM, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort);
+            html += createThinkingBlockHTML(thinking, isInThinking, useGLM, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort, settings.max_tokens);
           }
           const cleaned = stripJsonBlocks(dc, true);
           let formatted = renderMarkdown(cleaned);
@@ -2001,7 +2007,7 @@ async function sendMessage() {
             let finalHtml = '';
             if (parsedThinking) {
               if (thinkingTime === 0) thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
-              finalHtml += createThinkingBlockHTML(parsedThinking, false, useGLM, thinkingTime, settings.reasoning_effort);
+              finalHtml += createThinkingBlockHTML(parsedThinking, false, useGLM, thinkingTime, settings.reasoning_effort, settings.max_tokens);
             }
             const cleaned = stripJsonBlocks(parsedContent, false);
             let formatted = renderMarkdown(cleaned);
@@ -2912,7 +2918,7 @@ function appendMessage(msg, isStreaming = false, character = null) {
   }
 
   if (msgThinking) {
-    contentHtml += createThinkingBlockHTML(msgThinking, false, false, msg.thinking_time || 0, settings.reasoning_effort);
+    contentHtml += createThinkingBlockHTML(msgThinking, false, false, msg.thinking_time || 0, settings.reasoning_effort, settings.max_tokens);
   }
 
   const cleanedContent = stripJsonBlocks(msgContent, isStreaming);
@@ -3016,7 +3022,7 @@ function appendMessage(msg, isStreaming = false, character = null) {
       contentEl.classList.add('block-replacing-out');
       setTimeout(() => {
         let html = '';
-        if (msg.thinking) html += createThinkingBlockHTML(msg.thinking, false, settings.glm47_support, msg.thinking_time || 0, settings.reasoning_effort);
+        if (msg.thinking) html += createThinkingBlockHTML(msg.thinking, false, settings.glm47_support, msg.thinking_time || 0, settings.reasoning_effort, settings.max_tokens);
         const cleaned = stripJsonBlocks(newDisplayContent, false);
         let formatted = renderMarkdown(cleaned);
         formatted = processCharacterMentions(formatted);
@@ -3163,15 +3169,78 @@ async function swipeGreeting(messageId, direction) {
 
 let userHasScrolledUp = false;
 let isProgrammaticScrolling = false;
+let chatScrollRafId = null;
+let lastChatScrollTop = 0;
+
+function cancelPendingChatScroll() {
+  if (chatScrollRafId) {
+    cancelAnimationFrame(chatScrollRafId);
+    chatScrollRafId = null;
+  }
+}
 
 function setupScrollListener() {
   if (!messagesContainer || messagesContainer._scrollListenerAttached) return;
   messagesContainer._scrollListenerAttached = true;
+
+  // 1. Wheel event — zero-latency detection on upward scroll
+  messagesContainer.addEventListener('wheel', (e) => {
+    if (e.deltaY < 0) {
+      userHasScrolledUp = true;
+      cancelPendingChatScroll();
+      isProgrammaticScrolling = false;
+    } else if (e.deltaY > 0) {
+      const dist = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight;
+      if (dist <= 30) {
+        userHasScrolledUp = false;
+      }
+    }
+  }, { passive: true });
+
+  // 2. Touch event tracking
+  let touchStartY = 0;
+  messagesContainer.addEventListener('touchstart', (e) => {
+    if (e.touches && e.touches.length > 0) {
+      touchStartY = e.touches[0].clientY;
+    }
+  }, { passive: true });
+
+  messagesContainer.addEventListener('touchmove', (e) => {
+    if (e.touches && e.touches.length > 0) {
+      const currentY = e.touches[0].clientY;
+      const deltaY = currentY - touchStartY;
+      if (deltaY > 3) {
+        // Dragging down = scrolling up
+        userHasScrolledUp = true;
+        cancelPendingChatScroll();
+        isProgrammaticScrolling = false;
+      } else if (deltaY < -3) {
+        const dist = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight;
+        if (dist <= 30) {
+          userHasScrolledUp = false;
+        }
+      }
+    }
+  }, { passive: true });
+
+  // 3. Scroll event listener
   messagesContainer.addEventListener('scroll', () => {
-    if (isProgrammaticScrolling) return;
-    const threshold = 60;
-    const distanceFromBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight;
-    userHasScrolledUp = distanceFromBottom > threshold;
+    const currentScrollTop = messagesContainer.scrollTop;
+    const dist = messagesContainer.scrollHeight - currentScrollTop - messagesContainer.clientHeight;
+
+    if (isProgrammaticScrolling) {
+      lastChatScrollTop = currentScrollTop;
+      return;
+    }
+
+    if (currentScrollTop < lastChatScrollTop - 1) {
+      userHasScrolledUp = true;
+      cancelPendingChatScroll();
+    } else if (dist <= 25) {
+      userHasScrolledUp = false;
+    }
+
+    lastChatScrollTop = currentScrollTop;
   }, { passive: true });
 }
 
@@ -3185,15 +3254,27 @@ function scrollToBottom(force = false) {
     return;
   }
 
-  requestAnimationFrame(() => {
-    if (!messagesContainer) return;
-    isProgrammaticScrolling = true;
-    const maxScrollTop = messagesContainer.scrollHeight - messagesContainer.clientHeight;
-    messagesContainer.scrollTop = Math.max(0, maxScrollTop);
+  cancelPendingChatScroll();
 
-    setTimeout(() => {
+  chatScrollRafId = requestAnimationFrame(() => {
+    chatScrollRafId = null;
+    if (!messagesContainer || userHasScrolledUp) return;
+
+    const maxScrollTop = messagesContainer.scrollHeight - messagesContainer.clientHeight;
+    if (maxScrollTop <= 0) return;
+
+    if (Math.abs(messagesContainer.scrollTop - maxScrollTop) < 1) {
+      lastChatScrollTop = messagesContainer.scrollTop;
+      return;
+    }
+
+    isProgrammaticScrolling = true;
+    messagesContainer.scrollTop = Math.max(0, maxScrollTop);
+    lastChatScrollTop = messagesContainer.scrollTop;
+
+    queueMicrotask(() => {
       isProgrammaticScrolling = false;
-    }, 60);
+    });
   });
 }
 window.scrollToBottom = scrollToBottom;
@@ -3335,6 +3416,8 @@ async function triggerAssistantGeneration() {
     onBeforeElUpdated: (from, to) => {
       if (from.nodeName === 'THINKING-SNIPPETS' && to.nodeName === 'THINKING-SNIPPETS') {
         if (to.hasAttribute('thoughts')) from.setAttribute('thoughts', to.getAttribute('thoughts'));
+        if (to.hasAttribute('effort')) from.setAttribute('effort', to.getAttribute('effort'));
+        if (to.hasAttribute('max-tokens')) from.setAttribute('max-tokens', to.getAttribute('max-tokens'));
         return false;
       }
       // Force clearing of display: none style when elements should no longer be hidden
@@ -3395,7 +3478,7 @@ async function triggerAssistantGeneration() {
       if (!hasReceivedFirstChunk2) return;
 
       let html = '';
-      if (currentIsInThinking || currentThinking) html += createThinkingBlockHTML(currentThinking, currentIsInThinking, useGLM, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort);
+      if (currentIsInThinking || currentThinking) html += createThinkingBlockHTML(currentThinking, currentIsInThinking, useGLM, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort, settings.max_tokens);
       const cleaned2 = stripJsonBlocks(displayContent, true);
       html += wrapWordsInSpans(renderMarkdown(cleaned2));
 
@@ -3455,7 +3538,7 @@ async function triggerAssistantGeneration() {
           let finalHtml = '';
           if (parsedThinking2) {
               if (thinkingTime === 0) thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
-              finalHtml += createThinkingBlockHTML(parsedThinking2, false, useGLM, thinkingTime, settings.reasoning_effort);
+              finalHtml += createThinkingBlockHTML(parsedThinking2, false, useGLM, thinkingTime, settings.reasoning_effort, settings.max_tokens);
           }
           const cleaned = stripJsonBlocks(parsedContent2, false);
           let formatted = renderMarkdown(cleaned);

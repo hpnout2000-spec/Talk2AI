@@ -18,7 +18,6 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  scroll-behavior: smooth;
 }
 
 /* ─── Group Message Structure ────────────────────────────────────── */

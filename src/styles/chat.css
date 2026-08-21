@@ -660,7 +660,6 @@ body.ai-sidebar-open #btn-toggle-genai-header .icon-arrow-right {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
-  scroll-behavior: smooth;
   align-items: center;
 }
 
@@ -956,8 +955,8 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
   margin-top: 0;
 }
 
-.thinking-inline.thinking-expanded .thinking-inline-content {
-  max-height: 550px;
+.thinking-inline.thinking-expanded > .thinking-inline-content {
+  max-height: 800px;
   overflow-y: auto;
   contain: none;
   opacity: 0.85;
@@ -988,7 +987,9 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
   background: var(--text-tertiary, rgba(255, 255, 255, 0.3));
 }
 
-.thinking-inline.thinking-expanded .thinking-chevron {
+.thinking-inline.thinking-expanded > .thinking-inline-header .thinking-chevron,
+.thinking-inline.thinking-expanded > .thinking-toggle-header .thinking-chevron,
+.thinking-inline.thinking-expanded > * > .thinking-chevron {
   transform: rotate(90deg);
 }
 

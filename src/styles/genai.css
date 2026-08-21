@@ -886,24 +886,31 @@ body.genai-fullscreen .genai-fullscreen-placeholder {
   max-width: 88%;
 }
 
-/* Assistant bubble — same as .assistant .message-content */
+/* Assistant bubble — unified smooth container for both normal and fullscreen */
 .genai-msg.genai-assistant .genai-msg-bubble {
-  background: transparent;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border-light, rgba(255, 255, 255, 0.1));
+  border-radius: var(--radius-lg, 14px);
+  padding: 10px 14px;
   color: var(--text-primary);
-  padding: 0;
   max-width: 100%;
   width: fit-content;
-  transition: width 0.4s cubic-bezier(0.25, 0.8, 0.25, 1),
-              height 0.4s cubic-bezier(0.25, 0.8, 0.25, 1),
-              max-width 0.5s cubic-bezier(0.16, 1, 0.3, 1),
-              padding 0.5s cubic-bezier(0.16, 1, 0.3, 1),
-              border-radius 0.5s cubic-bezier(0.16, 1, 0.3, 1),
-              background-color 0.5s ease,
-              border-color 0.5s ease;
+  box-sizing: border-box;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              height 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              padding 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              border-radius 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              background 0.3s ease,
+              border-color 0.3s ease;
 }
 
 .genai-msg.genai-assistant .genai-msg-bubble.thinking-only {
   width: fit-content;
+  padding: 6px 14px;
+  border-radius: var(--radius-full, 100px);
+  background: rgba(255, 255, 255, 0.04);
   line-height: 1;
 }
 
@@ -2010,39 +2017,225 @@ body.genai-mode-active .btn-toggle-right-sidebar {
   color: #ffffff;
 }
 
-/* ─── GenAI System Timeline ────────────────────────────────────────── */
+/* ─── GenAI Master Workflow & Collapsible Steps ─────────────────────────── */
 
-.system-timeline-item {
-  position: relative;
-  /* padding-left removed so they align with normal text */
-  display: block;
+.genai-master-workflow {
+  margin-bottom: var(--space-2);
+  user-select: none;
 }
 
-/* Draw a vertical connector BELOW the item if it's followed by another system item */
-.system-timeline-item:has(+ .system-timeline-item)::after,
-.system-timeline-item:has(+ p:empty + .system-timeline-item)::after,
-.system-timeline-item:has(+ p:empty + p:empty + .system-timeline-item)::after,
-.system-timeline-item:has(+ br + .system-timeline-item)::after,
-.system-timeline-item:has(+ br + br + .system-timeline-item)::after,
-.system-timeline-item:has(+ p:empty + br + .system-timeline-item)::after {
-  content: '';
-  display: block;
-  width: 2px;
-  height: 16px;
-  background-color: var(--text-secondary);
-  opacity: 0.35;
-  border-radius: 2px;
-  margin-left: 42px;
-  margin-top: 6px;
+.genai-master-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  opacity: 0.65;
+  font-style: italic;
+  font-size: var(--text-xs);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  padding: 2px 0;
+  background: none;
+  border: none;
+  outline: none;
+  transition: opacity 0.2s ease;
+  margin-bottom: 4px;
+  user-select: none;
+}
+
+.genai-master-header:hover {
+  opacity: 0.9;
+}
+
+.genai-master-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  opacity: 0.5;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  margin-left: 1px;
+}
+
+.genai-master-workflow.is-expanded .genai-master-chevron {
+  transform: rotate(90deg);
+}
+
+.genai-master-body {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  margin-top: 0;
+  padding-left: 0;
+  border-left: none;
+  transition: max-height 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.3s ease,
+              margin-top 0.3s ease,
+              margin-bottom 0.3s ease;
+}
+
+.genai-master-workflow.is-expanded .genai-master-body {
+  max-height: 1200px;
+  opacity: 1;
+  overflow-y: auto;
+  margin-top: var(--space-2);
+  margin-bottom: var(--space-3);
+  scrollbar-width: thin;
+}
+
+.genai-live-workflow-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+.genai-workflow-preamble {
+  font-size: 0.95em;
+  color: var(--text-primary);
+  margin: 6px 0;
+  line-height: 1.45;
+  opacity: 0.9;
+}
+
+/* ─── Collapsible Tool Step ────────────────────────────────────────── */
+
+.genai-workflow-tool-step {
+  margin: 4px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.genai-step-header {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  opacity: 0.65;
+  font-style: italic;
+  font-size: var(--text-xs);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  padding: 2px 0;
+  background: none;
+  border: none;
+  outline: none;
+  transition: opacity 0.2s ease;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.genai-step-header:hover {
+  opacity: 0.9;
+}
+
+.genai-step-chevron {
+  font-size: 9px;
+  opacity: 0.5;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  display: inline-block;
+}
+
+.genai-workflow-tool-step.is-expanded .genai-step-chevron {
+  transform: rotate(90deg);
+}
+
+.genai-step-details {
+  max-height: 0;
+  opacity: 0;
+  overflow: hidden;
+  margin-top: 0;
+  margin-left: 0;
+  padding-left: 0;
+  border-left: none;
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  font-style: italic;
+  line-height: 1.5;
+  transition: max-height 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.25s ease,
+              margin-top 0.2s ease;
+}
+
+.genai-workflow-tool-step.is-expanded .genai-step-details {
+  max-height: 600px;
+  opacity: 0.9;
+  overflow: visible;
+  margin-top: 4px;
+  margin-bottom: 4px;
+}
+
+/* ─── Allow / Deny Buttons ────────────────────────────────────────── */
+
+.genai-btn-allow {
+  background: var(--accent-primary, #ececec) !important;
+  color: var(--bg-primary, #171717) !important;
+  border: none !important;
+  font-weight: 600 !important;
+  border-radius: var(--radius-full, 100px) !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  transition: all var(--transition-fast) !important;
+  opacity: 1 !important;
+  transform: none !important;
+  animation: none !important;
+  position: relative;
+  z-index: 10;
+}
+
+.genai-btn-allow:hover {
+  background: var(--accent-primary-hover, #ffffff) !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 2px 8px rgba(255, 255, 255, 0.2);
+}
+
+.genai-btn-allow:active {
+  transform: translateY(0) !important;
+}
+
+.genai-btn-deny {
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid var(--border-light, rgba(255, 255, 255, 0.15)) !important;
+  color: var(--text-primary, #e2e8f0) !important;
+  border-radius: var(--radius-full, 100px) !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  transition: all var(--transition-fast) !important;
+  opacity: 1 !important;
+  transform: none !important;
+  animation: none !important;
+  position: relative;
+  z-index: 10;
+}
+
+.genai-btn-deny:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.25) !important;
+  color: #ffffff !important;
+  transform: translateY(-1px) !important;
+}
+
+.genai-btn-deny:active {
+  transform: translateY(0) !important;
+}
+
+.genai-step-detail-item {
   margin-bottom: 2px;
 }
 
-/* Tool font & style matching Thought font style exactly */
-.genai-inline-tool, 
+.genai-step-detail-item:last-child {
+  margin-bottom: 0;
+}
+
+/* Tool typography matching thought styling */
+.genai-inline-tool,
 .genai-inline-tool .genai-working-text,
-.genai-system-group .genai-working-text {
+.genai-system-group .genai-working-text,
+.genai-step-status {
   color: var(--text-secondary) !important;
-  opacity: 0.6 !important;
+  opacity: 0.65 !important;
   font-style: italic !important;
   font-size: var(--text-xs) !important;
   font-weight: 400 !important;
@@ -2054,14 +2247,9 @@ body.genai-mode-active .btn-toggle-right-sidebar {
 }
 
 .genai-system-group,
-.system-timeline-item,
 .genai-action-badge {
   user-select: none !important;
   -webkit-user-select: none !important;
-}
-
-.genai-tool-pending-completed .timeline-node-icon {
-  opacity: 0.6 !important;
 }
 
 /* Smart Context Advanced Settings Toggle */

@@ -172,7 +172,7 @@ export function loadGroupSession(session) {
   for (const msg of session.messages) {
     appendGroupMessage(msg);
   }
-  scrollGroupToBottom();
+  scrollGroupToBottom(true);
   renderGroupHistoryInPanel();
   window.dispatchEvent(new CustomEvent('genai-active-skills-changed'));
 }
@@ -428,23 +428,78 @@ async function regenerateGroupResponse(oldMsg, el) {
 function clearGroupMessages() { messagesContainer.innerHTML = '<div class="empty-state"><h2>Group Chat</h2><p>Send a message!</p></div>'; }
 let groupUserHasScrolledUp = false;
 let groupIsProgrammaticScrolling = false;
+let groupScrollRafId = null;
+let lastGroupScrollTop = 0;
+
+function cancelPendingGroupScroll() {
+  if (groupScrollRafId) {
+    cancelAnimationFrame(groupScrollRafId);
+    groupScrollRafId = null;
+  }
+}
 
 function setupGroupScrollListener() {
   if (!messagesContainer || messagesContainer._scrollListenerAttached) return;
   messagesContainer._scrollListenerAttached = true;
 
-  const cancelProgrammatic = () => {
-    groupUserHasScrolledUp = true;
-    groupIsProgrammaticScrolling = false;
-  };
-  messagesContainer.addEventListener('wheel', cancelProgrammatic, { passive: true });
-  messagesContainer.addEventListener('touchmove', cancelProgrammatic, { passive: true });
+  // 1. Wheel event — zero-latency detection on upward scroll
+  messagesContainer.addEventListener('wheel', (e) => {
+    if (e.deltaY < 0) {
+      groupUserHasScrolledUp = true;
+      cancelPendingGroupScroll();
+      groupIsProgrammaticScrolling = false;
+    } else if (e.deltaY > 0) {
+      const dist = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight;
+      if (dist <= 30) {
+        groupUserHasScrolledUp = false;
+      }
+    }
+  }, { passive: true });
 
+  // 2. Touch event tracking
+  let touchStartY = 0;
+  messagesContainer.addEventListener('touchstart', (e) => {
+    if (e.touches && e.touches.length > 0) {
+      touchStartY = e.touches[0].clientY;
+    }
+  }, { passive: true });
+
+  messagesContainer.addEventListener('touchmove', (e) => {
+    if (e.touches && e.touches.length > 0) {
+      const currentY = e.touches[0].clientY;
+      const deltaY = currentY - touchStartY;
+      if (deltaY > 3) {
+        // Dragging down = scrolling up
+        groupUserHasScrolledUp = true;
+        cancelPendingGroupScroll();
+        groupIsProgrammaticScrolling = false;
+      } else if (deltaY < -3) {
+        const dist = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight;
+        if (dist <= 30) {
+          groupUserHasScrolledUp = false;
+        }
+      }
+    }
+  }, { passive: true });
+
+  // 3. Scroll event listener
   messagesContainer.addEventListener('scroll', () => {
-    if (groupIsProgrammaticScrolling) return;
-    const threshold = 60;
-    const distanceFromBottom = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight;
-    groupUserHasScrolledUp = distanceFromBottom > threshold;
+    const currentScrollTop = messagesContainer.scrollTop;
+    const dist = messagesContainer.scrollHeight - currentScrollTop - messagesContainer.clientHeight;
+
+    if (groupIsProgrammaticScrolling) {
+      lastGroupScrollTop = currentScrollTop;
+      return;
+    }
+
+    if (currentScrollTop < lastGroupScrollTop - 1) {
+      groupUserHasScrolledUp = true;
+      cancelPendingGroupScroll();
+    } else if (dist <= 25) {
+      groupUserHasScrolledUp = false;
+    }
+
+    lastGroupScrollTop = currentScrollTop;
   }, { passive: true });
 }
 
@@ -458,15 +513,27 @@ function scrollGroupToBottom(force = false) {
     return;
   }
 
-  requestAnimationFrame(() => {
-    if (!messagesContainer) return;
-    groupIsProgrammaticScrolling = true;
-    const maxScrollTop = messagesContainer.scrollHeight - messagesContainer.clientHeight;
-    messagesContainer.scrollTop = Math.max(0, maxScrollTop);
+  cancelPendingGroupScroll();
 
-    setTimeout(() => {
+  groupScrollRafId = requestAnimationFrame(() => {
+    groupScrollRafId = null;
+    if (!messagesContainer || groupUserHasScrolledUp) return;
+
+    const maxScrollTop = messagesContainer.scrollHeight - messagesContainer.clientHeight;
+    if (maxScrollTop <= 0) return;
+
+    if (Math.abs(messagesContainer.scrollTop - maxScrollTop) < 1) {
+      lastGroupScrollTop = messagesContainer.scrollTop;
+      return;
+    }
+
+    groupIsProgrammaticScrolling = true;
+    messagesContainer.scrollTop = Math.max(0, maxScrollTop);
+    lastGroupScrollTop = messagesContainer.scrollTop;
+
+    queueMicrotask(() => {
       groupIsProgrammaticScrolling = false;
-    }, 60);
+    });
   });
 }
 

@@ -766,7 +766,7 @@ export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, t
 
   if (isActive) {
     const escapedThoughts = escapeHtml(cleanThinking);
-    const mTokens = maxTokens || settings.genai_max_tokens || settings.max_tokens || 2048;
+    const mTokens = maxTokens || settings.max_tokens || settings.genai_max_tokens || 2048;
     return `<div class="thinking-inline thinking-inline-active system-timeline-item"><div class="thinking-inline-header"><thinking-snippets id="genai-thinking-snippets" thoughts="${escapedThoughts}" effort="${effort}" max-tokens="${mTokens}"></thinking-snippets></div></div>`;
   }
   let doneText = '';
@@ -786,6 +786,10 @@ class ThinkingSnippets extends HTMLElement {
     super();
     this.isExpanded = false;
     this.hasThoughts = false;
+    this.userHasScrolledUp = false;
+    this._isScrolling = false;
+    this._scrollRafId = null;
+    this._lastScrollTop = 0;
   }
 
   static get observedAttributes() {
@@ -850,17 +854,68 @@ class ThinkingSnippets extends HTMLElement {
     this.appendChild(this.expandedView);
 
     this.userHasScrolledUp = false;
+    this._isScrolling = false;
+    this._scrollRafId = null;
+    this._lastScrollTop = 0;
+
     const cancelProgrammatic = () => {
       this.userHasScrolledUp = true;
       this._isScrolling = false;
+      if (this._scrollRafId) {
+        cancelAnimationFrame(this._scrollRafId);
+        this._scrollRafId = null;
+      }
     };
-    this.expandedView.addEventListener('wheel', cancelProgrammatic, { passive: true });
-    this.expandedView.addEventListener('touchmove', cancelProgrammatic, { passive: true });
-    
+
+    this.expandedView.addEventListener('wheel', (e) => {
+      if (e.deltaY < 0) {
+        cancelProgrammatic();
+      } else if (e.deltaY > 0) {
+        const dist = this.expandedView.scrollHeight - this.expandedView.scrollTop - this.expandedView.clientHeight;
+        if (dist <= 20) {
+          this.userHasScrolledUp = false;
+        }
+      }
+    }, { passive: true });
+
+    let touchStartY = 0;
+    this.expandedView.addEventListener('touchstart', (e) => {
+      if (e.touches && e.touches.length > 0) {
+        touchStartY = e.touches[0].clientY;
+      }
+    }, { passive: true });
+
+    this.expandedView.addEventListener('touchmove', (e) => {
+      if (e.touches && e.touches.length > 0) {
+        const currentY = e.touches[0].clientY;
+        const deltaY = currentY - touchStartY;
+        if (deltaY > 2) {
+          cancelProgrammatic();
+        } else if (deltaY < -2) {
+          const dist = this.expandedView.scrollHeight - this.expandedView.scrollTop - this.expandedView.clientHeight;
+          if (dist <= 20) {
+            this.userHasScrolledUp = false;
+          }
+        }
+      }
+    }, { passive: true });
+
     this.expandedView.addEventListener('scroll', () => {
-      if (this._isScrolling) return;
-      const distanceFromBottom = this.expandedView.scrollHeight - this.expandedView.scrollTop - this.expandedView.clientHeight;
-      this.userHasScrolledUp = distanceFromBottom > 60;
+      const current = this.expandedView.scrollTop;
+      const dist = this.expandedView.scrollHeight - current - this.expandedView.clientHeight;
+
+      if (this._isScrolling) {
+        this._lastScrollTop = current;
+        return;
+      }
+
+      if (current < this._lastScrollTop - 1) {
+        cancelProgrammatic();
+      } else if (dist <= 20) {
+        this.userHasScrolledUp = false;
+      }
+
+      this._lastScrollTop = current;
     }, { passive: true });
 
     // Interactive click
@@ -875,9 +930,11 @@ class ThinkingSnippets extends HTMLElement {
            bubble.style.width = '100%';
            bubble.style.maxWidth = '100%';
         }
-        // smooth scroll to bottom on open
+        this.userHasScrolledUp = false;
         requestAnimationFrame(() => {
-          this.expandedView.scrollTo({ top: this.expandedView.scrollHeight, behavior: 'smooth' });
+          if (!this.expandedView) return;
+          this.expandedView.scrollTop = this.expandedView.scrollHeight;
+          this._lastScrollTop = this.expandedView.scrollTop;
         });
       } else {
         if (bubble) {
@@ -889,35 +946,44 @@ class ThinkingSnippets extends HTMLElement {
   }
 
   attributeChangedCallback(name, oldValue, newValue) {
-    if (name === 'thoughts' && newValue !== oldValue) {
-      this.updateProgress(newValue);
+    if ((name === 'thoughts' || name === 'effort' || name === 'max-tokens') && newValue !== oldValue) {
+      this.updateProgress(this.getAttribute('thoughts') || '');
     }
   }
 
   smoothScrollToBottom() {
-    if (this.userHasScrolledUp) return;
+    if (this.userHasScrolledUp || !this.isExpanded || !this.expandedView) return;
 
     if (this._isScrolling) return;
     this._isScrolling = true;
 
     const step = () => {
-      if (!this.isExpanded || !this.expandedView) {
+      if (this.userHasScrolledUp || !this.isExpanded || !this.expandedView) {
         this._isScrolling = false;
+        this._scrollRafId = null;
         return;
       }
       const target = this.expandedView.scrollHeight - this.expandedView.clientHeight;
+      if (target <= 0) {
+        this._isScrolling = false;
+        this._scrollRafId = null;
+        return;
+      }
       const current = this.expandedView.scrollTop;
       const diff = target - current;
 
-      if (Math.abs(diff) > 0.5) {
-        this.expandedView.scrollTop = current + diff * 0.2;
-        requestAnimationFrame(step);
+      if (diff > 1) {
+        this.expandedView.scrollTop = current + Math.max(1, diff * 0.25);
+        this._lastScrollTop = this.expandedView.scrollTop;
+        this._scrollRafId = requestAnimationFrame(step);
       } else {
         this.expandedView.scrollTop = target;
+        this._lastScrollTop = target;
         this._isScrolling = false;
+        this._scrollRafId = null;
       }
     };
-    requestAnimationFrame(step);
+    this._scrollRafId = requestAnimationFrame(step);
   }
 
   updateProgress(thoughtsText) {
@@ -927,14 +993,19 @@ class ThinkingSnippets extends HTMLElement {
     this.transformToThinking();
 
     // Update expanded text (unescape and format)
-    this.expandedView.innerHTML = thoughtsText.replace(/\n/g, '<br>');
+    this.expandedView.innerHTML = escapeHtml(thoughtsText).replace(/\n/g, '<br>');
 
-    // Calculate progress
-    // 1 token ~= 4 chars roughly
-    const estimatedTokens = thoughtsText.length / 4;
+    // Calculate progress with accurate token estimation:
+    // Cyrillic (Russian) in modern BPE tokenizers averages ~2.1 chars/token.
+    // Latin / English / code averages ~3.4 chars/token.
+    const cyrillicMatches = thoughtsText.match(/[а-яА-ЯёЁ]/g);
+    const cyrillicCount = cyrillicMatches ? cyrillicMatches.length : 0;
+    const isMainlyCyrillic = (cyrillicCount / thoughtsText.length) > 0.25;
+    const charsPerToken = isMainlyCyrillic ? 2.1 : 3.4;
+    const estimatedTokens = Math.max(1, thoughtsText.length / charsPerToken);
     
-    const effortMap = { 'none': 0, 'minimal': 0.1, 'low': 0.2, 'medium': 0.5, 'high': 0.8 };
-    const rawEffort = this.getAttribute('effort') || 'medium';
+    const effortMap = { 'none': 0, 'minimal': 0.1, 'low': 0.2, 'medium': 0.5, 'high': 0.8, 'max': 1.0 };
+    const rawEffort = (this.getAttribute('effort') || 'medium').toLowerCase();
     const parsedFloat = parseFloat(rawEffort);
     const effortRatio = !isNaN(parsedFloat) && parsedFloat >= 0 && parsedFloat <= 1 
       ? parsedFloat 
@@ -1064,9 +1135,34 @@ export function wrapWordsInSpans(htmlString, useNewAnimation = false, revealedWo
       if (lower.startsWith('<table')) inTableTag = true;
       if (lower.startsWith('</table')) inTableTag = false;
       
-      if (lower.startsWith('<div') && (lower.includes('thinking-inline') || lower.includes('genai-tool-capsule') || lower.includes('genai-inline-tool') || lower.includes('generated-image-container') || lower.includes('chat-image-loader'))) {
+      const isSkipContainer = (
+        lower.includes('genai-master-workflow') ||
+        lower.includes('genai-workflow-') ||
+        lower.includes('genai-collapsible-step') ||
+        lower.includes('genai-tool-step') ||
+        lower.includes('genai-step-') ||
+        lower.includes('thinking-inline') ||
+        lower.includes('thinking-snippets') ||
+        lower.includes('glm-thinking-snippets') ||
+        lower.includes('genai-tool-capsule') ||
+        lower.includes('genai-inline-tool') ||
+        lower.includes('genai-system-group') ||
+        lower.includes('system-timeline-item') ||
+        lower.includes('genai-tool-slot') ||
+        lower.includes('genai-action-badge') ||
+        lower.includes('imagered-milestone-msg') ||
+        lower.includes('generated-image-container') ||
+        lower.includes('chat-image-loader') ||
+        lower.includes('inline-suggestion-btn-container') ||
+        lower.includes('inline-suggestion-buttons-row') ||
+        lower.includes('genai-breathing-spacer') ||
+        lower.includes('live-preview-container') ||
+        lower.includes('continuation-option-btn')
+      );
+
+      if (!inSkipBlock && !isClosing && isSkipContainer && tagName) {
         inSkipBlock = true;
-        skipBlockTag = 'div';
+        skipBlockTag = tagName;
         skipBlockDepth = 1;
       } else if (inSkipBlock) {
         if (lower.startsWith('<' + skipBlockTag)) {

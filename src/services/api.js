@@ -740,7 +740,9 @@ export const api = {
         onDone();
       } catch (err) {
         if (err.name === 'AbortError' || combinedController.signal.aborted) {
-          onDone();
+          const abortErr = new Error('Aborted');
+          abortErr.name = 'AbortError';
+          onError(abortErr);
         } else {
           onError(err);
         }

@@ -96,7 +96,6 @@
   flex-direction: column;
   padding: 40px;
   overflow-y: auto;
-  scroll-behavior: smooth;
 }
 
 .scene-content {

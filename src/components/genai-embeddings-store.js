@@ -13,19 +13,25 @@ const STORE_NAME = 'vectors';
 
 let extractorPipeline = null;
 let db = null;
+let openDbPromise = null;
 let isInitializing = false;
 
 // ─── IndexedDB Setup ────────────────────────────────────────────────
 
 function openDB() {
-  return new Promise((resolve, reject) => {
-    if (db) return resolve(db);
+  if (db) return Promise.resolve(db);
+  if (openDbPromise) return openDbPromise;
+  openDbPromise = new Promise((resolve, reject) => {
     // Increment version to 2 to flush old vectors (incompatible models)
     const request = window.indexedDB.open(DB_NAME, 2);
     
-    request.onerror = (e) => reject(e.target.error);
+    request.onerror = (e) => {
+      openDbPromise = null;
+      reject(e.target.error);
+    };
     request.onsuccess = (e) => {
       db = e.target.result;
+      openDbPromise = null;
       resolve(db);
     };
     request.onupgradeneeded = (e) => {
@@ -37,11 +43,13 @@ function openDB() {
       store.createIndex('session_id', 'session_id', { unique: false });
     };
   });
+  return openDbPromise;
 }
 
-function putVector(record) {
+async function putVector(record) {
+  const database = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const tx = database.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
     const req = store.put(record);
     req.onsuccess = () => resolve();
@@ -49,9 +57,10 @@ function putVector(record) {
   });
 }
 
-function getVectorsBySession(sessionId) {
+async function getVectorsBySession(sessionId) {
+  const database = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readonly');
+    const tx = database.transaction(STORE_NAME, 'readonly');
     const store = tx.objectStore(STORE_NAME);
     const index = store.index('session_id');
     const req = index.getAll(IDBKeyRange.only(sessionId));
@@ -60,9 +69,10 @@ function getVectorsBySession(sessionId) {
   });
 }
 
-function deleteVector(id) {
+async function deleteVector(id) {
+  const database = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const tx = database.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
     const req = store.delete(id);
     req.onsuccess = () => resolve();
@@ -70,9 +80,10 @@ function deleteVector(id) {
   });
 }
 
-function getAllVectors() {
+async function getAllVectors() {
+  const database = await openDB();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readonly');
+    const tx = database.transaction(STORE_NAME, 'readonly');
     const store = tx.objectStore(STORE_NAME);
     const req = store.getAll();
     req.onsuccess = () => resolve(req.result || []);
@@ -229,12 +240,8 @@ export const genaiEmbeddingsStore = {
     const maxPerSession = options.maxPerSession || 2;
     const excludeSessionId = options.excludeSessionId;
 
-    // If currently downloading the model, don't block the user's chat. Just skip RAG.
-    if (isInitializing) {
-      console.log('[Embeddings] Search skipped because model is still initializing/downloading.');
-      return [];
-    }
-    
+    // If model is not loaded and not initializing, try to load it.
+    // If it's already initializing (background pre-load), init() will wait for it.
     // Pass false to not spam toasts during search
     if (!await this.init(false)) return [];
 
@@ -300,6 +307,18 @@ export const genaiEmbeddingsStore = {
 
   isModelInitializing() {
     return isInitializing;
+  },
+
+  /**
+   * Returns the number of vectors in the store (cheap count, no model needed)
+   */
+  async getVectorCount() {
+    try {
+      const allVecs = await getAllVectors();
+      return allVecs.length;
+    } catch (e) {
+      return 0;
+    }
   },
 
   /**

@@ -49,28 +49,56 @@ export function initSmartContextMgr() {
     });
   }
 
-  function updateRagModelUI() {
+  async function updateRagModelUI() {
     if (!btnRagInstall || !labelRagStatus) return;
-    
-    const isInstalledOnDisk = localStorage.getItem('smart_context_model_installed') === 'true';
 
-    if (genaiEmbeddingsStore.isModelLoaded() || isInstalledOnDisk) {
+    const isInstalledOnDisk = localStorage.getItem('smart_context_model_installed') === 'true';
+    const isModelLoaded = genaiEmbeddingsStore.isModelLoaded();
+    const isCurrentlyInitializing = genaiEmbeddingsStore.isModelInitializing();
+
+    // If localStorage flag is missing, check if vectors exist in IndexedDB as a secondary signal
+    let hasVectorsInDB = false;
+    if (!isInstalledOnDisk && !isModelLoaded && !isCurrentlyInitializing) {
+      try {
+        const vectors = await genaiEmbeddingsStore.getVectorCount();
+        hasVectorsInDB = vectors > 0;
+        if (hasVectorsInDB) {
+          // Restore the lost localStorage flag
+          localStorage.setItem('smart_context_model_installed', 'true');
+          console.log('[RAG UI] Restored smart_context_model_installed flag from IndexedDB data');
+        }
+      } catch (e) {
+        // Ignore — DB might not be open yet
+      }
+    }
+
+    const isEffectivelyInstalled = isInstalledOnDisk || hasVectorsInDB;
+
+    console.log('[RAG UI] updateRagModelUI called:', { isModelLoaded, isCurrentlyInitializing, isInstalledOnDisk, hasVectorsInDB });
+
+    if (isModelLoaded || isEffectivelyInstalled) {
       labelRagStatus.innerHTML = `
         <svg viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" style="width: 12px; height: 12px; display: inline-block; vertical-align: middle; margin-right: 2px;">
           <polyline points="20 6 9 17 4 12"/>
         </svg>
-        Installed
+        ${isModelLoaded ? 'Ready' : 'Installed'}
       `;
       btnRagInstall.disabled = true;
       btnRagInstall.style.opacity = '0.7';
       btnRagInstall.style.cursor = 'default';
-      
+
       // Auto-load silently in the background if installed but not loaded in memory yet
-      if (!genaiEmbeddingsStore.isModelLoaded() && !genaiEmbeddingsStore.isModelInitializing()) {
-        genaiEmbeddingsStore.init(false).then(updateRagModelUI);
+      if (!isModelLoaded && !isCurrentlyInitializing) {
+        console.log('[RAG UI] Model installed on disk but not loaded, initiating background load...');
+        genaiEmbeddingsStore.init(false).then((success) => {
+          console.log('[RAG UI] Background load completed:', success);
+          updateRagModelUI();
+        }).catch(err => {
+          console.error('[RAG UI] Background load failed:', err);
+        });
       }
-    } else if (genaiEmbeddingsStore.isModelInitializing()) {
-      labelRagStatus.textContent = 'Installing...';
+    } else if (isCurrentlyInitializing) {
+      labelRagStatus.textContent = 'Loading...';
       btnRagInstall.disabled = true;
       btnRagInstall.style.opacity = '0.7';
       btnRagInstall.style.cursor = 'default';
@@ -224,6 +252,21 @@ export function initSmartContextMgr() {
   window.isSmartContextRunning = () => {
     return Object.keys(activeSummarizations).length > 0 || isSyncRunning;
   };
+
+  // Pre-load model in background to prevent UI freeze on the first message sent.
+  // We always attempt to load if smart_context is enabled, regardless of localStorage flag
+  // (the flag may not persist reliably across Tauri restarts).
+  setTimeout(() => {
+    const settings = settingsStore.get();
+    if (settings.genai_smart_context && !genaiEmbeddingsStore.isModelLoaded() && !genaiEmbeddingsStore.isModelInitializing()) {
+      console.log('[Smart Context] Pre-loading model in background...');
+      genaiEmbeddingsStore.init(false).then(success => {
+        console.log('[Smart Context] Background pre-load result:', success);
+      }).catch(err => {
+        console.error('[Smart Context] Background pre-load failed:', err);
+      });
+    }
+  }, 2000);
 
   // Run migration in background after a short delay so it doesn't block startup
   setTimeout(async () => {
