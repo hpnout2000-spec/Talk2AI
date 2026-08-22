@@ -886,18 +886,18 @@ body.genai-fullscreen .genai-fullscreen-placeholder {
   max-width: 88%;
 }
 
-/* Assistant bubble — unified smooth container for both normal and fullscreen */
+/* Assistant bubble — clean transparent surface in sidebar mode */
 .genai-msg.genai-assistant .genai-msg-bubble {
-  background: rgba(255, 255, 255, 0.025);
-  border: 1px solid var(--border-light, rgba(255, 255, 255, 0.1));
-  border-radius: var(--radius-lg, 14px);
-  padding: 10px 14px;
+  background: transparent;
   color: var(--text-primary);
+  padding: 0;
+  border: none;
   max-width: 100%;
   width: fit-content;
   box-sizing: border-box;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow: none;
   transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1),
               height 0.3s cubic-bezier(0.16, 1, 0.3, 1),
               padding 0.3s cubic-bezier(0.16, 1, 0.3, 1),
@@ -909,8 +909,11 @@ body.genai-fullscreen .genai-fullscreen-placeholder {
 .genai-msg.genai-assistant .genai-msg-bubble.thinking-only {
   width: fit-content;
   padding: 6px 14px;
-  border-radius: var(--radius-full, 100px);
+  border-radius: var(--radius-xl, 20px);
   background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-light, rgba(255, 255, 255, 0.08));
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   line-height: 1;
 }
 
@@ -942,12 +945,13 @@ body.genai-fullscreen .genai-msg.genai-assistant {
 }
 
 body.genai-fullscreen .genai-msg.genai-assistant .genai-msg-bubble {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-lg);
-  padding: var(--space-3) var(--space-4);
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border-light, rgba(255, 255, 255, 0.1));
+  border-radius: var(--radius-xl, 20px);
+  padding: 12px 18px;
   box-shadow: var(--shadow-sm);
   backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   box-sizing: border-box;
   display: block;
   width: fit-content;
@@ -956,8 +960,9 @@ body.genai-fullscreen .genai-msg.genai-assistant .genai-msg-bubble {
 body.genai-fullscreen .genai-msg.genai-assistant .genai-msg-bubble.thinking-only {
   width: fit-content;
   padding: 6px 14px;
-  border-radius: 16px;
+  border-radius: var(--radius-xl, 20px);
   background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-light, rgba(255, 255, 255, 0.08));
   line-height: 1;
 }
 
@@ -1001,7 +1006,13 @@ body.genai-fullscreen .genai-empty-state {
   color: var(--text-tertiary);
   padding: 0 2px;
   margin-top: var(--space-2);
-  transition: opacity 0.3s ease;
+  cursor: default;
+  user-select: none;
+  transition: opacity 0.3s ease, color var(--transition-fast);
+}
+
+.genai-msg-time:hover {
+  color: var(--text-secondary);
 }
 
 .genai-msg.generating .genai-msg-time {
@@ -1432,6 +1443,7 @@ body:not(.genai-fullscreen) #genai-thinking-effort-wrapper .thinking-icon-bulb {
 }
 
 #btn-genai-send {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1439,26 +1451,50 @@ body:not(.genai-fullscreen) #genai-thinking-effort-wrapper .thinking-icon-bulb {
   height: 30px;
   border: none;
   border-radius: 50%;
-  background: var(--accent-primary);
+  background: var(--text-primary, #ffffff);
   color: var(--bg-primary);
   cursor: pointer;
   flex-shrink: 0;
-  transition: all var(--transition-fast);
+  overflow: hidden;
+  transition: background-color 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              color 0.3s ease,
+              transform 0.2s ease,
+              box-shadow 0.3s ease;
   margin-bottom: 2px;
 }
 
+#btn-genai-send .btn-icon-svg,
+#btn-genai-stop .btn-icon-svg {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.25s ease;
+}
+
+#btn-genai-send .icon-arrow,
+#btn-genai-send.state-send .icon-arrow {
+  transform: rotate(0deg) scale(1);
+  opacity: 1;
+}
+
+#btn-genai-send .icon-stop,
+#btn-genai-send.state-send .icon-stop {
+  transform: scale(0.4);
+  opacity: 0;
+  pointer-events: none;
+}
+
 #btn-genai-send:hover {
-  background: var(--accent-primary-hover);
-  transform: scale(1.05);
+  background: #ffffff;
+  transform: scale(1.06);
 }
 
 #btn-genai-send:active {
-  transform: scale(0.95);
-}
-
-#btn-genai-send svg {
-  width: 14px;
-  height: 14px;
+  transform: scale(0.94);
 }
 
 #btn-genai-send:disabled {
@@ -1467,34 +1503,94 @@ body:not(.genai-fullscreen) #genai-thinking-effort-wrapper .thinking-icon-bulb {
   transform: none;
 }
 
+/* GenAI State: Stop */
+#btn-genai-send.state-stop,
 #btn-genai-stop {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border: none;
-  border-radius: 50%;
   background: var(--danger, #ef4444);
   color: #fff;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: all var(--transition-fast);
-  margin-bottom: 2px;
 }
 
+#btn-genai-send.state-stop:hover,
 #btn-genai-stop:hover {
-  background: #f87171;
-  transform: scale(1.05);
+  background: #dc2626;
+  transform: scale(1.06);
 }
 
+#btn-genai-send.state-stop:active,
 #btn-genai-stop:active {
-  transform: scale(0.95);
+  transform: scale(0.94);
 }
 
+#btn-genai-send.state-stop .icon-arrow {
+  transform: rotate(0deg) scale(0.4);
+  opacity: 0;
+  pointer-events: none;
+}
+
+#btn-genai-send.state-stop .icon-stop,
 #btn-genai-stop svg {
-  width: 14px;
-  height: 14px;
+  transform: scale(1);
+  opacity: 1;
+}
+
+/* GenAI State: Skip */
+#btn-genai-send.state-skip {
+  background: #eab308;
+  color: #18181b;
+  box-shadow: 0 0 14px rgba(234, 179, 8, 0.4);
+}
+
+#btn-genai-send.state-skip:hover {
+  background: #facc15;
+  transform: scale(1.08);
+  box-shadow: 0 0 18px rgba(234, 179, 8, 0.6);
+}
+
+#btn-genai-send.state-skip:active {
+  transform: scale(0.94);
+}
+
+#btn-genai-send.state-skip .icon-arrow {
+  transform: rotate(180deg) scale(1);
+  opacity: 1;
+}
+
+#btn-genai-send.state-skip .icon-stop {
+  transform: scale(0.4);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Dip bounce animation for Stop -> Skip */
+#btn-genai-send.anim-dip-skip {
+  animation: genaiBtnDipDown 0.38s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+@keyframes genaiBtnDipDown {
+  0% {
+    transform: translateY(0) scale(1);
+    background-color: var(--danger, #ef4444);
+  }
+  45% {
+    transform: translateY(6px) scale(0.82);
+    background-color: #f59e0b;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    background-color: #eab308;
+  }
+}
+
+#btn-genai-send.anim-skip-to-send {
+  transition: background-color 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+              color 0.35s ease,
+              transform 0.2s ease,
+              box-shadow 0.35s ease;
+}
+
+#btn-genai-send.anim-skip-to-send .icon-arrow {
+  transition: transform 0.48s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.25s ease;
 }
 
 /* ─── Clear button — styled like existing small secondary btns ────────── */

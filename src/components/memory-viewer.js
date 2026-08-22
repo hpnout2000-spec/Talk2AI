@@ -5,7 +5,7 @@
 import { memoryService } from '../services/memory-service.js';
 import { showToast, openWindow, closeWindow } from '../main.js';
 import { appState } from '../state.js';
-import { escapeHtml, formatTime } from '../utils/helpers.js';
+import { escapeHtml, formatTime, formatExactTime } from '../utils/helpers.js';
 
 export function initMemoryViewer() {
   const panel = document.getElementById('memory-panel');
@@ -145,7 +145,7 @@ function renderMemory() {
           <div class="memory-entry-content">${escapeHtml(entry.content)}</div>
           <div class="memory-entry-meta">
             <span class="memory-entry-category">${entry.category}</span>
-            · ${formatTime(entry.timestamp)}
+            · <span data-timestamp="${entry.timestamp || ''}" data-custom-tooltip="${formatExactTime(entry.timestamp)}">${formatTime(entry.timestamp)}</span>
           </div>
         </div>
         <button class="memory-entry-delete" data-delete-entry="${entry.id}" title="Delete memory">

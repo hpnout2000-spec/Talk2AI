@@ -4,7 +4,7 @@
 
 import { genaiMemoryStore } from '../services/genai-memory-store.js';
 import { showToast, showConfirm, openWindow, closeWindow } from '../main.js';
-import { escapeHtml, formatTime } from '../utils/helpers.js';
+import { escapeHtml, formatTime, formatExactTime } from '../utils/helpers.js';
 
 let currentlyEditingId = null;
 
@@ -160,7 +160,7 @@ export function renderMemories() {
         </div>
         <div class="memory-entry-body">
           <div class="memory-entry-content" style="white-space: pre-wrap;">${escapeHtml(entry.content)}</div>
-          <div class="memory-entry-meta">
+          <div class="memory-entry-meta" data-timestamp="${entry.timestamp || ''}" data-custom-tooltip="${formatExactTime(entry.timestamp)}">
             ${formatTime(entry.timestamp)}
           </div>
         </div>

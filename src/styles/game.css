@@ -692,3 +692,8 @@
 .char-tooltip {
   transition: opacity 0.2s ease;
 }
+
+.game-character-card {
+  user-select: none;
+  -webkit-user-select: none;
+}

@@ -134,6 +134,13 @@
   font-size: 10px;
   color: var(--text-tertiary);
   font-weight: 500;
+  cursor: default;
+  user-select: none;
+  transition: color var(--transition-fast);
+}
+
+.group-msg-time:hover {
+  color: var(--text-secondary);
 }
 
 .message-actions {

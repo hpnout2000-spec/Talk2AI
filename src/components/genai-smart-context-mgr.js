@@ -22,6 +22,8 @@ export function initSmartContextMgr() {
   const backdrop = modal ? modal.querySelector('.modal-backdrop') : null;
   const btnAutoSync = document.getElementById('btn-smart-context-autosync');
   const inputLimit = document.getElementById('setting-smart-context-limit');
+  const sliderDepth = document.getElementById('setting-smart-context-depth');
+  const labelDepth = document.getElementById('label-smart-context-depth');
   const toggleDropdown = document.getElementById('toggle-genai-smart-context');
 
   const warningPopup = document.getElementById('genai-smart-context-warning');
@@ -201,6 +203,41 @@ export function initSmartContextMgr() {
     });
   }
 
+  const setRangeFill = (el) => {
+    if (!el) return;
+    const min = parseFloat(el.min) || 1;
+    const max = parseFloat(el.max) || 10;
+    const val = parseFloat(el.value) || 1;
+    const pct = ((val - min) / (max - min)) * 100;
+    el.style.setProperty('--range-fill', `${pct}%`);
+  };
+
+  function updateDepthLabel(val) {
+    if (sliderDepth) setRangeFill(sliderDepth);
+    if (!labelDepth) return;
+    const num = parseInt(val, 10);
+    if (num === 1) {
+      labelDepth.textContent = '1 (Only last message)';
+    } else if (num >= 10) {
+      labelDepth.textContent = 'Max (Keep all)';
+    } else {
+      labelDepth.textContent = `${num}`;
+    }
+  }
+
+  // Settings: Context retention depth slider
+  if (sliderDepth) {
+    setRangeFill(sliderDepth);
+    sliderDepth.addEventListener('input', (e) => {
+      updateDepthLabel(e.target.value);
+    });
+    sliderDepth.addEventListener('change', (e) => {
+      const val = parseInt(e.target.value, 10);
+      settingsStore.save({ genai_rag_context_depth: val });
+      updateDepthLabel(val);
+    });
+  }
+
   // Settings: dropdown checkbox quick toggle
   if (toggleDropdown) {
     // Initial sync
@@ -211,16 +248,6 @@ export function initSmartContextMgr() {
       const checked = e.target.checked;
       settingsStore.save({ genai_smart_context: checked });
       showToast(checked ? 'Smart Context enabled' : 'Smart Context disabled');
-      
-      // If enabled, schedule summarization for current active chat
-      if (checked) {
-        const activeSessions = getGenaiSessions();
-        const activeId = localStorage.getItem('vibechat_genai_active_session_id');
-        const session = activeSessions.find(s => s.id === activeId);
-        if (session) {
-          updateSessionSummaryIfNeeded(session);
-        }
-      }
     });
   }
 
@@ -245,6 +272,11 @@ export function initSmartContextMgr() {
     }
     if (inputLimit) {
       inputLimit.value = settingsStore.get().genai_smart_context_token_limit || 1500;
+    }
+    if (sliderDepth) {
+      const depth = settingsStore.get().genai_rag_context_depth !== undefined ? settingsStore.get().genai_rag_context_depth : 1;
+      sliderDepth.value = depth;
+      updateDepthLabel(depth);
     }
   });
 
@@ -282,6 +314,25 @@ function loadSettingsToSC() {
   const inputLimit = document.getElementById('setting-smart-context-limit');
   if (inputLimit) {
     inputLimit.value = settings.genai_smart_context_token_limit || 1500;
+  }
+  const sliderDepth = document.getElementById('setting-smart-context-depth');
+  const labelDepth = document.getElementById('label-smart-context-depth');
+  if (sliderDepth) {
+    const depth = settings.genai_rag_context_depth !== undefined ? settings.genai_rag_context_depth : 1;
+    sliderDepth.value = depth;
+    const min = parseFloat(sliderDepth.min) || 1;
+    const max = parseFloat(sliderDepth.max) || 10;
+    const pct = ((depth - min) / (max - min)) * 100;
+    sliderDepth.style.setProperty('--range-fill', `${pct}%`);
+    if (labelDepth) {
+      if (depth === 1) {
+        labelDepth.textContent = '1 (Only last message)';
+      } else if (depth >= 10) {
+        labelDepth.textContent = 'Max (Keep all)';
+      } else {
+        labelDepth.textContent = `${depth}`;
+      }
+    }
   }
 }
 
@@ -607,13 +658,6 @@ export function handleChatSwitched(previousSessionId) {
   if (autoUpdateTimers[previousSessionId]) {
     clearTimeout(autoUpdateTimers[previousSessionId]);
     delete autoUpdateTimers[previousSessionId];
-  }
-
-  // Summarize immediately in the background
-  const sessions = getGenaiSessions();
-  const prevSession = sessions.find(s => s.id === previousSessionId);
-  if (prevSession) {
-    updateSessionSummaryIfNeeded(prevSession);
   }
 }
 

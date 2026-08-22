@@ -189,10 +189,10 @@
             </div>
           </div>
 
-          <div class="sidebar-section collapsed">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-1);">
-              <div id="btn-toggle-history" style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
-                <svg id="history-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; transition: transform 0.2s; transform: rotate(-90deg);">
+          <div class="sidebar-section history-section collapsed" id="chat-history-section">
+            <div class="history-section-header" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-1); flex-shrink: 0;">
+              <div id="btn-toggle-history" style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
+                <svg id="history-chevron" class="history-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="6 9 12 15 18 9"/>
                 </svg>
                 <div class="section-label" style="margin-bottom: 0;">Chat History</div>
@@ -203,7 +203,9 @@
                 </svg>
               </button>
             </div>
-            <div id="chat-history-list" class="chat-history-list" style="transition: all 0.2s ease-in-out;"></div>
+            <div class="chat-history-wrapper">
+              <div id="chat-history-list" class="chat-history-list"></div>
+            </div>
           </div>
         </div>
 
@@ -565,12 +567,15 @@
                       <path id="donut-segment" class="donut-segment" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke-width="3.5" stroke-dasharray="0 100" stroke-linecap="round"></path>
                     </svg>
                   </div>
-                  <button id="btn-send" class="btn-send" title="Send">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <button id="btn-send" class="btn-send state-send" title="Send">
+                    <svg class="btn-icon-svg icon-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
                     </svg>
+                    <svg class="btn-icon-svg icon-stop" viewBox="0 0 24 24" fill="currentColor">
+                      <rect x="6" y="6" width="12" height="12" rx="2"/>
+                    </svg>
                   </button>
-                  <button id="btn-stop" class="btn-stop hidden" title="Stop generation">
+                  <button id="btn-stop" class="btn-stop hidden" title="Stop generation" style="display: none !important;">
                     <svg viewBox="0 0 24 24" fill="currentColor">
                       <rect x="6" y="6" width="12" height="12" rx="2"/>
                     </svg>
@@ -1466,12 +1471,15 @@
                     </g>
                   </svg>
                 </button>
-                <button id="btn-genai-send" class="btn-icon" title="Send">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <button id="btn-genai-send" class="btn-icon btn-genai-action state-send" title="Send">
+                  <svg class="btn-icon-svg icon-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>
                   </svg>
+                  <svg class="btn-icon-svg icon-stop" viewBox="0 0 24 24" fill="currentColor">
+                    <rect x="6" y="6" width="12" height="12" rx="2"/>
+                  </svg>
                 </button>
-                <button id="btn-genai-stop" class="btn-icon hidden" title="Stop generation">
+                <button id="btn-genai-stop" class="btn-icon hidden" title="Stop generation" style="display: none !important;">
                   <svg viewBox="0 0 24 24" fill="currentColor">
                     <rect x="6" y="6" width="12" height="12" rx="2"/>
                   </svg>
@@ -2875,7 +2883,7 @@
           </div>
           <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px; max-height: 75vh; overflow-y: auto;">
             <!-- Settings row -->
-            <div style="background: var(--bg-tertiary); border: 1px solid var(--border-light); padding: 16px; border-radius: var(--radius-lg); display: flex; flex-direction: column; gap: 12px; flex-shrink: 0;">
+            <div style="background: var(--bg-tertiary); border: 1px solid var(--border-light); padding: 16px; border-radius: var(--radius-lg); display: flex; flex-direction: column; gap: 14px; flex-shrink: 0;">
               <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
                 <label style="font-weight: 600; font-size: var(--text-sm); color: var(--text-primary);">Token Limit for Summaries</label>
                 <div style="display: flex; align-items: center; gap: 8px;">
@@ -2883,7 +2891,18 @@
                   <span style="font-size: var(--text-xs); color: var(--text-secondary);">tokens</span>
                 </div>
               </div>
-              <div style="display: flex; gap: 10px; justify-content: flex-end; align-items: center;">
+
+              <!-- Context Retention in History Slider (Advanced Settings style) -->
+              <div class="sampler-control-row" style="border-top: 1px solid var(--border-light); padding-top: 12px;">
+                <div class="sampler-label-wrap">
+                  <label for="setting-smart-context-depth" style="font-weight: 600; font-size: var(--text-sm); color: var(--text-primary); cursor: pointer;">Context Retention in History</label>
+                  <span id="label-smart-context-depth" class="sampler-badge" style="min-width: auto; padding: 0 8px; height: 22px;">1 (Only last message)</span>
+                </div>
+                <input type="range" id="setting-smart-context-depth" min="1" max="10" step="1" value="1" />
+                <p class="sampler-hint">How many past user messages keep full &lt;context&gt; tags before pruning.</p>
+              </div>
+
+              <div style="display: flex; gap: 10px; justify-content: flex-end; align-items: center; border-top: 1px solid var(--border-light); padding-top: 12px;">
                 <button id="btn-smart-context-autosync" class="btn-primary" type="button" style="padding: 8px 16px; font-weight: 600; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; gap: 8px; background: var(--accent-primary); color: #212121; border: none; cursor: pointer; font-size: var(--text-sm);">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width: 14px; height: 14px;">
                     <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>

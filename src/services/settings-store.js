@@ -476,6 +476,7 @@ const DEFAULTS = {
   genai_faster_actions: false,
   genai_smart_context: false,
   genai_smart_context_token_limit: 1500,
+  genai_rag_context_depth: 1,
   force_reasoning: false,
   reasoning_tag_open: '<think>',
   reasoning_tag_close: '</think>',

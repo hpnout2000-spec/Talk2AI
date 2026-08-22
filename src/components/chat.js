@@ -19,6 +19,7 @@ import {
   createThinkingBlockHTML,
   autoResizeTextarea,
   formatTime,
+  formatExactTime,
   escapeHtml,
   wrapWordsInSpans,
 } from '../utils/helpers.js';
@@ -243,6 +244,94 @@ function removeChatCursor() {
   if (_chatCursorRafId) { cancelAnimationFrame(_chatCursorRafId); _chatCursorRafId = null; }
   if (_chatCursor && _chatCursor.isConnected) _chatCursor.remove();
   _chatCursor = null;
+}
+
+// ─── Action Button States (Send / Stop / Skip) ───────────────────────
+
+let chatButtonState = 'send';
+let btnActionAnimTimeout = null;
+
+export function setChatActionState(newState) {
+  if (!btnSend) return;
+  const oldState = chatButtonState;
+  chatButtonState = newState;
+
+  if (btnActionAnimTimeout) {
+    clearTimeout(btnActionAnimTimeout);
+    btnActionAnimTimeout = null;
+  }
+
+  if (btnStop) {
+    btnStop.classList.add('hidden');
+    btnStop.style.display = 'none';
+  }
+
+  btnSend.classList.remove('hidden');
+
+  if (newState === 'stop') {
+    btnSend.classList.remove('state-send', 'state-skip', 'anim-dip-skip', 'anim-skip-to-send');
+    btnSend.classList.add('state-stop');
+    btnSend.title = 'Stop generation';
+  } else if (newState === 'skip') {
+    btnSend.classList.remove('state-send', 'state-stop', 'anim-skip-to-send');
+    btnSend.classList.add('state-skip');
+    btnSend.title = 'Skip animation';
+
+    if (oldState === 'stop') {
+      // Single bounce press & release effect
+      btnSend.classList.add('anim-dip-skip');
+      btnActionAnimTimeout = setTimeout(() => {
+        btnSend.classList.remove('anim-dip-skip');
+        btnActionAnimTimeout = null;
+      }, 400);
+    }
+  } else if (newState === 'send') {
+    btnSend.classList.remove('state-stop', 'anim-dip-skip');
+
+    if (oldState === 'skip') {
+      // Smooth 180° rotation & color transition to Send
+      btnSend.classList.remove('state-skip');
+      btnSend.classList.add('state-send', 'anim-skip-to-send');
+      btnSend.title = 'Send';
+      btnActionAnimTimeout = setTimeout(() => {
+        btnSend.classList.remove('anim-skip-to-send');
+        btnActionAnimTimeout = null;
+      }, 500);
+    } else {
+      btnSend.classList.remove('state-skip', 'anim-skip-to-send');
+      btnSend.classList.add('state-send');
+      btnSend.title = 'Send';
+    }
+  }
+}
+
+export function skipStreamingAnimation() {
+  const assistantMsgs = messagesContainer ? messagesContainer.querySelectorAll('.message.assistant') : [];
+  if (assistantMsgs.length > 0) {
+    const lastMsgEl = assistantMsgs[assistantMsgs.length - 1];
+    const contentEl = lastMsgEl.querySelector('.message-text');
+    if (contentEl && contentEl._revealInterval) {
+      contentEl._isFastForwarding = true;
+      smoothScrollChatToBottom(350);
+      return;
+    }
+    if (contentEl) {
+      const rawLimit = contentEl._rawCharCount || 999999;
+      contentEl._revealProgress = rawLimit + 20;
+      contentEl.style.setProperty('--reveal-progress', (rawLimit + 20) + 'ch');
+      contentEl.classList.add('stream-finished');
+      const revealSpans = contentEl.querySelectorAll('.word-reveal');
+      revealSpans.forEach(span => span.classList.add('revealed'));
+
+      if (contentEl._onRevealFinish) {
+        const onFinish = contentEl._onRevealFinish;
+        contentEl._onRevealFinish = null;
+        onFinish();
+      }
+    }
+  }
+  smoothScrollChatToBottom(350);
+  setChatActionState('send');
 }
 
 // ─── Init ───────────────────────────────────────────────────────────
@@ -637,12 +726,25 @@ export function initChat() {
     });
   }
 
-  // Send message
-  btnSend.addEventListener('click', sendMessage);
+  // Action button (Send / Stop / Skip)
+  btnSend.addEventListener('click', () => {
+    if (chatButtonState === 'send') {
+      sendMessage();
+    } else if (chatButtonState === 'stop') {
+      stopGeneration();
+    } else if (chatButtonState === 'skip') {
+      skipStreamingAnimation();
+    }
+  });
+
   messageInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      if (chatButtonState === 'skip') {
+        skipStreamingAnimation();
+      } else if (chatButtonState === 'send') {
+        sendMessage();
+      }
     }
   });
 
@@ -723,16 +825,11 @@ export function initChat() {
 
   // Chat History Toggle
   const btnToggleHistory = document.getElementById('btn-toggle-history');
-  const historyList = document.getElementById('chat-history-list');
-  const historyChevron = document.getElementById('history-chevron');
-
-  if (btnToggleHistory && historyChevron) {
+  if (btnToggleHistory) {
     btnToggleHistory.addEventListener('click', () => {
       const section = btnToggleHistory.closest('.sidebar-section');
       if (section) {
         section.classList.toggle('collapsed');
-        const isCollapsed = section.classList.contains('collapsed');
-        historyChevron.style.transform = isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)';
       }
     });
   }
@@ -1745,8 +1842,7 @@ async function sendMessage() {
   // Start generation
   appState.isGenerating = true;
   appState.abortController = new AbortController();
-  btnSend.classList.add('hidden');
-  btnStop.classList.remove('hidden');
+  setChatActionState('stop');
   headerCharStatus.textContent = 'Generating...';
   headerCharStatus.classList.add('generating');
 
@@ -1918,7 +2014,11 @@ async function sendMessage() {
               const deltaMs = now - contentEl._lastRevealTime;
               contentEl._lastRevealTime = now;
 
-              const spd = settings.streaming_speed || 45;
+              let spd = settings.streaming_speed || 45;
+              if (contentEl._isFastForwarding) {
+                const remaining = Math.max(1, rawLimit - contentEl._revealProgress);
+                spd = Math.max(1500, remaining / 0.22);
+              }
               const charsToAdd = deltaMs * (spd / 1000);
               const oldProgress = contentEl._revealProgress;
               contentEl._revealProgress = Math.min(rawLimit, contentEl._revealProgress + charsToAdd);
@@ -2053,13 +2153,12 @@ async function sendMessage() {
           if (appState.currentCharacter?.id === character.id) {
             appState.isGenerating = false;
             appState.abortController = null;
-            btnSend.classList.remove('hidden');
-            btnStop.classList.add('hidden');
+            setChatActionState('send');
             headerCharStatus.textContent = 'Ready';
             headerCharStatus.classList.remove('generating');
             updateChatHistory();
             updateRegenerateVisibility();
-            scrollToBottom();
+            smoothScrollChatToBottom(350);
           }
 
           if (originalContent) {
@@ -2137,29 +2236,53 @@ async function sendMessage() {
           checkConnection();
         };
 
-        if (settings.new_streaming_animation && contentEl._revealInterval) {
-          contentEl._onRevealFinish = finalizeUI;
+        if (settings.new_streaming_animation && contentEl._revealInterval && (contentEl._revealProgress < (contentEl._rawCharCount || 0))) {
+          setChatActionState('skip');
+          contentEl._onRevealFinish = async () => {
+            await finalizeUI();
+            setChatActionState('send');
+          };
         } else {
           await finalizeUI();
+          setChatActionState('send');
         }
       },
       // onError
       (err) => {
-        console.error('Stream error:', err);
         isStreaming = false;
+        if (contentEl._revealInterval) {
+          cancelAnimationFrame(contentEl._revealInterval);
+          contentEl._revealInterval = null;
+        }
         removeChatCursor();
-        contentEl.innerHTML = `<p style="color: var(--error)">Error: ${escapeHtml(err.message)}</p>`;
+
+        const isAborted = err?.name === 'AbortError' || err?.message?.includes('abort') || err?.message?.includes('Aborted');
+
+        if (isAborted && (fullResponse || thinkingText)) {
+          finalizeUI();
+          return;
+        }
+
+        if (isAborted) {
+          if (assistantMsg && session.messages.includes(assistantMsg)) {
+            session.messages = session.messages.filter(m => m.id !== assistantMsg.id);
+            chatStore.saveSession(session);
+            msgElement.remove();
+          }
+        } else {
+          console.error('Stream error:', err);
+          contentEl.innerHTML = `<p style="color: var(--error)">Error: ${escapeHtml(err.message)}</p>`;
+        }
 
         if (appState.currentCharacter?.id === character.id) {
           appState.isGenerating = false;
           appState.abortController = null;
-          btnSend.classList.remove('hidden');
-          btnStop.classList.add('hidden');
-          headerCharStatus.textContent = 'Error';
+          setChatActionState('send');
+          headerCharStatus.textContent = isAborted ? 'Ready' : 'Error';
           headerCharStatus.classList.remove('generating');
           updateContextIndicator();
         }
-        window.dispatchEvent(new CustomEvent('genai-chat-response-finished', { detail: { error: err.message } }));
+        window.dispatchEvent(new CustomEvent('genai-chat-response-finished', { detail: { error: err?.message } }));
       },
       apiOptions,
       // onThinkingChunk (delta.reasoning_content from KoboldCpp thinking models)
@@ -2721,12 +2844,6 @@ async function buildApiMessages(character, session) {
   systemContent = systemContent.replace(/\{\{user\}\}/gi, userName);
   systemContent = systemContent.replace(/\{\{char\}\}/gi, character.name);
 
-  // Inject memory context
-  const memoryContext = memoryService.getMemoryContext(character.id);
-  if (memoryContext) {
-    systemContent += memoryContext;
-  }
-
   const personaId = session.persona_id || settings.active_persona_id || 'default';
   const personas = settings.personas || [];
   const activePersona = personas.find(p => p.id === personaId);
@@ -2846,6 +2963,42 @@ Before answering, you must use your internal monologue channel.
     messages.push({ role: msg.role, content: content });
   }
 
+  // Inject character memory context into the latest user message
+  const memoryContext = memoryService.getMemoryContext(character.id);
+  if (memoryContext) {
+    let lastUserIdx = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        lastUserIdx = i;
+        break;
+      }
+    }
+    if (lastUserIdx !== -1) {
+      messages[lastUserIdx].content = `${memoryContext}\n\n${messages[lastUserIdx].content}`;
+    } else {
+      messages.push({ role: 'user', content: memoryContext });
+    }
+  }
+
+  // Apply RAG context retention depth across past user messages
+  const depthSetting = settings.genai_rag_context_depth !== undefined ? settings.genai_rag_context_depth : 1;
+  if (depthSetting < 10) {
+    let userMsgCount = 0;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        userMsgCount++;
+        if (userMsgCount > depthSetting) {
+          if (typeof messages[i].content === 'string') {
+            messages[i].content = messages[i].content.replace(
+              /<context>[\s\S]*?<\/context>/gi,
+              '<context>\n[RAG context was removed to save tokens]\n</context>'
+            );
+          }
+        }
+      }
+    }
+  }
+
   // FORCE REASONING PREFILL
   if (settings.force_reasoning && settings.reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') {
     messages.push({ role: 'assistant', content: settings.reasoning_tag_open });
@@ -2865,6 +3018,10 @@ Before answering, you must use your internal monologue channel.
 // ─── Stop Generation ────────────────────────────────────────────────
 
 function stopGeneration() {
+  if (chatButtonState === 'skip') {
+    skipStreamingAnimation();
+    return;
+  }
   if (appState.abortController) {
     appState.abortController.abort();
   }
@@ -2873,6 +3030,8 @@ function stopGeneration() {
 // ─── DOM Helpers ────────────────────────────────────────────────────
 
 function clearMessages() {
+  userHasScrolledUp = false;
+  cancelPendingChatScroll();
   messagesContainer.innerHTML = '';
   emptyState = null;
 }
@@ -2953,7 +3112,7 @@ function appendMessage(msg, isStreaming = false, character = null) {
       </div>
       ${swipeHtml}
       <div class="message-meta">
-        <span class="message-time">${formatTime(msg.timestamp)}</span>
+        <span class="message-time" data-timestamp="${msg.timestamp || ''}" data-custom-tooltip="${formatExactTime(msg.timestamp)}">${formatTime(msg.timestamp)}</span>
         <div class="message-actions">
           <button class="btn-regenerate hidden" title="Regenerate">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -3131,7 +3290,7 @@ function appendMessage(msg, isStreaming = false, character = null) {
 
   messagesContainer.appendChild(el);
   updateRegenerateVisibility();
-  scrollToBottom();
+  scrollToBottom(true);
 
   // Render continuation options if they exist
   if (msg.options && msg.options.length > 0) {
@@ -3191,7 +3350,7 @@ function setupScrollListener() {
       isProgrammaticScrolling = false;
     } else if (e.deltaY > 0) {
       const dist = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight;
-      if (dist <= 30) {
+      if (dist <= 12) {
         userHasScrolledUp = false;
       }
     }
@@ -3209,14 +3368,14 @@ function setupScrollListener() {
     if (e.touches && e.touches.length > 0) {
       const currentY = e.touches[0].clientY;
       const deltaY = currentY - touchStartY;
-      if (deltaY > 3) {
+      if (deltaY > 2) {
         // Dragging down = scrolling up
         userHasScrolledUp = true;
         cancelPendingChatScroll();
         isProgrammaticScrolling = false;
-      } else if (deltaY < -3) {
+      } else if (deltaY < -2) {
         const dist = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight;
-        if (dist <= 30) {
+        if (dist <= 12) {
           userHasScrolledUp = false;
         }
       }
@@ -3233,10 +3392,12 @@ function setupScrollListener() {
       return;
     }
 
-    if (currentScrollTop < lastChatScrollTop - 1) {
+    if (currentScrollTop < lastChatScrollTop - 0.5) {
+      // User moved UP -> detach immediately
       userHasScrolledUp = true;
       cancelPendingChatScroll();
-    } else if (dist <= 25) {
+    } else if (currentScrollTop > lastChatScrollTop + 0.5 && dist <= 12) {
+      // User moved DOWN and reached the bottom -> re-engage
       userHasScrolledUp = false;
     }
 
@@ -3244,16 +3405,72 @@ function setupScrollListener() {
   }, { passive: true });
 }
 
+export function smoothScrollChatToBottom(duration = 350) {
+  if (!messagesContainer) return;
+  setupScrollListener();
+  cancelPendingChatScroll();
+  userHasScrolledUp = false;
+
+  const startScrollTop = messagesContainer.scrollTop;
+  const targetScrollTop = messagesContainer.scrollHeight - messagesContainer.clientHeight;
+  const distance = targetScrollTop - startScrollTop;
+  if (distance <= 0) return;
+
+  const startTime = performance.now();
+  const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+
+  const step = (now) => {
+    if (userHasScrolledUp || !messagesContainer) {
+      isProgrammaticScrolling = false;
+      chatScrollRafId = null;
+      return;
+    }
+    const elapsed = now - startTime;
+    const progress = Math.min(1, elapsed / duration);
+    const ease = easeOutCubic(progress);
+
+    const currentTarget = messagesContainer.scrollHeight - messagesContainer.clientHeight;
+    const currentDist = currentTarget - startScrollTop;
+
+    isProgrammaticScrolling = true;
+    messagesContainer.scrollTop = startScrollTop + currentDist * ease;
+    lastChatScrollTop = messagesContainer.scrollTop;
+
+    if (progress < 1) {
+      chatScrollRafId = requestAnimationFrame(step);
+    } else {
+      messagesContainer.scrollTop = currentTarget;
+      lastChatScrollTop = currentTarget;
+      isProgrammaticScrolling = false;
+      chatScrollRafId = null;
+    }
+  };
+  chatScrollRafId = requestAnimationFrame(step);
+}
+window.smoothScrollChatToBottom = smoothScrollChatToBottom;
+
 function scrollToBottom(force = false) {
   if (!messagesContainer) return;
   setupScrollListener();
 
   if (force) {
     userHasScrolledUp = false;
-  } else if (userHasScrolledUp) {
+    cancelPendingChatScroll();
+    const maxScrollTop = messagesContainer.scrollHeight - messagesContainer.clientHeight;
+    if (maxScrollTop > 0) {
+      isProgrammaticScrolling = true;
+      messagesContainer.scrollTop = maxScrollTop;
+      lastChatScrollTop = maxScrollTop;
+      queueMicrotask(() => {
+        isProgrammaticScrolling = false;
+      });
+    }
     return;
   }
 
+  if (userHasScrolledUp) return;
+
+  // Smooth follow during streaming without jumping
   cancelPendingChatScroll();
 
   chatScrollRafId = requestAnimationFrame(() => {
@@ -3263,18 +3480,28 @@ function scrollToBottom(force = false) {
     const maxScrollTop = messagesContainer.scrollHeight - messagesContainer.clientHeight;
     if (maxScrollTop <= 0) return;
 
-    if (Math.abs(messagesContainer.scrollTop - maxScrollTop) < 1) {
-      lastChatScrollTop = messagesContainer.scrollTop;
+    const currentScrollTop = messagesContainer.scrollTop;
+    const diff = maxScrollTop - currentScrollTop;
+
+    if (Math.abs(diff) < 1) {
+      lastChatScrollTop = maxScrollTop;
       return;
     }
 
     isProgrammaticScrolling = true;
-    messagesContainer.scrollTop = Math.max(0, maxScrollTop);
+    const stepRatio = diff > 200 ? 0.45 : 0.35;
+    messagesContainer.scrollTop = currentScrollTop + Math.max(1, diff * stepRatio);
     lastChatScrollTop = messagesContainer.scrollTop;
 
     queueMicrotask(() => {
       isProgrammaticScrolling = false;
     });
+
+    if (diff > 1.5 && !userHasScrolledUp) {
+      chatScrollRafId = requestAnimationFrame(() => {
+        scrollToBottom(false);
+      });
+    }
   });
 }
 window.scrollToBottom = scrollToBottom;
@@ -3384,8 +3611,7 @@ async function triggerAssistantGeneration() {
   characterStore.updateLastChat(character.id);
   window.dispatchEvent(new CustomEvent('character-list-updated'));
 
-  btnSend.classList.add('hidden');
-  btnStop.classList.remove('hidden');
+  setChatActionState('stop');
   headerCharStatus.textContent = 'Generating...';
   headerCharStatus.classList.add('generating');
 
@@ -3477,23 +3703,99 @@ async function triggerAssistantGeneration() {
       // Still waiting for first output — keep Working... visible
       if (!hasReceivedFirstChunk2) return;
 
-      let html = '';
-      if (currentIsInThinking || currentThinking) html += createThinkingBlockHTML(currentThinking, currentIsInThinking, useGLM, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort, settings.max_tokens);
-      const cleaned2 = stripJsonBlocks(displayContent, true);
-      html += wrapWordsInSpans(renderMarkdown(cleaned2));
+      const isNewAnimation = settings.new_streaming_animation;
+      const streamingSpeed = settings.streaming_speed || 45;
 
-      if (!cleaned2.trim() && isStreaming2 && !currentIsInThinking) {
-        html += `<span class="chat-working-placeholder">Processing...</span>`;
-      }
+      const renderChatContent2 = (dc, thinking, isInThinking, revealProgress) => {
+        let html = '';
+        if (isInThinking || thinking) html += createThinkingBlockHTML(thinking, isInThinking, useGLM, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort, settings.max_tokens);
+        const cleaned2 = stripJsonBlocks(dc, true);
+        let formatted = renderMarkdown(cleaned2);
+        formatted = processCharacterMentions(formatted);
 
-      const temp = document.createElement('div');
-      temp.className = contentEl.className;
-      temp.innerHTML = html;
-      morphdom(contentEl, temp, morphOptions2);
+        if (isNewAnimation) {
+          html += wrapWordsInSpans(formatted, true, revealProgress, streamingSpeed);
+          contentEl._rawCharCount = wrapWordsInSpans.lastTotalChars || 0;
+        } else {
+          html += wrapWordsInSpans(formatted);
+        }
 
-      if (!currentIsInThinking) {
-        getOrCreateChatCursor();
-        repositionChatCursor(contentEl);
+        if (!cleaned2.trim() && isStreaming2 && !isInThinking) {
+          html += `<span class="chat-working-placeholder">Processing...</span>`;
+        }
+
+        const temp = document.createElement('div');
+        temp.className = contentEl.className;
+        temp.innerHTML = html;
+        morphdom(contentEl, temp, morphOptions2);
+
+        if (!isInThinking) {
+          getOrCreateChatCursor();
+          repositionChatCursor(contentEl);
+        }
+        scrollToBottom(false);
+      };
+
+      if (isNewAnimation) {
+        contentEl._latestState = { displayContent, currentThinking, currentIsInThinking };
+
+        if (!contentEl._revealInterval) {
+          contentEl._revealProgress = contentEl._revealProgress || 0;
+          contentEl._lastRevealTime = performance.now();
+          contentEl.classList.remove('stream-finished');
+
+          const animateReveal2 = () => {
+            if (!contentEl || !contentEl.isConnected) {
+              contentEl._revealInterval = null;
+              return;
+            }
+
+            const rawLimit = contentEl._rawCharCount || 0;
+            const isCurrentlyStreaming = isStreaming2;
+
+            const now = performance.now();
+            const deltaMs = now - contentEl._lastRevealTime;
+            contentEl._lastRevealTime = now;
+
+            let spd = settings.streaming_speed || 45;
+            if (contentEl._isFastForwarding) {
+              const remaining = Math.max(1, rawLimit - contentEl._revealProgress);
+              spd = Math.max(1500, remaining / 0.22);
+            }
+            const charsToAdd = deltaMs * (spd / 1000);
+            const oldProgress = contentEl._revealProgress;
+            contentEl._revealProgress = Math.min(rawLimit, contentEl._revealProgress + charsToAdd);
+
+            contentEl.style.setProperty('--reveal-progress', contentEl._revealProgress + 'ch');
+
+            if (Math.floor(contentEl._revealProgress) > Math.floor(oldProgress)) {
+              const state = contentEl._latestState;
+              if (state) {
+                renderChatContent2(state.displayContent, state.currentThinking, state.currentIsInThinking, contentEl._revealProgress);
+              }
+            }
+
+            if (isCurrentlyStreaming || contentEl._revealProgress < rawLimit) {
+              contentEl._revealInterval = requestAnimationFrame(animateReveal2);
+            } else {
+              contentEl.style.setProperty('--reveal-progress', (rawLimit + 20) + 'ch');
+              contentEl.classList.add('stream-finished');
+              const revealSpans = contentEl.querySelectorAll('.word-reveal');
+              revealSpans.forEach(span => span.classList.add('revealed'));
+              contentEl._revealInterval = null;
+
+              if (contentEl._onRevealFinish) {
+                contentEl._onRevealFinish();
+                contentEl._onRevealFinish = null;
+              }
+            }
+          };
+          contentEl._revealInterval = requestAnimationFrame(animateReveal2);
+        }
+
+        renderChatContent2(displayContent, currentThinking, currentIsInThinking, contentEl._revealProgress || 0);
+      } else {
+        renderChatContent2(displayContent, currentThinking, currentIsInThinking, 0);
       }
     });
   }
@@ -3517,148 +3819,183 @@ async function triggerAssistantGeneration() {
           thinkingActive2 = false;
           if (thinkingTime === 0) thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
         }
-        const isInlineThought = /<(?:think|thought|reasoning|\|?channel\|?>?thought)/i.test(fullResponse);
-        const useGLM = settings.glm47_support && !isInlineThought;
-        let parsedThinking2, parsedContent2;
-        try {
-          if (thinkingText2) {
-            parsedThinking2 = thinkingText2;
-            let cleanResponseForParsing = fullResponse;
-            if (settings.force_reasoning && settings.reasoning_tag_open && cleanResponseForParsing.startsWith(settings.reasoning_tag_open)) {
-              cleanResponseForParsing = cleanResponseForParsing.substring(settings.reasoning_tag_open.length);
-            }
-            parsedContent2 = cleanResponseForParsing;
-          } else {
-            const parsed = useGLM ? parseGLMThinking(fullResponse) : parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
-            parsedThinking2 = parsed.thinking;
-            parsedContent2 = parsed.content;
-          }
 
-          removeChatCursor();
-          let finalHtml = '';
-          if (parsedThinking2) {
-              if (thinkingTime === 0) thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
-              finalHtml += createThinkingBlockHTML(parsedThinking2, false, useGLM, thinkingTime, settings.reasoning_effort, settings.max_tokens);
-          }
-          const cleaned = stripJsonBlocks(parsedContent2, false);
-          let formatted = renderMarkdown(cleaned);
-          formatted = processCharacterMentions(formatted);
-          
-          const isNewAnimation = settings.new_streaming_animation;
-          if (isNewAnimation) {
-            finalHtml += wrapWordsInSpans(formatted, true, Infinity, settings.streaming_speed || 45);
-          } else {
-            finalHtml += wrapWordsInSpans(formatted);
-          }
-
-          const tempFinal = document.createElement('div');
-          tempFinal.className = contentEl.className;
-          tempFinal.innerHTML = finalHtml;
-          morphdom(contentEl, tempFinal, morphOptions2);
-        } catch (e) {
-          console.error("Error finalizing regenerate UI:", e);
-        }
-
-        let originalContent = parsedContent2;
-
-        let translatedContent = null;
-        if (settings.auto_translate && originalContent) {
-          headerCharStatus.textContent = 'Translating...';
-          translatedContent = await performStreamingTranslation(contentEl, originalContent, settings.target_language);
-        }
-
-        chatStore.updateLastAssistantMessage(originalContent, parsedThinking2, session, translatedContent, thinkingTime);
-        await chatStore.saveSession(session);
-
-        appState.isGenerating = false;
-        appState.abortController = null;
-        btnSend.classList.remove('hidden');
-        btnStop.classList.add('hidden');
-        headerCharStatus.textContent = 'Ready';
-        headerCharStatus.classList.remove('generating');
-        updateChatHistory();
-        updateRegenerateVisibility();
-        scrollToBottom();
-
-        if (originalContent) {
-          // Strict sequential execution IIFE to respect single-concurrency LLM limits
-          (async () => {
-            try {
-              // 1. Generate continuation options replies first (High Priority UI)
-              await generateContinuationOptions(character, session, msgElement);
-            } catch (e) {
-              console.warn('Failed to generate suggestions:', e);
-            }
-
-            try {
-              // 2. Process Automatic Image Gen if active (High Priority UI)
-              const freshSettings = settingsStore.get();
-              if (freshSettings.comfyui_enabled && freshSettings.comfyui_auto_chat) {
-                await triggerAutomaticImageGeneration(character, session, originalContent);
-              } else if (freshSettings.comfyui_enabled && !freshSettings.comfyui_auto_chat) {
-                await triggerImageGenerationSuggestion(character, session, originalContent, msgElement);
+        const finalizeRegenerateUI = async () => {
+          const isInlineThought = /<(?:think|thought|reasoning|\|?channel\|?>?thought)/i.test(fullResponse);
+          const useGLM = settings.glm47_support && !isInlineThought;
+          let parsedThinking2, parsedContent2;
+          try {
+            if (thinkingText2) {
+              parsedThinking2 = thinkingText2;
+              let cleanResponseForParsing = fullResponse;
+              if (settings.force_reasoning && settings.reasoning_tag_open && cleanResponseForParsing.startsWith(settings.reasoning_tag_open)) {
+                cleanResponseForParsing = cleanResponseForParsing.substring(settings.reasoning_tag_open.length);
               }
-            } catch (e) {
-              console.warn('Failed to handle image generation:', e);
+              parsedContent2 = cleanResponseForParsing;
+            } else {
+              const parsed = useGLM ? parseGLMThinking(fullResponse) : parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
+              parsedThinking2 = parsed.thinking;
+              parsedContent2 = parsed.content;
             }
 
-            const lastUserMsg = session.messages.slice().reverse().find(m => m.role === 'user');
-            if (lastUserMsg) {
+            removeChatCursor();
+            let finalHtml = '';
+            if (parsedThinking2) {
+                if (thinkingTime === 0) thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
+                finalHtml += createThinkingBlockHTML(parsedThinking2, false, useGLM, thinkingTime, settings.reasoning_effort, settings.max_tokens);
+            }
+            const cleaned = stripJsonBlocks(parsedContent2, false);
+            let formatted = renderMarkdown(cleaned);
+            formatted = processCharacterMentions(formatted);
+            
+            const isNewAnimation = settings.new_streaming_animation;
+            if (isNewAnimation) {
+              finalHtml += wrapWordsInSpans(formatted, true, Infinity, settings.streaming_speed || 45);
+            } else {
+              finalHtml += wrapWordsInSpans(formatted);
+            }
+
+            const tempFinal = document.createElement('div');
+            tempFinal.className = contentEl.className;
+            tempFinal.innerHTML = finalHtml;
+            morphdom(contentEl, tempFinal, morphOptions2);
+          } catch (e) {
+            console.error("Error finalizing regenerate UI:", e);
+          }
+
+          let originalContent = parsedContent2;
+
+          let translatedContent = null;
+          if (settings.auto_translate && originalContent) {
+            headerCharStatus.textContent = 'Translating...';
+            translatedContent = await performStreamingTranslation(contentEl, originalContent, settings.target_language);
+          }
+
+          chatStore.updateLastAssistantMessage(originalContent, parsedThinking2, session, translatedContent, thinkingTime);
+          await chatStore.saveSession(session);
+
+          appState.isGenerating = false;
+          appState.abortController = null;
+          setChatActionState('send');
+          headerCharStatus.textContent = 'Ready';
+          headerCharStatus.classList.remove('generating');
+          updateChatHistory();
+          updateRegenerateVisibility();
+          smoothScrollChatToBottom(350);
+
+          if (originalContent) {
+            // Strict sequential execution IIFE to respect single-concurrency LLM limits
+            (async () => {
               try {
-                // 3. Extract and save memory (Low Priority Background)
-                await extractAndShowMemory(character, session, lastUserMsg.content, originalContent, msgElement);
+                // 1. Generate continuation options replies first (High Priority UI)
+                await generateContinuationOptions(character, session, msgElement);
               } catch (e) {
-                console.warn('Failed to extract memory:', e);
+                console.warn('Failed to generate suggestions:', e);
               }
 
               try {
-                // 4. Update indicators status (Low Priority Background)
-                await triggerIndicatorUpdate(character, session, lastUserMsg.content, originalContent);
+                // 2. Process Automatic Image Gen if active (High Priority UI)
+                const freshSettings = settingsStore.get();
+                if (freshSettings.comfyui_enabled && freshSettings.comfyui_auto_chat) {
+                  await triggerAutomaticImageGeneration(character, session, originalContent);
+                } else if (freshSettings.comfyui_enabled && !freshSettings.comfyui_auto_chat) {
+                  await triggerImageGenerationSuggestion(character, session, originalContent, msgElement);
+                }
               } catch (e) {
-                console.warn('Failed to update indicators:', e);
+                console.warn('Failed to handle image generation:', e);
               }
-            }
 
-            try {
-              // 5. Auto-naming
-              const freshSettings = settingsStore.get();
-              if (freshSettings.auto_naming_enabled) {
-                const chatMessages = session.messages.filter(m => m.role !== 'system');
-                const msgCount = chatMessages.length;
-                const lastCount = session.last_auto_named_count || (session.custom_title ? 3 : 0);
+              const lastUserMsg = session.messages.slice().reverse().find(m => m.role === 'user');
+              if (lastUserMsg) {
+                try {
+                  // 3. Extract and save memory (Low Priority Background)
+                  await extractAndShowMemory(character, session, lastUserMsg.content, originalContent, msgElement);
+                } catch (e) {
+                  console.warn('Failed to extract memory:', e);
+                }
 
-                if (lastCount === 0 && msgCount >= 3 && !session.custom_title) {
-                  const newName = await api.generateChatName(chatMessages, true);
-                  if (newName && newName !== 'New Chat') {
-                    session.last_auto_named_count = msgCount;
-                    await chatStore.renameSession(session.id, newName, session.character_id);
-                    updateChatHistory();
-                  }
-                } else if (lastCount > 0 && (msgCount - lastCount >= 6)) {
-                  if (freshSettings.continuous_auto_naming_enabled) {
+                try {
+                  // 4. Update indicators status (Low Priority Background)
+                  await triggerIndicatorUpdate(character, session, lastUserMsg.content, originalContent);
+                } catch (e) {
+                  console.warn('Failed to update indicators:', e);
+                }
+              }
+
+              try {
+                // 5. Auto-naming
+                const freshSettings = settingsStore.get();
+                if (freshSettings.auto_naming_enabled) {
+                  const chatMessages = session.messages.filter(m => m.role !== 'system');
+                  const msgCount = chatMessages.length;
+                  const lastCount = session.last_auto_named_count || (session.custom_title ? 3 : 0);
+
+                  if (lastCount === 0 && msgCount >= 3 && !session.custom_title) {
                     const newName = await api.generateChatName(chatMessages, true);
                     if (newName && newName !== 'New Chat') {
                       session.last_auto_named_count = msgCount;
                       await chatStore.renameSession(session.id, newName, session.character_id);
                       updateChatHistory();
                     }
+                  } else if (lastCount > 0 && (msgCount - lastCount >= 6)) {
+                    if (freshSettings.continuous_auto_naming_enabled) {
+                      const newName = await api.generateChatName(chatMessages, true);
+                      if (newName && newName !== 'New Chat') {
+                        session.last_auto_named_count = msgCount;
+                        await chatStore.renameSession(session.id, newName, session.character_id);
+                        updateChatHistory();
+                      }
+                    }
                   }
                 }
+              } catch (e) {
+                console.warn('Failed to auto-name chat:', e);
               }
-            } catch (e) {
-              console.warn('Failed to auto-name chat:', e);
-            }
-          })();
+            })();
+          }
+        };
+
+        if (settings.new_streaming_animation && contentEl._revealInterval && (contentEl._revealProgress < (contentEl._rawCharCount || 0))) {
+          setChatActionState('skip');
+          contentEl._onRevealFinish = async () => {
+            await finalizeRegenerateUI();
+            setChatActionState('send');
+          };
+        } else {
+          await finalizeRegenerateUI();
+          setChatActionState('send');
         }
       },
       (err) => {
-        console.error('Regeneration error:', err);
         isStreaming2 = false;
+        if (contentEl._revealInterval) {
+          cancelAnimationFrame(contentEl._revealInterval);
+          contentEl._revealInterval = null;
+        }
         removeChatCursor();
+
+        const isAborted = err?.name === 'AbortError' || err?.message?.includes('abort') || err?.message?.includes('Aborted');
+
+        if (isAborted && (fullResponse || thinkingText2)) {
+          finalizeRegenerateUI();
+          return;
+        }
+
+        if (isAborted) {
+          if (assistantMsg && session.messages.includes(assistantMsg)) {
+            session.messages = session.messages.filter(m => m.id !== assistantMsg.id);
+            chatStore.saveSession(session);
+            msgElement.remove();
+          }
+        } else {
+          console.error('Regeneration error:', err);
+          contentEl.innerHTML = `<p style="color: var(--error)">Error: ${escapeHtml(err.message)}</p>`;
+        }
+
         appState.isGenerating = false;
-        btnSend.classList.remove('hidden');
-        btnStop.classList.add('hidden');
-        headerCharStatus.textContent = 'Error';
+        appState.abortController = null;
+        setChatActionState('send');
+        headerCharStatus.textContent = isAborted ? 'Ready' : 'Error';
         headerCharStatus.classList.remove('generating');
       },
       apiOptions,
@@ -3706,7 +4043,7 @@ export function updateChatHistory() {
         </div>
         <div class="chat-history-item-info">
           <div class="chat-history-item-title">${escapeHtml(title)}</div>
-          <div class="chat-history-item-date">${formatTime(session.updated_at)}</div>
+          <div class="chat-history-item-date" data-timestamp="${session.updated_at || ''}" data-custom-tooltip="${formatExactTime(session.updated_at)}">${formatTime(session.updated_at)}</div>
         </div>
         <button class="chat-history-item-delete" data-delete-chat="${session.id}" title="Delete chat">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -4728,8 +5065,7 @@ async function triggerAutomaticImageGeneration(character, session, assistantRepl
   appState.abortController = new AbortController();
 
   if (appState.currentCharacter?.id === character.id) {
-    btnSend.classList.add('hidden');
-    btnStop.classList.remove('hidden');
+    setChatActionState('stop');
     headerCharStatus.textContent = 'Generating illustration...';
     headerCharStatus.classList.add('generating');
   }
@@ -4882,8 +5218,7 @@ You MUST respond strictly in the following JSON format. Output ONLY raw JSON, do
     if (appState.currentCharacter?.id === character.id) {
       appState.isGenerating = false;
       appState.abortController = null;
-      btnSend.classList.remove('hidden');
-      btnStop.classList.add('hidden');
+      setChatActionState('send');
       headerCharStatus.textContent = 'Ready';
       headerCharStatus.classList.remove('generating');
       updateRegenerateVisibility();
@@ -5056,8 +5391,7 @@ async function triggerAutomaticImageGenerationWithPrompt(character, session, msg
   appState.abortController = new AbortController();
 
   if (appState.currentCharacter?.id === character.id) {
-    btnSend.classList.add('hidden');
-    btnStop.classList.remove('hidden');
+    setChatActionState('stop');
     headerCharStatus.textContent = 'Generating illustration...';
     headerCharStatus.classList.add('generating');
   }
@@ -5070,8 +5404,7 @@ async function triggerAutomaticImageGenerationWithPrompt(character, session, msg
     if (appState.currentCharacter?.id === character.id) {
       appState.isGenerating = false;
       appState.abortController = null;
-      btnSend.classList.remove('hidden');
-      btnStop.classList.add('hidden');
+      setChatActionState('send');
       headerCharStatus.textContent = 'Ready';
       headerCharStatus.classList.remove('generating');
       updateRegenerateVisibility();

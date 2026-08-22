@@ -213,6 +213,8 @@ body.ai-sidebar-open #btn-toggle-genai-header .icon-arrow-right {
   border: 1px solid rgba(255, 255, 255, 0.09);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.18), inset 0 -1px 0 rgba(0, 0, 0, 0.15);
   cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -239,6 +241,8 @@ body.ai-sidebar-open #btn-toggle-genai-header .icon-arrow-right {
   border: 1px solid rgba(255, 255, 255, 0.1);
   flex-shrink: 0;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .header-avatar svg {
@@ -251,6 +255,8 @@ body.ai-sidebar-open #btn-toggle-genai-header .icon-arrow-right {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 
 .header-char-name {
@@ -259,12 +265,16 @@ body.ai-sidebar-open #btn-toggle-genai-header .icon-arrow-right {
   color: var(--text-primary);
   line-height: 1.25;
   letter-spacing: -0.01em;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .header-char-status {
   font-size: 11px;
   color: var(--text-tertiary);
   line-height: 1.2;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .header-char-status.generating {
@@ -742,13 +752,14 @@ body.ai-sidebar-open #btn-toggle-genai-header .icon-arrow-right {
 }
 
 .assistant .message-content {
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(255, 255, 255, 0.025);
   color: var(--text-primary);
-  border: 1px solid var(--border-light);
-  border-radius: var(--radius-lg);
-  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-light, rgba(255, 255, 255, 0.1));
+  border-radius: var(--radius-xl, 20px);
+  padding: 12px 18px;
   box-shadow: var(--shadow-sm);
   backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   box-sizing: border-box;
   width: fit-content;
   transition: width 0.4s cubic-bezier(0.25, 0.8, 0.25, 1),
@@ -780,6 +791,13 @@ body.ai-sidebar-open #btn-toggle-genai-header .icon-arrow-right {
 .message-time {
   font-size: var(--text-xs);
   color: var(--text-tertiary);
+  cursor: default;
+  user-select: none;
+  transition: color var(--transition-fast);
+}
+
+.message-time:hover {
+  color: var(--text-secondary);
 }
 
 .message-actions {
@@ -1308,6 +1326,7 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
 
 .btn-send,
 .btn-stop {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1316,40 +1335,148 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
   border: none;
   border-radius: 50%;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--text-primary);
+  color: var(--bg-primary);
+  transition: background-color 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              color 0.3s ease,
+              transform 0.2s ease,
+              box-shadow 0.3s ease;
 }
 
-.btn-send {
+.btn-send .btn-icon-svg,
+.btn-stop .btn-icon-svg {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.25s ease;
+}
+
+/* 1. STATE: SEND (Default / Idle) */
+.btn-send,
+.btn-send.state-send {
   background: var(--text-primary);
   color: var(--bg-primary);
 }
 
-.btn-send:hover {
+.btn-send:hover,
+.btn-send.state-send:hover {
   background: #ffffff;
-  transform: scale(1.05);
+  transform: scale(1.06);
 }
 
-.btn-send:active {
-  transform: scale(0.95);
+.btn-send:active,
+.btn-send.state-send:active {
+  transform: scale(0.94);
 }
 
-.btn-send svg {
-  width: 16px;
-  height: 16px;
+.btn-send .icon-arrow,
+.btn-send.state-send .icon-arrow {
+  transform: rotate(0deg) scale(1);
+  opacity: 1;
 }
 
+.btn-send .icon-stop,
+.btn-send.state-send .icon-stop {
+  transform: scale(0.4);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* 2. STATE: STOP (Generating phase) */
+.btn-send.state-stop,
 .btn-stop {
-  background: var(--error);
-  color: white;
+  background: var(--error, #ef4444);
+  color: #ffffff;
 }
 
+.btn-send.state-stop:hover,
 .btn-stop:hover {
   background: #dc2626;
+  transform: scale(1.06);
 }
 
+.btn-send.state-stop:active,
+.btn-stop:active {
+  transform: scale(0.94);
+}
+
+.btn-send.state-stop .icon-arrow {
+  transform: rotate(0deg) scale(0.4);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.btn-send.state-stop .icon-stop,
 .btn-stop svg {
-  width: 16px;
-  height: 16px;
+  transform: scale(1);
+  opacity: 1;
+}
+
+/* 3. STATE: SKIP (Post-generation word reveal phase) */
+.btn-send.state-skip {
+  background: #eab308;
+  color: #18181b;
+  box-shadow: 0 0 14px rgba(234, 179, 8, 0.4);
+}
+
+.btn-send.state-skip:hover {
+  background: #facc15;
+  transform: scale(1.08);
+  box-shadow: 0 0 18px rgba(234, 179, 8, 0.6);
+}
+
+.btn-send.state-skip:active {
+  transform: scale(0.94);
+}
+
+.btn-send.state-skip .icon-arrow {
+  transform: rotate(180deg) scale(1);
+  opacity: 1;
+}
+
+.btn-send.state-skip .icon-stop {
+  transform: scale(0.4);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Transition animation: Stop -> Skip (Single press-and-release dip bounce) */
+.btn-send.anim-dip-skip {
+  animation: btnDipDown 0.38s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+@keyframes btnDipDown {
+  0% {
+    transform: translateY(0) scale(1);
+    background-color: var(--error, #ef4444);
+  }
+  45% {
+    transform: translateY(6px) scale(0.82);
+    background-color: #f59e0b;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    background-color: #eab308;
+  }
+}
+
+/* Transition from Skip to Send (Smooth 180° rotation & color fade) */
+.btn-send.anim-skip-to-send {
+  transition: background-color 0.45s cubic-bezier(0.16, 1, 0.3, 1),
+              color 0.35s ease,
+              transform 0.2s ease,
+              box-shadow 0.35s ease;
+}
+
+.btn-send.anim-skip-to-send .icon-arrow {
+  transition: transform 0.48s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.25s ease;
 }
 
 .input-footer {
@@ -1628,6 +1755,8 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
 /* Books Mode Styles */
 .sidebar-tab {
   transition: all 0.2s ease;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .sidebar-tab:hover {
@@ -2948,7 +3077,7 @@ glm-thinking-snippets .glm-snippet.active {
   flex-direction: column;
   cursor: pointer;
   padding: 4px 8px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md, 10px);
   transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
   min-width: 120px;
 }

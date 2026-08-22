@@ -12,6 +12,7 @@ import {
   renderMarkdown,
   autoResizeTextarea,
   formatTime,
+  formatExactTime,
   escapeHtml,
   wrapWordsInSpans,
 } from '../utils/helpers.js';
@@ -389,7 +390,7 @@ function appendGroupMessage(msg, isStreaming = false) {
   let formattedContent = renderMarkdown(cleanedContent);
   formattedContent = processCharacterMentions(formattedContent);
   const contentHtml = formattedContent;
-  const meta = !isStreaming ? `<div class="group-msg-meta"><span class="group-msg-time">${formatTime(msg.timestamp)}</span><div class="message-actions"><button class="btn-regenerate ${isUser ? 'hidden' : ''}" title="Regen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg></button><button class="btn-edit-msg" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button><button class="btn-copy" title="Copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button><button class="btn-ai-comment ${isUser ? 'hidden' : ''}" title="Comment"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/><path d="M12 7l1.5 3 3.5.5-2.5 2.5.5 3.5-3-1.5-3 1.5.5-3.5-2.5-2.5 3.5-.5z"/></svg></button><button class="btn-delete-msg delete" title="Del"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></div></div>` : '';
+  const meta = !isStreaming ? `<div class="group-msg-meta"><span class="group-msg-time" data-timestamp="${msg.timestamp || ''}" data-custom-tooltip="${formatExactTime(msg.timestamp)}">${formatTime(msg.timestamp)}</span><div class="message-actions"><button class="btn-regenerate ${isUser ? 'hidden' : ''}" title="Regen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg></button><button class="btn-edit-msg" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button><button class="btn-copy" title="Copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button><button class="btn-ai-comment ${isUser ? 'hidden' : ''}" title="Comment"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/><path d="M12 7l1.5 3 3.5.5-2.5 2.5.5 3.5-3-1.5-3 1.5.5-3.5-2.5-2.5 3.5-.5z"/></svg></button><button class="btn-delete-msg delete" title="Del"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></div></div>` : '';
   el.innerHTML = `<div class="group-msg-avatar">${avatarHtml}</div><div class="group-msg-body"><div class="group-msg-sender">${escapeHtml(senderName)}</div><div class="group-msg-bubble"><div class="group-msg-text">${isStreaming ? '<span class="streaming-cursor"></span>' : contentHtml}</div></div>${meta}</div>`;
   if (!isStreaming) {
     el.querySelector('.btn-copy')?.addEventListener('click', () => { navigator.clipboard.writeText(msg.content); showToast('Copied'); });
@@ -425,7 +426,11 @@ async function regenerateGroupResponse(oldMsg, el) {
   handleSend();
 }
 
-function clearGroupMessages() { messagesContainer.innerHTML = '<div class="empty-state"><h2>Group Chat</h2><p>Send a message!</p></div>'; }
+function clearGroupMessages() { 
+  groupUserHasScrolledUp = false;
+  cancelPendingGroupScroll();
+  messagesContainer.innerHTML = '<div class="empty-state"><h2>Group Chat</h2><p>Send a message!</p></div>'; 
+}
 let groupUserHasScrolledUp = false;
 let groupIsProgrammaticScrolling = false;
 let groupScrollRafId = null;
@@ -450,7 +455,7 @@ function setupGroupScrollListener() {
       groupIsProgrammaticScrolling = false;
     } else if (e.deltaY > 0) {
       const dist = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight;
-      if (dist <= 30) {
+      if (dist <= 12) {
         groupUserHasScrolledUp = false;
       }
     }
@@ -468,14 +473,14 @@ function setupGroupScrollListener() {
     if (e.touches && e.touches.length > 0) {
       const currentY = e.touches[0].clientY;
       const deltaY = currentY - touchStartY;
-      if (deltaY > 3) {
+      if (deltaY > 2) {
         // Dragging down = scrolling up
         groupUserHasScrolledUp = true;
         cancelPendingGroupScroll();
         groupIsProgrammaticScrolling = false;
-      } else if (deltaY < -3) {
+      } else if (deltaY < -2) {
         const dist = messagesContainer.scrollHeight - messagesContainer.scrollTop - messagesContainer.clientHeight;
-        if (dist <= 30) {
+        if (dist <= 12) {
           groupUserHasScrolledUp = false;
         }
       }
@@ -492,10 +497,10 @@ function setupGroupScrollListener() {
       return;
     }
 
-    if (currentScrollTop < lastGroupScrollTop - 1) {
+    if (currentScrollTop < lastGroupScrollTop - 0.5) {
       groupUserHasScrolledUp = true;
       cancelPendingGroupScroll();
-    } else if (dist <= 25) {
+    } else if (currentScrollTop > lastGroupScrollTop + 0.5 && dist <= 12) {
       groupUserHasScrolledUp = false;
     }
 
@@ -509,9 +514,20 @@ function scrollGroupToBottom(force = false) {
 
   if (force) {
     groupUserHasScrolledUp = false;
-  } else if (groupUserHasScrolledUp) {
+    cancelPendingGroupScroll();
+    const maxScrollTop = messagesContainer.scrollHeight - messagesContainer.clientHeight;
+    if (maxScrollTop > 0) {
+      groupIsProgrammaticScrolling = true;
+      messagesContainer.scrollTop = maxScrollTop;
+      lastGroupScrollTop = maxScrollTop;
+      queueMicrotask(() => {
+        groupIsProgrammaticScrolling = false;
+      });
+    }
     return;
   }
+
+  if (groupUserHasScrolledUp) return;
 
   cancelPendingGroupScroll();
 
@@ -522,18 +538,31 @@ function scrollGroupToBottom(force = false) {
     const maxScrollTop = messagesContainer.scrollHeight - messagesContainer.clientHeight;
     if (maxScrollTop <= 0) return;
 
-    if (Math.abs(messagesContainer.scrollTop - maxScrollTop) < 1) {
-      lastGroupScrollTop = messagesContainer.scrollTop;
+    const currentScrollTop = messagesContainer.scrollTop;
+    const diff = maxScrollTop - currentScrollTop;
+
+    if (Math.abs(diff) < 1) {
+      lastGroupScrollTop = maxScrollTop;
       return;
     }
 
     groupIsProgrammaticScrolling = true;
-    messagesContainer.scrollTop = Math.max(0, maxScrollTop);
+    if (diff > 100) {
+      messagesContainer.scrollTop = maxScrollTop;
+    } else {
+      messagesContainer.scrollTop = currentScrollTop + Math.max(1, diff * 0.35);
+    }
     lastGroupScrollTop = messagesContainer.scrollTop;
 
     queueMicrotask(() => {
       groupIsProgrammaticScrolling = false;
     });
+
+    if (diff > 1.5 && !groupUserHasScrolledUp) {
+      groupScrollRafId = requestAnimationFrame(() => {
+        scrollGroupToBottom(false);
+      });
+    }
   });
 }
 
@@ -601,7 +630,7 @@ export function renderGroupHistoryInPanel() {
   list.innerHTML = sessions.map(s => {
     const first = s.messages.find(m => m.role === 'user');
     const title = first ? first.content.substring(0, 40) + '...' : 'New Chat';
-    return `<div class="chat-history-item ${current?.id === s.id ? 'active' : ''}" data-group-session-id="${s.id}"><div class="chat-history-item-info"><div class="chat-history-item-title">${escapeHtml(title)}</div><div class="chat-history-item-date">${formatTime(s.updated_at)}</div></div><button class="chat-history-item-delete" data-delete-group-session="${s.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>`;
+    return `<div class="chat-history-item ${current?.id === s.id ? 'active' : ''}" data-group-session-id="${s.id}"><div class="chat-history-item-info"><div class="chat-history-item-title">${escapeHtml(title)}</div><div class="chat-history-item-date" data-timestamp="${s.updated_at || ''}" data-custom-tooltip="${formatExactTime(s.updated_at)}">${formatTime(s.updated_at)}</div></div><button class="chat-history-item-delete" data-delete-group-session="${s.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>`;
   }).join('');
   if (!list._groupListeners) {
     list._groupListeners = true;

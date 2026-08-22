@@ -173,7 +173,7 @@ export const memoryService = {
   },
 
   /**
-   * Get formatted memory string for injection into system prompt
+   * Get formatted memory string for injection into user prompt
    */
   getMemoryContext(characterId) {
     const memory = memories[characterId];
@@ -184,11 +184,11 @@ export const memoryService = {
     const prefs = entries.filter(e => e.category === 'preference').map(e => e.content);
     const events = entries.filter(e => e.category === 'event').map(e => e.content);
 
-    let context = '\n\n[Character Memory]\n';
+    let context = '<memory>\n[Character Memory]\n';
     if (facts.length) context += `Facts: ${facts.join('; ')}\n`;
     if (prefs.length) context += `User preferences: ${prefs.join('; ')}\n`;
     if (events.length) context += `Past events: ${events.join('; ')}\n`;
-    context += '[End Memory]\n';
+    context += '</memory>';
 
     return context;
   },

@@ -14,20 +14,94 @@ export function generateId() {
 }
 
 /**
- * Format a date string to a friendly format
+ * Format a date string to a friendly relative format (e.g. 'just now', '1m ago', '5m ago', '2h ago', 'yesterday', '3d ago', 'Aug 21')
  */
 export function formatTime(isoString) {
+  if (!isoString) return '';
   const date = new Date(isoString);
+  if (isNaN(date.getTime())) return '';
+
   const now = new Date();
-  const diffMs = now - date;
+  const diffMs = now.getTime() - date.getTime();
+  const diffSecs = Math.floor(diffMs / 1000);
   const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
 
-  if (diffMins < 1) return 'just now';
+  // If clock skew or sent within the last 45 seconds:
+  if (diffSecs < 45) return 'just now';
+  if (diffSecs < 90) return '1m ago';
   if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays === 1) return 'yesterday';
+  if (diffDays < 7) return `${diffDays}d ago`;
 
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const currentYear = now.getFullYear();
+  if (date.getFullYear() === currentYear) {
+    return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  }
+  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
+
+/**
+ * Format an exact localized date and time string for tooltips and inspections
+ */
+export function formatExactTime(isoString) {
+  if (!isoString) return '';
+  const date = new Date(isoString);
+  if (isNaN(date.getTime())) return '';
+  return date.toLocaleString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
+}
+
+/**
+ * Update all rendered relative time elements across the application
+ */
+export function updateAllRelativeTimes() {
+  const timeElements = document.querySelectorAll('[data-timestamp]');
+  for (let i = 0; i < timeElements.length; i++) {
+    const el = timeElements[i];
+    const ts = el.dataset.timestamp;
+    if (!ts) continue;
+
+    const newTime = formatTime(ts);
+    if (newTime && el.textContent !== newTime) {
+      el.textContent = newTime;
+    }
+
+    const exactTime = formatExactTime(ts);
+    if (exactTime && el.getAttribute('data-custom-tooltip') !== exactTime) {
+      el.setAttribute('data-custom-tooltip', exactTime);
+    }
+  }
+}
+
+let _relativeTimeInterval = null;
+
+/**
+ * Start periodic background updater for timestamps (ticks every 15s)
+ */
+export function startRelativeTimeUpdater() {
+  if (_relativeTimeInterval) return;
+  _relativeTimeInterval = setInterval(() => {
+    if (!document.hidden) {
+      updateAllRelativeTimes();
+    }
+  }, 15000);
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      updateAllRelativeTimes();
+    }
+  });
+}
+
 
 /**
  * Simple Markdown to HTML converter
@@ -872,7 +946,7 @@ class ThinkingSnippets extends HTMLElement {
         cancelProgrammatic();
       } else if (e.deltaY > 0) {
         const dist = this.expandedView.scrollHeight - this.expandedView.scrollTop - this.expandedView.clientHeight;
-        if (dist <= 20) {
+        if (dist <= 8) {
           this.userHasScrolledUp = false;
         }
       }
@@ -893,7 +967,7 @@ class ThinkingSnippets extends HTMLElement {
           cancelProgrammatic();
         } else if (deltaY < -2) {
           const dist = this.expandedView.scrollHeight - this.expandedView.scrollTop - this.expandedView.clientHeight;
-          if (dist <= 20) {
+          if (dist <= 8) {
             this.userHasScrolledUp = false;
           }
         }
@@ -909,9 +983,9 @@ class ThinkingSnippets extends HTMLElement {
         return;
       }
 
-      if (current < this._lastScrollTop - 1) {
+      if (current < this._lastScrollTop - 0.5) {
         cancelProgrammatic();
-      } else if (dist <= 20) {
+      } else if (current > this._lastScrollTop + 0.5 && dist <= 8) {
         this.userHasScrolledUp = false;
       }
 

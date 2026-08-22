@@ -34,6 +34,7 @@ import { initAlbumView } from './components/album-view.js';
 import { localSyncService } from './services/local-sync-service.js';
 import { genaiMemoryStore } from './services/genai-memory-store.js';
 import { lorebookStore } from './services/lorebook-store.js';
+import { startRelativeTimeUpdater, updateAllRelativeTimes } from './utils/helpers.js';
 import './components/lorebook-ui.js';
 
 // ─── Initialize App ─────────────────────────────────────────────────
@@ -433,6 +434,7 @@ async function init() {
   initAlbumView();
   initLightbox();
   applyGlobalSettingsStyles();
+  startRelativeTimeUpdater();
 
   // GenAI button
   const btnGenAI = document.getElementById('btn-genai');
@@ -710,6 +712,7 @@ export function showPrompt(title, message, defaultValue = '') {
 window.showToast = showToast;
 window.showConfirm = showConfirm;
 window.showPrompt = showPrompt;
+window.updateAllRelativeTimes = updateAllRelativeTimes;
 
 // Close modals when clicking on their backdrop
 document.addEventListener('click', (e) => {

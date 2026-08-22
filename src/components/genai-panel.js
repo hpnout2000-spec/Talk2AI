@@ -11,7 +11,7 @@ import { skillsStore } from '../services/skills-store.js';
 import { gameStore } from '../services/game-store.js';
 import { groupChatStore } from '../services/group-chat-store.js';
 import { appState } from '../state.js';
-import { renderMarkdown, autoResizeTextarea, formatTime, injectCursor, escapeHtml, parseThinking, parseStreamThinking, createThinkingBlockHTML, wrapWordsInSpans } from '../utils/helpers.js';
+import { renderMarkdown, autoResizeTextarea, formatTime, formatExactTime, injectCursor, escapeHtml, parseThinking, parseStreamThinking, createThinkingBlockHTML, wrapWordsInSpans } from '../utils/helpers.js';
 import morphdom from '../vendor/morphdom.js';
 import { generateImageComfyUI, checkComfyUIConnection, buildAutoPromptFromContext } from '../services/comfyui-service.js';
 import { loadChat } from './chat.js';
@@ -65,6 +65,89 @@ let messagesEl, inputEl, sendBtn, stopBtn, clearBtn, closeBtn, fullscreenBtn, br
 let activeReplyQuote = null;
 let selectionReplyBtn = null;
 let replyQuoteContainer = null;
+
+// ─── GenAI Action Button States (Send / Stop / Skip) ─────────────────
+let genaiButtonState = 'send';
+let genaiBtnAnimTimeout = null;
+
+function setGenAIActionState(newState) {
+  if (!sendBtn) return;
+  const oldState = genaiButtonState;
+  genaiButtonState = newState;
+
+  if (genaiBtnAnimTimeout) {
+    clearTimeout(genaiBtnAnimTimeout);
+    genaiBtnAnimTimeout = null;
+  }
+
+  if (stopBtn) {
+    stopBtn.classList.add('hidden');
+    stopBtn.style.display = 'none';
+  }
+
+  sendBtn.classList.remove('hidden');
+  sendBtn.disabled = false;
+
+  if (newState === 'stop') {
+    sendBtn.classList.remove('state-send', 'state-skip', 'anim-dip-skip', 'anim-skip-to-send');
+    sendBtn.classList.add('state-stop');
+    sendBtn.title = 'Stop generation';
+  } else if (newState === 'skip') {
+    sendBtn.classList.remove('state-send', 'state-stop', 'anim-skip-to-send');
+    sendBtn.classList.add('state-skip');
+    sendBtn.title = 'Skip animation';
+
+    if (oldState === 'stop') {
+      sendBtn.classList.add('anim-dip-skip');
+      genaiBtnAnimTimeout = setTimeout(() => {
+        sendBtn.classList.remove('anim-dip-skip');
+        genaiBtnAnimTimeout = null;
+      }, 400);
+    }
+  } else if (newState === 'send') {
+    sendBtn.classList.remove('state-stop', 'anim-dip-skip');
+
+    if (oldState === 'skip') {
+      sendBtn.classList.remove('state-skip');
+      sendBtn.classList.add('state-send', 'anim-skip-to-send');
+      sendBtn.title = 'Send';
+      genaiBtnAnimTimeout = setTimeout(() => {
+        sendBtn.classList.remove('anim-skip-to-send');
+        genaiBtnAnimTimeout = null;
+      }, 500);
+    } else {
+      sendBtn.classList.remove('state-skip', 'anim-skip-to-send');
+      sendBtn.classList.add('state-send');
+      sendBtn.title = 'Send';
+    }
+  }
+}
+
+function skipGenAIStreamingAnimation() {
+  const activeBubble = messagesEl?.querySelector('.genai-msg.assistant:last-child');
+  if (activeBubble) {
+    const textCont = activeBubble.querySelector('.genai-msg-text-container');
+    if (textCont && textCont._revealInterval) {
+      textCont._isFastForwarding = true;
+      smoothScrollGenaiToBottom(350);
+      return;
+    }
+    if (textCont) {
+      const rawLimit = textCont._rawCharCount || 999999;
+      textCont._revealProgress = rawLimit + 20;
+      textCont.style.setProperty('--reveal-progress', (rawLimit + 20) + 'ch');
+      textCont.classList.add('stream-finished');
+      textCont.querySelectorAll('.word-reveal').forEach(s => s.classList.add('revealed'));
+
+      const currentEntry = textCont._latestEntry;
+      if (currentEntry) {
+        renderAssistantBubble(currentEntry, activeBubble, { cursor: false, streaming: false });
+      }
+    }
+  }
+  smoothScrollGenaiToBottom(350);
+  setGenAIActionState('send');
+}
 
 // ─── System Prompt ──────────────────────────────────────────────────
 const ANIMA_BETTER_PROMPT_TEXT = `[IMAGE GENERATION RULES & GUIDELINES]
@@ -750,14 +833,6 @@ function buildDynamicContext(maxMessages = 15) {
     parts.push('\n## Active View: none');
   }
 
-  // GenAI Memories
-  const memories = genaiMemoryStore.getAll();
-  if (memories.length) {
-    parts.push('\n## GenAI Memories (Facts to consider for your response):');
-    parts.push('These are the facts you asked to remember. You MUST take these facts into account and consider them when generating your response to the user. Do not contradict them:');
-    memories.forEach(m => parts.push(`- [id: ${m.id}] ${m.content}`));
-  }
-
   return '[APP CONTEXT - DYNAMIC SESSION DATA]\n' + parts.join('\n');
 }
 
@@ -1185,13 +1260,14 @@ ${skill.content}
               type: 'image_url',
               image_url: { url: base64 }
             }))
-          ]
+          ],
+          rag_context: e.rag_context
         });
       } else {
-        historyMsgs.push({ role: e.role, content: cleanContent });
+        historyMsgs.push({ role: e.role, content: cleanContent, rag_context: e.rag_context });
       }
     } else {
-      historyMsgs.push({ role: e.role, content: cleanContent });
+      historyMsgs.push({ role: e.role, content: cleanContent, rag_context: e.rag_context });
     }
 
     // Inject executed tool results back into history so the AI has context of successful runs!
@@ -1272,7 +1348,8 @@ ${activeSkillsBlock.trim()}
 ${ANIMA_BETTER_PROMPT_TEXT}`;
   }
 
-  // Inject Smart Context summaries of other chats (RAG)
+  // Inject Smart Context summaries of other chats (RAG) & Memories into the last user message
+  let ragParts = [];
   if (settings.genai_smart_context && !skipSmartContextOverride) {
     // 1. Build Query Window (last 3 messages)
     const activeSession = (genaiSessions || []).find(s => s.id === currentGenaiSessionId);
@@ -1287,7 +1364,7 @@ ${ANIMA_BETTER_PROMPT_TEXT}`;
 
     // Inject Current Session Summary directly
     if (activeSession && activeSession.summary) {
-      skillsInjection += `\n\n[Smart Context (Current Chat Summary - Context of earlier messages):]\n${activeSession.summary}`;
+      ragParts.push(`[Current Chat Summary - Context of earlier messages]:\n${activeSession.summary}`);
     }
 
     // 2. RAG Search for other sessions
@@ -1304,21 +1381,85 @@ ${ANIMA_BETTER_PROMPT_TEXT}`;
     });
 
     if (relevantResults.length > 0) {
-      // 3. Inject
       let contextStr = '';
       for (const res of relevantResults) {
         const sessionTitle = (genaiSessions || []).find(s => s.id === res.session_id)?.title || 'Untitled';
         contextStr += `\n- [Past Chat "${sessionTitle}"]: ${res.text}`;
       }
-      skillsInjection += `\n\n[Smart Context (Relevant past context — Use this background context to stay consistent across chats):]${contextStr}`;
+      ragParts.push(`[Smart Context - Relevant past context across chats]:${contextStr}`);
     }
   }
 
-  // Inject GenAI Memories
+  // Inject GenAI Memories into separate <memory> tag
+  let memoryParts = [];
   const memories = genaiMemoryStore.getAll();
   if (memories.length > 0) {
     const memoriesStr = memories.map(m => `- ${m.content}`).join('\n');
-    skillsInjection += `\n\n[GenAI Memories (Facts to consider for your response — You MUST take these into account and not contradict them):]\n${memoriesStr}`;
+    memoryParts.push(`[GenAI Memories (Facts to remember — You MUST take these into account)]:\n${memoriesStr}`);
+  }
+
+  let currentRagBlock = '';
+  if (ragParts.length > 0) {
+    currentRagBlock = `<context>\n${ragParts.join('\n\n')}\n</context>`;
+    // Save on current session's latest user entry in genaiHistory so subsequent turns retain it
+    const lastUserHistoryEntry = genaiHistory.slice().reverse().find(m => m.role === 'user');
+    if (lastUserHistoryEntry) {
+      lastUserHistoryEntry.rag_context = currentRagBlock;
+    }
+  }
+
+  // Apply RAG context retention depth across all user messages in historyMsgs
+  const depthSetting = settings.genai_rag_context_depth !== undefined ? settings.genai_rag_context_depth : 1;
+  let userMsgCount = 0;
+
+  for (let i = historyMsgs.length - 1; i >= 0; i--) {
+    if (historyMsgs[i].role === 'user') {
+      userMsgCount++;
+      const isLatest = (userMsgCount === 1);
+      const ragBlock = isLatest ? currentRagBlock : (historyMsgs[i].rag_context || null);
+
+      if (isLatest) {
+        // Latest user message gets <memory> (if any) and current <context> (if any)
+        const latestBlocks = [];
+        if (memoryParts.length > 0) {
+          latestBlocks.push(`<memory>\n${memoryParts.join('\n\n')}\n</memory>`);
+        }
+        if (ragBlock) {
+          latestBlocks.push(ragBlock);
+        }
+        if (latestBlocks.length > 0) {
+          const combined = latestBlocks.join('\n\n');
+          if (typeof historyMsgs[i].content === 'string') {
+            historyMsgs[i].content = `${combined}\n\n${historyMsgs[i].content}`;
+          } else if (Array.isArray(historyMsgs[i].content)) {
+            const textItem = historyMsgs[i].content.find(item => item.type === 'text');
+            if (textItem) textItem.text = `${combined}\n\n${textItem.text}`;
+          }
+        }
+      } else {
+        // Past user messages in history:
+        if (ragBlock) {
+          if (depthSetting >= 10 || userMsgCount <= depthSetting) {
+            // Within retention window (e.g. 2nd or 3rd user turn when depth is 3): keep full <context>!
+            if (typeof historyMsgs[i].content === 'string') {
+              historyMsgs[i].content = `${ragBlock}\n\n${historyMsgs[i].content}`;
+            } else if (Array.isArray(historyMsgs[i].content)) {
+              const textItem = historyMsgs[i].content.find(item => item.type === 'text');
+              if (textItem) textItem.text = `${ragBlock}\n\n${textItem.text}`;
+            }
+          } else {
+            // Older than retention limit (e.g. 4th user turn when depth is 3): prune with notice!
+            const prunedTag = '<context>\n[RAG context was removed to save tokens]\n</context>';
+            if (typeof historyMsgs[i].content === 'string') {
+              historyMsgs[i].content = `${prunedTag}\n\n${historyMsgs[i].content}`;
+            } else if (Array.isArray(historyMsgs[i].content)) {
+              const textItem = historyMsgs[i].content.find(item => item.type === 'text');
+              if (textItem) textItem.text = `${prunedTag}\n\n${textItem.text}`;
+            }
+          }
+        }
+      }
+    }
   }
 
   // Initial state: maximum context
@@ -3296,7 +3437,12 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
           const deltaMs = now - textCont._lastRevealTime;
           textCont._lastRevealTime = now;
 
-          const charsToAdd = deltaMs * (streamingSpeed / 1000);
+          let spd = streamingSpeed;
+          if (textCont._isFastForwarding) {
+            const remaining = Math.max(1, rawLimit - textCont._revealProgress);
+            spd = Math.max(1500, remaining / 0.22);
+          }
+          const charsToAdd = deltaMs * (spd / 1000);
           const oldProgress = textCont._revealProgress;
           textCont._revealProgress = Math.min(rawLimit, textCont._revealProgress + charsToAdd);
 
@@ -3319,6 +3465,9 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
             // Re-render final state to restore normal HTML
             const currentEntry = textCont._latestEntry || entry;
             renderAssistantBubble(currentEntry, bubbleEl, { cursor: false, streaming: false });
+            if (!isGenerating) {
+              setGenAIActionState('send');
+            }
           }
         };
 
@@ -3531,7 +3680,7 @@ function renderMessages() {
     if (entry.role === 'system') continue; // skip injected tool results
     appendMsgEl(entry);
   }
-  scrollToBottom();
+  scrollToBottom(true);
 }
 
 function appendMsgEl(entry) {
@@ -3553,7 +3702,7 @@ function appendMsgEl(entry) {
     ${avatarHtml}
     <div class="genai-msg-body">
       <div class="genai-msg-bubble"></div>
-      <div class="genai-msg-time">${formatTime(entry.timestamp || new Date().toISOString())}</div>
+      <div class="genai-msg-time" data-timestamp="${entry.timestamp || new Date().toISOString()}" data-custom-tooltip="${formatExactTime(entry.timestamp || new Date().toISOString())}">${formatTime(entry.timestamp || new Date().toISOString())}</div>
     </div>`;
 
   if (isGenerating && !isUser) {
@@ -3628,25 +3777,124 @@ function appendMsgEl(entry) {
 
 let genaiUserHasScrolledUp = false;
 let genaiIsProgrammaticScrolling = false;
+let genaiScrollRafId = null;
+let lastGenaiScrollTop = 0;
+
+function cancelPendingGenaiScroll() {
+  if (genaiScrollRafId) {
+    cancelAnimationFrame(genaiScrollRafId);
+    genaiScrollRafId = null;
+  }
+}
 
 function setupGenaiScrollListener() {
   if (!messagesEl || messagesEl._scrollListenerAttached) return;
   messagesEl._scrollListenerAttached = true;
 
-  const cancelProgrammatic = () => {
-    genaiUserHasScrolledUp = true;
-    genaiIsProgrammaticScrolling = false;
-  };
-  messagesEl.addEventListener('wheel', cancelProgrammatic, { passive: true });
-  messagesEl.addEventListener('touchmove', cancelProgrammatic, { passive: true });
+  // 1. Wheel event — zero-latency detection on upward scroll
+  messagesEl.addEventListener('wheel', (e) => {
+    if (e.deltaY < 0) {
+      genaiUserHasScrolledUp = true;
+      cancelPendingGenaiScroll();
+      genaiIsProgrammaticScrolling = false;
+    } else if (e.deltaY > 0) {
+      const dist = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight;
+      if (dist <= 12) {
+        genaiUserHasScrolledUp = false;
+      }
+    }
+  }, { passive: true });
 
+  // 2. Touch event tracking
+  let touchStartY = 0;
+  messagesEl.addEventListener('touchstart', (e) => {
+    if (e.touches && e.touches.length > 0) {
+      touchStartY = e.touches[0].clientY;
+    }
+  }, { passive: true });
+
+  messagesEl.addEventListener('touchmove', (e) => {
+    if (e.touches && e.touches.length > 0) {
+      const currentY = e.touches[0].clientY;
+      const deltaY = currentY - touchStartY;
+      if (deltaY > 2) {
+        // Dragging down = scrolling up
+        genaiUserHasScrolledUp = true;
+        cancelPendingGenaiScroll();
+        genaiIsProgrammaticScrolling = false;
+      } else if (deltaY < -2) {
+        const dist = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight;
+        if (dist <= 12) {
+          genaiUserHasScrolledUp = false;
+        }
+      }
+    }
+  }, { passive: true });
+
+  // 3. Scroll event listener
   messagesEl.addEventListener('scroll', () => {
-    if (genaiIsProgrammaticScrolling) return;
-    const threshold = 60;
-    const distanceFromBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight;
-    genaiUserHasScrolledUp = distanceFromBottom > threshold;
+    const currentScrollTop = messagesEl.scrollTop;
+    const dist = messagesEl.scrollHeight - currentScrollTop - messagesEl.clientHeight;
+
+    if (genaiIsProgrammaticScrolling) {
+      lastGenaiScrollTop = currentScrollTop;
+      return;
+    }
+
+    if (currentScrollTop < lastGenaiScrollTop - 0.5) {
+      genaiUserHasScrolledUp = true;
+      cancelPendingGenaiScroll();
+    } else if (currentScrollTop > lastGenaiScrollTop + 0.5 && dist <= 12) {
+      genaiUserHasScrolledUp = false;
+    }
+
+    lastGenaiScrollTop = currentScrollTop;
   }, { passive: true });
 }
+
+export function smoothScrollGenaiToBottom(duration = 350) {
+  if (!messagesEl) return;
+  setupGenaiScrollListener();
+  cancelPendingGenaiScroll();
+  genaiUserHasScrolledUp = false;
+
+  const startScrollTop = messagesEl.scrollTop;
+  const targetScrollTop = messagesEl.scrollHeight - messagesEl.clientHeight;
+  const distance = targetScrollTop - startScrollTop;
+  if (distance <= 0) return;
+
+  const startTime = performance.now();
+  const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+
+  const step = (now) => {
+    if (genaiUserHasScrolledUp || !messagesEl) {
+      genaiIsProgrammaticScrolling = false;
+      genaiScrollRafId = null;
+      return;
+    }
+    const elapsed = now - startTime;
+    const progress = Math.min(1, elapsed / duration);
+    const ease = easeOutCubic(progress);
+
+    const currentTarget = messagesEl.scrollHeight - messagesEl.clientHeight;
+    const currentDist = currentTarget - startScrollTop;
+
+    genaiIsProgrammaticScrolling = true;
+    messagesEl.scrollTop = startScrollTop + currentDist * ease;
+    lastGenaiScrollTop = messagesEl.scrollTop;
+
+    if (progress < 1) {
+      genaiScrollRafId = requestAnimationFrame(step);
+    } else {
+      messagesEl.scrollTop = currentTarget;
+      lastGenaiScrollTop = currentTarget;
+      genaiIsProgrammaticScrolling = false;
+      genaiScrollRafId = null;
+    }
+  };
+  genaiScrollRafId = requestAnimationFrame(step);
+}
+window.smoothScrollGenaiToBottom = smoothScrollGenaiToBottom;
 
 function scrollToBottom(force = false) {
   if (!messagesEl) return;
@@ -3654,15 +3902,52 @@ function scrollToBottom(force = false) {
 
   if (force) {
     genaiUserHasScrolledUp = false;
-  } else if (genaiUserHasScrolledUp) {
+    cancelPendingGenaiScroll();
+    const maxScrollTop = messagesEl.scrollHeight - messagesEl.clientHeight;
+    if (maxScrollTop > 0) {
+      genaiIsProgrammaticScrolling = true;
+      messagesEl.scrollTop = maxScrollTop;
+      lastGenaiScrollTop = maxScrollTop;
+      queueMicrotask(() => {
+        genaiIsProgrammaticScrolling = false;
+      });
+    }
     return;
   }
 
-  requestAnimationFrame(() => {
-    if (!messagesEl) return;
+  if (genaiUserHasScrolledUp) return;
+
+  cancelPendingGenaiScroll();
+
+  genaiScrollRafId = requestAnimationFrame(() => {
+    genaiScrollRafId = null;
+    if (!messagesEl || genaiUserHasScrolledUp) return;
+
+    const maxScrollTop = messagesEl.scrollHeight - messagesEl.clientHeight;
+    if (maxScrollTop <= 0) return;
+
+    const currentScrollTop = messagesEl.scrollTop;
+    const diff = maxScrollTop - currentScrollTop;
+
+    if (Math.abs(diff) < 1) {
+      lastGenaiScrollTop = maxScrollTop;
+      return;
+    }
+
     genaiIsProgrammaticScrolling = true;
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-    setTimeout(() => { genaiIsProgrammaticScrolling = false; }, 60);
+    const stepRatio = diff > 200 ? 0.45 : 0.35;
+    messagesEl.scrollTop = currentScrollTop + Math.max(1, diff * stepRatio);
+    lastGenaiScrollTop = messagesEl.scrollTop;
+
+    queueMicrotask(() => {
+      genaiIsProgrammaticScrolling = false;
+    });
+
+    if (diff > 1.5 && !genaiUserHasScrolledUp) {
+      genaiScrollRafId = requestAnimationFrame(() => {
+        scrollToBottom(false);
+      });
+    }
   });
 }
 
@@ -4015,9 +4300,7 @@ async function decideAutoThinking(signal) {
 async function streamGenAI(extraUserInstruction = null, _continuationEntry = null, _continuationBubble = null) {
   if (isGenerating && !extraUserInstruction) return;
   isGenerating = true;
-  if (sendBtn) sendBtn.disabled = true;
-  if (sendBtn) sendBtn.classList.add('hidden');
-  if (stopBtn) stopBtn.classList.remove('hidden');
+  setGenAIActionState('stop');
 
   abortController = new AbortController();
 
@@ -5331,9 +5614,15 @@ function continueAfterTool(action, result, assistantEntry, bubbleEl) {
 function finishGeneration() {
   isGenerating = false;
   abortController = null;
-  if (sendBtn) sendBtn.disabled = false;
-  if (sendBtn) sendBtn.classList.remove('hidden');
-  if (stopBtn) stopBtn.classList.add('hidden');
+  const settings = settingsStore.get();
+  const lastBubble = messagesEl?.querySelector('.genai-msg.assistant:last-child');
+  const textCont = lastBubble?.querySelector('.genai-msg-text-container');
+
+  if (settings.new_streaming_animation && textCont?._revealInterval && (textCont._revealProgress < (textCont._rawCharCount || 0))) {
+    setGenAIActionState('skip');
+  } else {
+    setGenAIActionState('send');
+  }
 
   // Remove generating class from all messages to show timestamps
   messagesEl.querySelectorAll('.genai-msg.generating').forEach(el => el.classList.remove('generating'));
@@ -5700,6 +5989,8 @@ function createNewGenaiChat() {
 
   currentGenaiSessionId = Date.now().toString();
   genaiHistory = [];
+  genaiUserHasScrolledUp = false;
+  cancelPendingGenaiScroll();
   
   isCharacterCreationMode = false;
   creatorPanelClosedByUser = false;
@@ -5736,6 +6027,8 @@ function switchGenaiChat(id) {
 
     currentGenaiSessionId = session.id;
     genaiHistory = session.messages || [];
+    genaiUserHasScrolledUp = false;
+    cancelPendingGenaiScroll();
 
     // Restore session-specific creator mode
     isCharacterCreationMode = !!session.isCharacterCreationMode;
@@ -5918,7 +6211,7 @@ function renderChatRow(s) {
     <div class="genai-chat-item ${isActive ? 'active-chat' : ''}" data-id="${s.id}">
       <div style="display: flex; flex-direction: column; overflow: hidden; flex: 1; padding-right: 8px;">
         <div class="genai-chat-item-title" data-custom-tooltip="${escapeHtml(s.title)}">${escapeHtml(s.title)}</div>
-        <div class="genai-chat-item-date">${timeStr}</div>
+        <div class="genai-chat-item-date" data-timestamp="${s.updated_at || ''}" data-custom-tooltip="${formatExactTime(s.updated_at)}">${timeStr}</div>
       </div>
       <div style="display: flex; align-items: center; gap: 2px;">
         <button class="btn-toggle-sc ${hasSummary ? 'active' : ''}" data-id="${s.id}" title="${hasSummary ? 'Remove from Smart Context' : 'Add to Smart Context'}">
@@ -6612,7 +6905,15 @@ export function initGenAIPanel() {
   })();
   // ─────────────────────────────────────────────────────────────────────
 
-  sendBtn.addEventListener('click', sendUserMessage);
+  sendBtn?.addEventListener('click', () => {
+    if (genaiButtonState === 'send') {
+      sendUserMessage();
+    } else if (genaiButtonState === 'stop') {
+      if (abortController) abortController.abort();
+    } else if (genaiButtonState === 'skip') {
+      skipGenAIStreamingAnimation();
+    }
+  });
 
   if (brushBtn) {
     brushBtn.addEventListener('click', () => {
@@ -6638,11 +6939,17 @@ export function initGenAIPanel() {
       streamGenAI(instruction);
     });
   }
+
   stopBtn?.addEventListener('click', () => {
+    if (genaiButtonState === 'skip') {
+      skipGenAIStreamingAnimation();
+      return;
+    }
     if (abortController) {
       abortController.abort();
     }
   });
+
   inputEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       const activeApproveBtn = document.querySelector('.genai-tool-pending button[id^="approve-tool-"]');
@@ -6652,7 +6959,14 @@ export function initGenAIPanel() {
         return;
       }
     }
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendUserMessage(); }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (genaiButtonState === 'skip') {
+        skipGenAIStreamingAnimation();
+      } else if (genaiButtonState === 'send') {
+        sendUserMessage();
+      }
+    }
   });
 
   document.addEventListener('keydown', (e) => {
