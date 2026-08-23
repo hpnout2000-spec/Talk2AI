@@ -160,8 +160,8 @@ export function renderMemories() {
         </div>
         <div class="memory-entry-body">
           <div class="memory-entry-content" style="white-space: pre-wrap;">${escapeHtml(entry.content)}</div>
-          <div class="memory-entry-meta" data-timestamp="${entry.timestamp || ''}" data-custom-tooltip="${formatExactTime(entry.timestamp)}">
-            ${formatTime(entry.timestamp)}
+          <div class="memory-entry-meta">
+            <span data-timestamp="${entry.timestamp || ''}" data-custom-tooltip="${formatExactTime(entry.timestamp)}">${formatTime(entry.timestamp)}</span>
           </div>
         </div>
         <button class="memory-entry-edit" data-id="${entry.id}" title="Edit memory">

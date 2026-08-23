@@ -397,7 +397,7 @@ export const api = {
         if (effort === 'high') {
           effort = 'medium';
         }
-      } else if (settings.change_gemma4_thinking_style) {
+      } else if (settings.gemma4_support && settings.change_gemma4_thinking_style) {
         if (effort === 'high') {
           effort = 'medium';
           if (finalMessages.length > 0 && (finalMessages[finalMessages.length - 1].role === 'user' || finalMessages[finalMessages.length - 1].role === 'tool')) {

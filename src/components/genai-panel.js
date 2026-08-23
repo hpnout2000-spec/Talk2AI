@@ -124,9 +124,10 @@ function setGenAIActionState(newState) {
 }
 
 function skipGenAIStreamingAnimation() {
-  const activeBubble = messagesEl?.querySelector('.genai-msg.assistant:last-child');
-  if (activeBubble) {
-    const textCont = activeBubble.querySelector('.genai-msg-text-container');
+  const assistantMsgs = messagesEl ? messagesEl.querySelectorAll('.genai-msg.genai-assistant') : [];
+  if (assistantMsgs.length > 0) {
+    const lastMsgEl = assistantMsgs[assistantMsgs.length - 1];
+    const textCont = lastMsgEl.querySelector('.genai-msg-text-container');
     if (textCont && textCont._revealInterval) {
       textCont._isFastForwarding = true;
       smoothScrollGenaiToBottom(350);
@@ -139,9 +140,16 @@ function skipGenAIStreamingAnimation() {
       textCont.classList.add('stream-finished');
       textCont.querySelectorAll('.word-reveal').forEach(s => s.classList.add('revealed'));
 
-      const currentEntry = textCont._latestEntry;
-      if (currentEntry) {
-        renderAssistantBubble(currentEntry, activeBubble, { cursor: false, streaming: false });
+      if (textCont._onRevealFinish) {
+        const onFinish = textCont._onRevealFinish;
+        textCont._onRevealFinish = null;
+        onFinish();
+      } else {
+        const currentEntry = textCont._latestEntry;
+        if (currentEntry) {
+          const bubbleEl = lastMsgEl.querySelector('.genai-msg-bubble');
+          renderAssistantBubble(currentEntry, bubbleEl, { cursor: false, streaming: false });
+        }
       }
     }
   }
@@ -232,10 +240,11 @@ PERSONALITY & TONE:
 - Humor should feel natural, not forced.
 - Use emojis in your response if they match the user's vibe and conversational tone, or omit them if a more straightforward or clean style is appropriate.
 - Dynamically read the user's mood and intent: if the user wants to dive deeper, ask follow-up questions, or shows interest in exploring a topic, you MUST provide a longer, more detailed response with engaging, interesting information, facts, or hooks to keep the user engaged.
+- Do not insist on creating or searching for a character when the user does not explicitly write about it. There is a high probability they just want to chat directly with you.
 
 You also have direct access to the user's active screen and chat context (such as the currently open individual character chat, group chat, or game) which is appended at the very end of your system prompt under the "[APP CONTEXT]" block. Pay close attention to the character details, recent dialogue history, and settings in this context to help the user compose replies, orchestrate plots, summarize events, and manage their conversation history.
 
-STEP-BY-STEP SEARCH WORKFLOW FOR CHARACTER/CHAT ACTIONS (IMPORTANT! FIRST, YOU MUST DETERMINE THE USER'S INTENT. DO NOT USE ANY COMMAND IF USER'S INTENTION IS TO TALK.):
+STEP-BY-STEP SEARCH WORKFLOW FOR CHARACTER/CHAT ACTIONS (IMPORTANT! FIRST, YOU MUST DETERMINE THE USER'S INTENT. DO NOT USE ANY COMMAND IF USER'S INTENTION IS TO TALK. Do not insist on creating or searching for a character when the user does not write about it directly; with high probability, they just want to chat with you.):
 1. Identify the Name: Look at the name of the character/group/game mentioned by the user (e.g. "Lena", "Lelyo", "Adventure Group").
 2. Check Recent Context: Scan the "Recent Characters" list in your active context below.
 3. Run Proactive Search (If ID is not found or not 100% certain):
@@ -249,7 +258,7 @@ SPEECH & FORMAT RULES:
 1. 1-10 WORD PREEMPTIVE HEADS-UP: Before you send a JSON action, you may notify the user. This status preamble MUST be extremely brief (strictly 1-4 words maximum), written in the EXACT same language as the user's latest query, and must be informative, reflecting what exactly you are going to search for or do.
    * Good: "Got it! let me search it..."
 2. JSON ACTION FORMAT: Emitting a JSON action is your way of calling functions. Emitted JSON must be on its own line. STOP generating immediately after outputting a JSON block — do not write any text after the JSON object.
-3. Since you're an adaptive AI, embrace the character, if you think user wants you to. In the ending do not forget to make a subtle playful conclusion or follow-up for easy guiding to continue the chat.
+3. Since you're an adaptive AI, embrace the character, if you think user wants you to. At the end of your response, decide for yourself whether a follow-up or conclusion is actually needed; if you decide to include one, make it subtle, playful, and implicit rather than an explicit or forced question.
 4. Do NOT write or mention about ID to user.
 5. Do not adress to the user with his RP name. Use the user's real name if he asked you to remember it, or just say "you" instead.
 6. DYNAMIC LANGUAGE MATCHING: You MUST converse and respond in the same language as the user's latest query or the active dialogue context. If the user addresses you in English, respond in English. If in Russian, respond in Russian. All conversational text, headings, button labels, and status/loading messages MUST match this language.
@@ -687,7 +696,7 @@ ${settings.genai_viewimage_enabled ? `
   return '[APP CONTEXT - TOOLS & CONFIG]\n' + parts.join('\n');
 }
 
-function buildDynamicContext(maxMessages = 15) {
+function buildDynamicContext(maxMessages = 2) {
   const settings = settingsStore.get();
   const parts = [];
 
@@ -736,9 +745,10 @@ function buildDynamicContext(maxMessages = 15) {
           parts.push(`  (Chat history omitted due to token limit)`);
         } else {
           if (!document.body.classList.contains('genai-fullscreen')) {
-            parts.push(`  [SYSTEM NOTE: This is NOT the full chat history. To get access to it, call the command "gethistory" - it will pass the FULL chat history AND a summary as much as context allows.]`);
+            parts.push(`  [SYSTEM NOTE: This is NOT the full chat history (only the last ${maxMessages} message${maxMessages > 1 ? 's' : ''} shown). To get access to full chat history, call the command "gethistory" - it will pass the FULL chat history AND a summary as much as context allows.]`);
           }
-          const recent = activeGroupSession.messages.slice(-maxMessages);
+          const validGroupMsgs = (activeGroupSession.messages || []).filter(m => m.role !== 'system');
+          const recent = validGroupMsgs.slice(-maxMessages);
           if (recent.length === 0) {
             parts.push(`  (No messages yet)`);
           } else {
@@ -751,7 +761,8 @@ function buildDynamicContext(maxMessages = 15) {
                 const char = characterStore.getById(m.character_id);
                 who = char?.name || 'Unknown';
               }
-              const text = (m.content || '').substring(0, 300).replace(/\n/g, ' ');
+              const userFacingContent = m.role === 'user' ? m.content : (m.translated_content || m.content);
+              const text = (userFacingContent || '').trim();
               parts.push(`  ${who}: ${text}`);
             });
           }
@@ -795,38 +806,47 @@ function buildDynamicContext(maxMessages = 15) {
   } else if (isBookViewOpen) {
     // ── Book is the active view ────────────────────────────────────
     parts.push('\n## Active View — BOOK MODE: A book is currently open, but no active chat context is visible.');
-  } else if ((isChatViewOpen || (!isGroupViewOpen && !isGameViewOpen && !isBookViewOpen)) && session && appState.currentCharacter) {
+  } else if ((isChatViewOpen || (!isGroupViewOpen && !isGameViewOpen && !isBookViewOpen)) && appState.currentCharacter) {
     // ── Individual character chat is the active view ───────────────
     const isFullscreen = document.body.classList.contains('genai-fullscreen');
     if (isFullscreen) {
       parts.push(`\n## Active Chat — Character: ${appState.currentCharacter.name}`);
     } else {
-      parts.push(`\n## Active Chat — Character: ${appState.currentCharacter.name} (id: ${appState.currentCharacter.id}), Session ID: ${session.id}`);
-      
-      if (maxMessages === 0) {
-        parts.push(`  (Chat history omitted due to token limit)`);
-      } else {
-        if (!isFullscreen) {
-          parts.push(`  [SYSTEM NOTE: This is NOT the full chat history. To get access to it, call the command "gethistory" - it will pass the FULL chat history AND a summary as much as context allows.]`);
-        }
-        const recent = session.messages.slice(-maxMessages);
-        recent.forEach(m => {
-          const who = m.role === 'user' ? 'User' : appState.currentCharacter.name;
-          // User messages are user-facing as is. Assistant messages are user-facing after translation.
-          const userFacingContent = m.role === 'user' ? m.content : (m.translated_content || m.content);
-          const text = (userFacingContent || '').substring(0, 300).replace(/\n/g, ' ');
-          parts.push(`  ${who}: ${text}`);
-        });
-      }
-
       const char = appState.currentCharacter;
+      parts.push(`\n## Active Chat — Character: ${char.name} (id: ${char.id})${session ? `, Session ID: ${session.id}` : ''}`);
+      
+      // 1. Character Card Context
       parts.push(`\n## Character Card: ${char.name}`);
       if (char.description) parts.push(`Description: ${char.description}`);
       if (char.personality) parts.push(`Personality: ${char.personality}`);
       if (char.scenario) parts.push(`Scenario: ${char.scenario}`);
+      if (char.first_message) parts.push(`First Message: ${char.first_message}`);
 
-      if (session.ai_comments?.length) {
-        parts.push(`  (${session.ai_comments.length} AI comments in this session)`);
+      if (session?.ai_comments?.length) {
+        parts.push(`\nAI Comments in Session: ${session.ai_comments.length}`);
+      }
+
+      // 2. Recent Messages in Chat
+      parts.push(`\n## Recent Messages in Chat:`);
+      if (!session || !session.messages || session.messages.length === 0) {
+        parts.push(`  (No messages yet)`);
+      } else if (maxMessages === 0) {
+        parts.push(`  (Chat history omitted due to token limit)`);
+      } else {
+        parts.push(`  [SYSTEM NOTE: This is NOT the full chat history (only the last ${maxMessages} message${maxMessages > 1 ? 's' : ''} shown). To get access to full chat history, call the command "gethistory" - it will pass the FULL chat history AND a summary as much as context allows.]`);
+        
+        const chatMsgs = session.messages.filter(m => m.role !== 'system');
+        const recent = chatMsgs.slice(-maxMessages);
+        if (recent.length === 0) {
+          parts.push(`  (No messages yet)`);
+        } else {
+          recent.forEach(m => {
+            const who = m.role === 'user' ? (settings.user_name || 'User') : char.name;
+            const userFacingContent = m.role === 'user' ? m.content : (m.translated_content || m.content);
+            const text = (userFacingContent || '').trim();
+            parts.push(`  ${who}: ${text}`);
+          });
+        }
       }
     }
   } else {
@@ -1463,7 +1483,7 @@ ${ANIMA_BETTER_PROMPT_TEXT}`;
   }
 
   // Initial state: maximum context
-  let activeChatMsgCount = 15;
+  let activeChatMsgCount = 2;
   let dynamicContext = buildDynamicContext(activeChatMsgCount);
   let systemContent = staticBase + staticContext + '\n\n' + dynamicContext + disabledSkillsNotice + skillsInjection;
 
@@ -1485,7 +1505,7 @@ ${ANIMA_BETTER_PROMPT_TEXT}`;
 
   // Pruning Stage A: Progressively reduce dynamic character chat context FIRST
   if (totalTokens > targetLimit) {
-    const msgCounts = [10, 5, 2, 1, 0];
+    const msgCounts = [1, 0];
     for (const count of msgCounts) {
       activeChatMsgCount = count;
       dynamicContext = buildDynamicContext(activeChatMsgCount);
@@ -1526,7 +1546,7 @@ ${ANIMA_BETTER_PROMPT_TEXT}`;
   }
 
   // Apply Gemma 4 thinking style directive if experimental toggle is enabled and reasoning effort is Lite (medium)
-  if (settings.change_gemma4_thinking_style && settings.genai_reasoning_effort === 'medium') {
+  if (settings.gemma4_support && settings.change_gemma4_thinking_style && settings.genai_reasoning_effort === 'medium') {
     systemContent += `\n\nCORE INSTRUCTION:
 Before answering, you must use your internal monologue channel.
 1. When you enter the <|channel>thought channel, think in the first person ("I"). Think like a curious, analytical researcher. 
@@ -1602,8 +1622,10 @@ async function executeTool(action, onStatus = null, onPreview = null, onComplete
       personality: char.personality,
       scenario: char.scenario,
       system_prompt: char.system_prompt,
-      first_message: char.first_message?.substring(0, 300),
-      alternate_greetings_count: (char.alternate_greetings || []).length,
+      first_message: char.first_message,
+      alternate_greetings: char.alternate_greetings || [],
+      message_examples: char.message_examples || '',
+      image_tags: char.image_tags || ''
     };
   }
 
@@ -3370,7 +3392,6 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
         <div class="thinking-inline system-timeline-item" style="margin-bottom: var(--space-2);">
           <div class="thinking-inline-header thinking-toggle-header" onclick="this.closest('.thinking-inline').classList.toggle('thinking-expanded')">
             <span class="thinking-done-text">${escapeHtml(doneHeaderText)}</span>
-            <span class="thinking-chevron"> ▸</span>
           </div>
           <div class="thinking-inline-content" style="white-space: normal;">
             ${processHtml}
@@ -3465,7 +3486,11 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
             // Re-render final state to restore normal HTML
             const currentEntry = textCont._latestEntry || entry;
             renderAssistantBubble(currentEntry, bubbleEl, { cursor: false, streaming: false });
-            if (!isGenerating) {
+            if (textCont._onRevealFinish) {
+              const onFinish = textCont._onRevealFinish;
+              textCont._onRevealFinish = null;
+              onFinish();
+            } else if (!isGenerating) {
               setGenAIActionState('send');
             }
           }
@@ -3702,7 +3727,7 @@ function appendMsgEl(entry) {
     ${avatarHtml}
     <div class="genai-msg-body">
       <div class="genai-msg-bubble"></div>
-      <div class="genai-msg-time" data-timestamp="${entry.timestamp || new Date().toISOString()}" data-custom-tooltip="${formatExactTime(entry.timestamp || new Date().toISOString())}">${formatTime(entry.timestamp || new Date().toISOString())}</div>
+      <span class="genai-msg-time" data-timestamp="${entry.timestamp || new Date().toISOString()}" data-custom-tooltip="${formatExactTime(entry.timestamp || new Date().toISOString())}">${formatTime(entry.timestamp || new Date().toISOString())}</span>
     </div>`;
 
   if (isGenerating && !isUser) {
@@ -5032,58 +5057,83 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
       } else if (result.status === 'next_phase') {
         maxPhase = 2;
       } else {
-        renderAssistantBubble(assistantEntry, bubbleEl, { cursor: false, animate: true });
-        if (settingsStore.get().genai_refine_thoughts && assistantEntry.thinking) {
-          const systemPrompt = "You are an expert in improving the internal thoughts of an AI model. Your task is to rephrase the thoughts on behalf of the AI as if they are first-person thoughts from the AI's perspective. Strictly avoid lists. Use natural paragraphs.";
-          const originalThinking = assistantEntry.thinking;
-          
-          let refinedThinking = '';
+        const finalizeGenAIUI = async () => {
           try {
-            await new Promise((resolveRefine, rejectRefine) => {
-              api.streamChat(
-                [
-                  { role: 'system', content: systemPrompt },
-                  { role: 'user', content: `Here are the thoughts you need to rephrase on behalf of the AI:\n\n${originalThinking}` }
-                ],
-                abortController?.signal,
-                (chunk) => {
-                  refinedThinking += chunk;
-                  assistantEntry.thinking = refinedThinking;
-                  if (assistantEntry.thinking_blocks) {
-                    assistantEntry.thinking_blocks = [refinedThinking];
+            if (settingsStore.get().genai_refine_thoughts && assistantEntry.thinking) {
+              const systemPrompt = "You are an expert in improving the internal thoughts of an AI model. Your task is to rephrase the thoughts on behalf of the AI as if they are first-person thoughts from the AI's perspective. Strictly avoid lists. Use natural paragraphs.";
+              const originalThinking = assistantEntry.thinking;
+              
+              let refinedThinking = '';
+              try {
+                await new Promise((resolveRefine, rejectRefine) => {
+                  api.streamChat(
+                    [
+                      { role: 'system', content: systemPrompt },
+                      { role: 'user', content: `Here are the thoughts you need to rephrase on behalf of the AI:\n\n${originalThinking}` }
+                    ],
+                    abortController?.signal,
+                    (chunk) => {
+                      refinedThinking += chunk;
+                      assistantEntry.thinking = refinedThinking;
+                      if (assistantEntry.thinking_blocks) {
+                        assistantEntry.thinking_blocks = [refinedThinking];
+                      }
+                      renderAssistantBubble(assistantEntry, bubbleEl, { cursor: false });
+                    },
+                    () => {
+                      resolveRefine();
+                    },
+                    (err) => {
+                      if (err.name === 'AbortError') {
+                        rejectRefine(err);
+                      } else {
+                        console.error('Refine thoughts error:', err);
+                        resolveRefine();
+                      }
+                    },
+                    {
+                      reasoning_effort: 'none',
+                      isGenAI: true
+                    }
+                  );
+                });
+              } catch (refineErr) {
+                if (refineErr.name === 'AbortError') {
+                  console.log('[Refine Thoughts] Aborted by user');
+                  if (!refinedThinking) {
+                    assistantEntry.thinking = originalThinking;
+                    if (assistantEntry.thinking_blocks) {
+                      assistantEntry.thinking_blocks = [originalThinking];
+                    }
                   }
-                  renderAssistantBubble(assistantEntry, bubbleEl, { cursor: false });
-                },
-                () => {
-                  resolveRefine();
-                },
-                (err) => {
-                  if (err.name === 'AbortError') {
-                    rejectRefine(err);
-                  } else {
-                    console.error('Refine thoughts error:', err);
-                    resolveRefine();
-                  }
-                },
-                {
-                  reasoning_effort: 'none',
-                  isGenAI: true
-                }
-              );
-            });
-          } catch (refineErr) {
-            if (refineErr.name === 'AbortError') {
-              console.log('[Refine Thoughts] Aborted by user');
-              if (!refinedThinking) {
-                assistantEntry.thinking = originalThinking;
-                if (assistantEntry.thinking_blocks) {
-                  assistantEntry.thinking_blocks = [originalThinking];
                 }
               }
             }
+          } catch (e) {
+            console.error('[GenAI] finalize error:', e);
+          } finally {
+            finishGeneration();
+            setGenAIActionState('send');
           }
+        };
+
+        const settings = settingsStore.get();
+        const textCont = bubbleEl?.querySelector('.genai-msg-text-container');
+        if (settings.new_streaming_animation && textCont?._revealInterval && (textCont._revealProgress < (textCont._rawCharCount || 0))) {
+          setGenAIActionState('skip');
+          let finalized = false;
+          const runFinalize = async () => {
+            if (finalized) return;
+            finalized = true;
+            await finalizeGenAIUI();
+          };
+          textCont._onRevealFinish = runFinalize;
+          const remaining = (textCont._rawCharCount || 0) - (textCont._revealProgress || 0);
+          const maxWaitMs = Math.max(1500, (remaining / (settings.streaming_speed || 45)) * 1000 + 1000);
+          setTimeout(runFinalize, maxWaitMs);
+        } else {
+          await finalizeGenAIUI();
         }
-        finishGeneration();
         break;
       }
     }
@@ -5091,6 +5141,7 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
     if (err.name !== 'AbortError') {
       console.error('GenAI fetch error:', err);
       finishGeneration();
+      setGenAIActionState('send');
     }
   }
 }
@@ -5615,7 +5666,8 @@ function finishGeneration() {
   isGenerating = false;
   abortController = null;
   const settings = settingsStore.get();
-  const lastBubble = messagesEl?.querySelector('.genai-msg.assistant:last-child');
+  const assistantMsgs = messagesEl ? messagesEl.querySelectorAll('.genai-msg.genai-assistant') : [];
+  const lastBubble = assistantMsgs.length > 0 ? assistantMsgs[assistantMsgs.length - 1] : null;
   const textCont = lastBubble?.querySelector('.genai-msg-text-container');
 
   if (settings.new_streaming_animation && textCont?._revealInterval && (textCont._revealProgress < (textCont._rawCharCount || 0))) {
@@ -6369,7 +6421,15 @@ function initGenAIReplySelection() {
 // ─── Send User Message ───────────────────────────────────────────────
 async function sendUserMessage() {
   const rawText = inputEl.value.trim();
-  if ((!rawText && !activeReplyQuote) || isGenerating) return;
+  if (!rawText && !activeReplyQuote) return;
+  if (isGenerating) {
+    if (!abortController) {
+      console.warn('[GenAI] Recovered from stale isGenerating state');
+      isGenerating = false;
+    } else {
+      return;
+    }
+  }
 
   // Intercept send if Smart Context is currently summarizing
   if (window.isSmartContextRunning && window.isSmartContextRunning()) {
@@ -6727,9 +6787,10 @@ export function initGenAIPanel() {
     if (!wrapper || !btnArrow || !dropdown) return;
 
     function refreshGenAIThinkingEffortUI() {
-      let effort = settingsStore.get().genai_reasoning_effort || 'none';
-      const qwenEnabled = !!settingsStore.get().qwen35_thinking_support;
-      const gemmaStyleEnabled = !!settingsStore.get().change_gemma4_thinking_style;
+      const currentSettings = settingsStore.get();
+      let effort = currentSettings.genai_reasoning_effort || 'none';
+      const qwenEnabled = !!currentSettings.qwen35_thinking_support;
+      const gemmaStyleEnabled = !!(currentSettings.gemma4_support && currentSettings.change_gemma4_thinking_style);
       const simplifiedEffort = qwenEnabled || gemmaStyleEnabled;
       if (simplifiedEffort) {
         if (effort !== 'none' && effort !== 'medium' && effort !== 'high' && effort !== 'auto') {
@@ -6825,9 +6886,10 @@ export function initGenAIPanel() {
     if (btnMain) {
       btnMain.addEventListener('click', (e) => {
         e.stopPropagation();
-        const currentEffort = settingsStore.get().genai_reasoning_effort || 'none';
-        const qwenEnabled = !!settingsStore.get().qwen35_thinking_support;
-        const gemmaStyleEnabled = !!settingsStore.get().change_gemma4_thinking_style;
+        const currentSettings = settingsStore.get();
+        const currentEffort = currentSettings.genai_reasoning_effort || 'none';
+        const qwenEnabled = !!currentSettings.qwen35_thinking_support;
+        const gemmaStyleEnabled = !!(currentSettings.gemma4_support && currentSettings.change_gemma4_thinking_style);
         const simplifiedEffort = qwenEnabled || gemmaStyleEnabled;
         if (currentEffort !== 'none') {
           settingsStore.save({ ...settingsStore.get(), genai_reasoning_effort: 'none', previous_genai_reasoning_effort: currentEffort });
@@ -6906,12 +6968,12 @@ export function initGenAIPanel() {
   // ─────────────────────────────────────────────────────────────────────
 
   sendBtn?.addEventListener('click', () => {
-    if (genaiButtonState === 'send') {
-      sendUserMessage();
+    if (genaiButtonState === 'skip') {
+      skipGenAIStreamingAnimation();
     } else if (genaiButtonState === 'stop') {
       if (abortController) abortController.abort();
-    } else if (genaiButtonState === 'skip') {
-      skipGenAIStreamingAnimation();
+    } else {
+      sendUserMessage();
     }
   });
 
@@ -6963,7 +7025,9 @@ export function initGenAIPanel() {
       e.preventDefault();
       if (genaiButtonState === 'skip') {
         skipGenAIStreamingAnimation();
-      } else if (genaiButtonState === 'send') {
+      } else if (genaiButtonState === 'stop') {
+        // active generation
+      } else {
         sendUserMessage();
       }
     }

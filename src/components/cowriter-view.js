@@ -688,7 +688,7 @@ function updateReasoningUI() {
   const settings = settingsStore.get();
   let activeEffort = settings.reasoning_effort || 'none';
   const qwenEnabled = !!settings.qwen35_thinking_support;
-  const gemmaStyleEnabled = !!settings.change_gemma4_thinking_style;
+  const gemmaStyleEnabled = !!(settings.gemma4_support && settings.change_gemma4_thinking_style);
   const simplifiedEffort = qwenEnabled || gemmaStyleEnabled;
   if (simplifiedEffort) {
     if (activeEffort !== 'none' && activeEffort !== 'medium' && activeEffort !== 'high') {
@@ -741,7 +741,7 @@ async function toggleReasoningEffort() {
   const settings = settingsStore.get();
   const current = settings.reasoning_effort || 'none';
   const qwenEnabled = !!settings.qwen35_thinking_support;
-  const gemmaStyleEnabled = !!settings.change_gemma4_thinking_style;
+  const gemmaStyleEnabled = !!(settings.gemma4_support && settings.change_gemma4_thinking_style);
   const simplifiedEffort = qwenEnabled || gemmaStyleEnabled;
   
   if (current !== 'none') {

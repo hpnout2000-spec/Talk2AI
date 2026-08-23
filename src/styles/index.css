@@ -1578,6 +1578,12 @@ details.premium-accordion summary::-webkit-details-marker {
   pointer-events: none !important;
 }
 
+[data-timestamp] {
+  width: fit-content;
+  max-width: fit-content;
+  display: inline-block;
+}
+
 .chat-title-orange-dot {
   width: 7px;
   height: 7px;

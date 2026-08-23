@@ -137,6 +137,9 @@
   cursor: default;
   user-select: none;
   transition: color var(--transition-fast);
+  width: fit-content;
+  max-width: fit-content;
+  display: inline-block;
 }
 
 .group-msg-time:hover {

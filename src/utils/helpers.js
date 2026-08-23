@@ -112,12 +112,6 @@ export function renderMarkdown(text) {
 
   let html = escapeHtml(text);
 
-  // Normalize smart/typographical double quotes (curly, guillemets, low-9) to standard double quotes
-  html = html.replace(/[“”«»„]/g, '&quot;');
-
-  // Quotes ("...") - Must be first to avoid matching quotes in HTML tags
-  html = html.replace(/&quot;(.*?)&quot;/g, '<span class="text-quotes">"$1"</span>');
-
   // Custom Image syntax: ![alt](url)
   html = html.replace(/!\[(.*?)\]\((.*?)\)/g, (match, alt, url) => {
     const cleanUrl = url.replace(/&amp;/g, '&');
@@ -362,11 +356,11 @@ export function renderMarkdown(text) {
   html = html.replace(/\[(.*?)\]\(([^)]*?(?:\([^)]*?\)[^)]*?)*)\)/g, (match, text, url) => {
     let targetUrl = url.trim();
     // Support titles in quotes, including quotes already replaced by quotes span helper
-    const titleMatch = targetUrl.match(/^([^\s]+)\s+(?:<span class="text-quotes">"([^"]*)"<\/span>|'([^']*)')$/);
+    const titleMatch = targetUrl.match(/^([^\s]+)\s+(?:<span class="text-quotes">"([^"]*)"<\/span>|&quot;([^"]*)&quot;|"([^"]*)"|'([^']*)')$/);
     let titleAttr = '';
     if (titleMatch) {
       targetUrl = titleMatch[1];
-      const title = titleMatch[2] || titleMatch[3] || '';
+      const title = titleMatch[2] || titleMatch[3] || titleMatch[4] || titleMatch[5] || '';
       titleAttr = ` title="${escapeHtml(title)}"`;
     }
     let cleanUrl = targetUrl.replace(/&amp;/g, '&');
@@ -394,6 +388,9 @@ export function renderMarkdown(text) {
       return match;
     }
   });
+
+  // Dialogue Quotes parsing (handles nested quotes, typographical quotes, and whitespace/punctuation context)
+  html = formatDialogueQuotes(html);
 
   // Bold and Italic parsing using custom flanking rules (CommonMark compliant)
   html = (() => {
@@ -610,6 +607,203 @@ export function renderMarkdown(text) {
   }
 
   return html;
+}
+
+/**
+ * Format direct speech and dialogue quotes with proper nesting and whitespace/punctuation context.
+ * Correctly pairs outer and inner quotes, preserving quote characters (", «», “”, „“).
+ */
+export function formatDialogueQuotes(html) {
+  if (!html) return '';
+
+  const isWhitespace = (c) => !c || /\s/.test(c);
+  const isPunctuation = (c) => {
+    if (!c) return true;
+    try {
+      return /[\p{P}\p{S}]/u.test(c);
+    } catch (e) {
+      return /[!@#$%^&*()\-_+=\[\]{};:'",.<>\/?|~`\\⟫⟪«»“”‘’„]/.test(c);
+    }
+  };
+
+  const proseTokens = [];
+  let i = 0;
+  while (i < html.length) {
+    if (html[i] === '<') {
+      const closeIdx = html.indexOf('>', i);
+      if (closeIdx !== -1) {
+        i = closeIdx + 1;
+        continue;
+      }
+    }
+    if (html.startsWith('__', i)) {
+      const match = html.substring(i).match(/^__[A-Z0-9_]+_PLACEHOLDER_\d+__/);
+      if (match) {
+        i += match[0].length;
+        continue;
+      }
+    }
+
+    if (html.startsWith('&quot;', i)) {
+      proseTokens.push({ char: '"', isQuote: true, quoteType: 'neutral', rawChar: '"', htmlStart: i, htmlEnd: i + 6 });
+      i += 6;
+      continue;
+    }
+    if (html.startsWith('&amp;quot;', i)) {
+      proseTokens.push({ char: '"', isQuote: true, quoteType: 'neutral', rawChar: '"', htmlStart: i, htmlEnd: i + 10 });
+      i += 10;
+      continue;
+    }
+    if (html[i] === '«') {
+      proseTokens.push({ char: '«', isQuote: true, quoteType: 'open_guillemet', rawChar: '«', htmlStart: i, htmlEnd: i + 1 });
+      i++;
+      continue;
+    }
+    if (html[i] === '»') {
+      proseTokens.push({ char: '»', isQuote: true, quoteType: 'close_guillemet', rawChar: '»', htmlStart: i, htmlEnd: i + 1 });
+      i++;
+      continue;
+    }
+    if (html[i] === '“') {
+      proseTokens.push({ char: '“', isQuote: true, quoteType: 'curly_double_left', rawChar: '“', htmlStart: i, htmlEnd: i + 1 });
+      i++;
+      continue;
+    }
+    if (html[i] === '”') {
+      proseTokens.push({ char: '”', isQuote: true, quoteType: 'curly_double_right', rawChar: '”', htmlStart: i, htmlEnd: i + 1 });
+      i++;
+      continue;
+    }
+    if (html[i] === '„') {
+      proseTokens.push({ char: '„', isQuote: true, quoteType: 'open_low9', rawChar: '„', htmlStart: i, htmlEnd: i + 1 });
+      i++;
+      continue;
+    }
+    if (html[i] === '"') {
+      proseTokens.push({ char: '"', isQuote: true, quoteType: 'neutral', rawChar: '"', htmlStart: i, htmlEnd: i + 1 });
+      i++;
+      continue;
+    }
+
+    if (html.startsWith('&amp;', i)) {
+      proseTokens.push({ char: '&', isQuote: false, htmlStart: i, htmlEnd: i + 5 });
+      i += 5;
+    } else if (html.startsWith('&lt;', i)) {
+      proseTokens.push({ char: '<', isQuote: false, htmlStart: i, htmlEnd: i + 4 });
+      i += 4;
+    } else if (html.startsWith('&gt;', i)) {
+      proseTokens.push({ char: '>', isQuote: false, htmlStart: i, htmlEnd: i + 4 });
+      i += 4;
+    } else if (html.startsWith('&#39;', i)) {
+      proseTokens.push({ char: "'", isQuote: false, htmlStart: i, htmlEnd: i + 5 });
+      i += 5;
+    } else if (html.startsWith('&nbsp;', i)) {
+      proseTokens.push({ char: ' ', isQuote: false, htmlStart: i, htmlEnd: i + 6 });
+      i += 6;
+    } else {
+      proseTokens.push({ char: html[i], isQuote: false, htmlStart: i, htmlEnd: i + 1 });
+      i++;
+    }
+  }
+
+  const openStack = [];
+  const matchedPairs = [];
+
+  for (let tIdx = 0; tIdx < proseTokens.length; tIdx++) {
+    const token = proseTokens[tIdx];
+    if (!token.isQuote) continue;
+
+    const prevChar = tIdx > 0 ? proseTokens[tIdx - 1].char : null;
+    const nextChar = tIdx < proseTokens.length - 1 ? proseTokens[tIdx + 1].char : null;
+
+    const nextIsWhitespace = isWhitespace(nextChar);
+    const prevIsWhitespace = isWhitespace(prevChar);
+    const nextIsPunctuation = isPunctuation(nextChar);
+    const prevIsPunctuation = isPunctuation(prevChar);
+
+    const leftFlanking = !nextIsWhitespace && (!nextIsPunctuation || (nextIsPunctuation && (prevIsWhitespace || prevIsPunctuation)));
+    const rightFlanking = !prevIsWhitespace && (!prevIsPunctuation || (prevIsPunctuation && (nextIsWhitespace || nextIsPunctuation)));
+
+    let canOpen = false;
+    let canClose = false;
+
+    if (token.quoteType === 'open_guillemet' || token.quoteType === 'open_low9') {
+      canOpen = true;
+      canClose = false;
+    } else if (token.quoteType === 'close_guillemet' || token.quoteType === 'curly_double_right') {
+      canOpen = false;
+      canClose = true;
+    } else if (token.quoteType === 'curly_double_left') {
+      // In Russian/German „...“ the “ is a closing quote, while in English “... ” it's opening.
+      // We respect flanking boundaries:
+      canOpen = leftFlanking;
+      canClose = rightFlanking;
+      if (!canOpen && !canClose) canOpen = true;
+    } else {
+      canOpen = leftFlanking;
+      canClose = rightFlanking;
+    }
+
+    if (canClose && openStack.length > 0) {
+      let matchIdx = -1;
+      for (let sIdx = openStack.length - 1; sIdx >= 0; sIdx--) {
+        const opener = openStack[sIdx];
+        if (token.quoteType === 'close_guillemet') {
+          if (opener.quoteType === 'open_guillemet' || opener.quoteType === 'neutral') {
+            matchIdx = sIdx;
+            break;
+          }
+        } else if (token.quoteType === 'curly_double_right' || token.quoteType === 'curly_double_left') {
+          if (opener.quoteType === 'curly_double_left' || opener.quoteType === 'open_low9' || opener.quoteType === 'neutral') {
+            matchIdx = sIdx;
+            break;
+          }
+        } else {
+          matchIdx = sIdx;
+          break;
+        }
+      }
+
+      if (matchIdx !== -1) {
+        const opener = openStack.splice(matchIdx, 1)[0];
+        matchedPairs.push({
+          open: opener,
+          close: token,
+          level: openStack.length
+        });
+      } else if (canOpen) {
+        openStack.push(token);
+      }
+    } else if (canOpen) {
+      openStack.push(token);
+    }
+  }
+
+  const replacements = [];
+  for (const pair of matchedPairs) {
+    const openQuoteChar = pair.open.rawChar;
+    const closeQuoteChar = pair.close.rawChar;
+
+    replacements.push({
+      start: pair.open.htmlStart,
+      end: pair.open.htmlEnd,
+      text: `<span class="text-quotes">${openQuoteChar}`
+    });
+    replacements.push({
+      start: pair.close.htmlStart,
+      end: pair.close.htmlEnd,
+      text: `${closeQuoteChar}</span>`
+    });
+  }
+
+  replacements.sort((a, b) => b.start - a.start);
+
+  let result = html;
+  for (const r of replacements) {
+    result = result.substring(0, r.start) + r.text + result.substring(r.end);
+  }
+
+  return result;
 }
 
 /**
@@ -849,7 +1043,7 @@ export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, t
   } else {
     doneText = `thought for a few seconds.`;
   }
-  return '<div class="thinking-inline system-timeline-item"><div class="thinking-inline-header thinking-toggle-header" onclick="this.closest(\'.thinking-inline\').classList.toggle(\'thinking-expanded\')"><span class="thinking-done-text">' + escapeHtml(doneText) + '</span><span class="thinking-chevron"> ▸</span></div><div class="thinking-inline-content">' + escapeHtml(cleanThinking).replace(/\n/g, '<br>') + '</div></div>';
+  return '<div class="thinking-inline system-timeline-item"><div class="thinking-inline-header thinking-toggle-header" onclick="this.closest(\'.thinking-inline\').classList.toggle(\'thinking-expanded\')"><span class="thinking-done-text">' + escapeHtml(doneText) + '</span></div><div class="thinking-inline-content">' + escapeHtml(cleanThinking).replace(/\n/g, '<br>') + '</div></div>';
 }
 
 /**

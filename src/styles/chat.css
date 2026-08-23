@@ -794,6 +794,9 @@ body.ai-sidebar-open #btn-toggle-genai-header .icon-arrow-right {
   cursor: default;
   user-select: none;
   transition: color var(--transition-fast);
+  width: fit-content;
+  max-width: fit-content;
+  display: inline-block;
 }
 
 .message-time:hover {
@@ -927,12 +930,14 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
 .thinking-inline-header {
   font-size: var(--text-xs);
   color: var(--text-tertiary);
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: var(--space-1);
   user-select: none;
   line-height: 1;
   white-space: nowrap;
+  width: fit-content;
+  max-width: fit-content;
 }
 
 .thinking-toggle-header {
@@ -942,17 +947,15 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
   transition: opacity 0.2s ease;
   font-style: italic;
   letter-spacing: 0.02em;
+  width: fit-content;
+  max-width: fit-content;
 }
 .thinking-toggle-header:hover {
   opacity: 0.85;
 }
 
 .thinking-chevron {
-  margin-left: auto;
-  display: inline-block;
-  transition: transform 0.25s ease;
-  font-size: 10px;
-  opacity: 0.5;
+  display: none !important;
 }
 
 /* Thinking content: hidden by default, shown when expanded */
@@ -1353,6 +1356,7 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
   justify-content: center;
   width: 16px;
   height: 16px;
+  pointer-events: none;
   transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1),
               opacity 0.25s ease;
 }

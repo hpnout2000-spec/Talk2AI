@@ -728,12 +728,12 @@ export function initChat() {
 
   // Action button (Send / Stop / Skip)
   btnSend.addEventListener('click', () => {
-    if (chatButtonState === 'send') {
-      sendMessage();
+    if (chatButtonState === 'skip') {
+      skipStreamingAnimation();
     } else if (chatButtonState === 'stop') {
       stopGeneration();
-    } else if (chatButtonState === 'skip') {
-      skipStreamingAnimation();
+    } else {
+      sendMessage();
     }
   });
 
@@ -742,7 +742,9 @@ export function initChat() {
       e.preventDefault();
       if (chatButtonState === 'skip') {
         skipStreamingAnimation();
-      } else if (chatButtonState === 'send') {
+      } else if (chatButtonState === 'stop') {
+        // active generation, ignore or stop
+      } else {
         sendMessage();
       }
     }
@@ -1062,9 +1064,10 @@ export function initChat() {
     if (!wrapper || !btnArrow || !dropdown) return;
 
     function refreshThinkingEffortUI() {
-      let effort = settingsStore.get().reasoning_effort || 'none';
-      const qwenEnabled = !!settingsStore.get().qwen35_thinking_support;
-      const gemmaStyleEnabled = !!settingsStore.get().change_gemma4_thinking_style;
+      const settings = settingsStore.get();
+      let effort = settings.reasoning_effort || 'none';
+      const qwenEnabled = !!settings.qwen35_thinking_support;
+      const gemmaStyleEnabled = !!(settings.gemma4_support && settings.change_gemma4_thinking_style);
       const simplifiedEffort = qwenEnabled || gemmaStyleEnabled;
       if (simplifiedEffort) {
         if (effort !== 'none' && effort !== 'medium' && effort !== 'high') {
@@ -1128,9 +1131,10 @@ export function initChat() {
     if (btnMain) {
       btnMain.addEventListener('click', (e) => {
         e.stopPropagation();
-        const currentEffort = settingsStore.get().reasoning_effort || 'none';
-        const qwenEnabled = !!settingsStore.get().qwen35_thinking_support;
-        const gemmaStyleEnabled = !!settingsStore.get().change_gemma4_thinking_style;
+        const currentSettings = settingsStore.get();
+        const currentEffort = currentSettings.reasoning_effort || 'none';
+        const qwenEnabled = !!currentSettings.qwen35_thinking_support;
+        const gemmaStyleEnabled = !!(currentSettings.gemma4_support && currentSettings.change_gemma4_thinking_style);
         const simplifiedEffort = qwenEnabled || gemmaStyleEnabled;
         if (currentEffort !== 'none') {
           settingsStore.save({ ...settingsStore.get(), reasoning_effort: 'none', previous_reasoning_effort: currentEffort });
@@ -1771,7 +1775,14 @@ async function performStreamingTranslation(contentEl, textToTranslate, targetLan
 async function sendMessage() {
   const content = messageInput.value.trim();
 
-  if (appState.isGenerating) return;
+  if (appState.isGenerating) {
+    if (!appState.abortController) {
+      console.warn('[Chat] Recovered from stale isGenerating state');
+      appState.isGenerating = false;
+    } else {
+      return;
+    }
+  }
 
   // Abort pending suggestions generation if any
   if (appState.suggestionsAbortController) {
@@ -2086,10 +2097,10 @@ async function sendMessage() {
         }
 
         const finalizeUI = async () => {
-          const isInlineThought = /<(?:think|thought|reasoning|\|?channel\|?>?thought)/i.test(fullResponse);
-          const useGLM = settings.glm47_support && !isInlineThought;
-          let parsedThinking, parsedContent;
           try {
+            const isInlineThought = /<(?:think|thought|reasoning|\|?channel\|?>?thought)/i.test(fullResponse);
+            const useGLM = settings.glm47_support && !isInlineThought;
+            let parsedThinking, parsedContent;
             if (thinkingText) {
               parsedThinking = thinkingText;
               let cleanResponseForParsing = fullResponse;
@@ -2127,124 +2138,126 @@ async function sendMessage() {
             perf.start('morphdom-final-patch');
             morphdom(contentEl, tempFinal, morphOptions);
             perf.end('morphdom-final-patch');
-          } catch (err) {
-            console.error("ON DONE ERROR:", err);
-            showToast("Final UI render error: " + err.message, "error");
-            const fallback = parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
-            parsedThinking = fallback.thinking;
-            parsedContent = fallback.content;
-          }
 
-          let originalContent = parsedContent;
+            let originalContent = parsedContent;
+            let translatedContent = null;
 
-          let translatedContent = null;
-
-          // Auto-translation (AI response)
-          if (settings.auto_translate && originalContent) {
-            headerCharStatus.textContent = 'Translating...';
-            headerCharStatus.classList.add('generating');
-            translatedContent = await performStreamingTranslation(contentEl, originalContent, settings.target_language);
-          }
-
-          chatStore.updateLastAssistantMessage(originalContent, parsedThinking, session, translatedContent, thinkingTime);
-          await chatStore.saveSession(session);
-          updateContextIndicator();
-
-          if (appState.currentCharacter?.id === character.id) {
-            appState.isGenerating = false;
-            appState.abortController = null;
-            setChatActionState('send');
-            headerCharStatus.textContent = 'Ready';
-            headerCharStatus.classList.remove('generating');
-            updateChatHistory();
-            updateRegenerateVisibility();
-            smoothScrollChatToBottom(350);
-          }
-
-          if (originalContent) {
-            // Strict sequential execution IIFE to respect single-concurrency LLM limits
-            (async () => {
-              try {
-                // 1. Generate continuation options replies first (High Priority UI)
-                await generateContinuationOptions(character, session, msgElement);
-              } catch (e) {
-                console.warn('Failed to generate suggestions:', e);
+            // Auto-translation (AI response)
+            if (settings.auto_translate && originalContent) {
+              if (headerCharStatus) {
+                headerCharStatus.textContent = 'Translating...';
+                headerCharStatus.classList.add('generating');
               }
+              translatedContent = await performStreamingTranslation(contentEl, originalContent, settings.target_language);
+            }
 
-              try {
-                // 2. Process Image Gen suggestion popup (High Priority UI)
-                const freshSettings = settingsStore.get();
-                if (freshSettings.comfyui_enabled && freshSettings.comfyui_auto_chat) {
-                  await triggerAutomaticImageGeneration(character, session, originalContent);
-                } else if (freshSettings.comfyui_enabled && !freshSettings.comfyui_auto_chat) {
-                  await triggerImageGenerationSuggestion(character, session, originalContent, msgElement);
+            chatStore.updateLastAssistantMessage(originalContent, parsedThinking, session, translatedContent, thinkingTime);
+            await chatStore.saveSession(session);
+            updateContextIndicator();
+
+            if (originalContent) {
+              // Strict sequential execution IIFE to respect single-concurrency LLM limits
+              (async () => {
+                try {
+                  // 1. Generate continuation options replies first (High Priority UI)
+                  await generateContinuationOptions(character, session, msgElement);
+                } catch (e) {
+                  console.warn('Failed to generate suggestions:', e);
                 }
-              } catch (e) {
-                console.warn('Failed to handle image generation:', e);
-              }
 
-              try {
-                // 3. Extract and save memory (Low Priority Background)
-                await extractAndShowMemory(character, session, content, originalContent, msgElement);
-              } catch (e) {
-                console.warn('Failed to extract memory:', e);
-              }
+                try {
+                  // 2. Process Image Gen suggestion popup (High Priority UI)
+                  const freshSettings = settingsStore.get();
+                  if (freshSettings.comfyui_enabled && freshSettings.comfyui_auto_chat) {
+                    await triggerAutomaticImageGeneration(character, session, originalContent);
+                  } else if (freshSettings.comfyui_enabled && !freshSettings.comfyui_auto_chat) {
+                    await triggerImageGenerationSuggestion(character, session, originalContent, msgElement);
+                  }
+                } catch (e) {
+                  console.warn('Failed to handle image generation:', e);
+                }
 
-              try {
-                // 4. Update indicators status (Low Priority Background)
-                await triggerIndicatorUpdate(character, session, content, originalContent);
-              } catch (e) {
-                console.warn('Failed to update indicators:', e);
-              }
+                try {
+                  // 3. Extract and save memory (Low Priority Background)
+                  await extractAndShowMemory(character, session, content, originalContent, msgElement);
+                } catch (e) {
+                  console.warn('Failed to extract memory:', e);
+                }
 
-              // 5. Notify GenAI (for vibe plot mode)
-              notifyGenAI(originalContent, character.name);
+                try {
+                  // 4. Update indicators status (Low Priority Background)
+                  await triggerIndicatorUpdate(character, session, content, originalContent);
+                } catch (e) {
+                  console.warn('Failed to update indicators:', e);
+                }
 
-              try {
-                // 6. Auto-naming
-                const freshSettings = settingsStore.get();
-                if (freshSettings.auto_naming_enabled) {
-                  const chatMessages = session.messages.filter(m => m.role !== 'system');
-                  const msgCount = chatMessages.length;
-                  const lastCount = session.last_auto_named_count || (session.custom_title ? 3 : 0);
+                // 5. Notify GenAI (for vibe plot mode)
+                notifyGenAI(originalContent, character.name);
 
-                  if (lastCount === 0 && msgCount >= 3 && !session.custom_title) {
-                    const newName = await api.generateChatName(chatMessages, true);
-                    if (newName && newName !== 'New Chat') {
-                      session.last_auto_named_count = msgCount;
-                      await chatStore.renameSession(session.id, newName, session.character_id);
-                      updateChatHistory();
-                    }
-                  } else if (lastCount > 0 && (msgCount - lastCount >= 6)) {
-                    if (freshSettings.continuous_auto_naming_enabled) {
+                try {
+                  // 6. Auto-naming
+                  const freshSettings = settingsStore.get();
+                  if (freshSettings.auto_naming_enabled) {
+                    const chatMessages = session.messages.filter(m => m.role !== 'system');
+                    const msgCount = chatMessages.length;
+                    const lastCount = session.last_auto_named_count || (session.custom_title ? 3 : 0);
+
+                    if (lastCount === 0 && msgCount >= 3 && !session.custom_title) {
                       const newName = await api.generateChatName(chatMessages, true);
                       if (newName && newName !== 'New Chat') {
                         session.last_auto_named_count = msgCount;
                         await chatStore.renameSession(session.id, newName, session.character_id);
                         updateChatHistory();
                       }
+                    } else if (lastCount > 0 && (msgCount - lastCount >= 6)) {
+                      if (freshSettings.continuous_auto_naming_enabled) {
+                        const newName = await api.generateChatName(chatMessages, true);
+                        if (newName && newName !== 'New Chat') {
+                          session.last_auto_named_count = msgCount;
+                          await chatStore.renameSession(session.id, newName, session.character_id);
+                          updateChatHistory();
+                        }
+                      }
                     }
                   }
+                } catch (e) {
+                  console.warn('Failed to auto-name chat:', e);
                 }
-              } catch (e) {
-                console.warn('Failed to auto-name chat:', e);
-              }
-            })();
-          }
+              })();
+            }
 
-          window.dispatchEvent(new CustomEvent('genai-chat-response-finished'));
-          checkConnection();
+            window.dispatchEvent(new CustomEvent('genai-chat-response-finished'));
+            checkConnection();
+          } catch (err) {
+            console.error("ON DONE ERROR:", err);
+          } finally {
+            appState.isGenerating = false;
+            appState.abortController = null;
+            setChatActionState('send');
+            if (headerCharStatus) {
+              headerCharStatus.textContent = 'Ready';
+              headerCharStatus.classList.remove('generating');
+            }
+            updateChatHistory();
+            updateRegenerateVisibility();
+            smoothScrollChatToBottom(350);
+          }
         };
 
         if (settings.new_streaming_animation && contentEl._revealInterval && (contentEl._revealProgress < (contentEl._rawCharCount || 0))) {
           setChatActionState('skip');
-          contentEl._onRevealFinish = async () => {
+          let finalized = false;
+          const runFinalize = async () => {
+            if (finalized) return;
+            finalized = true;
             await finalizeUI();
-            setChatActionState('send');
           };
+          contentEl._onRevealFinish = runFinalize;
+          const remaining = (contentEl._rawCharCount || 0) - (contentEl._revealProgress || 0);
+          const maxWaitMs = Math.max(1500, (remaining / (settings.streaming_speed || 45)) * 1000 + 1000);
+          setTimeout(runFinalize, maxWaitMs);
         } else {
           await finalizeUI();
-          setChatActionState('send');
         }
       },
       // onError
@@ -2889,7 +2902,7 @@ async function buildApiMessages(character, session) {
   }
 
   // Apply Gemma 4 thinking style directive if experimental toggle is enabled and reasoning effort is Lite (medium)
-  if (settings.change_gemma4_thinking_style && settings.reasoning_effort === 'medium') {
+  if (settings.gemma4_support && settings.change_gemma4_thinking_style && settings.reasoning_effort === 'medium') {
     systemContent += `\n\nCORE INSTRUCTION:
 Before answering, you must use your internal monologue channel.
 1. When you enter the <|channel|>thought channel, think in the first person ("I"). Think like a curious, analytical researcher. 
@@ -3585,7 +3598,15 @@ async function regenerateResponse(msg, msgEl) {
 }
 
 async function triggerAssistantGeneration() {
-  if (appState.isGenerating || !appState.currentCharacter || !appState.currentChat) return;
+  if (appState.isGenerating) {
+    if (!appState.abortController) {
+      console.warn('[Chat] Recovered from stale isGenerating state');
+      appState.isGenerating = false;
+    } else {
+      return;
+    }
+  }
+  if (!appState.currentCharacter || !appState.currentChat) return;
 
   // Abort pending suggestions generation if any
   if (appState.suggestionsAbortController) {
@@ -3821,10 +3842,11 @@ async function triggerAssistantGeneration() {
         }
 
         const finalizeRegenerateUI = async () => {
-          const isInlineThought = /<(?:think|thought|reasoning|\|?channel\|?>?thought)/i.test(fullResponse);
-          const useGLM = settings.glm47_support && !isInlineThought;
-          let parsedThinking2, parsedContent2;
           try {
+            const isInlineThought = /<(?:think|thought|reasoning|\|?channel\|?>?thought)/i.test(fullResponse);
+            const useGLM = settings.glm47_support && !isInlineThought;
+            let parsedThinking2, parsedContent2;
+
             if (thinkingText2) {
               parsedThinking2 = thinkingText2;
               let cleanResponseForParsing = fullResponse;
@@ -3859,111 +3881,121 @@ async function triggerAssistantGeneration() {
             tempFinal.className = contentEl.className;
             tempFinal.innerHTML = finalHtml;
             morphdom(contentEl, tempFinal, morphOptions2);
-          } catch (e) {
-            console.error("Error finalizing regenerate UI:", e);
-          }
 
-          let originalContent = parsedContent2;
+            let originalContent = parsedContent2;
 
-          let translatedContent = null;
-          if (settings.auto_translate && originalContent) {
-            headerCharStatus.textContent = 'Translating...';
-            translatedContent = await performStreamingTranslation(contentEl, originalContent, settings.target_language);
-          }
-
-          chatStore.updateLastAssistantMessage(originalContent, parsedThinking2, session, translatedContent, thinkingTime);
-          await chatStore.saveSession(session);
-
-          appState.isGenerating = false;
-          appState.abortController = null;
-          setChatActionState('send');
-          headerCharStatus.textContent = 'Ready';
-          headerCharStatus.classList.remove('generating');
-          updateChatHistory();
-          updateRegenerateVisibility();
-          smoothScrollChatToBottom(350);
-
-          if (originalContent) {
-            // Strict sequential execution IIFE to respect single-concurrency LLM limits
-            (async () => {
-              try {
-                // 1. Generate continuation options replies first (High Priority UI)
-                await generateContinuationOptions(character, session, msgElement);
-              } catch (e) {
-                console.warn('Failed to generate suggestions:', e);
+            let translatedContent = null;
+            if (settings.auto_translate && originalContent) {
+              if (headerCharStatus) {
+                headerCharStatus.textContent = 'Translating...';
+                headerCharStatus.classList.add('generating');
               }
+              translatedContent = await performStreamingTranslation(contentEl, originalContent, settings.target_language);
+            }
 
-              try {
-                // 2. Process Automatic Image Gen if active (High Priority UI)
-                const freshSettings = settingsStore.get();
-                if (freshSettings.comfyui_enabled && freshSettings.comfyui_auto_chat) {
-                  await triggerAutomaticImageGeneration(character, session, originalContent);
-                } else if (freshSettings.comfyui_enabled && !freshSettings.comfyui_auto_chat) {
-                  await triggerImageGenerationSuggestion(character, session, originalContent, msgElement);
-                }
-              } catch (e) {
-                console.warn('Failed to handle image generation:', e);
-              }
+            chatStore.updateLastAssistantMessage(originalContent, parsedThinking2, session, translatedContent, thinkingTime);
+            await chatStore.saveSession(session);
 
-              const lastUserMsg = session.messages.slice().reverse().find(m => m.role === 'user');
-              if (lastUserMsg) {
+            if (originalContent) {
+              // Strict sequential execution IIFE to respect single-concurrency LLM limits
+              (async () => {
                 try {
-                  // 3. Extract and save memory (Low Priority Background)
-                  await extractAndShowMemory(character, session, lastUserMsg.content, originalContent, msgElement);
+                  // 1. Generate continuation options replies first (High Priority UI)
+                  await generateContinuationOptions(character, session, msgElement);
                 } catch (e) {
-                  console.warn('Failed to extract memory:', e);
+                  console.warn('Failed to generate suggestions:', e);
                 }
 
                 try {
-                  // 4. Update indicators status (Low Priority Background)
-                  await triggerIndicatorUpdate(character, session, lastUserMsg.content, originalContent);
+                  // 2. Process Automatic Image Gen if active (High Priority UI)
+                  const freshSettings = settingsStore.get();
+                  if (freshSettings.comfyui_enabled && freshSettings.comfyui_auto_chat) {
+                    await triggerAutomaticImageGeneration(character, session, originalContent);
+                  } else if (freshSettings.comfyui_enabled && !freshSettings.comfyui_auto_chat) {
+                    await triggerImageGenerationSuggestion(character, session, originalContent, msgElement);
+                  }
                 } catch (e) {
-                  console.warn('Failed to update indicators:', e);
+                  console.warn('Failed to handle image generation:', e);
                 }
-              }
 
-              try {
-                // 5. Auto-naming
-                const freshSettings = settingsStore.get();
-                if (freshSettings.auto_naming_enabled) {
-                  const chatMessages = session.messages.filter(m => m.role !== 'system');
-                  const msgCount = chatMessages.length;
-                  const lastCount = session.last_auto_named_count || (session.custom_title ? 3 : 0);
+                const lastUserMsg = session.messages.slice().reverse().find(m => m.role === 'user');
+                if (lastUserMsg) {
+                  try {
+                    // 3. Extract and save memory (Low Priority Background)
+                    await extractAndShowMemory(character, session, lastUserMsg.content, originalContent, msgElement);
+                  } catch (e) {
+                    console.warn('Failed to extract memory:', e);
+                  }
 
-                  if (lastCount === 0 && msgCount >= 3 && !session.custom_title) {
-                    const newName = await api.generateChatName(chatMessages, true);
-                    if (newName && newName !== 'New Chat') {
-                      session.last_auto_named_count = msgCount;
-                      await chatStore.renameSession(session.id, newName, session.character_id);
-                      updateChatHistory();
-                    }
-                  } else if (lastCount > 0 && (msgCount - lastCount >= 6)) {
-                    if (freshSettings.continuous_auto_naming_enabled) {
+                  try {
+                    // 4. Update indicators status (Low Priority Background)
+                    await triggerIndicatorUpdate(character, session, lastUserMsg.content, originalContent);
+                  } catch (e) {
+                    console.warn('Failed to update indicators:', e);
+                  }
+                }
+
+                try {
+                  // 5. Auto-naming
+                  const freshSettings = settingsStore.get();
+                  if (freshSettings.auto_naming_enabled) {
+                    const chatMessages = session.messages.filter(m => m.role !== 'system');
+                    const msgCount = chatMessages.length;
+                    const lastCount = session.last_auto_named_count || (session.custom_title ? 3 : 0);
+
+                    if (lastCount === 0 && msgCount >= 3 && !session.custom_title) {
                       const newName = await api.generateChatName(chatMessages, true);
                       if (newName && newName !== 'New Chat') {
                         session.last_auto_named_count = msgCount;
                         await chatStore.renameSession(session.id, newName, session.character_id);
                         updateChatHistory();
                       }
+                    } else if (lastCount > 0 && (msgCount - lastCount >= 6)) {
+                      if (freshSettings.continuous_auto_naming_enabled) {
+                        const newName = await api.generateChatName(chatMessages, true);
+                        if (newName && newName !== 'New Chat') {
+                          session.last_auto_named_count = msgCount;
+                          await chatStore.renameSession(session.id, newName, session.character_id);
+                          updateChatHistory();
+                        }
+                      }
                     }
                   }
+                } catch (e) {
+                  console.warn('Failed to auto-name chat:', e);
                 }
-              } catch (e) {
-                console.warn('Failed to auto-name chat:', e);
-              }
-            })();
+              })();
+            }
+          } catch (e) {
+            console.error("Error finalizing regenerate UI:", e);
+          } finally {
+            appState.isGenerating = false;
+            appState.abortController = null;
+            setChatActionState('send');
+            if (headerCharStatus) {
+              headerCharStatus.textContent = 'Ready';
+              headerCharStatus.classList.remove('generating');
+            }
+            updateChatHistory();
+            updateRegenerateVisibility();
+            smoothScrollChatToBottom(350);
           }
         };
 
         if (settings.new_streaming_animation && contentEl._revealInterval && (contentEl._revealProgress < (contentEl._rawCharCount || 0))) {
           setChatActionState('skip');
-          contentEl._onRevealFinish = async () => {
+          let finalized = false;
+          const runFinalize = async () => {
+            if (finalized) return;
+            finalized = true;
             await finalizeRegenerateUI();
-            setChatActionState('send');
           };
+          contentEl._onRevealFinish = runFinalize;
+          const remaining = (contentEl._rawCharCount || 0) - (contentEl._revealProgress || 0);
+          const maxWaitMs = Math.max(1500, (remaining / (settings.streaming_speed || 45)) * 1000 + 1000);
+          setTimeout(runFinalize, maxWaitMs);
         } else {
           await finalizeRegenerateUI();
-          setChatActionState('send');
         }
       },
       (err) => {

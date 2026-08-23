@@ -1797,7 +1797,7 @@ function openGameSettingsModal(gameId) {
   if (effortSelect) {
     const settings = settingsStore.get();
     const qwenEnabled = !!settings.qwen35_thinking_support;
-    const gemmaStyleEnabled = !!settings.change_gemma4_thinking_style;
+    const gemmaStyleEnabled = !!(settings.gemma4_support && settings.change_gemma4_thinking_style);
     const simplifiedEffort = qwenEnabled || gemmaStyleEnabled;
     effortSelect.innerHTML = '';
     if (simplifiedEffort) {

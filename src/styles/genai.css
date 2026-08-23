@@ -693,6 +693,9 @@ body.genai-fullscreen .genai-fullscreen-placeholder {
   font-size: 11px;
   color: var(--text-tertiary);
   margin-top: 2px;
+  width: fit-content;
+  max-width: fit-content;
+  display: inline-block;
 }
 
 .btn-pin-chat, .btn-delete-chat {
@@ -1009,6 +1012,9 @@ body.genai-fullscreen .genai-empty-state {
   cursor: default;
   user-select: none;
   transition: opacity 0.3s ease, color var(--transition-fast);
+  width: fit-content;
+  max-width: fit-content;
+  display: inline-block;
 }
 
 .genai-msg-time:hover {
@@ -1452,7 +1458,7 @@ body:not(.genai-fullscreen) #genai-thinking-effort-wrapper .thinking-icon-bulb {
   border: none;
   border-radius: 50%;
   background: var(--text-primary, #ffffff);
-  color: var(--bg-primary);
+  color: var(--bg-primary, #18181b);
   cursor: pointer;
   flex-shrink: 0;
   overflow: hidden;
@@ -1463,6 +1469,11 @@ body:not(.genai-fullscreen) #genai-thinking-effort-wrapper .thinking-icon-bulb {
   margin-bottom: 2px;
 }
 
+#btn-genai-send.state-send {
+  background: var(--text-primary, #ffffff);
+  color: var(--bg-primary, #18181b);
+}
+
 #btn-genai-send .btn-icon-svg,
 #btn-genai-stop .btn-icon-svg {
   position: absolute;
@@ -1471,6 +1482,7 @@ body:not(.genai-fullscreen) #genai-thinking-effort-wrapper .thinking-icon-bulb {
   justify-content: center;
   width: 14px;
   height: 14px;
+  pointer-events: none;
   transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1),
               opacity 0.25s ease;
 }

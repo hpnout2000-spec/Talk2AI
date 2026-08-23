@@ -466,6 +466,9 @@ body.sidebar-collapsed .sidebar,
   color: var(--text-tertiary);
   user-select: none;
   -webkit-user-select: none;
+  width: fit-content;
+  max-width: fit-content;
+  display: inline-block;
 }
 
 .chat-history-item-delete {
@@ -579,6 +582,9 @@ body.sidebar-collapsed .sidebar,
   font-size: 10px;
   color: var(--text-tertiary);
   margin-top: var(--space-1);
+  width: fit-content;
+  max-width: fit-content;
+  display: inline-block;
 }
 
 .memory-entry-category {
