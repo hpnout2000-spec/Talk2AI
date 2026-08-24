@@ -14,7 +14,12 @@ export function compileTemplate(template, data = {}) {
 
   let result = template;
 
-  // Process {{#if key}}...{{else}}...{{/if}} and {{#if key}}...{{/if}}
+  // 1. Strip Handlebars comments: {{!-- ... --}} and {{! ... }}
+  // Match comments and optional trailing newline if the comment was on its own line
+  result = result.replace(/\{\{!--[\s\S]*?--\}\}\r?\n?/g, '');
+  result = result.replace(/\{\{![\s\S]*?\}\}\r?\n?/g, '');
+
+  // 2. Process {{#if key}}...{{else}}...{{/if}} and {{#if key}}...{{/if}}
   const ifRegex = /\{\{#if\s+([a-zA-Z0-9_]+)\}\}([\s\S]*?)(?:\{\{else\}\}([\s\S]*?))?\{\{\/if\}\}/g;
 
   // Evaluate nested or consecutive {{#if}} blocks up to 5 passes
@@ -29,7 +34,7 @@ export function compileTemplate(template, data = {}) {
     });
   }
 
-  // Replace variable placeholders {{key}}
+  // 3. Replace variable placeholders {{key}}
   result = result.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (match, key) => {
     if (key === 'trim') return ''; // handled separately or stripped
     if (Object.prototype.hasOwnProperty.call(data, key)) {
@@ -97,6 +102,8 @@ export function formatTextCompletionPrompt(messages = [], contextTemplate = {}, 
     personality: options.charPersonality || '',
     scenario: options.scenario || '',
     persona: options.persona || '',
+    mesExamples: options.mesExamples || options.mes_example || '',
+    mes_example: options.mesExamples || options.mes_example || '',
     wiBefore: options.wiBefore || '',
     wiAfter: options.wiAfter || '',
     anchorBefore: options.anchorBefore || '',

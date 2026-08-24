@@ -372,6 +372,11 @@ body {
 
 .form-control,
 .form-group input[type="text"],
+.form-group input[type="password"],
+.form-group input[type="number"],
+.form-group input[type="url"],
+.form-group input[type="email"],
+.form-group input[type="search"],
 .form-group textarea {
   padding: var(--space-3);
   background: var(--bg-primary);
@@ -383,10 +388,22 @@ body {
   transition: all var(--transition-fast);
   resize: vertical;
   outline: none;
+  width: 100%;
+}
+
+.form-control::placeholder,
+.form-group input::placeholder,
+.form-group textarea::placeholder {
+  color: var(--text-tertiary);
 }
 
 .form-control:focus,
 .form-group input[type="text"]:focus,
+.form-group input[type="password"]:focus,
+.form-group input[type="number"]:focus,
+.form-group input[type="url"]:focus,
+.form-group input[type="email"]:focus,
+.form-group input[type="search"]:focus,
 .form-group textarea:focus {
   outline: none;
   border-color: var(--accent-primary);

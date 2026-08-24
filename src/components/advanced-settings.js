@@ -2,7 +2,7 @@
    Advanced Settings Component — System Prompt & Generation
    ════════════════════════════════════════════════════════════════════ */
 
-import { settingsStore, DEFAULT_GENERATION_PRESETS } from '../services/settings-store.js';
+import { settingsStore, DEFAULT_GENERATION_PRESETS, DEFAULT_INSTRUCT_TEMPLATES, DEFAULT_CONTEXT_TEMPLATES } from '../services/settings-store.js';
 import { showToast, showConfirm, closeModal, openWindow, closeWindow } from '../main.js';
 
 let modal;
@@ -269,6 +269,7 @@ export function initAdvancedSettings() {
   addToggleListener('adv-setting-min-tokens-enabled', false);
   addToggleListener('adv-setting-guidance-scale-enabled', false);
   addToggleListener('adv-setting-ignore-eos', false);
+  addToggleListener('adv-setting-logit-bias-enabled', false);
 
   addToggleListener('adv-setting-genai-min-p-enabled', true);
   addToggleListener('adv-setting-genai-adaptive-target-enabled', true);
@@ -287,6 +288,7 @@ export function initAdvancedSettings() {
   addToggleListener('adv-setting-genai-min-tokens-enabled', true);
   addToggleListener('adv-setting-genai-guidance-scale-enabled', true);
   addToggleListener('adv-setting-genai-ignore-eos', true);
+  addToggleListener('adv-setting-genai-logit-bias-enabled', true);
 
   const addInputListener = (id, isGenAI) => {
     const el = document.getElementById(id);
@@ -304,6 +306,7 @@ export function initAdvancedSettings() {
   addInputListener('adv-setting-mirostat-mode', false);
   addInputListener('adv-setting-negative-prompt', false);
   addInputListener('adv-setting-banned-strings', false);
+  addInputListener('adv-setting-logit-bias', false);
   addInputListener('adv-setting-instruct-template-select', false);
   addInputListener('adv-setting-context-template-select', false);
 
@@ -313,6 +316,7 @@ export function initAdvancedSettings() {
   addInputListener('adv-setting-genai-mirostat-mode', true);
   addInputListener('adv-setting-genai-negative-prompt', true);
   addInputListener('adv-setting-genai-banned-strings', true);
+  addInputListener('adv-setting-genai-logit-bias', true);
   addInputListener('adv-setting-genai-instruct-template-select', true);
   addInputListener('adv-setting-genai-context-template-select', true);
   addInputListener('adv-setting-genai-system-prompt', true);
@@ -618,7 +622,9 @@ function loadSettingsToUI() {
     guidance_scale: currentSettings.genai_guidance_scale,
     negative_prompt: currentSettings.genai_negative_prompt,
     ignore_eos: currentSettings.genai_ignore_eos,
-    banned_strings: currentSettings.genai_banned_strings
+    banned_strings: currentSettings.genai_banned_strings,
+    logit_bias_enabled: currentSettings.genai_logit_bias_enabled,
+    logit_bias: currentSettings.genai_logit_bias
   }, true);
 
   const genaiSystemPromptInput = document.getElementById('adv-setting-genai-system-prompt');
@@ -1025,6 +1031,18 @@ function initCustomPresetDropdowns() {
       genaiPresetSelectedIds.clear();
       genaiPresetDeleteConfirming = false;
     }
+
+    const ctxWrap = document.getElementById('context-preset-dropdown-wrap');
+    if (ctxWrap && !ctxWrap.contains(e.target)) {
+      document.getElementById('context-preset-menu')?.classList.add('hidden');
+      document.getElementById('btn-context-preset-trigger')?.classList.remove('open');
+    }
+
+    const instWrap = document.getElementById('instruct-preset-dropdown-wrap');
+    if (instWrap && !instWrap.contains(e.target)) {
+      document.getElementById('instruct-preset-menu')?.classList.add('hidden');
+      document.getElementById('btn-instruct-preset-trigger')?.classList.remove('open');
+    }
   });
 }
 
@@ -1196,7 +1214,9 @@ function extractExtendedSamplersFromUI(isGenAI) {
     guidance_scale: parseFloat(document.getElementById(`${prefix}guidance-scale`)?.value ?? 1.0),
     negative_prompt: document.getElementById(`${prefix}negative-prompt`)?.value || '',
     ignore_eos: document.getElementById(`${prefix}ignore-eos`)?.checked ?? false,
-    banned_strings: document.getElementById(`${prefix}banned-strings`)?.value || ''
+    banned_strings: document.getElementById(`${prefix}banned-strings`)?.value || '',
+    logit_bias_enabled: document.getElementById(`${prefix}logit-bias-enabled`)?.checked ?? false,
+    logit_bias: document.getElementById(`${prefix}logit-bias`)?.value || ''
   };
 }
 
@@ -1273,6 +1293,11 @@ function applyExtendedSamplersToUI(preset, isGenAI) {
   if (document.getElementById(`${prefix}negative-prompt`)) document.getElementById(`${prefix}negative-prompt`).value = preset.negative_prompt ?? '';
   if (document.getElementById(`${prefix}ignore-eos`)) document.getElementById(`${prefix}ignore-eos`).checked = preset.ignore_eos ?? false;
   if (document.getElementById(`${prefix}banned-strings`)) document.getElementById(`${prefix}banned-strings`).value = preset.banned_strings ?? '';
+  if (document.getElementById(`${prefix}logit-bias-enabled`)) document.getElementById(`${prefix}logit-bias-enabled`).checked = preset.logit_bias_enabled ?? false;
+  if (document.getElementById(`${prefix}logit-bias`)) {
+    const biasVal = preset.logit_bias ?? '';
+    document.getElementById(`${prefix}logit-bias`).value = typeof biasVal === 'object' ? JSON.stringify(biasVal) : String(biasVal);
+  }
 }
 
 function applyGenerationPreset(presetId, isGenAI) {
@@ -1927,6 +1952,8 @@ async function saveAll() {
     ignore_eos_enabled: document.getElementById('adv-setting-ignore-eos')?.checked ?? false,
     ignore_eos: document.getElementById('adv-setting-ignore-eos')?.checked ?? false,
     banned_strings: document.getElementById('adv-setting-banned-strings')?.value || '',
+    logit_bias_enabled: document.getElementById('adv-setting-logit-bias-enabled')?.checked ?? false,
+    logit_bias: document.getElementById('adv-setting-logit-bias')?.value || '',
 
     genai_completion_mode: document.getElementById('adv-setting-genai-completion-mode')?.value || 'chat_completion',
     genai_active_instruct_template_id: document.getElementById('adv-setting-genai-instruct-template-select')?.value || 'gemma2',
@@ -1960,6 +1987,8 @@ async function saveAll() {
     genai_ignore_eos_enabled: document.getElementById('adv-setting-genai-ignore-eos')?.checked ?? false,
     genai_ignore_eos: document.getElementById('adv-setting-genai-ignore-eos')?.checked ?? false,
     genai_banned_strings: document.getElementById('adv-setting-genai-banned-strings')?.value || '',
+    genai_logit_bias_enabled: document.getElementById('adv-setting-genai-logit-bias-enabled')?.checked ?? false,
+    genai_logit_bias: document.getElementById('adv-setting-genai-logit-bias')?.value || '',
 
     instruct_templates: currentSettings.instruct_templates,
     context_templates: currentSettings.context_templates,
@@ -1993,77 +2022,200 @@ async function saveAll() {
 
 let editingContextTemplateId = 'gemma2';
 let editingInstructTemplateId = 'gemma2';
+let contextPresetSearchQuery = '';
+let contextPresetSortMode = 'default';
+let instructPresetSearchQuery = '';
+let instructPresetSortMode = 'default';
 
 function renderFormattingTemplatesUI() {
-  const ctxSelect = document.getElementById('adv-fmt-context-select');
-  const instSelect = document.getElementById('adv-fmt-instruct-select');
   const genCtxSelect = document.getElementById('adv-setting-context-template-select');
   const genInstSelect = document.getElementById('adv-setting-instruct-template-select');
   const genaiCtxSelect = document.getElementById('adv-setting-genai-context-template-select');
   const genaiInstSelect = document.getElementById('adv-setting-genai-instruct-template-select');
 
-  if (ctxSelect) {
-    ctxSelect.innerHTML = '';
-    if (genCtxSelect) genCtxSelect.innerHTML = '';
-    if (genaiCtxSelect) genaiCtxSelect.innerHTML = '';
-
+  if (genCtxSelect) {
+    genCtxSelect.innerHTML = '';
     (currentSettings.context_templates || []).forEach(t => {
       const opt = document.createElement('option');
       opt.value = t.id;
       opt.textContent = t.name;
-      ctxSelect.appendChild(opt);
-
-      if (genCtxSelect) {
-        const opt2 = document.createElement('option');
-        opt2.value = t.id;
-        opt2.textContent = t.name;
-        genCtxSelect.appendChild(opt2);
-      }
-      if (genaiCtxSelect) {
-        const opt3 = document.createElement('option');
-        opt3.value = t.id;
-        opt3.textContent = t.name;
-        genaiCtxSelect.appendChild(opt3);
-      }
+      genCtxSelect.appendChild(opt);
     });
-
-    ctxSelect.value = editingContextTemplateId;
-    if (genCtxSelect) genCtxSelect.value = currentSettings.active_context_template_id || 'gemma2';
-    if (genaiCtxSelect) genaiCtxSelect.value = currentSettings.genai_active_context_template_id || 'gemma2';
+    genCtxSelect.value = currentSettings.active_context_template_id || 'gemma2';
   }
 
-  if (instSelect) {
-    instSelect.innerHTML = '';
-    if (genInstSelect) genInstSelect.innerHTML = '';
-    if (genaiInstSelect) genaiInstSelect.innerHTML = '';
+  if (genaiCtxSelect) {
+    genaiCtxSelect.innerHTML = '';
+    (currentSettings.context_templates || []).forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.name;
+      genaiCtxSelect.appendChild(opt);
+    });
+    genaiCtxSelect.value = currentSettings.genai_active_context_template_id || 'gemma2';
+  }
 
+  if (genInstSelect) {
+    genInstSelect.innerHTML = '';
     (currentSettings.instruct_templates || []).forEach(t => {
       const opt = document.createElement('option');
       opt.value = t.id;
       opt.textContent = t.name;
-      instSelect.appendChild(opt);
-
-      if (genInstSelect) {
-        const opt2 = document.createElement('option');
-        opt2.value = t.id;
-        opt2.textContent = t.name;
-        genInstSelect.appendChild(opt2);
-      }
-      if (genaiInstSelect) {
-        const opt3 = document.createElement('option');
-        opt3.value = t.id;
-        opt3.textContent = t.name;
-        genaiInstSelect.appendChild(opt3);
-      }
+      genInstSelect.appendChild(opt);
     });
-
-    instSelect.value = editingInstructTemplateId;
-    if (genInstSelect) genInstSelect.value = currentSettings.active_instruct_template_id || 'gemma2';
-    if (genaiInstSelect) genaiInstSelect.value = currentSettings.genai_active_instruct_template_id || 'gemma2';
+    genInstSelect.value = currentSettings.active_instruct_template_id || 'gemma2';
   }
+
+  if (genaiInstSelect) {
+    genaiInstSelect.innerHTML = '';
+    (currentSettings.instruct_templates || []).forEach(t => {
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.name;
+      genaiInstSelect.appendChild(opt);
+    });
+    genaiInstSelect.value = currentSettings.genai_active_instruct_template_id || 'gemma2';
+  }
+
+  renderContextTemplatesDropdownUI();
+  renderInstructTemplatesDropdownUI();
 
   loadContextTemplateToEditor(editingContextTemplateId);
   loadInstructTemplateToEditor(editingInstructTemplateId);
+}
+
+function renderContextTemplatesDropdownUI() {
+  const listEl = document.getElementById('context-preset-list');
+  const nameEl = document.getElementById('context-preset-selected-name');
+  if (!listEl) return;
+
+  const activeTemplate = (currentSettings.context_templates || []).find(t => t.id === editingContextTemplateId) 
+    || (currentSettings.context_templates || [])[0];
+  if (activeTemplate) {
+    editingContextTemplateId = activeTemplate.id;
+    if (nameEl) nameEl.textContent = activeTemplate.name;
+  }
+
+  const searchQuery = contextPresetSearchQuery.trim().toLowerCase();
+  let items = [...(currentSettings.context_templates || [])];
+
+  if (searchQuery) {
+    items = items.filter(t => t.name.toLowerCase().includes(searchQuery));
+  }
+
+  if (contextPresetSortMode === 'name') {
+    items.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  }
+
+  listEl.innerHTML = '';
+
+  if (items.length === 0) {
+    const emptyEl = document.createElement('div');
+    emptyEl.className = 'preset-no-results';
+    emptyEl.textContent = searchQuery ? 'No templates match search' : 'No templates available';
+    listEl.appendChild(emptyEl);
+    return;
+  }
+
+  items.forEach(t => {
+    const isSelected = t.id === editingContextTemplateId;
+    const isDefault = DEFAULT_CONTEXT_TEMPLATES.some(dt => dt.id === t.id);
+
+    const itemBtn = document.createElement('button');
+    itemBtn.type = 'button';
+    itemBtn.className = `custom-preset-option ${isSelected ? 'active' : ''}`;
+    itemBtn.dataset.id = t.id;
+
+    itemBtn.innerHTML = `
+      <div class="custom-preset-option-left">
+        <span class="custom-preset-option-title">${t.name}</span>
+        ${isDefault ? '<span class="custom-preset-option-badge">Default</span>' : ''}
+      </div>
+      ${isSelected ? `
+        <svg class="custom-preset-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      ` : ''}
+    `;
+
+    itemBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.getElementById('context-preset-menu')?.classList.add('hidden');
+      document.getElementById('btn-context-preset-trigger')?.classList.remove('open');
+      editingContextTemplateId = t.id;
+      loadContextTemplateToEditor(t.id);
+      renderContextTemplatesDropdownUI();
+    });
+
+    listEl.appendChild(itemBtn);
+  });
+}
+
+function renderInstructTemplatesDropdownUI() {
+  const listEl = document.getElementById('instruct-preset-list');
+  const nameEl = document.getElementById('instruct-preset-selected-name');
+  if (!listEl) return;
+
+  const activeTemplate = (currentSettings.instruct_templates || []).find(t => t.id === editingInstructTemplateId)
+    || (currentSettings.instruct_templates || [])[0];
+  if (activeTemplate) {
+    editingInstructTemplateId = activeTemplate.id;
+    if (nameEl) nameEl.textContent = activeTemplate.name;
+  }
+
+  const searchQuery = instructPresetSearchQuery.trim().toLowerCase();
+  let items = [...(currentSettings.instruct_templates || [])];
+
+  if (searchQuery) {
+    items = items.filter(t => t.name.toLowerCase().includes(searchQuery));
+  }
+
+  if (instructPresetSortMode === 'name') {
+    items.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  }
+
+  listEl.innerHTML = '';
+
+  if (items.length === 0) {
+    const emptyEl = document.createElement('div');
+    emptyEl.className = 'preset-no-results';
+    emptyEl.textContent = searchQuery ? 'No templates match search' : 'No templates available';
+    listEl.appendChild(emptyEl);
+    return;
+  }
+
+  items.forEach(t => {
+    const isSelected = t.id === editingInstructTemplateId;
+    const isDefault = DEFAULT_INSTRUCT_TEMPLATES.some(dt => dt.id === t.id);
+
+    const itemBtn = document.createElement('button');
+    itemBtn.type = 'button';
+    itemBtn.className = `custom-preset-option ${isSelected ? 'active' : ''}`;
+    itemBtn.dataset.id = t.id;
+
+    itemBtn.innerHTML = `
+      <div class="custom-preset-option-left">
+        <span class="custom-preset-option-title">${t.name}</span>
+        ${isDefault ? '<span class="custom-preset-option-badge">Default</span>' : ''}
+      </div>
+      ${isSelected ? `
+        <svg class="custom-preset-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      ` : ''}
+    `;
+
+    itemBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      document.getElementById('instruct-preset-menu')?.classList.add('hidden');
+      document.getElementById('btn-instruct-preset-trigger')?.classList.remove('open');
+      editingInstructTemplateId = t.id;
+      loadInstructTemplateToEditor(t.id);
+      renderInstructTemplatesDropdownUI();
+    });
+
+    listEl.appendChild(itemBtn);
+  });
 }
 
 function loadContextTemplateToEditor(id) {
@@ -2111,16 +2263,149 @@ function loadInstructTemplateToEditor(id) {
 }
 
 function setupFormattingTemplateListeners() {
-  document.getElementById('adv-fmt-context-select')?.addEventListener('change', (e) => loadContextTemplateToEditor(e.target.value));
-  document.getElementById('adv-fmt-instruct-select')?.addEventListener('change', (e) => loadInstructTemplateToEditor(e.target.value));
+  // Context Preset Dropdown Trigger & Controls
+  const ctxTrigger = document.getElementById('btn-context-preset-trigger');
+  const ctxMenu = document.getElementById('context-preset-menu');
+  const ctxSearchWrap = document.getElementById('context-preset-search-wrap');
+  const ctxSearchToggleBtn = document.getElementById('btn-context-preset-search-toggle');
+  const ctxSearchInput = document.getElementById('context-preset-search-input');
+  const ctxSearchClearBtn = document.getElementById('btn-context-preset-search-clear');
+  const ctxSortToggleBtn = document.getElementById('btn-context-preset-sort-toggle');
+  const ctxSortLabel = document.getElementById('context-preset-sort-label');
 
+  ctxTrigger?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isHidden = ctxMenu?.classList.contains('hidden');
+    document.getElementById('instruct-preset-menu')?.classList.add('hidden');
+    document.getElementById('btn-instruct-preset-trigger')?.classList.remove('open');
+    if (isHidden) {
+      ctxMenu?.classList.remove('hidden');
+      ctxTrigger?.classList.add('open');
+      renderContextTemplatesDropdownUI();
+    } else {
+      ctxMenu?.classList.add('hidden');
+      ctxTrigger?.classList.remove('open');
+    }
+  });
+
+  ctxSearchToggleBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!ctxSearchWrap) return;
+    const isActive = ctxSearchWrap.classList.toggle('search-active');
+    if (isActive) {
+      ctxSearchInput?.focus();
+    } else {
+      if (ctxSearchInput) ctxSearchInput.value = '';
+      contextPresetSearchQuery = '';
+      ctxSearchClearBtn?.classList.add('hidden');
+      renderContextTemplatesDropdownUI();
+    }
+  });
+
+  ctxSearchInput?.addEventListener('input', (e) => {
+    contextPresetSearchQuery = e.target.value;
+    if (contextPresetSearchQuery.trim().length > 0) {
+      ctxSearchClearBtn?.classList.remove('hidden');
+    } else {
+      ctxSearchClearBtn?.classList.add('hidden');
+    }
+    renderContextTemplatesDropdownUI();
+  });
+
+  ctxSearchClearBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (ctxSearchInput) {
+      ctxSearchInput.value = '';
+      ctxSearchInput.focus();
+    }
+    contextPresetSearchQuery = '';
+    ctxSearchClearBtn?.classList.add('hidden');
+    renderContextTemplatesDropdownUI();
+  });
+
+  ctxSortToggleBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    contextPresetSortMode = contextPresetSortMode === 'default' ? 'name' : 'default';
+    if (ctxSortLabel) ctxSortLabel.textContent = contextPresetSortMode === 'name' ? 'A-Z' : 'Date';
+    if (ctxSortToggleBtn) ctxSortToggleBtn.dataset.sort = contextPresetSortMode;
+    renderContextTemplatesDropdownUI();
+  });
+
+  // Instruct Preset Dropdown Trigger & Controls
+  const instTrigger = document.getElementById('btn-instruct-preset-trigger');
+  const instMenu = document.getElementById('instruct-preset-menu');
+  const instSearchWrap = document.getElementById('instruct-preset-search-wrap');
+  const instSearchToggleBtn = document.getElementById('btn-instruct-preset-search-toggle');
+  const instSearchInput = document.getElementById('instruct-preset-search-input');
+  const instSearchClearBtn = document.getElementById('btn-instruct-preset-search-clear');
+  const instSortToggleBtn = document.getElementById('btn-instruct-preset-sort-toggle');
+  const instSortLabel = document.getElementById('instruct-preset-sort-label');
+
+  instTrigger?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isHidden = instMenu?.classList.contains('hidden');
+    document.getElementById('context-preset-menu')?.classList.add('hidden');
+    document.getElementById('btn-context-preset-trigger')?.classList.remove('open');
+    if (isHidden) {
+      instMenu?.classList.remove('hidden');
+      instTrigger?.classList.add('open');
+      renderInstructTemplatesDropdownUI();
+    } else {
+      instMenu?.classList.add('hidden');
+      instTrigger?.classList.remove('open');
+    }
+  });
+
+  instSearchToggleBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!instSearchWrap) return;
+    const isActive = instSearchWrap.classList.toggle('search-active');
+    if (isActive) {
+      instSearchInput?.focus();
+    } else {
+      if (instSearchInput) instSearchInput.value = '';
+      instructPresetSearchQuery = '';
+      instSearchClearBtn?.classList.add('hidden');
+      renderInstructTemplatesDropdownUI();
+    }
+  });
+
+  instSearchInput?.addEventListener('input', (e) => {
+    instructPresetSearchQuery = e.target.value;
+    if (instructPresetSearchQuery.trim().length > 0) {
+      instSearchClearBtn?.classList.remove('hidden');
+    } else {
+      instSearchClearBtn?.classList.add('hidden');
+    }
+    renderInstructTemplatesDropdownUI();
+  });
+
+  instSearchClearBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (instSearchInput) {
+      instSearchInput.value = '';
+      instSearchInput.focus();
+    }
+    instructPresetSearchQuery = '';
+    instSearchClearBtn?.classList.add('hidden');
+    renderInstructTemplatesDropdownUI();
+  });
+
+  instSortToggleBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    instructPresetSortMode = instructPresetSortMode === 'default' ? 'name' : 'default';
+    if (instSortLabel) instSortLabel.textContent = instructPresetSortMode === 'name' ? 'A-Z' : 'Date';
+    if (instSortToggleBtn) instSortToggleBtn.dataset.sort = instructPresetSortMode;
+    renderInstructTemplatesDropdownUI();
+  });
+
+  // Action buttons - Context Template
   document.getElementById('btn-add-context-template')?.addEventListener('click', () => {
     const name = window.prompt("Enter name for new Context Template:", "Custom Context");
     if (!name) return;
     const id = 'custom_ctx_' + Date.now();
-    const newTmpl = {
-      id,
-      name,
+    const currentT = currentSettings.context_templates.find(tmpl => tmpl.id === editingContextTemplateId);
+    const newTmpl = currentT ? JSON.parse(JSON.stringify(currentT)) : {
       story_string: '{{#if system}}{{system}}\n\n{{/if}}{{#if description}}{{description}}\n\n{{/if}}{{trim}}',
       position: 'top',
       example_separator: '***',
@@ -2131,18 +2416,52 @@ function setupFormattingTemplateListeners() {
       separators_as_stop: false,
       names_as_stop: true
     };
+    newTmpl.id = id;
+    newTmpl.name = name;
     currentSettings.context_templates.push(newTmpl);
     editingContextTemplateId = id;
     renderFormattingTemplatesUI();
+    showToast(`Created context template "${name}"`);
   });
 
+  document.getElementById('btn-reset-context-template')?.addEventListener('click', () => {
+    const defaultTmpl = DEFAULT_CONTEXT_TEMPLATES.find(dt => dt.id === editingContextTemplateId);
+    if (!defaultTmpl) {
+      showToast('Only default templates can be reset to original values');
+      return;
+    }
+    const idx = currentSettings.context_templates.findIndex(t => t.id === editingContextTemplateId);
+    if (idx !== -1) {
+      currentSettings.context_templates[idx] = JSON.parse(JSON.stringify(defaultTmpl));
+      loadContextTemplateToEditor(editingContextTemplateId);
+      renderFormattingTemplatesUI();
+      showToast(`Reset "${defaultTmpl.name}" to defaults`);
+    }
+  });
+
+  document.getElementById('btn-delete-context-template')?.addEventListener('click', async () => {
+    const defaultContextIds = DEFAULT_CONTEXT_TEMPLATES.map(dt => dt.id);
+    if (defaultContextIds.includes(editingContextTemplateId)) {
+      showToast("Cannot delete default template");
+      return;
+    }
+    const t = currentSettings.context_templates.find(tmpl => tmpl.id === editingContextTemplateId);
+    const confirm = await showConfirm('Delete Template', `Delete context template "${t ? t.name : ''}"?`);
+    if (confirm) {
+      currentSettings.context_templates = currentSettings.context_templates.filter(tmpl => tmpl.id !== editingContextTemplateId);
+      editingContextTemplateId = 'gemma2';
+      renderFormattingTemplatesUI();
+      showToast('Context template deleted');
+    }
+  });
+
+  // Action buttons - Instruct Template
   document.getElementById('btn-add-instruct-template')?.addEventListener('click', () => {
     const name = window.prompt("Enter name for new Instruct Template:", "Custom Instruct");
     if (!name) return;
     const id = 'custom_inst_' + Date.now();
-    const newTmpl = {
-      id,
-      name,
+    const currentT = currentSettings.instruct_templates.find(tmpl => tmpl.id === editingInstructTemplateId);
+    const newTmpl = currentT ? JSON.parse(JSON.stringify(currentT)) : {
       activation_regex: '',
       wrap_sequences_with_newline: true,
       replace_macro_in_sequences: true,
@@ -2157,36 +2476,42 @@ function setupFormattingTemplateListeners() {
       system_prefix: '<start_of_turn>user\n',
       system_suffix: '<end_of_turn>\n'
     };
+    newTmpl.id = id;
+    newTmpl.name = name;
     currentSettings.instruct_templates.push(newTmpl);
     editingInstructTemplateId = id;
     renderFormattingTemplatesUI();
+    showToast(`Created instruct template "${name}"`);
   });
 
-  document.getElementById('btn-delete-context-template')?.addEventListener('click', async () => {
-    const defaultContextIds = ['gemma2', 'mistral', 'standard'];
-    if (defaultContextIds.includes(editingContextTemplateId)) {
-      showToast("Cannot delete default template");
+  document.getElementById('btn-reset-instruct-template')?.addEventListener('click', () => {
+    const defaultTmpl = DEFAULT_INSTRUCT_TEMPLATES.find(dt => dt.id === editingInstructTemplateId);
+    if (!defaultTmpl) {
+      showToast('Only default templates can be reset to original values');
       return;
     }
-    const confirm = await showConfirm('Delete Template', 'Delete this context template?');
-    if (confirm) {
-      currentSettings.context_templates = currentSettings.context_templates.filter(t => t.id !== editingContextTemplateId);
-      editingContextTemplateId = 'gemma2';
+    const idx = currentSettings.instruct_templates.findIndex(t => t.id === editingInstructTemplateId);
+    if (idx !== -1) {
+      currentSettings.instruct_templates[idx] = JSON.parse(JSON.stringify(defaultTmpl));
+      loadInstructTemplateToEditor(editingInstructTemplateId);
       renderFormattingTemplatesUI();
+      showToast(`Reset "${defaultTmpl.name}" to defaults`);
     }
   });
 
   document.getElementById('btn-delete-instruct-template')?.addEventListener('click', async () => {
-    const defaultInstructIds = ['gemma2', 'llama3', 'chatml', 'alpaca', 'alpaca_input', 'alpaca_simple', 'vicuna', 'mistral'];
+    const defaultInstructIds = DEFAULT_INSTRUCT_TEMPLATES.map(dt => dt.id);
     if (defaultInstructIds.includes(editingInstructTemplateId)) {
       showToast("Cannot delete default template");
       return;
     }
-    const confirm = await showConfirm('Delete Template', 'Delete this instruct template?');
+    const t = currentSettings.instruct_templates.find(tmpl => tmpl.id === editingInstructTemplateId);
+    const confirm = await showConfirm('Delete Template', `Delete instruct template "${t ? t.name : ''}"?`);
     if (confirm) {
-      currentSettings.instruct_templates = currentSettings.instruct_templates.filter(t => t.id !== editingInstructTemplateId);
+      currentSettings.instruct_templates = currentSettings.instruct_templates.filter(tmpl => tmpl.id !== editingInstructTemplateId);
       editingInstructTemplateId = 'gemma2';
       renderFormattingTemplatesUI();
+      showToast('Instruct template deleted');
     }
   });
 
@@ -2194,7 +2519,13 @@ function setupFormattingTemplateListeners() {
   const syncContextEditor = () => {
     const t = currentSettings.context_templates.find(tmpl => tmpl.id === editingContextTemplateId);
     if (!t) return;
-    t.name = document.getElementById('adv-fmt-context-name')?.value || t.name;
+    const nameVal = document.getElementById('adv-fmt-context-name')?.value;
+    if (nameVal && nameVal !== t.name) {
+      t.name = nameVal;
+      const nameEl = document.getElementById('context-preset-selected-name');
+      if (nameEl) nameEl.textContent = nameVal;
+      renderContextTemplatesDropdownUI();
+    }
     t.story_string = document.getElementById('adv-fmt-story-string')?.value || '';
     t.position = document.getElementById('adv-fmt-context-position')?.value || 'top';
     t.example_separator = document.getElementById('adv-fmt-example-separator')?.value || '***';
@@ -2217,7 +2548,13 @@ function setupFormattingTemplateListeners() {
   const syncInstructEditor = () => {
     const t = currentSettings.instruct_templates.find(tmpl => tmpl.id === editingInstructTemplateId);
     if (!t) return;
-    t.name = document.getElementById('adv-fmt-instruct-name')?.value || t.name;
+    const nameVal = document.getElementById('adv-fmt-instruct-name')?.value;
+    if (nameVal && nameVal !== t.name) {
+      t.name = nameVal;
+      const nameEl = document.getElementById('instruct-preset-selected-name');
+      if (nameEl) nameEl.textContent = nameVal;
+      renderInstructTemplatesDropdownUI();
+    }
     t.activation_regex = document.getElementById('adv-fmt-activation-regex')?.value || '';
     t.wrap_sequences_with_newline = !!document.getElementById('adv-fmt-wrap-newlines')?.checked;
     t.replace_macro_in_sequences = !!document.getElementById('adv-fmt-replace-macro')?.checked;

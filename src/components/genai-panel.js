@@ -277,7 +277,7 @@ SPECIAL Directives:
 - Group Chats: You can manage groups and response modes. Do not switch to group chats unless explicitly asked.
 - Game GM Mode: You can interact with games and actions.
 - Application Settings: If the user asks about settings, wants to inspect current settings, or wants to change settings, you MUST read the "App Settings.json" skill by executing {"genai_action":"read_skill","filename":"App Settings.json"} to get the list of available settings, their keys, descriptions, and current values.
-- Skills System: CRITICAL RULE: BEFORE you perform ANY action, activation, toggling, or reading of background skills, you MUST call {"genai_action":"get_skills"} to inspect the exact current list of available skills! You are strictly prohibited from guessing skill names or toggling skills without checking the list first. Once checked, you can call {"genai_action":"get_skills"} to retrieve all available custom background information/guides, and {"genai_action":"read_skill","filename":"..."} to read their full contents. Use them when the user asks for details or background help (like how the app works, etc.).
+- Skills System: Use the skills system ONLY upon extreme necessity and direct user request. BEFORE you perform ANY action, activation, toggling, or reading of background skills explicitly requested by the user, you MUST call {"genai_action":"get_skills"} to inspect the exact current list of available skills! You are strictly prohibited from guessing skill names or toggling skills without checking the list first. Do NOT call get_skills proactively unless the user directly and explicitly asks for skills or skill management. Once checked, you can execute {"genai_action":"read_skill","filename":"..."} to read their full contents when directly requested.
 - Image Generation: If the user requests to create, generate, draw, paint, or illustrate any image, illustration, character, scene, background, avatar, or custom object, you MUST execute the image generation tool.
   * The prompt parameter MUST be a detailed, rich description in English (with all character details, context, and aesthetic tags) to ensure premium illustration quality. You MUST strictly avoid generic quality buzzwords and cliché tags like "detailed texture", "highly detailed face", "volumetric lighting", or "vibrant colors" in the prompt.
   * The loading_message parameter MUST be a creative, highly contextual status message in the same language as the dialogue (Russian or English) that is displayed in the UI while the image is generating.
@@ -605,7 +605,7 @@ You MUST use the following JSON function calls to interact with the application 
     - Example: {"genai_action":"get_all_characters"}
 
 28. get_skills: Retrieve the list of all available background information/guides/skills loaded by the user or pre-loaded.
-    - When to use: When the user asks what custom info or skills you can read, or asks for general help about VibeChatting.
+    - When to use: ONLY upon extreme necessity and direct user request (e.g. when the user explicitly asks to list, show, or check available skills). Do NOT call this tool proactively or without a direct request.
     - Parameters: None.
     - Example: {"genai_action":"get_skills"}
 
@@ -2615,61 +2615,60 @@ async function executeTool(action, onStatus = null, onPreview = null, onComplete
 
 // ─── Action Badge HTML ───────────────────────────────────────────────
 function actionBadgeHtml(type, icon, text) {
-  const iconHtml = icon ? `<span class="genai-action-badge-icon">${icon}</span>` : '';
-  return `<div class="genai-action-badge ${type}">${iconHtml}<span class="genai-action-badge-text">${text}</span></div>`;
+  const wrenchHtml = `<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" class="tool-wrench-icon"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>`;
+  return `<div class="genai-inline-tool genai-tool-done" style="margin: var(--space-1) 0;"><span class="genai-working-text" style="background: none; -webkit-background-clip: initial; background-clip: initial; color: var(--text-tertiary); -webkit-text-fill-color: var(--text-tertiary); font-style: italic; font-size: var(--text-xs); margin: 0; padding: 0;">${wrenchHtml}${text}</span></div>`;
 }
 
 function resultBadgeForAction(action, result) {
   const name = action.genai_action;
   if (result && result.error) {
-    return actionBadgeHtml('result-error', '❌', `Error: ${result.error}`);
+    return actionBadgeHtml('result-error', '', `Error · ${result.error}`);
   }
-  if (name === 'get_skills') return actionBadgeHtml('result-data', '🛠️', `Loaded ${result.count} skills`);
-  if (name === 'read_skill') return actionBadgeHtml('result-data', '📖', `Read skill: ${action.filename}`);
-  if (name === 'get_character') return actionBadgeHtml('result-data', '📖', `Loaded character: ${result.name || action.id}`);
-  if (name === 'get_all_characters') return actionBadgeHtml('result-data', '👥', `Loaded ${result.count} characters`);
+  if (name === 'get_skills') return actionBadgeHtml('result-data', '', `Skills · Loaded ${result.count} skills`);
+  if (name === 'read_skill') return actionBadgeHtml('result-data', '', `Skill · Read ${action.filename}`);
+  if (name === 'get_character') return actionBadgeHtml('result-data', '', `Character · Loaded ${result.name || action.id}`);
+  if (name === 'get_all_characters') return actionBadgeHtml('result-data', '', `Characters · Loaded ${result.count} characters`);
   if (name === 'get_chat_history') {
-    if (result.mode === 'list') return actionBadgeHtml('result-data', '📂', `Found ${result.sessions.length} chats`);
-    return actionBadgeHtml('result-data', '💬', `Loaded ${result.message_count} messages`);
+    if (result.mode === 'list') return actionBadgeHtml('result-data', '', `History · Found ${result.sessions.length} chats`);
+    return actionBadgeHtml('result-data', '', `History · Loaded ${result.message_count} messages`);
   }
-  if (name === 'get_ai_comments') return actionBadgeHtml('result-data', '🗨️', `Loaded ${(result.comments || []).length} AI comments`);
+  if (name === 'get_ai_comments') return actionBadgeHtml('result-data', '', `Comments · Loaded ${(result.comments || []).length} AI comments`);
   if (name === 'set_setting') {
     const meta = SETTING_META[result.key];
     const label = meta ? meta.label : result.key;
     const val = typeof result.new_value === 'boolean' ? (result.new_value ? 'ON' : 'OFF') : String(result.new_value);
-    return actionBadgeHtml('result-setting', '✅', `${label} → ${val}`);
+    return actionBadgeHtml('result-setting', '', `Setting · ${label} → ${val}`);
   }
-  if (name === 'send_chat_message') return actionBadgeHtml('result-message', '✉️', `Sent: "${(action.content || '').substring(0, 50)}"`);
+  if (name === 'send_chat_message') return actionBadgeHtml('result-message', '', `Message · Sent "${(action.content || '').substring(0, 50)}"`);
   if (name === 'check_vibe_goal') {
     return result.goal_achieved
-      ? actionBadgeHtml('result-goal-met', '🏆', 'Goal achieved!')
-      : actionBadgeHtml('result-goal-pending', '⏳', 'Goal not yet achieved, continuing...');
+      ? actionBadgeHtml('result-goal-met', '', 'Goal · Achieved')
+      : actionBadgeHtml('result-goal-pending', '', 'Goal · Continuing...');
   }
-  if (name === 'save_character') return actionBadgeHtml('result-character', '👤', `Saved: ${result.name || 'Character'}`);
-  if (name === 'create_new_chat') return actionBadgeHtml('result-chat-action', '🆕', `Started new chat with ${result.character_name}`);
-  if (name === 'switch_chat') return actionBadgeHtml('result-chat-action', '🔄', `Switched chat: ${result.character_name}`);
-  if (name === 'add_memory') return actionBadgeHtml('result-data', '🧠', 'Memory saved');
-  if (name === 'delete_memory') return actionBadgeHtml('result-data', '🗑️', 'Memory deleted');
-  if (name === 'list_memories') return actionBadgeHtml('result-data', '📜', `Showing ${result.count} memories`);
-  if (name === 'get_group_chats') return actionBadgeHtml('result-data', '👥', `Found ${result.count} group${result.count !== 1 ? 's' : ''}`);
-  if (name === 'create_group') return actionBadgeHtml('result-chat-action', '👥', `Created group: ${result.name}`);
-  if (name === 'add_member_to_group') return actionBadgeHtml('result-chat-action', '➕', `Added ${result.added} to group`);
-  if (name === 'remove_member_from_group') return actionBadgeHtml('result-chat-action', '➖', `Removed ${result.removed} from group`);
-  if (name === 'switch_group_chat') return actionBadgeHtml('result-chat-action', '👥', `Switched to group: ${result.group_name}`);
+  if (name === 'save_character') return actionBadgeHtml('result-character', '', `Character · Saved ${result.name || 'Character'}`);
+  if (name === 'create_new_chat') return actionBadgeHtml('result-chat-action', '', `Chat · Started with ${result.character_name}`);
+  if (name === 'switch_chat') return actionBadgeHtml('result-chat-action', '', `Chat · Switched to ${result.character_name}`);
+  if (name === 'add_memory') return actionBadgeHtml('result-data', '', 'Memory · Saved');
+  if (name === 'delete_memory') return actionBadgeHtml('result-data', '', 'Memory · Deleted');
+  if (name === 'list_memories') return actionBadgeHtml('result-data', '', `Memory · Showing ${result.count} memories`);
+  if (name === 'get_group_chats') return actionBadgeHtml('result-data', '', `Groups · Found ${result.count} group${result.count !== 1 ? 's' : ''}`);
+  if (name === 'create_group') return actionBadgeHtml('result-chat-action', '', `Groups · Created ${result.name}`);
+  if (name === 'add_member_to_group') return actionBadgeHtml('result-chat-action', '', `Groups · Added ${result.added}`);
+  if (name === 'remove_member_from_group') return actionBadgeHtml('result-chat-action', '', `Groups · Removed ${result.removed}`);
+  if (name === 'switch_group_chat') return actionBadgeHtml('result-chat-action', '', `Groups · Switched to ${result.group_name}`);
   if (name === 'get_group_chat_history') {
-    if (result.mode === 'list') return actionBadgeHtml('result-data', '📂', `Found ${result.sessions.length} group sessions`);
-    return actionBadgeHtml('result-data', '💬', `Loaded ${result.message_count} group messages`);
+    if (result.mode === 'list') return actionBadgeHtml('result-data', '', `History · Found ${result.sessions.length} group sessions`);
+    return actionBadgeHtml('result-data', '', `History · Loaded ${result.message_count} group messages`);
   }
 
   // Web Browser tool badges
-  if (name === 'web_search') return actionBadgeHtml('result-data', '🌐', `Web Search completed for "${action.query}"`);
-  if (name === 'web_fetch') return actionBadgeHtml('result-data', '🌐', `Web Fetch completed for "${action.url}"`);
+  if (name === 'web_search') return actionBadgeHtml('result-data', '', `Web Search · completed for "${action.query}"`);
+  if (name === 'web_fetch') return actionBadgeHtml('result-data', '', `Web Fetch · completed for "${action.url}"`);
 
   if (name === 'ImageRed' || name === 'analyze_image') {
     const isVision = name === 'analyze_image';
-    const badgeTitle = isVision ? 'Vision Analysis Completed' : 'Image Editor Session Completed';
-    const badgeIcon = isVision ? '' : '🎨';
-    const badge = actionBadgeHtml('result-data', badgeIcon, badgeTitle);
+    const badgeTitle = isVision ? 'Vision · Analysis completed' : 'Image Editor · Session completed';
+    const badge = actionBadgeHtml('result-data', '', badgeTitle);
     let content = badge;
     if (result && result.messages && result.messages.length > 0) {
       content += `
@@ -2691,28 +2690,28 @@ function resultBadgeForAction(action, result) {
   }
 
   // nhentai tool badges
-  if (name === 'nhentai_search_galleries') return actionBadgeHtml('result-data', '🔍', `nhentai: Searched galleries for "${action.query}"`);
-  if (name === 'nhentai_get_gallery') return actionBadgeHtml('result-data', '📖', `nhentai: Loaded gallery details for ID ${action.gallery_id}`);
-  if (name === 'nhentai_debug_gallery') return actionBadgeHtml('result-data', '🔍', `nhentai: Debug structure for ID ${action.gallery_id}`);
-  if (name === 'nhentai_search_tags') return actionBadgeHtml('result-data', '🏷️', `nhentai: Searched tags matching "${action.query}"`);
-  if (name === 'nhentai_get_tags_by_ids') return actionBadgeHtml('result-data', '🏷️', `nhentai: Looked up ${action.ids?.length} tags by ID`);
-  if (name === 'nhentai_get_tags_by_type') return actionBadgeHtml('result-data', '🏷️', `nhentai: Loaded "${action.tag_type}" tags`);
-  if (name === 'nhentai_get_tag_by_slug') return actionBadgeHtml('result-data', '🏷️', `nhentai: Loaded tag slug "${action.slug}"`);
-  if (name === 'nhentai_get_popular_galleries') return actionBadgeHtml('result-data', '🔥', `nhentai: Loaded today’s popular galleries`);
-  if (name === 'nhentai_get_random_gallery') return actionBadgeHtml('result-data', '🏒', `nhentai: Loaded random gallery`);
-  if (name === 'nhentai_get_related_galleries') return actionBadgeHtml('result-data', '🔗', `nhentai: Loaded related galleries for ID ${action.gallery_id}`);
-  if (name === 'nhentai_get_download_link') return actionBadgeHtml('result-setting', '📥', `nhentai: Generated download link for ID ${action.gallery_id}`);
+  if (name === 'nhentai_search_galleries') return actionBadgeHtml('result-data', '', `nhentai · Searched galleries for "${action.query}"`);
+  if (name === 'nhentai_get_gallery') return actionBadgeHtml('result-data', '', `nhentai · Loaded gallery details for ID ${action.gallery_id}`);
+  if (name === 'nhentai_debug_gallery') return actionBadgeHtml('result-data', '', `nhentai · Debug structure for ID ${action.gallery_id}`);
+  if (name === 'nhentai_search_tags') return actionBadgeHtml('result-data', '', `nhentai · Searched tags matching "${action.query}"`);
+  if (name === 'nhentai_get_tags_by_ids') return actionBadgeHtml('result-data', '', `nhentai · Looked up ${action.ids?.length} tags by ID`);
+  if (name === 'nhentai_get_tags_by_type') return actionBadgeHtml('result-data', '', `nhentai · Loaded "${action.tag_type}" tags`);
+  if (name === 'nhentai_get_tag_by_slug') return actionBadgeHtml('result-data', '', `nhentai · Loaded tag slug "${action.slug}"`);
+  if (name === 'nhentai_get_popular_galleries') return actionBadgeHtml('result-data', '', `nhentai · Loaded today’s popular galleries`);
+  if (name === 'nhentai_get_random_gallery') return actionBadgeHtml('result-data', '', `nhentai · Loaded random gallery`);
+  if (name === 'nhentai_get_related_galleries') return actionBadgeHtml('result-data', '', `nhentai · Loaded related galleries for ID ${action.gallery_id}`);
+  if (name === 'nhentai_get_download_link') return actionBadgeHtml('result-setting', '', `nhentai · Generated download link for ID ${action.gallery_id}`);
 
   // gelbooru tool badges
-  if (name === 'gelbooru_search_posts') return actionBadgeHtml('result-data', '🔍', `Gelbooru: Searched posts matching "${action.tags || ''}"`);
-  if (name === 'gelbooru_get_post') return actionBadgeHtml('result-data', '📖', `Gelbooru: Loaded post details for ID ${action.post_id}`);
-  if (name === 'gelbooru_search_tags') return actionBadgeHtml('result-data', '🏷️', `Gelbooru: Searched tags matching "${action.query}"`);
-  if (name === 'gelbooru_get_comments') return actionBadgeHtml('result-data', '💬', `Gelbooru: Loaded comments for ID ${action.post_id}`);
-  if (name === 'gelbooru_get_random_post') return actionBadgeHtml('result-data', '🏒', `Gelbooru: Loaded random post`);
+  if (name === 'gelbooru_search_posts') return actionBadgeHtml('result-data', '', `Gelbooru · Searched posts for "${action.tags || ''}"`);
+  if (name === 'gelbooru_get_post') return actionBadgeHtml('result-data', '', `Gelbooru · Loaded post details for ID ${action.post_id}`);
+  if (name === 'gelbooru_search_tags') return actionBadgeHtml('result-data', '', `Gelbooru · Searched tags for "${action.query}"`);
+  if (name === 'gelbooru_get_comments') return actionBadgeHtml('result-data', '', `Gelbooru · Loaded comments for ID ${action.post_id}`);
+  if (name === 'gelbooru_get_random_post') return actionBadgeHtml('result-data', '', `Gelbooru · Loaded random post`);
 
   if (name === 'nhentai_get_cover' || name === 'nhentai_get_page' || name === 'gelbooru_get_image') {
     const defaultLabel = name === 'gelbooru_get_image' ? 'Post image loaded' : 'Gallery image loaded';
-    const badge = actionBadgeHtml('result-data', '🖼️', result._type === 'image' ? (result.label || defaultLabel) : (result.error ? `Error: ${result.error}` : 'Image unavailable'));
+    const badge = actionBadgeHtml('result-data', '', result._type === 'image' ? (result.label || defaultLabel) : (result.error ? `Error · ${result.error}` : 'Image · Unavailable'));
     if (result._type === 'image' && result.base64) {
       const src = result.base64.startsWith('data:') ? result.base64 : `data:image/jpeg;base64,${result.base64}`;
       const imgHtml = `<div class="generated-image-container" style="margin-top:10px;animation:fadeIn 0.4s ease">
@@ -2725,14 +2724,14 @@ function resultBadgeForAction(action, result) {
 
   if (name === 'set_skill_active') {
     return result.active
-      ? actionBadgeHtml('result-setting', '✅', `Skill Activated: ${result.filename}`)
-      : actionBadgeHtml('result-setting', '❌', `Skill Deactivated: ${result.filename}`);
+      ? actionBadgeHtml('result-setting', '', `Skill · Activated ${result.filename}`)
+      : actionBadgeHtml('result-setting', '', `Skill · Deactivated ${result.filename}`);
   }
 
-  if (name === 'get_games') return actionBadgeHtml('result-data', '🎮', `Found ${result.count} games`);
-  if (name === 'create_game') return actionBadgeHtml('result-chat-action', '🎮', `Created Game: ${action.title}`);
-  if (name === 'switch_game') return actionBadgeHtml('result-chat-action', '🔄', `Switched Game`);
-  if (name === 'get_game_state') return actionBadgeHtml('result-data', '📊', `Loaded Game State`);
+  if (name === 'get_games') return actionBadgeHtml('result-data', '', `Games · Found ${result.count} games`);
+  if (name === 'create_game') return actionBadgeHtml('result-chat-action', '', `Games · Created ${action.title}`);
+  if (name === 'switch_game') return actionBadgeHtml('result-chat-action', '', `Games · Switched game`);
+  if (name === 'get_game_state') return actionBadgeHtml('result-data', '', `Games · Loaded state`);
   if (name === 'send_game_action') return actionBadgeHtml('result-message', '⚔️', `Game Action: "${action.action}"`);
   if (name === 'rename_game') return actionBadgeHtml('result-chat-action', '✍️', `Renamed Game to "${action.new_title}"`);
   if (name === 'generate_image') {
@@ -3180,6 +3179,8 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
     });
 
     if (entry.tools && entry.tools.length > 0) {
+      const wrenchSvg = `<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" class="tool-wrench-icon"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>`;
+
       entry.tools.forEach((tool, idx) => {
         const marker = `[[GENAI_TOOL_${idx}]]`;
         if (!sHtml.includes(marker)) return;
@@ -3189,12 +3190,12 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
         const isContextTool = tool.action && tool.action.genai_action === 'gethistory';
 
         if (isContextTool) {
-          const onceSweepStyle = 'background: none; -webkit-background-clip: initial; background-clip: initial; color: var(--text-tertiary); -webkit-text-fill-color: var(--text-tertiary); animation: workingEnter 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;';
-          const reqText = 'Initiating context access...';
+          const onceSweepStyle = 'background: none; -webkit-background-clip: initial; background-clip: initial; color: var(--text-tertiary); -webkit-text-fill-color: var(--text-tertiary); font-style: italic; font-size: var(--text-xs); margin: 0; padding: 0;';
+          const reqText = `${wrenchSvg}Context · Initiating access...`;
           
           if (tool.state === 'working') {
             badgeHtml = `
-              <div class="genai-inline-tool genai-tool-working" id="genai-tool-${idx}">
+              <div class="genai-inline-tool genai-tool-working" id="genai-tool-${idx}" style="margin: var(--space-1) 0;">
                 <span class="genai-working-text">${reqText}</span>
               </div>
             `;
@@ -3207,10 +3208,10 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
                 summaryText = ' and 1 summary';
               }
             }
-            const doneText = `Context received: ${count}${summaryText} messages was scanned.`;
+            const doneText = `${wrenchSvg}Context · ${count}${summaryText} messages scanned.`;
             badgeHtml = `
               <div class="genai-inline-tool genai-tool-done" id="genai-tool-${idx}" style="margin: var(--space-1) 0;">
-                <span class="genai-working-text" style="${onceSweepStyle} margin: 0; padding: 0;">${doneText}</span>
+                <span class="genai-working-text" style="${onceSweepStyle}">${doneText}</span>
               </div>
             `;
           }
@@ -3224,16 +3225,17 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
             const actionType = tool.action.genai_action;
             const anyAwaiting = associatedGroup.some(g => g.tool.state === 'awaiting_approval');
             const anyWorking = associatedGroup.some(g => g.tool.state === 'working');
-            const onceSweepStyle = 'background: none; -webkit-background-clip: initial; background-clip: initial; color: var(--text-tertiary); -webkit-text-fill-color: var(--text-tertiary); animation: workingEnter 0.8s cubic-bezier(0.4, 0, 0.2, 1) forwards;';
+            const onceSweepStyle = 'background: none; -webkit-background-clip: initial; background-clip: initial; color: var(--text-tertiary); -webkit-text-fill-color: var(--text-tertiary); font-style: italic; font-size: var(--text-xs); margin: 0; padding: 0;';
+            const toolTitle = actionType === 'web_search' ? 'Web Search' : 'Web Fetch';
             
             if (anyAwaiting) {
               const count = associatedGroup.length;
               const text = actionType === 'web_search' 
-                ? `AI wants to use web search for ${count} ${count === 1 ? 'query' : 'queries'}.`
-                : `AI wants to read ${count} ${count === 1 ? 'webpage' : 'webpages'}.`;
+                ? `${wrenchSvg}${toolTitle} · AI wants to use web search for ${count} ${count === 1 ? 'query' : 'queries'}.`
+                : `${wrenchSvg}${toolTitle} · AI wants to read ${count} ${count === 1 ? 'webpage' : 'webpages'}.`;
               badgeHtml = `
                 <div class="genai-inline-tool genai-tool-pending" id="genai-tool-${idx}" style="margin: var(--space-2) 0; width: 100%; display: flex; align-items: center; gap: var(--space-3); line-height: 1.2;">
-                  <span class="genai-working-text" style="${onceSweepStyle} margin: 0; padding: 0;">${text}</span>
+                  <span class="genai-working-text" style="${onceSweepStyle}">${text}</span>
                   <div style="display: flex; gap: 8px; margin-left: auto;">
                     <button id="approve-tool-${idx}" class="continuation-option-btn" 
                             style="margin: 0; padding: 4px 14px; background: var(--accent-primary, #ececec); border: none; color: #171717; border-radius: 100px; cursor: pointer; font-size: 0.8em; font-weight: 600; opacity: 1; transform: none; animation: none; transition: transform 0.1s ease;">
@@ -3247,20 +3249,20 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
                 </div>
               `;
             } else if (anyWorking) {
-              const text = actionType === 'web_search' ? 'Searching...' : 'Reading...';
+              const text = actionType === 'web_search' ? `${wrenchSvg}Web Search · Searching...` : `${wrenchSvg}Web Fetch · Reading...`;
               badgeHtml = `
-                <div class="genai-inline-tool genai-tool-working" id="genai-tool-${idx}">
+                <div class="genai-inline-tool genai-tool-working" id="genai-tool-${idx}" style="margin: var(--space-1) 0;">
                   <span class="genai-working-text">${text}</span>
                 </div>
               `;
             } else {
               const count = associatedGroup.length;
               const doneText = actionType === 'web_search'
-                ? `Web Search completed for ${count} ${count === 1 ? 'query' : 'queries'}.`
-                : `Web Fetch completed for ${count} ${count === 1 ? 'webpage' : 'webpages'}.`;
+                ? `${wrenchSvg}Web Search · completed for ${count} ${count === 1 ? 'query' : 'queries'}.`
+                : `${wrenchSvg}Web Fetch · completed for ${count} ${count === 1 ? 'webpage' : 'webpages'}.`;
               badgeHtml = `
                 <div class="genai-inline-tool genai-tool-done" id="genai-tool-${idx}" style="margin: var(--space-1) 0;">
-                  <span class="genai-working-text" style="${onceSweepStyle} margin: 0; padding: 0;">${doneText}</span>
+                  <span class="genai-working-text" style="${onceSweepStyle}">${doneText}</span>
                 </div>
               `;
             }
@@ -3273,7 +3275,7 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
               <div class="genai-inline-tool genai-tool-pending" id="genai-tool-${idx}" style="width: 100%; display: grid; margin-top: 10px;">
                 <div style="grid-area: 1 / 1; width: 100%; border: 1px solid var(--primary); padding: 12px; border-radius: var(--radius-md); background: rgba(var(--primary-rgb), 0.05); animation: fadeIn 0.3s ease; box-sizing: border-box;">
                   <div style="font-weight: bold; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
-                    <span style="font-size: 1.2em;">⚙️</span> Запрос разрешения
+                    ${wrenchSvg} Запрос разрешения
                   </div>
                   <div style="font-size: 0.9em; margin-bottom: 10px; opacity: 0.9; line-height: 1.5;">
                     GenAI хочет ${detailHtml}. Разрешить?
@@ -3295,11 +3297,12 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
             let text = 'Working...';
             if (tool.action && tool.action.genai_action === 'generate_image' && tool.action.loading_message) {
               text = tool.action.loading_message;
+            } else if (tool.action && tool.action.genai_action) {
+              text = `${tool.action.genai_action} · Working...`;
             }
-            badgeHtml = `<div class="genai-inline-tool genai-tool-working" id="genai-tool-${idx}" style="display: flex; flex-direction: column; gap: 8px;">
+            badgeHtml = `<div class="genai-inline-tool genai-tool-working" id="genai-tool-${idx}" style="display: flex; flex-direction: column; gap: 8px; margin: var(--space-1) 0;">
               <div style="display: flex; align-items: center; gap: 8px;">
-                <div class="genai-working-dots" style="display:flex; gap:3px;"><span></span><span></span><span></span></div>
-                <span class="genai-working-text" style="font-size: var(--text-xs); font-style: italic; margin-left: 4px;">${escapeHtml(text)}</span>
+                <span class="genai-working-text" style="font-size: var(--text-xs); font-style: italic;">${wrenchSvg}${escapeHtml(text)}</span>
               </div>
               <div class="live-preview-container hidden" style="position: relative; max-width: 360px; width: 100%; border-radius: var(--radius-md); overflow: hidden; border: 1px solid var(--border-light); background: rgba(0,0,0,0.15);">
                 <img class="live-preview-img" style="width: 100%; height: auto; filter: blur(8px); transition: filter 1s ease, transform 0.5s ease; display: block;">
@@ -3313,12 +3316,7 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
               ? renderMemoryListCardHtml(toolResultForRender)
               : resultBadgeForAction(tool.action, toolResultForRender);
 
-            let text = 'Working...';
-            if (tool.action && tool.action.genai_action === 'generate_image' && tool.action.loading_message) {
-              text = tool.action.loading_message;
-            }
             badgeHtml = `<div class="genai-inline-tool genai-tool-done" id="genai-tool-${idx}">
-              <span class="genai-working-text exiting">${escapeHtml(text)}</span>
               ${badge}
             </div>`;
           }
@@ -3361,7 +3359,7 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
   }
 
   let html = '';
-  if (!isGeneratingOrWorking && lastMarkerEnd !== -1 && entry.tools && entry.tools.length > 0) {
+  if (!isGeneratingOrWorking && lastMarkerEnd !== -1 && ((entry.tools && entry.tools.length > 0) || (entry.thinking_blocks && entry.thinking_blocks.length > 1))) {
     const processText = processedText.substring(0, lastMarkerEnd);
     const finalText = processedText.substring(lastMarkerEnd).trim();
 
@@ -5669,6 +5667,16 @@ function finishGeneration() {
   const assistantMsgs = messagesEl ? messagesEl.querySelectorAll('.genai-msg.genai-assistant') : [];
   const lastBubble = assistantMsgs.length > 0 ? assistantMsgs[assistantMsgs.length - 1] : null;
   const textCont = lastBubble?.querySelector('.genai-msg-text-container');
+
+  if (lastBubble && assistantMsgs.length > 0) {
+    const lastEntry = genaiHistory[genaiHistory.length - 1];
+    if (lastEntry && lastEntry.role === 'assistant') {
+      const bubble = lastBubble.querySelector('.genai-msg-bubble');
+      if (bubble) {
+        renderAssistantBubble(lastEntry, bubble, { cursor: false, streaming: false });
+      }
+    }
+  }
 
   if (settings.new_streaming_animation && textCont?._revealInterval && (textCont._revealProgress < (textCont._rawCharCount || 0))) {
     setGenAIActionState('skip');

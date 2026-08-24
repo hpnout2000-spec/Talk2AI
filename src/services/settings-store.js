@@ -2,7 +2,7 @@
    Settings Store — Persistent app settings via Tauri or localStorage
    ════════════════════════════════════════════════════════════════════ */
 
-const DEFAULT_INSTRUCT_TEMPLATES = [
+export const DEFAULT_INSTRUCT_TEMPLATES = [
   {
     id: 'gemma2',
     name: 'Gemma 2 / Gemma 3',
@@ -185,7 +185,7 @@ const DEFAULT_INSTRUCT_TEMPLATES = [
   }
 ];
 
-const DEFAULT_CONTEXT_TEMPLATES = [
+export const DEFAULT_CONTEXT_TEMPLATES = [
   {
     id: 'gemma2',
     name: 'Gemma 2 / Gemma 3',
@@ -272,6 +272,8 @@ const STD_SAMPLER_DEFAULTS = {
   ignore_eos: false,
   banned_strings_enabled: false,
   banned_strings: '',
+  logit_bias_enabled: false,
+  logit_bias: '',
   sampler_order_enabled: false,
   sampler_order: [6, 0, 1, 3, 4, 2, 5],
   genai_system_prompt_addition: ''
@@ -356,6 +358,8 @@ const DEFAULTS = {
   ignore_eos: false,
   banned_strings_enabled: false,
   banned_strings: '',
+  logit_bias_enabled: false,
+  logit_bias: '',
   sampler_order_enabled: false,
   sampler_order: [6, 0, 1, 3, 4, 2, 5],
 
@@ -442,6 +446,8 @@ const DEFAULTS = {
   genai_ignore_eos: false,
   genai_banned_strings_enabled: false,
   genai_banned_strings: '',
+  genai_logit_bias_enabled: false,
+  genai_logit_bias: '',
   genai_sampler_order_enabled: false,
   genai_sampler_order: [6, 0, 1, 3, 4, 2, 5],
   active_genai_generation_preset_id: 'default',

@@ -2317,7 +2317,7 @@
             </div>
             <div class="form-group">
               <label for="setting-prompt-token-limit">Prompt Token Limit</label>
-              <input type="number" id="setting-prompt-token-limit" placeholder="4096" style="padding: var(--space-3); background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: var(--radius-md); color: var(--text-primary); font-family: var(--font-sans); font-size: var(--text-sm); width: 100%;" />
+              <input type="number" id="setting-prompt-token-limit" placeholder="4096" />
             </div>
             <div class="form-group-row">
               <label>Gemma 4 Support</label>
@@ -3794,12 +3794,22 @@
                   </svg>
                   <span>AI Comments</span>
                 </button>
-                <button class="nav-item" data-tab="advanced-formatting">
+                <button class="nav-item" data-tab="context-template">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="16 18 22 12 16 6"/>
-                    <polyline points="8 6 2 12 8 18"/>
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                    <polyline points="10 9 9 9 8 9"></polyline>
                   </svg>
-                  <span>Advanced Formatting</span>
+                  <span>Context Template</span>
+                </button>
+                <button class="nav-item" data-tab="instruct-template">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="4 17 10 11 4 5"></polyline>
+                    <line x1="12" y1="19" x2="20" y2="19"></line>
+                  </svg>
+                  <span>Instruct Template</span>
                 </button>
               </nav>
 
@@ -4455,6 +4465,17 @@
                             <label for="adv-setting-banned-strings" style="font-size: 11px; color: var(--text-tertiary);">Banned Strings (comma separated)</label>
                             <input type="text" id="adv-setting-banned-strings" class="sampler-inline-input" placeholder='e.g. "As an AI", "In conclusion"' />
                           </div>
+                          <div class="sampler-label-wrap" style="margin-top: 4px;">
+                            <label for="adv-setting-logit-bias-enabled" style="font-weight: 600;">Logit Bias</label>
+                            <label class="toggle-switch">
+                              <input type="checkbox" id="adv-setting-logit-bias-enabled" />
+                              <span class="toggle-slider"></span>
+                            </label>
+                          </div>
+                          <div>
+                            <textarea id="adv-setting-logit-bias" class="textarea-premium" style="min-height: 54px; font-family: monospace; font-size: 11px; width: 100%; box-sizing: border-box;" placeholder='JSON {"68754": -100} or ST format [{"text":"68754","value":-100}] or 68754:-100, 39041:-100'></textarea>
+                            <p class="sampler-hint">Biases token selection probability (-100 to 100).</p>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -5090,6 +5111,17 @@
                             <label for="adv-setting-genai-banned-strings" style="font-size: 11px; color: var(--text-tertiary);">Banned Strings (comma separated)</label>
                             <input type="text" id="adv-setting-genai-banned-strings" class="sampler-inline-input" placeholder='e.g. "As an AI", "In conclusion"' />
                           </div>
+                          <div class="sampler-label-wrap" style="margin-top: 4px;">
+                            <label for="adv-setting-genai-logit-bias-enabled" style="font-weight: 600;">Logit Bias</label>
+                            <label class="toggle-switch">
+                              <input type="checkbox" id="adv-setting-genai-logit-bias-enabled" />
+                              <span class="toggle-slider"></span>
+                            </label>
+                          </div>
+                          <div>
+                            <textarea id="adv-setting-genai-logit-bias" class="textarea-premium" style="min-height: 54px; font-family: monospace; font-size: 11px; width: 100%; box-sizing: border-box;" placeholder='JSON {"68754": -100} or ST format [{"text":"68754","value":-100}] or 68754:-100, 39041:-100'></textarea>
+                            <p class="sampler-hint">Biases token selection probability (-100 to 100).</p>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -5121,142 +5153,328 @@
                   </div>
                 </div>
 
-                <!-- Advanced Formatting Tab -->
-                <div id="tab-advanced-formatting" class="tab-content">
-                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; height: 100%;">
-                    
-                    <!-- Left: Context Template -->
-                    <div style="display: flex; flex-direction: column; gap: 12px; background: rgba(0,0,0,0.15); padding: 16px; border-radius: var(--radius-lg); border: 1px solid var(--border-subtle); overflow-y: auto;">
-                      <div class="presets-row-container">
-                        <h3 style="margin:0;">Context Template</h3>
-                        <div class="preset-controls-group">
-                          <select id="adv-fmt-context-select" class="form-control preset-select-control"></select>
-                          <button id="btn-add-context-template" class="btn-secondary small preset-btn-add">Save As New</button>
-                          <button id="btn-delete-context-template" class="btn-icon small text-error preset-btn-delete" title="Delete template">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                          </button>
+                <!-- Context Template Tab -->
+                <div id="tab-context-template" class="tab-content">
+                  <div class="presets-row-container">
+                    <h3>Context Templates</h3>
+                    <div class="preset-controls-group">
+                      <!-- Custom Context Preset Dropdown -->
+                      <div class="custom-preset-dropdown-wrap" id="context-preset-dropdown-wrap">
+                        <button type="button" class="custom-preset-trigger" id="btn-context-preset-trigger">
+                          <span class="custom-preset-name" id="context-preset-selected-name">Gemma 2 / Gemma 3</span>
+                          <svg class="custom-preset-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                          </svg>
+                        </button>
+                        <div class="custom-preset-menu hidden" id="context-preset-menu">
+                          <div class="custom-preset-menu-header">
+                            <div class="preset-search-wrap" id="context-preset-search-wrap">
+                              <button type="button" class="preset-header-btn btn-preset-search-toggle" id="btn-context-preset-search-toggle" title="Search templates">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;">
+                                  <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                </svg>
+                              </button>
+                              <input type="text" class="preset-search-input" id="context-preset-search-input" placeholder="Search..." autocomplete="off" />
+                              <button type="button" class="preset-search-clear hidden" id="btn-context-preset-search-clear" title="Clear search">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 11px; height: 11px;">
+                                  <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                              </button>
+                            </div>
+                            <button type="button" class="preset-header-btn btn-preset-sort-toggle" id="btn-context-preset-sort-toggle" title="Sort order" data-sort="default">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;">
+                                <path d="M3 6h18M6 12h12M10 18h4"></path>
+                              </svg>
+                              <span class="sort-label" id="context-preset-sort-label">Date</span>
+                            </button>
+                          </div>
+                          <div class="custom-preset-list" id="context-preset-list"></div>
                         </div>
                       </div>
 
-                      <div class="form-group">
-                        <label for="adv-fmt-context-name">Template Name</label>
+                      <button id="btn-add-context-template" class="btn-secondary small preset-btn-add" title="Save current context template as a new template">Save As New</button>
+                      <button id="btn-reset-context-template" class="btn-secondary small preset-btn-reset" title="Reset default context template to original values">Reset</button>
+                      <button id="btn-delete-context-template" class="btn-icon small text-error preset-btn-delete" title="Delete current context template">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- 2-Column Dashboard Grid -->
+                  <div class="sampler-dashboard-grid">
+                    <!-- Card 1: Story String & Template Info (Full Width) -->
+                    <div class="sampler-card sampler-card-full">
+                      <div class="sampler-card-header">
+                        <h4 class="sampler-card-title">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                          <span>Story String & Template Details</span>
+                        </h4>
+                      </div>
+
+                      <div class="sampler-control-row">
+                        <label for="adv-fmt-context-name" style="font-weight: 600;">Template Name</label>
                         <input type="text" id="adv-fmt-context-name" class="form-control" placeholder="Gemma 2" />
                       </div>
 
-                      <div class="form-group" style="flex: 1; display: flex; flex-direction: column;">
-                        <label for="adv-fmt-story-string">Story String</label>
-                        <textarea id="adv-fmt-story-string" class="textarea-premium" style="flex: 1; min-height: 120px; font-family: monospace; font-size: 12px;" placeholder="{{#if system}}{{system}}{{/if}}..."></textarea>
-                        <p class="form-hint">Macros: {{system}}, {{description}}, {{personality}}, {{scenario}}, {{persona}}, {{wiBefore}}, {{wiAfter}}, {{anchorBefore}}, {{anchorAfter}}, {{trim}}</p>
-                      </div>
-
-                      <div class="form-group">
-                        <label for="adv-fmt-context-position">Position</label>
-                        <select id="adv-fmt-context-position" class="form-control">
-                          <option value="top">Default (top of context)</option>
-                          <option value="bottom">Bottom of context</option>
-                        </select>
-                      </div>
-
-                      <div class="form-group">
-                        <label for="adv-fmt-example-separator">Example Separator</label>
-                        <input type="text" id="adv-fmt-example-separator" class="form-control" placeholder="***" />
-                      </div>
-
-                      <h4 style="font-size: 12px; margin-top: 8px; margin-bottom: 4px; color: var(--text-secondary);">Context Formatting Options</h4>
-                      
-                      <div class="form-group-row">
-                        <label for="adv-fmt-always-add-name" style="font-size: 12px;">Always add character's name to prompt</label>
-                        <input type="checkbox" id="adv-fmt-always-add-name" />
-                      </div>
-                      <div class="form-group-row">
-                        <label for="adv-fmt-collapse-newlines" style="font-size: 12px;">Collapse Consecutive Newlines</label>
-                        <input type="checkbox" id="adv-fmt-collapse-newlines" />
-                      </div>
-                      <div class="form-group-row">
-                        <label for="adv-fmt-trim-spaces" style="font-size: 12px;">Trim spaces</label>
-                        <input type="checkbox" id="adv-fmt-trim-spaces" />
-                      </div>
-                      <div class="form-group-row">
-                        <label for="adv-fmt-separators-as-stop" style="font-size: 12px;">Separators as Stop Strings</label>
-                        <input type="checkbox" id="adv-fmt-separators-as-stop" />
-                      </div>
-                      <div class="form-group-row">
-                        <label for="adv-fmt-names-as-stop" style="font-size: 12px;">Names as Stop Strings</label>
-                        <input type="checkbox" id="adv-fmt-names-as-stop" />
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-fmt-story-string" style="font-weight: 600;">Story String Template</label>
+                        </div>
+                        <textarea id="adv-fmt-story-string" class="textarea-premium" style="min-height: 190px; font-family: monospace; font-size: 12px; line-height: 1.5;" placeholder="{{#if system}}{{system}}{{/if}}..."></textarea>
+                        <p class="sampler-hint">Supported Macros: <code>{{system}}</code>, <code>{{description}}</code>, <code>{{personality}}</code>, <code>{{scenario}}</code>, <code>{{persona}}</code>, <code>{{mesExamples}}</code>, <code>{{wiBefore}}</code>, <code>{{wiAfter}}</code>, <code>{{anchorBefore}}</code>, <code>{{anchorAfter}}</code>, <code>{{trim}}</code></p>
                       </div>
                     </div>
 
-                    <!-- Right: Instruct Template -->
-                    <div style="display: flex; flex-direction: column; gap: 12px; background: rgba(0,0,0,0.15); padding: 16px; border-radius: var(--radius-lg); border: 1px solid var(--border-subtle); overflow-y: auto;">
-                      <div class="presets-row-container">
-                        <h3 style="margin:0;">Instruct Template</h3>
-                        <div class="preset-controls-group">
-                          <select id="adv-fmt-instruct-select" class="form-control preset-select-control"></select>
-                          <button id="btn-add-instruct-template" class="btn-secondary small preset-btn-add">Save As New</button>
-                          <button id="btn-delete-instruct-template" class="btn-icon small text-error preset-btn-delete" title="Delete template">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                          </button>
+                    <!-- Card 2: Context Placement & Separators -->
+                    <div class="sampler-card">
+                      <div class="sampler-card-header">
+                        <h4 class="sampler-card-title">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+                          <span>Placement & Separators</span>
+                        </h4>
+                      </div>
+
+                      <div class="sampler-control-row">
+                        <label for="adv-fmt-context-position" style="font-weight: 600;">Context Position</label>
+                        <select id="adv-fmt-context-position" class="form-control" style="background: var(--bg-tertiary);">
+                          <option value="top">Default (Top of Context)</option>
+                          <option value="bottom">Bottom of Context</option>
+                        </select>
+                        <p class="sampler-hint">Where the Story String is placed relative to dialogue history.</p>
+                      </div>
+
+                      <div class="sampler-control-row">
+                        <label for="adv-fmt-example-separator" style="font-weight: 600;">Example Separator</label>
+                        <input type="text" id="adv-fmt-example-separator" class="form-control" placeholder="***" />
+                        <p class="sampler-hint">String used to separate example dialogue turns.</p>
+                      </div>
+                    </div>
+
+                    <!-- Card 3: Formatting & Stop Sequences -->
+                    <div class="sampler-card">
+                      <div class="sampler-card-header">
+                        <h4 class="sampler-card-title">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                          <span>Formatting & Stop Rules</span>
+                        </h4>
+                      </div>
+
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-fmt-always-add-name">Always add character's name to prompt</label>
+                          <label class="toggle-switch">
+                            <input type="checkbox" id="adv-fmt-always-add-name" />
+                            <span class="toggle-slider"></span>
+                          </label>
                         </div>
                       </div>
 
-                      <div class="form-group">
-                        <label for="adv-fmt-instruct-name">Template Name</label>
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-fmt-collapse-newlines">Collapse Consecutive Newlines</label>
+                          <label class="toggle-switch">
+                            <input type="checkbox" id="adv-fmt-collapse-newlines" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                      </div>
+
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-fmt-trim-spaces">Trim spaces</label>
+                          <label class="toggle-switch">
+                            <input type="checkbox" id="adv-fmt-trim-spaces" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                      </div>
+
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-fmt-separators-as-stop">Separators as Stop Strings</label>
+                          <label class="toggle-switch">
+                            <input type="checkbox" id="adv-fmt-separators-as-stop" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                      </div>
+
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-fmt-names-as-stop">Names as Stop Strings</label>
+                          <label class="toggle-switch">
+                            <input type="checkbox" id="adv-fmt-names-as-stop" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Instruct Template Tab -->
+                <div id="tab-instruct-template" class="tab-content">
+                  <div class="presets-row-container">
+                    <h3>Instruct Templates</h3>
+                    <div class="preset-controls-group">
+                      <!-- Custom Instruct Preset Dropdown -->
+                      <div class="custom-preset-dropdown-wrap" id="instruct-preset-dropdown-wrap">
+                        <button type="button" class="custom-preset-trigger" id="btn-instruct-preset-trigger">
+                          <span class="custom-preset-name" id="instruct-preset-selected-name">Gemma 2 / Gemma 3</span>
+                          <svg class="custom-preset-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="6 9 12 15 18 9"></polyline>
+                          </svg>
+                        </button>
+                        <div class="custom-preset-menu hidden" id="instruct-preset-menu">
+                          <div class="custom-preset-menu-header">
+                            <div class="preset-search-wrap" id="instruct-preset-search-wrap">
+                              <button type="button" class="preset-header-btn btn-preset-search-toggle" id="btn-instruct-preset-search-toggle" title="Search templates">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;">
+                                  <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                </svg>
+                              </button>
+                              <input type="text" class="preset-search-input" id="instruct-preset-search-input" placeholder="Search..." autocomplete="off" />
+                              <button type="button" class="preset-search-clear hidden" id="btn-instruct-preset-search-clear" title="Clear search">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 11px; height: 11px;">
+                                  <line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line>
+                                </svg>
+                              </button>
+                            </div>
+                            <button type="button" class="preset-header-btn btn-preset-sort-toggle" id="btn-instruct-preset-sort-toggle" title="Sort order" data-sort="default">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;">
+                                <path d="M3 6h18M6 12h12M10 18h4"></path>
+                              </svg>
+                              <span class="sort-label" id="instruct-preset-sort-label">Date</span>
+                            </button>
+                          </div>
+                          <div class="custom-preset-list" id="instruct-preset-list"></div>
+                        </div>
+                      </div>
+
+                      <button id="btn-add-instruct-template" class="btn-secondary small preset-btn-add" title="Save current instruct template as a new template">Save As New</button>
+                      <button id="btn-reset-instruct-template" class="btn-secondary small preset-btn-reset" title="Reset default instruct template to original values">Reset</button>
+                      <button id="btn-delete-instruct-template" class="btn-icon small text-error preset-btn-delete" title="Delete current instruct template">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- 2-Column Dashboard Grid -->
+                  <div class="sampler-dashboard-grid">
+                    <!-- Card 1: Template Rules & Behavior -->
+                    <div class="sampler-card">
+                      <div class="sampler-card-header">
+                        <h4 class="sampler-card-title">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                          <span>Template Rules & Matching</span>
+                        </h4>
+                      </div>
+
+                      <div class="sampler-control-row">
+                        <label for="adv-fmt-instruct-name" style="font-weight: 600;">Template Name</label>
                         <input type="text" id="adv-fmt-instruct-name" class="form-control" placeholder="Gemma 2" />
                       </div>
 
-                      <div class="form-group">
-                        <label for="adv-fmt-activation-regex">Activation Regex</label>
+                      <div class="sampler-control-row">
+                        <label for="adv-fmt-activation-regex" style="font-weight: 600;">Activation Regex</label>
                         <input type="text" id="adv-fmt-activation-regex" class="form-control" placeholder="e.g. /gemma(-)?(2|3)/i" />
+                        <p class="sampler-hint">Regex pattern to auto-select this template based on model filename.</p>
                       </div>
 
-                      <div class="form-group-row">
-                        <label for="adv-fmt-wrap-newlines" style="font-size: 12px;">Wrap Sequences with Newline</label>
-                        <input type="checkbox" id="adv-fmt-wrap-newlines" />
-                      </div>
-                      <div class="form-group-row">
-                        <label for="adv-fmt-replace-macro" style="font-size: 12px;">Replace Macro in Sequences</label>
-                        <input type="checkbox" id="adv-fmt-replace-macro" />
-                      </div>
-                      <div class="form-group-row">
-                        <label for="adv-fmt-seq-as-stop" style="font-size: 12px;">Sequences as Stop Strings</label>
-                        <input type="checkbox" id="adv-fmt-seq-as-stop" />
-                      </div>
-
-                      <div class="form-group">
-                        <label for="adv-fmt-include-names">Include Names</label>
-                        <select id="adv-fmt-include-names" class="form-control">
+                      <div class="sampler-control-row">
+                        <label for="adv-fmt-include-names" style="font-weight: 600;">Include Names</label>
+                        <select id="adv-fmt-include-names" class="form-control" style="background: var(--bg-tertiary);">
                           <option value="none">None</option>
                           <option value="user_assistant">User and Assistant</option>
                           <option value="all">Groups and Past Personas</option>
                         </select>
+                        <p class="sampler-hint">Automatically prepends name prefix (e.g. "User: ") to messages.</p>
                       </div>
 
-                      <h4 style="font-size: 12px; margin-top: 8px; margin-bottom: 4px; color: var(--text-secondary);">Instruct Sequences</h4>
-                      
-                      <div class="form-group" style="margin-bottom: 6px;">
-                        <label style="font-size: 11px;">User Message Sequences (Prefix / Suffix)</label>
-                        <div style="display: flex; gap: 6px;">
-                          <input type="text" id="adv-fmt-user-prefix" class="form-control" style="font-size: 11px;" placeholder="<start_of_turn>user\n" />
-                          <input type="text" id="adv-fmt-user-suffix" class="form-control" style="font-size: 11px;" placeholder="<end_of_turn>\n" />
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-fmt-wrap-newlines">Wrap Sequences with Newline</label>
+                          <label class="toggle-switch">
+                            <input type="checkbox" id="adv-fmt-wrap-newlines" />
+                            <span class="toggle-slider"></span>
+                          </label>
                         </div>
                       </div>
 
-                      <div class="form-group" style="margin-bottom: 6px;">
-                        <label style="font-size: 11px;">Assistant Message Sequences (Prefix / Suffix)</label>
-                        <div style="display: flex; gap: 6px;">
-                          <input type="text" id="adv-fmt-assistant-prefix" class="form-control" style="font-size: 11px;" placeholder="<start_of_turn>model\n" />
-                          <input type="text" id="adv-fmt-assistant-suffix" class="form-control" style="font-size: 11px;" placeholder="<end_of_turn>\n" />
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-fmt-replace-macro">Replace Macro in Sequences</label>
+                          <label class="toggle-switch">
+                            <input type="checkbox" id="adv-fmt-replace-macro" />
+                            <span class="toggle-slider"></span>
+                          </label>
                         </div>
                       </div>
 
-                      <div class="form-group" style="margin-bottom: 6px;">
-                        <label style="font-size: 11px;">Story String Sequences (Prefix / Suffix)</label>
-                        <div style="display: flex; gap: 6px;">
-                          <input type="text" id="adv-fmt-story-prefix" class="form-control" style="font-size: 11px;" placeholder="<start_of_turn>user\n" />
-                          <input type="text" id="adv-fmt-story-suffix" class="form-control" style="font-size: 11px;" placeholder="<end_of_turn>\n" />
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-fmt-seq-as-stop">Sequences as Stop Strings</label>
+                          <label class="toggle-switch">
+                            <input type="checkbox" id="adv-fmt-seq-as-stop" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Card 2: Message Turn & Story Sequences -->
+                    <div class="sampler-card">
+                      <div class="sampler-card-header">
+                        <h4 class="sampler-card-title">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                          <span>Turn Sequences & Suffixes</span>
+                        </h4>
+                      </div>
+
+                      <!-- User Turn -->
+                      <div class="sampler-control-row">
+                        <label style="font-weight: 600; font-size: 12px;">User Turn (Prefix / Suffix)</label>
+                        <div style="display: flex; gap: 8px; margin-top: 4px;">
+                          <div style="flex: 1;">
+                            <label for="adv-fmt-user-prefix" style="font-size: 11px; color: var(--text-tertiary);">Prefix</label>
+                            <input type="text" id="adv-fmt-user-prefix" class="form-control" style="font-family: monospace; font-size: 11px;" placeholder="<start_of_turn>user\n" />
+                          </div>
+                          <div style="flex: 1;">
+                            <label for="adv-fmt-user-suffix" style="font-size: 11px; color: var(--text-tertiary);">Suffix</label>
+                            <input type="text" id="adv-fmt-user-suffix" class="form-control" style="font-family: monospace; font-size: 11px;" placeholder="<end_of_turn>\n" />
+                          </div>
                         </div>
                       </div>
 
+                      <!-- Assistant Turn -->
+                      <div class="sampler-control-row">
+                        <label style="font-weight: 600; font-size: 12px;">Assistant Turn (Prefix / Suffix)</label>
+                        <div style="display: flex; gap: 8px; margin-top: 4px;">
+                          <div style="flex: 1;">
+                            <label for="adv-fmt-assistant-prefix" style="font-size: 11px; color: var(--text-tertiary);">Prefix</label>
+                            <input type="text" id="adv-fmt-assistant-prefix" class="form-control" style="font-family: monospace; font-size: 11px;" placeholder="<start_of_turn>model\n" />
+                          </div>
+                          <div style="flex: 1;">
+                            <label for="adv-fmt-assistant-suffix" style="font-size: 11px; color: var(--text-tertiary);">Suffix</label>
+                            <input type="text" id="adv-fmt-assistant-suffix" class="form-control" style="font-family: monospace; font-size: 11px;" placeholder="<end_of_turn>\n" />
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- Story Turn -->
+                      <div class="sampler-control-row">
+                        <label style="font-weight: 600; font-size: 12px;">Story / System Turn (Prefix / Suffix)</label>
+                        <div style="display: flex; gap: 8px; margin-top: 4px;">
+                          <div style="flex: 1;">
+                            <label for="adv-fmt-story-prefix" style="font-size: 11px; color: var(--text-tertiary);">Prefix</label>
+                            <input type="text" id="adv-fmt-story-prefix" class="form-control" style="font-family: monospace; font-size: 11px;" placeholder="<start_of_turn>user\n" />
+                          </div>
+                          <div style="flex: 1;">
+                            <label for="adv-fmt-story-suffix" style="font-size: 11px; color: var(--text-tertiary);">Suffix</label>
+                            <input type="text" id="adv-fmt-story-suffix" class="form-control" style="font-family: monospace; font-size: 11px;" placeholder="<end_of_turn>\n" />
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>

@@ -6,6 +6,7 @@ import { settingsStore } from './settings-store.js';
 import { localSyncService } from './local-sync-service.js';
 import { appState } from '../state.js';
 import { formatTextCompletionPrompt } from '../utils/text-completion-formatter.js';
+import { parseThinking } from '../utils/helpers.js';
 
 class RequestQueue {
   constructor() {
@@ -140,21 +141,34 @@ export function stripThinkingTags(text) {
   if (!text) return '';
   let clean = String(text).trim();
 
-  // 1. Strip standard <think>...</think> blocks
-  clean = clean.replace(/<think>[\s\S]*?<\/think>/gi, '');
+  // 1. Strip standard <think>...</think>, <thought>...</thought>, <reasoning>...</reasoning> blocks
+  clean = clean.replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, '');
+  clean = clean.replace(/<thought>[\s\S]*?<\/thought>/gi, '');
+  clean = clean.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '');
+  clean = clean.replace(/\[THINKING\][\s\S]*?\[\/THINKING\]/gi, '');
+  clean = clean.replace(/\[REASONING\][\s\S]*?\[\/REASONING\]/gi, '');
 
-  // 2. Strip <|channel>thought or <|channel|>thought blocks completely
-  clean = clean.replace(/<\|?channel\|?>?thought[\s\S]*?(?=<\|?channel\|?>?commentary|<\|?channel\|?>?call|<\|?channel\|?>?final_response|\n\n[A-Z0-9#*-]|\n\n\S|$)/gi, '');
+  // 2. Strip <|thought|>...</|thought|>, <|think|>...</|think|>
+  clean = clean.replace(/<\|(?:think|thought|reasoning)\|>[\s\S]*?<\|(?:\/|end_of_|thought_)?(?:think|thought|reasoning)?\|?>/gi, '');
+
+  // 3. Strip <|channel|>thought blocks and channel markers
+  clean = clean.replace(/<\|?channel\|?>?thought[\s\S]*?(?=<\|?channel\|?>?(?:commentary|call|final_response)|<channel\|?>|<\|channel\|?>|\n\n[A-Z0-9#*-]|\n\n\S|$)/gi, '');
   clean = clean.replace(/<\|?channel\|?>?thought/gi, '');
+  clean = clean.replace(/\(Reasoning budget exceeded\)[\s\S]*?(?=<\|?[^>]*channel[^>]*\|?>|<\/think>|$)/gi, '');
 
-  // 3. Strip any prefill strings inserted by system
+  // 4. Strip any prefill strings inserted by system
   clean = clean.replace(/^The user[\s\S]*?(?=\n\n|$)/gi, '');
   clean = clean.replace(/^Okay, let me think really quickly[\s\S]*?(?=\n\n|$)/gi, '');
 
-  // 4. Strip any remaining <|channel... tags
-  clean = clean.replace(/<\|?channel\|?>?[a-z_]*/gi, '');
-  clean = clean.replace(/<\/think>/gi, '');
-  clean = clean.replace(/<think>/gi, '');
+  // 5. Strip any remaining special tags, channel markers, and channel keywords
+  clean = clean.replace(/<\|[^>]+channel[^>]*\|?>?(?:[a-z_]+)?/gi, '');
+  clean = clean.replace(/<\|?channel\|?>?(?:commentary|call|final_response)?/gi, '');
+  clean = clean.replace(/<channel\|?>/gi, '');
+  clean = clean.replace(/<\|end_of_thought\|?>|<\|thought_end\|?>/gi, '');
+  clean = clean.replace(/<\/?(?:think|thought|reasoning)(?:ing)?>/gi, '');
+  clean = clean.replace(/<\|?\/?(?:think|thought|reasoning)\|?>/gi, '');
+  clean = clean.replace(/\[\/?(?:THINKING|REASONING)(?:_END)?\]/gi, '');
+  clean = clean.replace(/^(?:final_response|commentary|call)\b\s*/gim, '');
 
   return clean.trim();
 }
@@ -241,6 +255,75 @@ export function extractJsonFromText(text) {
   }
 
   console.error("extractJsonFromText failed to find valid JSON in text:", text);
+  return null;
+}
+
+export function parseLogitBias(input) {
+  if (!input) return null;
+  if (typeof input === 'object' && !Array.isArray(input)) {
+    const res = {};
+    for (const [k, v] of Object.entries(input)) {
+      const num = Number(v);
+      if (!isNaN(num)) {
+        const tokens = String(k).trim().split(/\s+/);
+        for (const tok of tokens) {
+          if (tok) res[tok] = num;
+        }
+      }
+    }
+    return Object.keys(res).length > 0 ? res : null;
+  }
+
+  if (Array.isArray(input)) {
+    const res = {};
+    for (const item of input) {
+      if (item && typeof item === 'object') {
+        const key = item.text ?? item.token ?? item.id;
+        const val = Number(item.value ?? item.bias);
+        if (key !== undefined && !isNaN(val)) {
+          const tokens = String(key).trim().split(/\s+/);
+          for (const tok of tokens) {
+            if (tok) res[tok] = val;
+          }
+        }
+      }
+    }
+    return Object.keys(res).length > 0 ? res : null;
+  }
+
+  if (typeof input === 'string') {
+    const trimmed = input.trim();
+    if (!trimmed) return null;
+
+    // Check if valid JSON
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        return parseLogitBias(parsed);
+      } catch (e) {
+        // Fall back to key:value string parsing
+      }
+    }
+
+    // Key-value parsing (e.g. "68754: -100, 235295 88679: 2")
+    const res = {};
+    const pairs = trimmed.split(/[,;\n]+/);
+    for (const pair of pairs) {
+      const parts = pair.split(':');
+      if (parts.length === 2) {
+        const key = parts[0].trim();
+        const val = Number(parts[1].trim());
+        if (key && !isNaN(val)) {
+          const tokens = key.split(/\s+/);
+          for (const tok of tokens) {
+            if (tok) res[tok] = val;
+          }
+        }
+      }
+    }
+    return Object.keys(res).length > 0 ? res : null;
+  }
+
   return null;
 }
 
@@ -442,6 +525,7 @@ export const api = {
           charPersonality: options.charPersonality || appState.currentCharacter?.personality || '',
           scenario: options.scenario || appState.currentCharacter?.scenario || '',
           persona: options.persona || appState.activePersona?.description || '',
+          mesExamples: options.mesExamples || appState.currentCharacter?.mes_example || '',
           systemPrompt: options.systemPrompt || '',
         });
 
@@ -575,6 +659,14 @@ export const api = {
       const bannedStrings = options.banned_strings ?? (isGenAI ? settings.genai_banned_strings : settings.banned_strings);
       if (bannedStrings) {
         body.banned_strings = typeof bannedStrings === 'string' ? bannedStrings.split(',').map(s => s.trim()).filter(Boolean) : bannedStrings;
+      }
+      const logitBiasEnabled = options.logit_bias_enabled ?? (isGenAI ? settings.genai_logit_bias_enabled : settings.logit_bias_enabled);
+      if (logitBiasEnabled) {
+        const rawBias = options.logit_bias ?? (isGenAI ? settings.genai_logit_bias : settings.logit_bias);
+        const parsedBias = parseLogitBias(rawBias);
+        if (parsedBias) {
+          body.logit_bias = parsedBias;
+        }
       }
 
       // Add reasoning_effort parameter (KoboldCpp parameter for thinking budget)
@@ -1401,8 +1493,11 @@ Focus ONLY on what is known or can be directly inferred from the history. Keep t
   },
 
   async generateChatName(messages, isCharacterChat = true) {
-    // Collect recent messages (up to 8) to evaluate context and language
-    const recentMessages = messages.slice(-8).map(m => `${m.role === 'user' ? 'User' : 'AI'}: ${m.content}`).join('\n');
+    // Collect recent messages (up to 8) to evaluate context and language, stripping thoughts from them
+    const recentMessages = messages.slice(-8).map(m => {
+      const cleanContent = stripThinkingTags(m.content) || m.content;
+      return `${m.role === 'user' ? 'User' : 'AI'}: ${cleanContent}`;
+    }).join('\n');
     
     let prompt = `You are an AI that creates very short, concise titles for chat sessions based on the provided conversation excerpt.\n`;
     if (isCharacterChat) {
@@ -1415,15 +1510,49 @@ Focus ONLY on what is known or can be directly inferred from the history. Keep t
       const response = await this.chatCompletion([
         { role: 'system', content: prompt }
       ], {
-        max_tokens: 30,
+        max_tokens: 80,
         reasoning_effort: 'none',
         thinking_budget: 0,
         isGenAI: !isCharacterChat
       });
       
-      let title = response.trim();
-      // Remove any surrounding quotes
-      title = title.replace(/^["']|["']$/g, '').trim();
+      let raw = response ? response.trim() : '';
+      if (!raw) return 'New Chat';
+
+      // 1. Try parsing thinking block
+      const parsed = parseThinking(raw);
+      let title = (parsed && parsed.content !== undefined && parsed.content !== null) ? parsed.content.trim() : raw;
+
+      // If parsed thinking existed and content was empty (e.g. unclosed thinking block truncated mid-way)
+      if (parsed && parsed.thinking && !parsed.content) {
+        return 'New Chat';
+      }
+
+      // 2. Strip any remaining thinking tags, channel markers, or reasoning budget notes
+      title = stripThinkingTags(title);
+
+      // 3. In case of multi-line response, find the first clean non-empty line
+      const lines = title.split(/\r?\n/)
+        .map(l => l.trim())
+        .filter(l => l && !/^(?:thought|thinking|reasoning)\b/i.test(l) && !/^\(Reasoning/i.test(l) && !/^(?:user|ai|assistant|system):/i.test(l) && !/^(?:final_response|commentary|call)\b/i.test(l));
+      
+      if (lines.length > 0) {
+        title = lines[0];
+      }
+
+      // 4. Remove common title label prefixes
+      title = title.replace(/^(?:Title|Chat Title|Topic|Subject|Название|Название чата|Тема)\s*:\s*/i, '');
+      title = title.replace(/^(?:Here is a title|Suggested title|Title proposal)\s*:\s*/i, '');
+
+      // 5. Remove markdown headers, bold, italics, backticks
+      title = title.replace(/^#+\s*/, '');
+      title = title.replace(/^[*_`]+|[*_`]+$/g, '');
+
+      // 6. Remove surrounding quotes and trailing punctuation
+      title = title.replace(/^["'«“]+|["'»”]+$/g, '').trim();
+      title = title.replace(/^[.\-–—:;,\s]+|[.\-–—:;,\s]+$/g, '').trim();
+      title = title.replace(/^["'«“]+|["'»”]+$/g, '').trim();
+
       return title || 'New Chat';
     } catch (e) {
       console.error('Failed to generate chat name:', e);
