@@ -319,7 +319,17 @@ export function initAdvancedSettings() {
   addInputListener('adv-setting-genai-logit-bias', true);
   addInputListener('adv-setting-genai-instruct-template-select', true);
   addInputListener('adv-setting-genai-context-template-select', true);
-  addInputListener('adv-setting-genai-system-prompt', true);
+  const genaiSysPromptEl = document.getElementById('adv-setting-genai-system-prompt');
+  if (genaiSysPromptEl) {
+    const handleSysPromptUpdate = () => {
+      const val = genaiSysPromptEl.value.trim();
+      currentSettings.genai_system_prompt_addition = val;
+      updateActiveGenerationPreset(true);
+      settingsStore.save({ ...settingsStore.get(), genai_system_prompt_addition: val });
+    };
+    genaiSysPromptEl.addEventListener('input', handleSysPromptUpdate);
+    genaiSysPromptEl.addEventListener('change', handleSysPromptUpdate);
+  }
 
   const setupDynaTempSync = (isGenAI) => {
     const prefix = isGenAI ? 'adv-setting-genai-' : 'adv-setting-';
@@ -1365,7 +1375,7 @@ function applyGenerationPreset(presetId, isGenAI) {
 
     const genaiSystemPromptEl = document.getElementById('adv-setting-genai-system-prompt');
     if (genaiSystemPromptEl) {
-      genaiSystemPromptEl.value = source.genai_system_prompt_addition ?? '';
+      genaiSystemPromptEl.value = (source && source.genai_system_prompt_addition) ? source.genai_system_prompt_addition : (currentSettings.genai_system_prompt_addition || '');
     }
 
     applyExtendedSamplersToUI(source, true);
@@ -2226,7 +2236,7 @@ function loadContextTemplateToEditor(id) {
   if (document.getElementById('adv-fmt-context-name')) document.getElementById('adv-fmt-context-name').value = t.name || '';
   if (document.getElementById('adv-fmt-story-string')) document.getElementById('adv-fmt-story-string').value = t.story_string || '';
   if (document.getElementById('adv-fmt-context-position')) document.getElementById('adv-fmt-context-position').value = t.position || 'top';
-  if (document.getElementById('adv-fmt-example-separator')) document.getElementById('adv-fmt-example-separator').value = t.example_separator || '***';
+  if (document.getElementById('adv-fmt-example-separator')) document.getElementById('adv-fmt-example-separator').value = t.example_separator !== undefined ? t.example_separator : '***';
   if (document.getElementById('adv-fmt-always-add-name')) document.getElementById('adv-fmt-always-add-name').checked = !!t.always_add_character_name;
   if (document.getElementById('adv-fmt-collapse-newlines')) document.getElementById('adv-fmt-collapse-newlines').checked = !!t.collapse_newlines;
   if (document.getElementById('adv-fmt-trim-spaces')) document.getElementById('adv-fmt-trim-spaces').checked = !!t.trim_spaces;
@@ -2528,7 +2538,7 @@ function setupFormattingTemplateListeners() {
     }
     t.story_string = document.getElementById('adv-fmt-story-string')?.value || '';
     t.position = document.getElementById('adv-fmt-context-position')?.value || 'top';
-    t.example_separator = document.getElementById('adv-fmt-example-separator')?.value || '***';
+    t.example_separator = document.getElementById('adv-fmt-example-separator')?.value ?? '';
     t.always_add_character_name = !!document.getElementById('adv-fmt-always-add-name')?.checked;
     t.collapse_newlines = !!document.getElementById('adv-fmt-collapse-newlines')?.checked;
     t.trim_spaces = !!document.getElementById('adv-fmt-trim-spaces')?.checked;

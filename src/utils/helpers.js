@@ -14,6 +14,17 @@ export function generateId() {
 }
 
 /**
+ * Unescapes string escape sequences like \n, \r, \t entered in text inputs.
+ */
+export function unescapeString(str) {
+  if (!str || typeof str !== 'string') return '';
+  return str
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\r')
+    .replace(/\\t/g, '\t');
+}
+
+/**
  * Format a date string to a friendly relative format (e.g. 'just now', '1m ago', '5m ago', '2h ago', 'yesterday', '3d ago', 'Aug 21')
  */
 export function formatTime(isoString) {
@@ -827,10 +838,10 @@ export function parseThinking(text, customOpen = null, customClose = null) {
   if (typeof text !== 'string') return { thinking: null, content: '' };
   
   const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const defaultOpen = '<\\|?\\s*channel\\s*\\|?>?\\s*thought|<\\|?\\s*think(?:ing)?\\s*\\|?>|<\\|?\\s*thought\\s*\\|?>|<\\|?\\s*reasoning\\s*\\|?>|\\[THINKING\\]|\\[REASONING\\]';
+  const defaultOpen = '<\\|?\\s*channel\\s*\\|?>?\\s*thought|<\\|?\\s*think(?:ing)?\\s*\\|?>|<\\|?\\s*thought\\s*\\|?>|<\\|?\\s*reasoning\\s*\\|?>|\\[THINK(?:ING)?\\]|\\[REASONING\\]';
   const openPattern = customOpen ? escapeRegExp(customOpen) + '|' + defaultOpen : defaultOpen;
   
-  const defaultClose = '<\\/\\s*think(?:ing)?\\s*>|<\\/\\s*thought\\s*>|<\\/\\s*reasoning\\s*>|<\\|?\\s*\\/?\\s*channel\\s*\\|?>|<\\|?\\s*\\/\\s*think\\s*\\|?>|<\\|?\\s*\\/\\s*thought\\s*\\|?>|<\\|end_of_thought\\|?>|<\\|thought_end\\|?>|\\[\\/think(?:ing)?\\]|\\[\\/reasoning\\]|\\[THINKING_END\\]';
+  const defaultClose = '<\\/\\s*think(?:ing)?\\s*>|<\\/\\s*thought\\s*>|<\\/\\s*reasoning\\s*>|<\\|?\\s*\\/+\\s*channel\\s*\\|?>|<\\|?\\s*\\/+\\s*think(?:ing)?\\s*\\|?>|<\\|?\\s*\\/+\\s*thought\\s*\\|?>|<\\|end_of_thought\\|?>|<\\|thought_end\\|?>|\\[\\/think(?:ing)?\\]|\\[\\/reasoning\\]|\\[THINKING_END\\]';
   const closePattern = customClose ? escapeRegExp(customClose) + '|' + defaultClose : defaultClose;
 
   const thinkRegex = new RegExp(`(?:${openPattern})([\\s\\S]*?)(?:${closePattern})`, 'i');
@@ -849,12 +860,63 @@ export function parseThinking(text, customOpen = null, customClose = null) {
   // If no closing tag was found, but text starts with an open tag:
   const startMatch = text.match(new RegExp(`^(?:${openPattern})\\s*`, 'i'));
   if (startMatch) {
-    let thinking = text.substring(startMatch[0].length);
-    thinking = thinking.replace(cleanOpenRegex, '').trim();
+    const remainder = text.substring(startMatch[0].length);
+    const endMatch = remainder.match(new RegExp(closePattern, 'i'));
+    if (endMatch) {
+      let thinking = remainder.substring(0, endMatch.index).replace(cleanOpenRegex, '').trim();
+      let content = remainder.substring(endMatch.index + endMatch[0].length).replace(cleanOpenRegex, '').replace(cleanCloseRegex, '').trim();
+      return { thinking, content };
+    }
+    let thinking = remainder.replace(cleanOpenRegex, '').trim();
     return { thinking, content: '' };
   }
 
+  // If text starts with a close tag (e.g. prefill was added on server):
+  const closeMatch = text.match(new RegExp(`^\\s*(?:${closePattern})\\s*`, 'i'));
+  if (closeMatch) {
+    const content = text.substring(closeMatch[0].length).replace(cleanOpenRegex, '').replace(cleanCloseRegex, '').trim();
+    return { thinking: '', content };
+  }
+
+  // If text has an orphan close tag somewhere (thinking without open tag):
+  const orphanCloseMatch = text.match(new RegExp(closePattern, 'i'));
+  if (orphanCloseMatch && orphanCloseMatch.index !== undefined) {
+    const thinking = text.substring(0, orphanCloseMatch.index).replace(cleanOpenRegex, '').trim();
+    const content = text.substring(orphanCloseMatch.index + orphanCloseMatch[0].length).replace(cleanOpenRegex, '').replace(cleanCloseRegex, '').trim();
+    return { thinking, content };
+  }
+
   return { thinking: null, content: text };
+}
+
+/**
+ * Strips any unclosed leading thinking tags, channel markers, or prefills from the beginning of the response text.
+ */
+export function stripLeadingThinkingTags(text, customOpen = null) {
+  if (typeof text !== 'string' || !text) return '';
+  let clean = text.trimStart();
+
+  // 1. If text starts with a full thinking block with close tag (e.g. <|channel>thought...<channel|> or <think>...</think>), strip it
+  const fullBlockRegex = /^(?:<\|?\s*channel\s*\|?>?\s*thought[\s\S]*?(?:<channel\|?>|<\|channel\|?>|<\|\/channel\|?>)|<\|?\s*(?:think|thought|reasoning)(?:ing)?\s*\|?>[\s\S]*?(?:<\/\s*(?:think|thought|reasoning)(?:ing)?\s*>|<\|?\s*\/+\s*(?:think|thought|reasoning)(?:ing)?\s*\|?>|<\/+\|?\s*(?:think|thought|reasoning)(?:ing)?\s*\|?>|<\|end_of_thought\|?>|<\|thought_end\|?>)|<thought>[\s\S]*?<\/thought>|<reasoning>[\s\S]*?<\/reasoning>|\[THINK(?:ING)?\][\s\S]*?\[\/THINK(?:ING)?\])\s*/i;
+  clean = clean.replace(fullBlockRegex, '');
+
+  // 2. Strip only the opening thinking/channel tag at the very beginning of the text
+  const openTagPattern = /^(?:<\|?\s*channel\s*\|?>?\s*thought|<\|?\s*(?:think|thought|reasoning)(?:ing)?\s*\|?>|<thought>|<reasoning>|\[THINK(?:ING)?\]|\[REASONING\])\s*/i;
+  clean = clean.replace(openTagPattern, '');
+
+  // 3. Strip custom open tag if specified
+  if (customOpen && typeof customOpen === 'string' && clean.startsWith(customOpen.trim())) {
+    clean = clean.substring(customOpen.trim().length);
+  }
+
+  // 4. Strip known prefill sentences at the start
+  clean = clean.replace(/^Okay,\s*let\s*me\s*think\s*really\s*quickly\s*from\s*a\s*first-person\s*perspective\.?\s*/i, '');
+
+  // 5. Strip any leading channel keywords or closing tags left over at the start
+  clean = clean.replace(/^\s*(?:<channel\|?>|<\|channel\|?>|<\|\/channel\|?>|<\/?(?:think|thought|reasoning)(?:ing)?>|<\|?\/?(?:think|thought|reasoning)\|?>|\[\/?(?:THINK(?:ING)?|REASONING)(?:_END)?\])\s*/i, '');
+  clean = clean.replace(/^\s*(?:final_response|commentary|call)\b\s*/i, '');
+
+  return clean.trimStart();
 }
 
 /**
@@ -864,34 +926,15 @@ export function extractThinkingSnippets(text) {
   if (typeof text !== 'string' || !text) return [];
   
   let cleanText = text
-    .replace(/(?:<\|?\s*channel\s*\|?>?\s*thought|<\|?\s*think(?:ing)?\s*\|?>|<thought>|<reasoning>|\[THINKING\]|\[REASONING\])/gi, '')
+    .replace(/(?:<\|?\s*channel\s*\|?>?\s*thought|<\|?\s*think(?:ing)?\s*\|?>|<thought>|<reasoning>|\[THINK(?:ING)?\]|\[REASONING\])/gi, '')
     .replace(/(?:<\/s*think(?:ing)?\s*>|<\/s*thought\s*>|<\/s*reasoning\s*>|<\|?\s*\/?\s*channel\s*\|?>|<\|?\s*\/\s*think\s*\|?>|<\/thought>|<\/reasoning>|\[\/think(?:ing)?\]|\[\/reasoning\]|\[THINKING_END\])/gi, '')
     .replace(/```[\s\S]*?```/g, '')
     .replace(/`[^`]*`/g, '')
     .replace(/[*#_\[\]\(\)]/g, ' ')
     .replace(/\s+/g, ' ');
     
-  const parts = cleanText.split(/[.,!?;\n:]+/);
-  
-  const snippets = [];
-  for (let part of parts) {
-    part = part.trim();
-    if (part.length >= 8 && part.split(/\s+/).length >= 2) {
-      let formatted = part.charAt(0).toUpperCase() + part.slice(1);
-      // Truncate if too long to keep the UI clean
-      if (formatted.length > 90) {
-        // Find last space before 85 chars to not break words
-        let spaceIdx = formatted.lastIndexOf(' ', 85);
-        if (spaceIdx === -1) spaceIdx = 85;
-        formatted = formatted.substring(0, spaceIdx) + '...';
-      } else if (!formatted.endsWith('...')) {
-        formatted += '...';
-      }
-      snippets.push(formatted);
-    }
-  }
-  
-  return snippets;
+  const phrases = cleanText.split(/[.\n;!?]+/).map(p => p.trim()).filter(p => p.length >= 3);
+  return phrases.map(p => p.length > 35 ? p.substring(0, 35) + '...' : p);
 }
 
 /**
@@ -901,11 +944,27 @@ export function parseStreamThinking(text, customOpen = null, customClose = null)
   if (typeof text !== 'string') return { thinking: '', content: '', rawContent: '', isInThinking: false, thinkingStartIdx: -1, thinkingEndIdx: -1 };
   
   const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const defaultOpen = '<\\|?\\s*channel\\s*\\|?>?\\s*thought|<\\|?\\s*think(?:ing)?\\s*\\|?>|<\\|?\\s*thought\\s*\\|?>|<\\|?\\s*reasoning\\s*\\|?>|\\[THINKING\\]|\\[REASONING\\]';
+  const defaultOpen = '<\\|?\\s*channel\\s*\\|?>?\\s*thought|<\\|?\\s*think(?:ing)?\\s*\\|?>|<\\|?\\s*thought\\s*\\|?>|<\\|?\\s*reasoning\\s*\\|?>|\\[THINK(?:ING)?\\]|\\[REASONING\\]';
   const openPattern = customOpen ? escapeRegExp(customOpen) + '|' + defaultOpen : defaultOpen;
   const startMatch = text.match(new RegExp(openPattern, 'i'));
   
+  const defaultClose = '<\\/\\s*think(?:ing)?\\s*>|<\\/\\s*thought\\s*>|<\\/\\s*reasoning\\s*>|<\\|?\\s*\\/+\\s*channel\\s*\\|?>|<\\|?\\s*\\/+\\s*think(?:ing)?\\s*\\|?>|<\\|?\\s*\\/+\\s*thought\\s*\\|?>|<\\|end_of_thought\\|?>|<\\|thought_end\\|?>|\\[\\/think(?:ing)?\\]|\\[\\/reasoning\\]|\\[THINKING_END\\]';
+  const closePattern = customClose ? escapeRegExp(customClose) + '|' + defaultClose : defaultClose;
+
+  const cleanOpenRegex = new RegExp(`^(?:${openPattern})\\s*`, 'gi');
+  const cleanCloseRegex = new RegExp(`^(?:${closePattern})\\s*`, 'gi');
+
   if (!startMatch) {
+    // Check if there is an orphan close tag (prefilled on server without open tag in stream):
+    const closeMatch = text.match(new RegExp(closePattern, 'i'));
+    if (closeMatch) {
+      const endIdx = closeMatch.index;
+      const thinkEnd = closeMatch[0];
+      const thinking = text.substring(0, endIdx).replace(cleanOpenRegex, '').trim();
+      const rawContent = text.substring(endIdx + thinkEnd.length);
+      const content = rawContent.trim().replace(cleanOpenRegex, '').replace(cleanCloseRegex, '');
+      return { thinking, content, rawContent, isInThinking: false, thinkingStartIdx: 0, thinkingEndIdx: endIdx + thinkEnd.length };
+    }
     return { thinking: '', content: text, rawContent: text, isInThinking: false, thinkingStartIdx: -1, thinkingEndIdx: -1 };
   }
 
@@ -913,12 +972,7 @@ export function parseStreamThinking(text, customOpen = null, customClose = null)
   const thinkStart = startMatch[0];
   const afterStart = startIdx + thinkStart.length;
 
-  const defaultClose = '<\\/\\s*think(?:ing)?\\s*>|<\\/\\s*thought\\s*>|<\\/\\s*reasoning\\s*>|<\\|?\\s*\\/?\\s*channel\\s*\\|?>|<\\|?\\s*\\/\\s*think\\s*\\|?>|<\\|?\\s*\\/\\s*thought\\s*\\|?>|<\\|end_of_thought\\|?>|<\\|thought_end\\|?>|\\[\\/think(?:ing)?\\]|\\[\\/reasoning\\]|\\[THINKING_END\\]';
-  const closePattern = customClose ? escapeRegExp(customClose) + '|' + defaultClose : defaultClose;
   const endMatch = text.substring(afterStart).match(new RegExp(closePattern, 'i'));
-
-  const cleanOpenRegex = new RegExp(`^(?:${openPattern})\\s*`, 'gi');
-  const cleanCloseRegex = new RegExp(`^(?:${closePattern})\\s*`, 'gi');
 
   if (!endMatch) {
     let thinking = text.substring(afterStart);
@@ -977,21 +1031,21 @@ export function isBudgetExceededMessage(text) {
  */
 export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, thinkingTime = 0, reasoningEffortSetting = null, maxTokens = null) {
   const settings = settingsStore.get() || {};
-  const effort = reasoningEffortSetting || settings.reasoning_effort;
-  if (effort === 'none') {
-    return '';
-  }
+  const effort = reasoningEffortSetting || settings.reasoning_effort || 'high';
 
   if (isBudgetExceededMessage(thinkingText)) {
     return '';
   }
 
   const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const defaultOpen = '<\\|?\\s*channel\\s*\\|?>?\\s*thought|<\\|?\\s*think(?:ing)?\\s*\\|?>|<\\|?\\s*thought\\s*\\|?>|<\\|?\\s*reasoning\\s*\\|?>|\\[THINKING\\]|\\[REASONING\\]';
+  const defaultOpen = '<\\|?\\s*channel\\s*\\|?>?\\s*thought|<\\|?\\s*think(?:ing)?\\s*\\|?>|<\\|?\\s*thought\\s*\\|?>|<\\|?\\s*reasoning\\s*\\|?>|\\[THINK(?:ING)?\\]|\\[REASONING\\]';
   const openPattern = settings.reasoning_tag_open ? escapeRegExp(settings.reasoning_tag_open) + '|' + defaultOpen : defaultOpen;
   const cleanOpenRegex = new RegExp(`^(?:${openPattern})\\s*`, 'gi');
 
   let cleanThinking = (thinkingText || '').replace(cleanOpenRegex, '').trim();
+  if (!cleanThinking && !isActive) {
+    return '';
+  }
 
   if (isGLM) {
     if (isActive) {

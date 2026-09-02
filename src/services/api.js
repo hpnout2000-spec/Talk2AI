@@ -145,7 +145,7 @@ export function stripThinkingTags(text) {
   clean = clean.replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, '');
   clean = clean.replace(/<thought>[\s\S]*?<\/thought>/gi, '');
   clean = clean.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '');
-  clean = clean.replace(/\[THINKING\][\s\S]*?\[\/THINKING\]/gi, '');
+  clean = clean.replace(/\[THINK(?:ING)?\][\s\S]*?\[\/THINK(?:ING)?\]/gi, '');
   clean = clean.replace(/\[REASONING\][\s\S]*?\[\/REASONING\]/gi, '');
 
   // 2. Strip <|thought|>...</|thought|>, <|think|>...</|think|>
@@ -167,7 +167,7 @@ export function stripThinkingTags(text) {
   clean = clean.replace(/<\|end_of_thought\|?>|<\|thought_end\|?>/gi, '');
   clean = clean.replace(/<\/?(?:think|thought|reasoning)(?:ing)?>/gi, '');
   clean = clean.replace(/<\|?\/?(?:think|thought|reasoning)\|?>/gi, '');
-  clean = clean.replace(/\[\/?(?:THINKING|REASONING)(?:_END)?\]/gi, '');
+  clean = clean.replace(/\[\/?(?:THINK(?:ING)?|REASONING)(?:_END)?\]/gi, '');
   clean = clean.replace(/^(?:final_response|commentary|call)\b\s*/gim, '');
 
   return clean.trim();
@@ -863,13 +863,21 @@ export const api = {
 
     return new Promise((resolve, reject) => {
       let fullResponse = '';
+      let thinkingResponse = '';
       this.streamChat(
         messages,
         signal,
         (chunk) => { fullResponse += chunk; },
-        () => resolve(fullResponse),
+        () => {
+          if (!fullResponse.trim() && thinkingResponse.trim()) {
+            resolve(thinkingResponse);
+          } else {
+            resolve(fullResponse);
+          }
+        },
         (err) => reject(err),
-        options
+        options,
+        (thinkChunk) => { thinkingResponse += thinkChunk; }
       );
     });
   },
@@ -1493,39 +1501,76 @@ Focus ONLY on what is known or can be directly inferred from the history. Keep t
   },
 
   async generateChatName(messages, isCharacterChat = true) {
+    if (!messages || messages.length === 0) return 'New Chat';
+
     // Collect recent messages (up to 8) to evaluate context and language, stripping thoughts from them
     const recentMessages = messages.slice(-8).map(m => {
       const cleanContent = stripThinkingTags(m.content) || m.content;
       return `${m.role === 'user' ? 'User' : 'AI'}: ${cleanContent}`;
     }).join('\n');
     
-    let prompt = `You are an AI that creates very short, concise titles for chat sessions based on the provided conversation excerpt.\n`;
+    const sysPrompt = `You are an AI that creates very short, concise titles for chat sessions based on the provided conversation excerpt.
+CRITICAL RULES:
+1. The chat title MUST be written in the primary language in which the majority of the messages in the conversation are written (for example, if the conversation is in Russian, the title MUST be in Russian).
+2. Return ONLY the short title (maximum 3-4 words), without quotes, punctuation, thinking tags, or commentary.`;
+
+    let userPrompt = `Generate a 2-4 word title for this conversation:\n\n${recentMessages}\n\nTitle:`;
     if (isCharacterChat) {
-      prompt += `Focus on the user's interaction and the AI's response, rather than the initial character greeting or description.\n`;
+      userPrompt = `Generate a 2-4 word title focusing on the user's interaction and topic for this conversation:\n\n${recentMessages}\n\nTitle:`;
     }
-    prompt += `CRITICAL RULE: The chat title MUST be written in the primary language in which the majority of the messages in the conversation are written (for example, if the majority of messages are in Russian, the title MUST be in Russian).\n`;
-    prompt += `Return ONLY the short title (maximum 3-4 words), without quotes, punctuation, or any other commentary.\n\nConversation excerpt:\n${recentMessages}\n\nTitle:`;
+
+    // Helper to generate a clean fallback title from user messages
+    const getFallbackTitle = () => {
+      const firstUserMsg = messages.find(m => m.role === 'user');
+      if (firstUserMsg && typeof firstUserMsg.content === 'string') {
+        const cleanFirst = stripThinkingTags(firstUserMsg.content).trim();
+        if (cleanFirst) {
+          const firstLine = cleanFirst.split('\n')[0].trim();
+          let candidate = firstLine.slice(0, 32).trim();
+          if (firstLine.length > 32) candidate += '...';
+          return candidate || 'New Chat';
+        }
+      }
+      return 'New Chat';
+    };
 
     try {
       const response = await this.chatCompletion([
-        { role: 'system', content: prompt }
+        { role: 'system', content: sysPrompt },
+        { role: 'user', content: userPrompt }
       ], {
-        max_tokens: 80,
+        max_tokens: 500,
         reasoning_effort: 'none',
         thinking_budget: 0,
         isGenAI: !isCharacterChat
       });
       
       let raw = response ? response.trim() : '';
-      if (!raw) return 'New Chat';
+      console.log('[AI Rename] Raw model output:', raw);
+      if (!raw) {
+        const fb = getFallbackTitle();
+        console.log('[AI Rename] Raw output empty, using fallback:', fb);
+        return fb;
+      }
 
       // 1. Try parsing thinking block
       const parsed = parseThinking(raw);
       let title = (parsed && parsed.content !== undefined && parsed.content !== null) ? parsed.content.trim() : raw;
 
-      // If parsed thinking existed and content was empty (e.g. unclosed thinking block truncated mid-way)
-      if (parsed && parsed.thinking && !parsed.content) {
-        return 'New Chat';
+      // If parsed thinking existed and content was empty (e.g. unclosed thinking block or model put answer in thought)
+      if ((!title || title === 'New Chat') && parsed && parsed.thinking) {
+        const titleMatch = parsed.thinking.match(/(?:title|название|тема|topic)\s*[:=]\s*([^\n\r.]+)/i);
+        if (titleMatch && titleMatch[1]) {
+          title = titleMatch[1].trim();
+        } else {
+          const thinkLines = parsed.thinking.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+          if (thinkLines.length > 0) {
+            const lastLine = thinkLines[thinkLines.length - 1];
+            if (lastLine.length <= 40 && !/^(?:thought|thinking|reasoning|let me|i will|i should|the user|in this)\b/i.test(lastLine)) {
+              title = lastLine;
+            }
+          }
+        }
       }
 
       // 2. Strip any remaining thinking tags, channel markers, or reasoning budget notes
@@ -1534,13 +1579,14 @@ Focus ONLY on what is known or can be directly inferred from the history. Keep t
       // 3. In case of multi-line response, find the first clean non-empty line
       const lines = title.split(/\r?\n/)
         .map(l => l.trim())
-        .filter(l => l && !/^(?:thought|thinking|reasoning)\b/i.test(l) && !/^\(Reasoning/i.test(l) && !/^(?:user|ai|assistant|system):/i.test(l) && !/^(?:final_response|commentary|call)\b/i.test(l));
+        .filter(l => l && !/^(?:thought|thinking|reasoning)\b/i.test(l) && !/^\(Reasoning/i.test(l) && !/^(?:final_response|commentary|call)\b/i.test(l));
       
       if (lines.length > 0) {
         title = lines[0];
       }
 
-      // 4. Remove common title label prefixes
+      // 4. Remove common prefixes
+      title = title.replace(/^(?:AI|Assistant|Model|User|System)\s*:\s*/i, '');
       title = title.replace(/^(?:Title|Chat Title|Topic|Subject|Название|Название чата|Тема)\s*:\s*/i, '');
       title = title.replace(/^(?:Here is a title|Suggested title|Title proposal)\s*:\s*/i, '');
 
@@ -1553,10 +1599,18 @@ Focus ONLY on what is known or can be directly inferred from the history. Keep t
       title = title.replace(/^[.\-–—:;,\s]+|[.\-–—:;,\s]+$/g, '').trim();
       title = title.replace(/^["'«“]+|["'»”]+$/g, '').trim();
 
-      return title || 'New Chat';
+      console.log('[AI Rename] Resulting title:', title);
+
+      if (!title || title === 'New Chat') {
+        const fb = getFallbackTitle();
+        console.log('[AI Rename] Title was empty/New Chat, using fallback:', fb);
+        return fb;
+      }
+
+      return title;
     } catch (e) {
       console.error('Failed to generate chat name:', e);
-      return 'New Chat';
+      return getFallbackTitle();
     }
   }
 };

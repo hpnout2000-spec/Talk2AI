@@ -124,14 +124,15 @@ body.genai-sidebar-open #genai-sidebar {
 .chat-header #btn-toggle-sidebar,
 .chat-header #btn-toggle-genai-header,
 .chat-header .btn-icon {
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
   width: 44px;
   height: 44px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.18), inset 0 -1px 0 rgba(0, 0, 0, 0.15);
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
   color: var(--text-secondary);
   display: flex;
   align-items: center;
@@ -146,8 +147,8 @@ body.genai-sidebar-open #genai-sidebar {
 .chat-header .btn-icon:hover {
   background: rgba(255, 255, 255, 0.08);
   color: var(--text-primary);
-  border-color: rgba(255, 255, 255, 0.18);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  border-color: rgba(255, 255, 255, 0.32);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
   transform: translateY(-1px);
 }
 
@@ -200,6 +201,8 @@ body.ai-sidebar-open #btn-toggle-genai-header .icon-arrow-right {
 
 /* Floating Liquid Glass Character Capsule */
 .current-character-info {
+  position: relative;
+  overflow: hidden;
   display: inline-flex;
   align-items: center;
   gap: 10px;
@@ -208,10 +211,8 @@ body.ai-sidebar-open #btn-toggle-genai-header .icon-arrow-right {
   padding: 4px 16px 4px 4px;
   border-radius: 9999px;
   background: rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.18), inset 0 -1px 0 rgba(0, 0, 0, 0.15);
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
@@ -220,8 +221,8 @@ body.ai-sidebar-open #btn-toggle-genai-header .icon-arrow-right {
 
 .current-character-info:hover {
   background: rgba(255, 255, 255, 0.07);
-  border-color: rgba(255, 255, 255, 0.18);
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  border-color: rgba(255, 255, 255, 0.32);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
   transform: translateY(-1px);
 }
 
@@ -290,10 +291,8 @@ body.ai-sidebar-open #btn-toggle-genai-header .icon-arrow-right {
   box-sizing: border-box;
   border-radius: 22px;
   background: rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.18), inset 0 -1px 0 rgba(0, 0, 0, 0.15);
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
   overflow: hidden;
   transform-origin: top right;
   will-change: width, height, background-color, box-shadow;
@@ -310,8 +309,8 @@ body.ai-sidebar-open #btn-toggle-genai-header .icon-arrow-right {
 
 .user-name-morph-container:not(.open):hover {
   background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.18);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  border-color: rgba(255, 255, 255, 0.32);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
   transform: translateY(-1px);
 }
 
@@ -520,6 +519,92 @@ body.ai-sidebar-open #btn-toggle-genai-header .icon-arrow-right {
 .user-morph-actions .btn-primary:hover {
   background: rgba(255, 255, 255, 0.88);
   transform: translateY(-1px);
+}
+
+/* ─── Google-like Continuous Radial Blur Component (Header Clouds) ─── */
+
+.cloud-progressive-blur {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: inherit;
+  pointer-events: none;
+  user-select: none;
+  z-index: 0 !important;
+  overflow: hidden;
+}
+
+/* Ambient glass tint: uniform subtle tone, eliminating milky white hotspot */
+.cloud-progressive-blur::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.cloud-progressive-blur .c-layer {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: transparent;
+  pointer-events: none;
+  backdrop-filter: blur(var(--c-blur));
+  -webkit-backdrop-filter: blur(var(--c-blur));
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  mask-size: 100% 100%;
+  -webkit-mask-size: 100% 100%;
+}
+
+/* Layer 1: Base layer reaching all the way to borders with minimal blur (2.5px) */
+.cloud-progressive-blur .c-layer--1 {
+  --c-blur: 2.5px;
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+
+/* Layer 2: Outer-mid transition (5px blur up to ~80% radius) */
+.cloud-progressive-blur .c-layer--2 {
+  --c-blur: 5px;
+  mask-image: radial-gradient(ellipse at center, #000 0%, #000 52%, transparent 80%);
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 0%, #000 52%, transparent 80%);
+}
+
+/* Layer 3: Mid transition (9px blur up to ~62% radius) */
+.cloud-progressive-blur .c-layer--3 {
+  --c-blur: 9px;
+  mask-image: radial-gradient(ellipse at center, #000 0%, #000 38%, transparent 62%);
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 0%, #000 38%, transparent 62%);
+}
+
+/* Layer 4: Inner-mid transition (15px blur up to ~45% radius) */
+.cloud-progressive-blur .c-layer--4 {
+  --c-blur: 15px;
+  mask-image: radial-gradient(ellipse at center, #000 0%, #000 24%, transparent 45%);
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 0%, #000 24%, transparent 45%);
+}
+
+/* Layer 5: Center core (22px blur in the center 0% to 28%) */
+.cloud-progressive-blur .c-layer--5 {
+  --c-blur: 22px;
+  mask-image: radial-gradient(ellipse at center, #000 0%, #000 14%, transparent 28%);
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 0%, #000 14%, transparent 28%);
+}
+
+/* Foreground content elevation: keeps icons, text, and avatar sharp on top of blur layers */
+.chat-header #btn-toggle-sidebar > svg,
+.chat-header #btn-toggle-genai-header > svg,
+.current-character-info > div:not(.cloud-progressive-blur) {
+  position: relative;
+  z-index: 1;
+}
+
+.user-morph-trigger,
+.user-morph-content {
+  z-index: 1;
 }
 
 /* ─── Thinking Effort Button ─────────────────────────────────────── */

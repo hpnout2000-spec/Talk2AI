@@ -64,6 +64,17 @@ export function replaceCharUserMacros(text, charName = 'Assistant', userName = '
 }
 
 /**
+ * Unescapes string escape sequences like \n, \r, \t entered in text inputs.
+ */
+export function unescapeString(str) {
+  if (!str || typeof str !== 'string') return '';
+  return str
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\r')
+    .replace(/\\t/g, '\t');
+}
+
+/**
  * Formats full chat messages and context into a raw string for Text Completion models,
  * using the provided Instruct Template and Context Template.
  *
@@ -136,7 +147,7 @@ export function formatTextCompletionPrompt(messages = [], contextTemplate = {}, 
   const includeNames = instructTemplate.include_names || 'none'; // 'none' | 'user_assistant' | 'all'
 
   const formatSeq = (seq) => {
-    let s = seq;
+    let s = unescapeString(seq);
     if (replaceMacro) {
       s = replaceCharUserMacros(s, charName, userName);
     }
@@ -162,10 +173,12 @@ export function formatTextCompletionPrompt(messages = [], contextTemplate = {}, 
   for (let i = 0; i < messageHistory.length; i++) {
     const msg = messageHistory[i];
     const isUser = msg.role === 'user';
+    const isLastMessage = i === messageHistory.length - 1;
     let text = msg.content || '';
     text = replaceCharUserMacros(text, charName, userName);
 
-    if (contextTemplate.trim_spaces) {
+    // Only trim normal turns; never strip intentional prefill formatting/newlines from the assistant's prefill turn
+    if (contextTemplate.trim_spaces && !(isLastMessage && !isUser)) {
       text = text.trim();
     }
 
@@ -201,11 +214,9 @@ export function formatTextCompletionPrompt(messages = [], contextTemplate = {}, 
         pfx += '\n';
       }
 
-      const isLastMessage = i === messageHistory.length - 1;
-      
       if (isLastMessage) {
         // This is a prefill, do not append suffix
-        promptParts.push(`${pfx}${turnContent}`);
+        promptParts.push(`${pfx}${unescapeString(turnContent)}`);
       } else {
         const sfx = formatSeq(assistantSuffix);
         promptParts.push(`${pfx}${turnContent}${sfx}`);

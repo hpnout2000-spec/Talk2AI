@@ -1650,8 +1650,8 @@ details.premium-accordion summary::-webkit-details-marker {
   top: -4px;
   bottom: -4px;
   width: 2000px;
-  right: 100%;
-  background: linear-gradient(to right, #171717 0%, #171717 calc(100% - 120px), rgba(23, 23, 23, 0.85) calc(100% - 60px), transparent 100%);
+  left: 100%;
+  background: linear-gradient(to right, transparent 0%, rgba(23, 23, 23, 0.85) 60px, #171717 120px, #171717 100%);
   animation: shadowSweepOut 0.75s cubic-bezier(0.4, 0, 0.2, 1) forwards;
   pointer-events: none;
   z-index: 10;
@@ -1690,10 +1690,10 @@ details.premium-accordion summary::-webkit-details-marker {
 
 @keyframes shadowSweepOut {
   0% {
-    right: 100%;
+    left: 100%;
   }
   100% {
-    right: -150px;
+    left: -150px;
   }
 }
 

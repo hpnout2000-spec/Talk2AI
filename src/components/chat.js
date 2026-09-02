@@ -16,12 +16,14 @@ import {
   parseThinking,
   parseStreamThinking,
   parseGLMThinking,
+  stripLeadingThinkingTags,
   createThinkingBlockHTML,
   autoResizeTextarea,
   formatTime,
   formatExactTime,
   escapeHtml,
   wrapWordsInSpans,
+  unescapeString,
 } from '../utils/helpers.js';
 import morphdom from '../vendor/morphdom.js';
 import { perf } from '../utils/perf.js';
@@ -1229,13 +1231,21 @@ export function initChat() {
     }
   });
 
-  window.addEventListener('genai-rename-chat', (e) => {
+  window.addEventListener('genai-rename-chat', async (e) => {
     const { chat_id, character_id, new_title } = e.detail;
-    chatStore.renameSession(chat_id, new_title, character_id).then(() => {
-      if (appState.currentCharacter?.id === character_id) {
-        updateChatHistory();
-      }
-    });
+    if (!new_title) return;
+    const charId = character_id || appState.currentCharacter?.id;
+    const targetChatId = (chat_id && chat_id !== 'current') ? chat_id : appState.currentChat?.id;
+    if (!charId || !targetChatId) return;
+
+    await chatStore.renameSession(targetChatId, new_title, charId);
+    if (appState.currentChat && appState.currentChat.id === targetChatId) {
+      appState.currentChat.custom_title = new_title;
+      appState.currentChat.title = new_title;
+    }
+    if (appState.currentCharacter?.id === charId) {
+      updateChatHistory();
+    }
   });
 
   // Make AI comment feature global
@@ -1868,7 +1878,7 @@ async function sendMessage() {
   const msgElement = appendMessage(assistantMsg, true, character);
   const contentEl = msgElement.querySelector('.message-text');
 
-  let fullResponse = (settings.force_reasoning && settings.reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') ? settings.reasoning_tag_open : '';
+  let fullResponse = (settings.force_reasoning && settings.reasoning_tag_open) ? unescapeString(settings.reasoning_tag_open) : '';
   let thinkingText = '';    // accumulated thinking from delta.reasoning_content
   let isStreaming = true;   // true while generation is in progress
   let hasReceivedFirstChunk = false; // tracks if anything has arrived yet
@@ -1927,17 +1937,14 @@ async function sendMessage() {
       if (!isStreaming) return;
 
       try {
-        const isInlineThought = /<(?:think|thought|reasoning|\|?channel\|?>?thought)/i.test(fullResponse);
+        const isInlineThought = /<(?:think|thought|reasoning|\|?channel\|?>?thought)|\[(?:think(?:ing)?|reasoning)\]/i.test(fullResponse);
         const useGLM = settings.glm47_support && !isInlineThought;
         let displayContent, currentThinking, currentIsInThinking;
         if (thinkingText) {
           // delta.reasoning_content path: thinking comes separately
           currentThinking = thinkingText;
           currentIsInThinking = thinkingActive;
-          let cleanResponseForParsing = fullResponse;
-          if (settings.force_reasoning && settings.reasoning_tag_open && cleanResponseForParsing.startsWith(settings.reasoning_tag_open)) {
-            cleanResponseForParsing = cleanResponseForParsing.substring(settings.reasoning_tag_open.length);
-          }
+          let cleanResponseForParsing = stripLeadingThinkingTags(fullResponse, settings.reasoning_tag_open);
           displayContent = cleanResponseForParsing;
         } else {
           // Inline tag or GLM 4.7 path
@@ -1952,7 +1959,7 @@ async function sendMessage() {
           }
 
           // Detect thinking→done transition for inline tags
-          if (thinkingActiveInline && !parsed.isInThinking && parsed.thinking) {
+          if (thinkingActiveInline && !parsed.isInThinking && parsed.thinking !== null) {
             thinkingActiveInline = false;
             thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
           }
@@ -2098,16 +2105,12 @@ async function sendMessage() {
 
         const finalizeUI = async () => {
           try {
-            const isInlineThought = /<(?:think|thought|reasoning|\|?channel\|?>?thought)/i.test(fullResponse);
+            const isInlineThought = /<(?:think|thought|reasoning|\|?channel\|?>?thought)|\[(?:think(?:ing)?|reasoning)\]/i.test(fullResponse);
             const useGLM = settings.glm47_support && !isInlineThought;
             let parsedThinking, parsedContent;
             if (thinkingText) {
               parsedThinking = thinkingText;
-              let cleanResponseForParsing = fullResponse;
-              if (settings.force_reasoning && settings.reasoning_tag_open && cleanResponseForParsing.startsWith(settings.reasoning_tag_open)) {
-                cleanResponseForParsing = cleanResponseForParsing.substring(settings.reasoning_tag_open.length);
-              }
-              parsedContent = cleanResponseForParsing;
+              parsedContent = stripLeadingThinkingTags(fullResponse, settings.reasoning_tag_open);
             } else {
               const parsed = useGLM ? parseGLMThinking(fullResponse) : parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
               parsedThinking = parsed.thinking;
@@ -2116,7 +2119,7 @@ async function sendMessage() {
 
             removeChatCursor();
             let finalHtml = '';
-            if (parsedThinking) {
+            if (parsedThinking !== null && parsedThinking !== '') {
               if (thinkingTime === 0) thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
               finalHtml += createThinkingBlockHTML(parsedThinking, false, useGLM, thinkingTime, settings.reasoning_effort, settings.max_tokens);
             }
@@ -2208,6 +2211,8 @@ async function sendMessage() {
                         session.last_auto_named_count = msgCount;
                         await chatStore.renameSession(session.id, newName, session.character_id);
                         updateChatHistory();
+                      } else {
+                        session.last_auto_named_count = msgCount;
                       }
                     } else if (lastCount > 0 && (msgCount - lastCount >= 6)) {
                       if (freshSettings.continuous_auto_naming_enabled) {
@@ -2216,6 +2221,8 @@ async function sendMessage() {
                           session.last_auto_named_count = msgCount;
                           await chatStore.renameSession(session.id, newName, session.character_id);
                           updateChatHistory();
+                        } else {
+                          session.last_auto_named_count = msgCount;
                         }
                       }
                     }
@@ -3013,8 +3020,8 @@ Before answering, you must use your internal monologue channel.
   }
 
   // FORCE REASONING PREFILL
-  if (settings.force_reasoning && settings.reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') {
-    messages.push({ role: 'assistant', content: settings.reasoning_tag_open });
+  if (settings.force_reasoning && settings.reasoning_tag_open) {
+    messages.push({ role: 'assistant', content: unescapeString(settings.reasoning_tag_open) });
   } else if (settings.gemma4_support && (!settings.reasoning_effort || settings.reasoning_effort === 'none')) {
     let openTag = settings.reasoning_tag_open || '<|think|>';
     let closeTag = settings.reasoning_tag_close || '</|think|>';
@@ -3081,7 +3088,7 @@ function appendMessage(msg, isStreaming = false, character = null) {
   let msgContent = (msg.translated_content && !msg.show_original) ? msg.translated_content : msg.content;
 
   // Auto-recovery: if the message has no thinking block saved, but the content contains tags, parse them!
-  if (!msgThinking && msgContent && /<(?:think|thought|reasoning|\|?channel\|?>?thought)/i.test(msgContent)) {
+  if (!msgThinking && msgContent && (/<(?:think|thought|reasoning|\|?channel\|?>?thought)/i.test(msgContent) || /\[(?:think(?:ing)?|reasoning)\]/i.test(msgContent))) {
     const parsed = parseThinking(msgContent, settings.reasoning_tag_open, settings.reasoning_tag_close);
     if (parsed.thinking) {
       msgThinking = parsed.thinking;
@@ -3090,6 +3097,7 @@ function appendMessage(msg, isStreaming = false, character = null) {
   }
 
   if (msgThinking) {
+    msgContent = stripLeadingThinkingTags(msgContent, settings.reasoning_tag_open);
     contentHtml += createThinkingBlockHTML(msgThinking, false, false, msg.thinking_time || 0, settings.reasoning_effort, settings.max_tokens);
   }
 
@@ -3644,7 +3652,7 @@ async function triggerAssistantGeneration() {
   const msgElement = appendMessage(assistantMsg, true, character);
   const contentEl = msgElement.querySelector('.message-text');
 
-  let fullResponse = (settings.force_reasoning && settings.reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') ? settings.reasoning_tag_open : '';
+  let fullResponse = (settings.force_reasoning && settings.reasoning_tag_open) ? unescapeString(settings.reasoning_tag_open) : '';
   let thinkingText2 = '';  // accumulated from delta.reasoning_content
   let isStreaming2 = true;
   let hasReceivedFirstChunk2 = false;
@@ -3689,16 +3697,13 @@ async function triggerAssistantGeneration() {
       appState.updateScheduled = false;
       if (!isStreaming2) return;
 
-      const isInlineThought = /<(?:think|thought|reasoning|\|?channel\|?>?thought)/i.test(fullResponse);
+      const isInlineThought = /<(?:think|thought|reasoning|\|?channel\|?>?thought)|\[(?:think(?:ing)?|reasoning)\]/i.test(fullResponse);
       const useGLM = settings.glm47_support && !isInlineThought;
       let displayContent, currentThinking, currentIsInThinking;
       if (thinkingText2) {
         currentThinking = thinkingText2;
         currentIsInThinking = thinkingActive2;
-        let cleanResponseForParsing = fullResponse;
-        if (settings.force_reasoning && settings.reasoning_tag_open && cleanResponseForParsing.startsWith(settings.reasoning_tag_open)) {
-          cleanResponseForParsing = cleanResponseForParsing.substring(settings.reasoning_tag_open.length);
-        }
+        let cleanResponseForParsing = stripLeadingThinkingTags(fullResponse, settings.reasoning_tag_open);
         displayContent = cleanResponseForParsing;
       } else {
         const parsed = useGLM ? parseGLMThinking(fullResponse) : parseStreamThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
@@ -3711,7 +3716,7 @@ async function triggerAssistantGeneration() {
           thinkingStartTime = Date.now();
         }
 
-        if (thinkingActiveInline2 && !parsed.isInThinking && parsed.thinking) {
+        if (thinkingActiveInline2 && !parsed.isInThinking && parsed.thinking !== null) {
           thinkingActiveInline2 = false;
           thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
         }
@@ -3843,17 +3848,13 @@ async function triggerAssistantGeneration() {
 
         const finalizeRegenerateUI = async () => {
           try {
-            const isInlineThought = /<(?:think|thought|reasoning|\|?channel\|?>?thought)/i.test(fullResponse);
+            const isInlineThought = /<(?:think|thought|reasoning|\|?channel\|?>?thought)|\[(?:think(?:ing)?|reasoning)\]/i.test(fullResponse);
             const useGLM = settings.glm47_support && !isInlineThought;
             let parsedThinking2, parsedContent2;
 
             if (thinkingText2) {
               parsedThinking2 = thinkingText2;
-              let cleanResponseForParsing = fullResponse;
-              if (settings.force_reasoning && settings.reasoning_tag_open && cleanResponseForParsing.startsWith(settings.reasoning_tag_open)) {
-                cleanResponseForParsing = cleanResponseForParsing.substring(settings.reasoning_tag_open.length);
-              }
-              parsedContent2 = cleanResponseForParsing;
+              parsedContent2 = stripLeadingThinkingTags(fullResponse, settings.reasoning_tag_open);
             } else {
               const parsed = useGLM ? parseGLMThinking(fullResponse) : parseThinking(fullResponse, settings.reasoning_tag_open, settings.reasoning_tag_close);
               parsedThinking2 = parsed.thinking;
@@ -3949,6 +3950,8 @@ async function triggerAssistantGeneration() {
                         session.last_auto_named_count = msgCount;
                         await chatStore.renameSession(session.id, newName, session.character_id);
                         updateChatHistory();
+                      } else {
+                        session.last_auto_named_count = msgCount;
                       }
                     } else if (lastCount > 0 && (msgCount - lastCount >= 6)) {
                       if (freshSettings.continuous_auto_naming_enabled) {
@@ -3957,6 +3960,8 @@ async function triggerAssistantGeneration() {
                           session.last_auto_named_count = msgCount;
                           await chatStore.renameSession(session.id, newName, session.character_id);
                           updateChatHistory();
+                        } else {
+                          session.last_auto_named_count = msgCount;
                         }
                       }
                     }

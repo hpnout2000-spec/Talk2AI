@@ -6,6 +6,7 @@ import { cowriterStore } from '../services/cowriter-store.js';
 import { api } from '../services/api.js';
 import { settingsStore } from '../services/settings-store.js';
 import { showConfirm, showToast, openWindow, closeWindow } from '../main.js';
+import { unescapeString } from '../utils/helpers.js';
 
 let bookHeaderTitle;
 let bookEmptyState;
@@ -464,8 +465,8 @@ function cancelManualComplete() {
 
 async function executeStreamedGeneration(messages) {
   const settings = settingsStore.get();
-  if (settings.force_reasoning && settings.reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') {
-    messages.push({ role: 'assistant', content: settings.reasoning_tag_open });
+  if (settings.force_reasoning && settings.reasoning_tag_open) {
+    messages.push({ role: 'assistant', content: unescapeString(settings.reasoning_tag_open) });
   }
 
   if (isGenerating) return;
@@ -514,7 +515,7 @@ async function executeStreamedGeneration(messages) {
   selection.removeAllRanges();
   selection.addRange(nextRange);
   
-  let fullText = (settings.force_reasoning && settings.reasoning_tag_open && (settings.reasoning_effort || 'none') !== 'none') ? settings.reasoning_tag_open : '';
+  let fullText = (settings.force_reasoning && settings.reasoning_tag_open) ? unescapeString(settings.reasoning_tag_open) : '';
   
   try {
     const options = {

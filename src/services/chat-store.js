@@ -306,8 +306,14 @@ export const chatStore = {
     const session = sessions[charId]?.find(s => s.id === chatId);
     if (session) {
       session.custom_title = newTitle;
+      session.title = newTitle;
       session.updated_at = new Date().toISOString();
       await this.saveSession(session);
+    }
+    if (currentSession && currentSession.id === chatId) {
+      currentSession.custom_title = newTitle;
+      currentSession.title = newTitle;
+      currentSession.updated_at = new Date().toISOString();
     }
   },
 
