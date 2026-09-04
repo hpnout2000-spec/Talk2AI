@@ -2,7 +2,7 @@
    Smart Context Manager — Automatic & manual chat summaries
    ════════════════════════════════════════════════════════════════════ */
 
-import { api } from '../services/api.js';
+import { api, stripThinkingTags } from '../services/api.js';
 import { settingsStore } from '../services/settings-store.js';
 import { getGenaiSessions, saveHistory } from './genai-panel.js';
 import { showToast, openWindow, closeWindow } from '../main.js';
@@ -13,6 +13,19 @@ let isSyncRunning = false;
 let activeSummarizations = {}; // Keeps track of active summarization promises by session ID
 let autoUpdateTimers = {}; // Inactivity timers by session ID
 let isProceedingOverride = false; // State to handle user overriding warning dialog
+
+/**
+ * Strips any thinking tags, channel markers, thinking block placeholders, 
+ * and internal thought headers from generated summaries.
+ */
+export function cleanSummaryText(text) {
+  if (!text || typeof text !== 'string') return '';
+  let cleaned = stripThinkingTags(text);
+  if (!cleaned.trim()) {
+    cleaned = text.trim();
+  }
+  return cleaned.trim();
+}
 
 export function initSmartContextMgr() {
   const btnOpen = document.getElementById('btn-open-smart-context');
@@ -363,6 +376,21 @@ export function renderSmartContextChats() {
     return timeB - timeA;
   });
 
+  // Clean any existing saved summaries that may have had thinking tags leak in
+  let hasRepairedAny = false;
+  sessions.forEach(s => {
+    if (s.summary && (s.summary.includes('<think') || s.summary.includes('channel>') || s.summary.includes('THINKING_BLOCK') || s.summary.includes('<thought>') || s.summary.includes('Reasoning budget'))) {
+      s.summary = cleanSummaryText(s.summary);
+      if (Array.isArray(s.summary_chunks)) {
+        s.summary_chunks = s.summary_chunks.map(cleanSummaryText).filter(Boolean);
+      }
+      hasRepairedAny = true;
+    }
+  });
+  if (hasRepairedAny) {
+    saveHistory();
+  }
+
   if (sessions.length === 0) {
     container.innerHTML = `
       <div style="padding: 16px; color: var(--text-tertiary); text-align: center; font-size: var(--text-sm);">
@@ -374,13 +402,13 @@ export function renderSmartContextChats() {
 
   container.innerHTML = sessions.map(session => {
     const hasSummary = session.summary && session.summary.trim().length > 0;
-    const isRunning = !!activeSummarizations[session.id];
-    const isIncluded = hasSummary;
+    const isRunning = !!activeSummarizations[String(session.id)];
+    const isIncluded = hasSummary && !session.smart_context_disabled;
     
     let badgeHtml = '';
     if (isRunning) {
       badgeHtml = `<span class="badge" style="background: rgba(59, 130, 246, 0.1); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.2); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 500;">Syncing...</span>`;
-    } else if (hasSummary) {
+    } else if (isIncluded) {
       badgeHtml = `<span class="badge" style="background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 500;">Saved</span>`;
     } else {
       badgeHtml = `<span class="badge" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.2); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 500;">Not preserved</span>`;
@@ -411,7 +439,7 @@ export function renderSmartContextChats() {
             ${badgeHtml}
           </div>
         </div>
-        ${hasSummary ? `
+        ${isIncluded ? `
           <div class="sc-chat-summary-text" style="display: none; font-size: var(--text-xs); color: var(--text-secondary); font-style: italic; margin-top: 6px; padding: 8px 12px; background: rgba(255,255,255,0.02); border-left: 2px solid var(--text-accent); border-radius: 2px; line-height: 1.4; word-break: break-word; white-space: pre-wrap;">${escapeHtml(session.summary)}</div>
         ` : ''}
       </div>
@@ -437,18 +465,33 @@ export function renderSmartContextChats() {
       e.stopPropagation();
       const id = btn.dataset.id;
       const sessions = getGenaiSessions() || [];
-      const session = sessions.find(s => s.id === id);
+      const session = sessions.find(s => String(s.id) === String(id));
       if (session) {
         const hasSummary = session.summary && session.summary.trim().length > 0;
-        if (hasSummary) {
+        const isCurrentlyIncluded = hasSummary && !session.smart_context_disabled;
+        if (isCurrentlyIncluded) {
           session.summary = '';
-          genaiEmbeddingsStore.removeSession(session.id).catch(console.error);
+          session.summary_chunks = [];
+          session.smart_context_disabled = true;
+          const timerKey = String(session.id);
+          if (autoUpdateTimers[timerKey]) {
+            clearTimeout(autoUpdateTimers[timerKey]);
+            delete autoUpdateTimers[timerKey];
+          }
+          if (autoUpdateTimers[session.id]) {
+            clearTimeout(autoUpdateTimers[session.id]);
+            delete autoUpdateTimers[session.id];
+          }
+          await genaiEmbeddingsStore.removeSession(session.id);
           saveHistory();
           renderSmartContextChats();
           if (window.renderRecentChatsList) {
             window.renderRecentChatsList();
           }
+          showToast('Chat removed from Smart Context', 'info');
         } else {
+          session.smart_context_disabled = false;
+          showToast('Generating Smart Context summary...', 'info');
           // Trigger background summarization
           await updateSessionSummaryIfNeeded(session, true);
           if (window.renderRecentChatsList) {
@@ -468,20 +511,25 @@ export async function updateSessionSummaryIfNeeded(session, force = false) {
   // Skip if feature is disabled and it's not a forced/auto-sync run
   if (!settings.genai_smart_context && !force) return;
 
+  // Skip if user explicitly removed this chat from Smart Context (unless forced)
+  if (session.smart_context_disabled && !force) return;
+
   const messages = (session.messages || []).filter(m => m.role !== 'system');
   if (messages.length === 0) {
     if (session.summary) {
       session.summary = '';
-      genaiEmbeddingsStore.removeSession(session.id).catch(console.error);
+      session.summary_chunks = [];
+      await genaiEmbeddingsStore.removeSession(session.id).catch(console.error);
       saveHistory();
       renderSmartContextChats();
     }
     return;
   }
 
+  const strId = String(session.id);
   // Check if already summarizing this session
-  if (activeSummarizations[session.id]) {
-    return activeSummarizations[session.id];
+  if (activeSummarizations[strId] || activeSummarizations[session.id]) {
+    return activeSummarizations[strId] || activeSummarizations[session.id];
   }
 
   const tokenLimit = settings.genai_smart_context_token_limit || 1500;
@@ -516,12 +564,19 @@ export async function updateSessionSummaryIfNeeded(session, force = false) {
       // Step 2: Summarize each chunk sequentially
       for (let i = 0; i < chunks.length; i++) {
         const chunkMsgs = chunks[i];
-        const textToSummarize = chunkMsgs.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join('\n\n') + '\nEND OF THE CHUNK. MAKE SUMMARY NOW';
+        const textToSummarize = chunkMsgs.map(m => {
+          let c = m.content || '';
+          if (typeof c === 'string') {
+            c = stripThinkingTags(c);
+            c = c.replace(/\[\[THINKING_BLOCK(_\d+)?\]\]/g, '').replace(/\[\[GENAI_TOOL_\d+\]\]/g, '').trim();
+          }
+          return `${m.role === 'user' ? 'User' : 'Assistant'}: ${c}`;
+        }).join('\n\n') + '\nEND OF THE CHUNK. MAKE SUMMARY NOW';
         
         const payload = [
           {
             role: 'system',
-            content: "You are a summarization agent that writes extremely concise summaries of the conversation history. MANDATORY RULE 1: Write a brief summary of what happened in the conversation chunk (literally 50-100 words). MANDATORY RULE 2: The summary MUST ALWAYS be written strictly in English, regardless of the language used in the conversation. Return ONLY the summary in English, no other text. Do NOT continue chat or roleplay. You're writing SUMMARY."
+            content: "You are a summarization agent that writes extremely concise summaries of the conversation history. MANDATORY RULE 1: Write a brief summary of what happened in the conversation chunk (literally 50-100 words). MANDATORY RULE 2: The summary MUST ALWAYS be written strictly in English, regardless of the language used in the conversation. Return ONLY the summary in English, no other text. Do NOT include internal thoughts, reasoning processes, thinking tags, or meta-commentary. You're writing SUMMARY."
           },
           {
             role: 'user',
@@ -532,11 +587,13 @@ export async function updateSessionSummaryIfNeeded(session, force = false) {
         const summary = await api.chatCompletion(payload, { 
           priority: 'background',
           temperature: 0.8,
-          reasoning_effort: 'none'
+          reasoning_effort: 'none',
+          stripThinking: true
         });
         
-        if (summary && summary.trim().length > 0) {
-          summaries.push(summary.trim());
+        const cleanedChunk = cleanSummaryText(summary);
+        if (cleanedChunk && cleanedChunk.length > 0) {
+          summaries.push(cleanedChunk);
         }
       }
 
@@ -548,7 +605,7 @@ export async function updateSessionSummaryIfNeeded(session, force = false) {
         const payload = [
           {
             role: 'system',
-            content: "You are a summarization agent that writes comprehensive summaries of the conversation history. MANDATORY RULE 1: Merge multiple conversation summaries into one coherent, comprehensive summary (recommended length: 300-400 words). MANDATORY RULE 2: The summary MUST ALWAYS be written strictly in English, regardless of the language used in the conversation. Return ONLY the summary in English, no other text. Do NOT continue chat or roleplay. You're writing SUMMARY."
+            content: "You are a summarization agent that writes comprehensive summaries of the conversation history. MANDATORY RULE 1: Merge multiple conversation summaries into one coherent, comprehensive summary (recommended length: 300-400 words). MANDATORY RULE 2: The summary MUST ALWAYS be written strictly in English, regardless of the language used in the conversation. Return ONLY the summary in English, no other text. Do NOT include internal thoughts, reasoning processes, thinking tags, or meta-commentary. You're writing SUMMARY."
           },
           {
             role: 'user',
@@ -559,15 +616,20 @@ export async function updateSessionSummaryIfNeeded(session, force = false) {
         const combined = await api.chatCompletion(payload, {
           priority: 'background',
           temperature: 0.8,
-          reasoning_effort: 'none'
+          reasoning_effort: 'none',
+          stripThinking: true
         });
         
-        finalSummary = combined ? combined.trim() : '';
+        finalSummary = cleanSummaryText(combined);
       }
+
+      finalSummary = cleanSummaryText(finalSummary);
+      const cleanedSummaries = summaries.map(s => cleanSummaryText(s)).filter(Boolean);
 
       // Save summary and all intermediate chunks to session
       session.summary = finalSummary;
-      session.summary_chunks = summaries;
+      session.summary_chunks = cleanedSummaries;
+      session.smart_context_disabled = false;
       saveHistory();
       
       // Save all summary chunks (both intermediate and final) to the embeddings RAG store
@@ -582,17 +644,23 @@ export async function updateSessionSummaryIfNeeded(session, force = false) {
     } catch (err) {
       console.error(`[Smart Context] Failed to summarize session ${session.id}:`, err);
     } finally {
+      delete activeSummarizations[strId];
       delete activeSummarizations[session.id];
       renderSmartContextChats();
     }
   })();
 
+  activeSummarizations[strId] = promise;
   activeSummarizations[session.id] = promise;
   return promise;
 }
 
 // Inactivity timer scheduler
 export function scheduleSmartContextAutoUpdate(sessionId) {
+  const strId = String(sessionId);
+  if (autoUpdateTimers[strId]) {
+    clearTimeout(autoUpdateTimers[strId]);
+  }
   if (autoUpdateTimers[sessionId]) {
     clearTimeout(autoUpdateTimers[sessionId]);
   }
@@ -600,12 +668,17 @@ export function scheduleSmartContextAutoUpdate(sessionId) {
   const settings = settingsStore.get();
   if (!settings.genai_smart_context) return;
 
-  autoUpdateTimers[sessionId] = setTimeout(() => {
-    const sessions = getGenaiSessions();
-    const session = sessions.find(s => s.id === sessionId);
-    if (session) {
-      updateSessionSummaryIfNeeded(session);
+  const sessions = getGenaiSessions() || [];
+  const session = sessions.find(s => String(s.id) === strId);
+  if (session && session.smart_context_disabled) return;
+
+  autoUpdateTimers[strId] = setTimeout(() => {
+    const freshSessions = getGenaiSessions() || [];
+    const freshSession = freshSessions.find(s => String(s.id) === strId);
+    if (freshSession && !freshSession.smart_context_disabled) {
+      updateSessionSummaryIfNeeded(freshSession);
     }
+    delete autoUpdateTimers[strId];
     delete autoUpdateTimers[sessionId];
   }, 60000); // 60 seconds
 }
@@ -625,7 +698,7 @@ async function runAutoSync() {
     }
 
     const sessions = getGenaiSessions() || [];
-    const recent15 = sessions.slice(0, 15);
+    const recent15 = sessions.slice(0, 15).filter(s => !s.smart_context_disabled);
 
     for (let i = 0; i < recent15.length; i++) {
       const session = recent15[i];
@@ -655,6 +728,11 @@ async function runAutoSync() {
 // Clean up helper when chat is switched
 export function handleChatSwitched(previousSessionId) {
   // Clear any active timer on the previous session
+  const strId = String(previousSessionId);
+  if (autoUpdateTimers[strId]) {
+    clearTimeout(autoUpdateTimers[strId]);
+    delete autoUpdateTimers[strId];
+  }
   if (autoUpdateTimers[previousSessionId]) {
     clearTimeout(autoUpdateTimers[previousSessionId]);
     delete autoUpdateTimers[previousSessionId];

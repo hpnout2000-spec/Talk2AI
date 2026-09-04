@@ -139,38 +139,41 @@ function preprocessMessages(messages, settings) {
 
 export function stripThinkingTags(text) {
   if (!text) return '';
-  let clean = String(text).trim();
+  const str = String(text).trim();
 
-  // 1. Strip standard <think>...</think>, <thought>...</thought>, <reasoning>...</reasoning> blocks
-  clean = clean.replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, '');
-  clean = clean.replace(/<thought>[\s\S]*?<\/thought>/gi, '');
-  clean = clean.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '');
-  clean = clean.replace(/\[THINK(?:ING)?\][\s\S]*?\[\/THINK(?:ING)?\]/gi, '');
-  clean = clean.replace(/\[REASONING\][\s\S]*?\[\/REASONING\]/gi, '');
+  // 1. Strip closed standard thinking blocks across any number of paragraphs
+  let clean = str
+    .replace(/<\s*think(?:ing)?\s*>[\s\S]*?<\s*\/\s*think(?:ing)?\s*>/gi, '')
+    .replace(/<\s*thought\s*>[\s\S]*?<\s*\/\s*thought\s*>/gi, '')
+    .replace(/<\s*reasoning\s*>[\s\S]*?<\s*\/\s*reasoning\s*>/gi, '')
+    .replace(/\[THINK(?:ING)?\][\s\S]*?\[\/THINK(?:ING)?\]/gi, '')
+    .replace(/\[REASONING\][\s\S]*?\[\/REASONING\]/gi, '')
+    .replace(/<\|\s*thought\s*\|>[\s\S]*?<\|\s*(?:\/|end_of_|thought_)?(?:thought|think)?\s*\|?>/gi, '')
+    .replace(/<\|?\s*channel\s*\|?>?\s*thought[\s\S]*?(?:<channel\|?>|<\|\s*channel\s*\|?>|<\|\s*\/channel\s*\|?>|<\|\s*(?:end_of_thought|thought_end)\s*\|?>|<\|?\s*channel\s*\|?>?\s*(?:final_response|commentary|call))/gi, '')
+    .replace(/\[\[THINKING_BLOCK(?:_\d+)?\]\]/gi, '')
+    .replace(/\[\[GENAI_TOOL_\d+\]\]/gi, '')
+    .replace(/\(Reasoning budget exceeded\)[\s\S]*?(?:<channel\|?>|<\/\s*think>|<\|end_of_thought\|?>|<\|channel\|?>)/gi, '')
+    .replace(/<\|[^>]+channel[^>]*\|?>?(?:[a-z_]+)?/gi, '')
+    .replace(/<\|?channel\|?>?(?:commentary|call|final_response)?/gi, '')
+    .replace(/<channel\|?>/gi, '')
+    .replace(/<\/?(?:think|thought|reasoning)(?:ing)?>/gi, '')
+    .replace(/<\|?\/?(?:think|thought|reasoning)\|?>/gi, '')
+    .replace(/\[\/?(?:THINK(?:ING)?|REASONING)(?:_END)?\]/gi, '')
+    .replace(/^(?:final_response|commentary|call)\b\s*/gim, '')
+    .trim();
 
-  // 2. Strip <|thought|>...</|thought|>, <|think|>...</|think|>
-  clean = clean.replace(/<\|(?:think|thought|reasoning)\|>[\s\S]*?<\|(?:\/|end_of_|thought_)?(?:think|thought|reasoning)?\|?>/gi, '');
+  // Safety fallback: If stripping removed everything (e.g. model response was entirely wrapped in think tags),
+  // strip only the tags themselves so content is never destroyed.
+  if (!clean && str) {
+    clean = str
+      .replace(/<\/?(?:think|thought|reasoning)(?:ing)?>/gi, '')
+      .replace(/<\|?\/?(?:think|thought|reasoning)\|?>/gi, '')
+      .replace(/<\|[^>]+>/gi, '')
+      .replace(/\[\[THINKING_BLOCK(?:_\d+)?\]\]/gi, '')
+      .trim();
+  }
 
-  // 3. Strip <|channel|>thought blocks and channel markers
-  clean = clean.replace(/<\|?channel\|?>?thought[\s\S]*?(?=<\|?channel\|?>?(?:commentary|call|final_response)|<channel\|?>|<\|channel\|?>|\n\n[A-Z0-9#*-]|\n\n\S|$)/gi, '');
-  clean = clean.replace(/<\|?channel\|?>?thought/gi, '');
-  clean = clean.replace(/\(Reasoning budget exceeded\)[\s\S]*?(?=<\|?[^>]*channel[^>]*\|?>|<\/think>|$)/gi, '');
-
-  // 4. Strip any prefill strings inserted by system
-  clean = clean.replace(/^The user[\s\S]*?(?=\n\n|$)/gi, '');
-  clean = clean.replace(/^Okay, let me think really quickly[\s\S]*?(?=\n\n|$)/gi, '');
-
-  // 5. Strip any remaining special tags, channel markers, and channel keywords
-  clean = clean.replace(/<\|[^>]+channel[^>]*\|?>?(?:[a-z_]+)?/gi, '');
-  clean = clean.replace(/<\|?channel\|?>?(?:commentary|call|final_response)?/gi, '');
-  clean = clean.replace(/<channel\|?>/gi, '');
-  clean = clean.replace(/<\|end_of_thought\|?>|<\|thought_end\|?>/gi, '');
-  clean = clean.replace(/<\/?(?:think|thought|reasoning)(?:ing)?>/gi, '');
-  clean = clean.replace(/<\|?\/?(?:think|thought|reasoning)\|?>/gi, '');
-  clean = clean.replace(/\[\/?(?:THINK(?:ING)?|REASONING)(?:_END)?\]/gi, '');
-  clean = clean.replace(/^(?:final_response|commentary|call)\b\s*/gim, '');
-
-  return clean.trim();
+  return clean;
 }
 
 export function extractJsonFromText(text) {
@@ -869,11 +872,16 @@ export const api = {
         signal,
         (chunk) => { fullResponse += chunk; },
         () => {
+          let result = '';
           if (!fullResponse.trim() && thinkingResponse.trim()) {
-            resolve(thinkingResponse);
+            result = thinkingResponse;
           } else {
-            resolve(fullResponse);
+            result = fullResponse;
           }
+          if (options.reasoning_effort === 'none' || options.stripThinking) {
+            result = stripThinkingTags(result);
+          }
+          resolve(result);
         },
         (err) => reject(err),
         options,
@@ -1142,7 +1150,8 @@ Keep the summary under 300 words. Write only the summary itself in ${language}, 
     ];
 
     try {
-      return await this.chatCompletion(messages, { temperature: 0.5, max_tokens: 1536 });
+      const res = await this.chatCompletion(messages, { temperature: 0.5, max_tokens: 1536, stripThinking: true });
+      return stripThinkingTags(res);
     } catch (err) {
       console.error('Adventure summarization failed:', err);
       throw err;
@@ -1174,7 +1183,8 @@ Keep the summary under 300 words. Write only the summary itself in ${language}, 
     let newMessagesText = "";
     newMessages.forEach((msg) => {
       const name = msg.role === 'user' ? userName : characterName;
-      const content = msg.role === 'user' ? (msg.translated_content || msg.content) : (msg.original_text || msg.content);
+      let content = msg.role === 'user' ? (msg.translated_content || msg.content) : (msg.original_text || msg.content);
+      content = stripThinkingTags(content);
       newMessagesText += `${name}: ${content}\n\n`;
     });
 
@@ -1185,7 +1195,7 @@ ${mandatoryRules}
 
 Here is the EXISTING SUMMARY of the conversation so far:
 """
-${previousSummary}
+${stripThinkingTags(previousSummary)}
 """
 
 Here are the NEW MESSAGES:
@@ -1217,11 +1227,13 @@ Please write the summary of the conversation following all mandatory rules.`;
       : 'none';
 
     try {
-      return await this.chatCompletion(messages, {
+      const res = await this.chatCompletion(messages, {
         temperature: 0.5,
         max_tokens: summaryLength === 'long' ? 4096 : 2048,
-        reasoning_effort: reasoningEffort
+        reasoning_effort: reasoningEffort,
+        stripThinking: true
       });
+      return stripThinkingTags(res);
     } catch (err) {
       console.error("Failed to generate chat summary:", err);
       throw err;

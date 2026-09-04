@@ -1370,7 +1370,7 @@ ${ANIMA_BETTER_PROMPT_TEXT}`;
   let ragParts = [];
   if (settings.genai_smart_context && !skipSmartContextOverride) {
     // 1. Build Query Window (last 3 messages)
-    const activeSession = (genaiSessions || []).find(s => s.id === currentGenaiSessionId);
+    const activeSession = (genaiSessions || []).find(s => String(s.id) === String(currentGenaiSessionId));
     let queryText = '';
     if (activeSession && activeSession.messages) {
       const recentMsgs = activeSession.messages.filter(m => m.role !== 'system').slice(-3);
@@ -1380,8 +1380,8 @@ ${ANIMA_BETTER_PROMPT_TEXT}`;
     // Fallback if no recent messages
     if (!queryText.trim()) queryText = extraUserInstruction || 'Hello';
 
-    // Inject Current Session Summary directly
-    if (activeSession && activeSession.summary) {
+    // Inject Current Session Summary directly (if not disabled)
+    if (activeSession && activeSession.summary && !activeSession.smart_context_disabled) {
       ragParts.push(`[Current Chat Summary - Context of earlier messages]:\n${activeSession.summary}`);
     }
 
@@ -1401,10 +1401,14 @@ ${ANIMA_BETTER_PROMPT_TEXT}`;
     if (relevantResults.length > 0) {
       let contextStr = '';
       for (const res of relevantResults) {
-        const sessionTitle = (genaiSessions || []).find(s => s.id === res.session_id)?.title || 'Untitled';
+        const pastSession = (genaiSessions || []).find(s => String(s.id) === String(res.session_id));
+        if (pastSession && pastSession.smart_context_disabled) continue;
+        const sessionTitle = pastSession?.title || 'Untitled';
         contextStr += `\n- [Past Chat "${sessionTitle}"]: ${res.text}`;
       }
-      ragParts.push(`[Smart Context - Relevant past context across chats]:${contextStr}`);
+      if (contextStr) {
+        ragParts.push(`[Smart Context - Relevant past context across chats. USER DOESN'T SEE THIS!]:${contextStr}`);
+      }
     }
   }
 
@@ -1444,41 +1448,43 @@ ${ANIMA_BETTER_PROMPT_TEXT}`;
   const depthSetting = settings.genai_rag_context_depth !== undefined ? settings.genai_rag_context_depth : 1;
   let userMsgCount = 0;
 
-  for (let i = historyMsgs.length - 1; i >= 0; i--) {
-    if (isRealUserMsg(historyMsgs[i])) {
-      userMsgCount++;
-      const isLatest = (userMsgCount === 1);
-      const ragBlock = isLatest ? currentRagBlock : (historyMsgs[i].rag_context || null);
+  if (settings.genai_smart_context && !skipSmartContextOverride) {
+    for (let i = historyMsgs.length - 1; i >= 0; i--) {
+      if (isRealUserMsg(historyMsgs[i])) {
+        userMsgCount++;
+        const isLatest = (userMsgCount === 1);
+        const ragBlock = isLatest ? currentRagBlock : (historyMsgs[i].rag_context || null);
 
-      if (isLatest) {
-        // Latest user message gets current <context> (if any)
-        if (ragBlock) {
-          if (typeof historyMsgs[i].content === 'string') {
-            historyMsgs[i].content = `${ragBlock}\n\n${historyMsgs[i].content}`;
-          } else if (Array.isArray(historyMsgs[i].content)) {
-            const textItem = historyMsgs[i].content.find(item => item.type === 'text');
-            if (textItem) textItem.text = `${ragBlock}\n\n${textItem.text}`;
-          }
-        }
-      } else {
-        // Past user messages in history:
-        if (ragBlock) {
-          if (depthSetting >= 10 || userMsgCount <= depthSetting) {
-            // Within retention window (e.g. 2nd or 3rd user turn when depth is 3): keep full <context>!
+        if (isLatest) {
+          // Latest user message gets current <context> (if any)
+          if (ragBlock) {
             if (typeof historyMsgs[i].content === 'string') {
               historyMsgs[i].content = `${ragBlock}\n\n${historyMsgs[i].content}`;
             } else if (Array.isArray(historyMsgs[i].content)) {
               const textItem = historyMsgs[i].content.find(item => item.type === 'text');
               if (textItem) textItem.text = `${ragBlock}\n\n${textItem.text}`;
             }
-          } else {
-            // Older than retention limit (e.g. 4th user turn when depth is 3): prune with notice!
-            const prunedTag = '<context>\n[RAG context was removed to save tokens]\n</context>';
-            if (typeof historyMsgs[i].content === 'string') {
-              historyMsgs[i].content = `${prunedTag}\n\n${historyMsgs[i].content}`;
-            } else if (Array.isArray(historyMsgs[i].content)) {
-              const textItem = historyMsgs[i].content.find(item => item.type === 'text');
-              if (textItem) textItem.text = `${prunedTag}\n\n${textItem.text}`;
+          }
+        } else {
+          // Past user messages in history:
+          if (ragBlock) {
+            if (depthSetting >= 10 || userMsgCount <= depthSetting) {
+              // Within retention window (e.g. 2nd or 3rd user turn when depth is 3): keep full <context>!
+              if (typeof historyMsgs[i].content === 'string') {
+                historyMsgs[i].content = `${ragBlock}\n\n${historyMsgs[i].content}`;
+              } else if (Array.isArray(historyMsgs[i].content)) {
+                const textItem = historyMsgs[i].content.find(item => item.type === 'text');
+                if (textItem) textItem.text = `${ragBlock}\n\n${textItem.text}`;
+              }
+            } else {
+              // Older than retention limit (e.g. 4th user turn when depth is 3): prune with notice!
+              const prunedTag = '<context>\n[RAG context was removed to save tokens]\n</context>';
+              if (typeof historyMsgs[i].content === 'string') {
+                historyMsgs[i].content = `${prunedTag}\n\n${historyMsgs[i].content}`;
+              } else if (Array.isArray(historyMsgs[i].content)) {
+                const textItem = historyMsgs[i].content.find(item => item.type === 'text');
+                if (textItem) textItem.text = `${prunedTag}\n\n${textItem.text}`;
+              }
             }
           }
         }
@@ -5933,7 +5939,10 @@ function saveHistory() {
     }
 
     if (!isGenerating && currentGenaiSessionId && window.scheduleSmartContextAutoUpdate) {
-      window.scheduleSmartContextAutoUpdate(currentGenaiSessionId);
+      const activeSess = genaiSessions.find(s => String(s.id) === String(currentGenaiSessionId));
+      if (!activeSess || !activeSess.smart_context_disabled) {
+        window.scheduleSmartContextAutoUpdate(currentGenaiSessionId);
+      }
     }
     updateGenAIHeaderTitle();
   } catch (e) {
@@ -6314,17 +6323,24 @@ function renderRecentChatsList() {
     el.addEventListener('click', async (e) => {
       e.stopPropagation();
       const id = el.dataset.id;
-      const session = genaiSessions.find(s => s.id === id);
+      const session = genaiSessions.find(s => String(s.id) === String(id));
       if (session) {
         const hasSummary = session.summary && session.summary.trim().length > 0;
-        if (hasSummary) {
+        const isCurrentlyIncluded = hasSummary && !session.smart_context_disabled;
+        if (isCurrentlyIncluded) {
           session.summary = '';
+          session.summary_chunks = [];
+          session.smart_context_disabled = true;
+          await genaiEmbeddingsStore.removeSession(session.id).catch(console.error);
           saveHistory();
           renderRecentChatsList();
           if (window.renderSmartContextChats) {
             window.renderSmartContextChats();
           }
+          if (window.showToast) window.showToast('Chat removed from Smart Context', 'info');
         } else {
+          session.smart_context_disabled = false;
+          if (window.showToast) window.showToast('Generating Smart Context summary...', 'info');
           if (window.updateSessionSummary) {
             // Trigger background summarization
             await window.updateSessionSummary(session);
@@ -6339,7 +6355,7 @@ function renderRecentChatsList() {
 function renderChatRow(s) {
   const isActive = String(s.id) === String(currentGenaiSessionId);
   const isPinned = s.pinned;
-  const hasSummary = s.summary && s.summary.trim().length > 0;
+  const hasSummary = s.summary && s.summary.trim().length > 0 && !s.smart_context_disabled;
   const d = new Date(s.updated_at);
   const timeStr = d.toLocaleDateString() === new Date().toLocaleDateString() ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString();
   return `

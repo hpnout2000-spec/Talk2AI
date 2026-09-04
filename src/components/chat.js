@@ -7,7 +7,7 @@ import { appState } from '../state.js';
 import { chatStore } from '../services/chat-store.js';
 import { characterStore } from '../services/character-store.js';
 import { gameStore } from '../services/game-store.js';
-import { api } from '../services/api.js';
+import { api, stripThinkingTags } from '../services/api.js';
 import { settingsStore } from '../services/settings-store.js';
 import { lorebookStore, idbGet, idbSet } from '../services/lorebook-store.js';
 import { memoryService } from '../services/memory-service.js';
@@ -568,7 +568,7 @@ export function initChat() {
 
     const newChunk = {
       id: Date.now().toString() + '_' + Math.random().toString(36).substring(2, 6),
-      text: summaryText.trim(),
+      text: stripThinkingTags(summaryText).trim(),
       startMsgId: session.messages[startIndex].id,
       endMsgId: session.messages[endIndex - 1].id
     };

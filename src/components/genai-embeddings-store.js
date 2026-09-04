@@ -181,8 +181,9 @@ export const genaiEmbeddingsStore = {
   async saveSessionChunks(sessionId, chunkTexts) {
     if (!await this.init()) return;
 
+    const strSessionId = String(sessionId);
     // Load existing chunks for this session
-    const existing = await getVectorsBySession(sessionId);
+    const existing = await getVectorsBySession(strSessionId);
     const existingMap = new Map();
     existing.forEach(rec => existingMap.set(rec.id, rec));
 
@@ -191,7 +192,7 @@ export const genaiEmbeddingsStore = {
     for (let i = 0; i < chunkTexts.length; i++) {
       const text = chunkTexts[i];
       const hash = computeHash(text);
-      const id = `${sessionId}_${i}`;
+      const id = `${strSessionId}_${i}`;
       processedIds.add(id);
 
       const existingRecord = existingMap.get(id);
@@ -204,12 +205,12 @@ export const genaiEmbeddingsStore = {
 
       // Changed or New
       try {
-        console.log(`[Embeddings] Vectorizing chunk ${i} for session ${sessionId}...`);
+        console.log(`[Embeddings] Vectorizing chunk ${i} for session ${strSessionId}...`);
         const embedding = await this.getVector(text, false);
         
         await putVector({
           id,
-          session_id: sessionId,
+          session_id: strSessionId,
           chunk_index: i,
           text_hash: hash,
           embedding,
@@ -291,12 +292,19 @@ export const genaiEmbeddingsStore = {
   },
 
   /**
-   * Remove all vectors for a given session (e.g., when a chat is deleted)
+   * Remove all vectors for a given session (e.g., when a chat is deleted or removed from Smart Context)
    */
   async removeSession(sessionId) {
     if (!await this.init(false)) return;
-    const existing = await getVectorsBySession(sessionId);
-    for (const rec of existing) {
+    const strId = String(sessionId);
+    const existingStr = await getVectorsBySession(strId);
+    let existingNum = [];
+    const numId = Number(sessionId);
+    if (!isNaN(numId) && String(numId) === strId) {
+      existingNum = await getVectorsBySession(numId);
+    }
+    const all = [...existingStr, ...existingNum];
+    for (const rec of all) {
       await deleteVector(rec.id);
     }
   },
@@ -326,15 +334,15 @@ export const genaiEmbeddingsStore = {
    */
   async migrateExistingSummaries(sessions) {
     try {
-      const sessionsWithSummaries = (sessions || []).filter(s => s.summary && s.summary.trim().length > 0);
+      const sessionsWithSummaries = (sessions || []).filter(s => s.summary && s.summary.trim().length > 0 && !s.smart_context_disabled);
       if (sessionsWithSummaries.length === 0) {
         console.log('[Embeddings] No existing summaries found to index.');
         return;
       }
 
       const allVectors = await getAllVectors();
-      const existingSessionIds = new Set(allVectors.map(v => v.session_id));
-      const missing = sessionsWithSummaries.filter(s => !existingSessionIds.has(s.id));
+      const existingSessionIds = new Set(allVectors.map(v => String(v.session_id)));
+      const missing = sessionsWithSummaries.filter(s => !existingSessionIds.has(String(s.id)));
 
       if (missing.length === 0) {
         console.log('[Embeddings] All session summaries are already indexed in vector DB.');
@@ -375,7 +383,7 @@ export const genaiEmbeddingsStore = {
    * Re-index all saved summaries from scratch
    */
   async reindexAllSummaries(sessions) {
-    const sessionsWithSummaries = (sessions || []).filter(s => s.summary && s.summary.trim().length > 0);
+    const sessionsWithSummaries = (sessions || []).filter(s => s.summary && s.summary.trim().length > 0 && !s.smart_context_disabled);
     if (sessionsWithSummaries.length === 0) {
       if (window.showToast) {
         window.showToast('Smart Context: No chat summaries found to index', 'info');
