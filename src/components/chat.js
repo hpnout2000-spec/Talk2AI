@@ -752,9 +752,9 @@ export function initChat() {
     }
   });
 
-  // Auto-resize input
+  // Auto-resize input and update floating glass dock layout
   messageInput.addEventListener('input', () => {
-    autoResizeTextarea(messageInput);
+    updateChatDockLayout();
     
     // Recount context tokens debounced on typing
     updateContextIndicator(true);
@@ -1203,6 +1203,125 @@ export function initChat() {
       });
     }
   }
+
+  // ─── Floating Liquid Glass Dock (4 Pods) Engine ───────────────────
+  function updateFeaturesPodWidth() {
+    const pod = document.getElementById('chat-pod-features');
+    const inner = document.getElementById('chat-pod-features-inner');
+    if (!pod || !inner) return;
+
+    // Measure the exact unconstrained width of inner items
+    const measuredWidth = inner.scrollWidth + 12;
+    pod.style.setProperty('--features-pod-width', `${measuredWidth}px`);
+  }
+  window.updateFeaturesPodWidth = updateFeaturesPodWidth;
+
+  function updateChatDockLayout(immediate = false) {
+    const dock = document.getElementById('chat-input-dock');
+    if (!dock || !messageInput) return;
+
+    const dockWidth = dock.clientWidth || 800;
+    const val = messageInput.value || '';
+    const hasNewline = val.includes('\n');
+    
+    // Check if multiline: either explicit newline or content scrollHeight indicates wrapping
+    let isMultiline = hasNewline;
+    if (!isMultiline && val.trim().length > 0) {
+      if (messageInput.scrollHeight > 36) {
+        isMultiline = true;
+      }
+    }
+
+    // Automatically stack if window/dock is narrow (< 580px) or multiline
+    const shouldStack = isMultiline || dockWidth < 580;
+    const currentlyStacked = dock.classList.contains('is-stacked');
+
+    if (shouldStack === currentlyStacked) {
+      if (shouldStack) {
+        messageInput.style.height = 'auto';
+        messageInput.style.height = Math.min(messageInput.scrollHeight, 180) + 'px';
+      } else {
+        messageInput.style.height = '';
+      }
+      return;
+    }
+
+    if (immediate) {
+      dock.classList.toggle('is-stacked', shouldStack);
+      dock.classList.toggle('is-inline', !shouldStack);
+      if (shouldStack) {
+        messageInput.style.height = 'auto';
+        messageInput.style.height = Math.min(messageInput.scrollHeight, 180) + 'px';
+      } else {
+        messageInput.style.height = '';
+      }
+      return;
+    }
+
+    // Synchronous FLIP (First, Last, Invert, Play)
+    const pods = Array.from(dock.querySelectorAll('.chat-pod'));
+    const firstRects = new Map();
+    pods.forEach(pod => firstRects.set(pod, pod.getBoundingClientRect()));
+
+    dock.classList.toggle('is-stacked', shouldStack);
+    dock.classList.toggle('is-inline', !shouldStack);
+
+    if (shouldStack) {
+      messageInput.style.height = 'auto';
+      messageInput.style.height = Math.min(messageInput.scrollHeight, 180) + 'px';
+    } else {
+      messageInput.style.height = '';
+    }
+
+    pods.forEach(pod => {
+      const first = firstRects.get(pod);
+      const last = pod.getBoundingClientRect();
+      if (!first || !last) return;
+
+      const dx = first.left - last.left;
+      const dy = first.top - last.top;
+
+      if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+        pod.animate([
+          { transform: `translate(${dx}px, ${dy}px)` },
+          { transform: 'none' }
+        ], {
+          duration: 250,
+          easing: 'cubic-bezier(0.16, 1, 0.3, 1)'
+        });
+      }
+    });
+  }
+  window.updateChatDockLayout = updateChatDockLayout;
+
+  function initFloatingGlassDock() {
+    const dock = document.getElementById('chat-input-dock');
+    const featuresInner = document.getElementById('chat-pod-features-inner');
+
+    updateChatDockLayout(true);
+    updateFeaturesPodWidth();
+
+    if (window.ResizeObserver) {
+      if (dock) {
+        const dockRo = new ResizeObserver(() => {
+          updateChatDockLayout();
+        });
+        dockRo.observe(dock);
+      }
+      if (featuresInner) {
+        const featuresRo = new ResizeObserver(() => {
+          updateFeaturesPodWidth();
+        });
+        featuresRo.observe(featuresInner);
+      }
+    }
+
+    window.addEventListener('resize', () => {
+      updateChatDockLayout();
+    });
+  }
+
+  initFloatingGlassDock();
 
   // Listen for GenAI programmatic message sends
   window.addEventListener('genai-send-chat-message', (e) => {
@@ -1845,6 +1964,7 @@ async function sendMessage() {
   // Clear input
   messageInput.value = '';
   autoResizeTextarea(messageInput);
+  updateChatDockLayout();
 
   // If outgoing translation is enabled, translate first
   if (settings.translate_user_messages) {

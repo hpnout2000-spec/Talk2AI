@@ -1301,6 +1301,8 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
   pointer-events: all;
 }
 
+/* ─── Standard Input Container (for GenAI Sidebar & Group Chat) ─── */
+
 .input-container {
   display: flex;
   flex-direction: column;
@@ -1314,11 +1316,319 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
   width: 100%;
   max-width: 48rem;
   position: relative;
+  box-sizing: border-box;
 }
 
 .input-container:focus-within {
   border-color: var(--border-light);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.input-bottom-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  margin-top: 6px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.input-bottom-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+/* ─── Floating Liquid Glass Dock ─────────────────────────────────── */
+
+.chat-input-dock {
+  width: 100%;
+  max-width: 48rem;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+
+/* State A: Inline Single-Row */
+.chat-input-dock.is-inline {
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.chat-input-dock.is-inline .chat-pod-tools {
+  order: 1;
+  flex-shrink: 0;
+}
+
+.chat-input-dock.is-inline .chat-pod-features {
+  order: 2;
+  flex-shrink: 0;
+}
+
+.chat-input-dock.is-inline .chat-pod-input {
+  order: 3;
+  flex: 1 1 0%;
+  min-width: 120px;
+}
+
+.chat-input-dock.is-inline .chat-dock-spacer {
+  display: none;
+}
+
+.chat-input-dock.is-inline .chat-pod-send {
+  order: 4;
+  flex-shrink: 0;
+}
+
+/* State B: Stacked Multi-Row */
+.chat-input-dock.is-stacked {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  row-gap: 8px;
+}
+
+.chat-input-dock.is-stacked .chat-pod-input {
+  order: 1;
+  flex: 0 0 100%;
+  width: 100%;
+  margin-bottom: 2px;
+}
+
+.chat-input-dock.is-stacked .chat-pod-tools {
+  order: 2;
+  flex-shrink: 0;
+}
+
+.chat-input-dock.is-stacked .chat-pod-features {
+  order: 3;
+  flex-shrink: 0;
+}
+
+.chat-input-dock.is-stacked .chat-dock-spacer {
+  order: 4;
+  display: block;
+  flex: 1 1 auto;
+  min-width: 8px;
+}
+
+.chat-input-dock.is-stacked .chat-pod-send {
+  order: 5;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* ─── Pod Base Styles (Liquid Glass Cloud Capsules) ──────────────── */
+
+.chat-pod {
+  pointer-events: all;
+  position: relative;
+  box-sizing: border-box;
+  height: 44px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.3),
+              inset 0 1px 0 rgba(255, 255, 255, 0.3),
+              inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  display: inline-flex;
+  align-items: center;
+  transition: border-color 0.2s ease,
+              box-shadow 0.2s ease,
+              background-color 0.2s ease;
+  user-select: none;
+  overflow: visible !important;
+}
+
+/* Zero Blur Hover on Pods */
+.chat-pod:hover {
+  border-color: rgba(255, 255, 255, 0.32);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35),
+              inset 0 1px 0 rgba(255, 255, 255, 0.4),
+              inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+/* Elevate foreground children above the internal .cloud-progressive-blur */
+.chat-pod > *:not(.cloud-progressive-blur),
+.chat-pod-features-inner,
+.chat-plus-wrapper,
+.btn-chat-plus,
+.btn-input-settings,
+#message-input,
+#context-indicator,
+#btn-send,
+#btn-stop {
+  position: relative;
+  z-index: 1;
+}
+
+/* ─── Pod 1: Tools (Plus + Settings) ─────────────────────────────── */
+
+.chat-pod-tools {
+  padding: 0 6px;
+  gap: 4px;
+  z-index: 50;
+  overflow: visible !important;
+}
+
+.chat-plus-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.btn-chat-plus,
+.btn-input-settings {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--text-secondary);
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.btn-chat-plus:hover,
+.btn-input-settings:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.btn-chat-plus svg,
+.btn-input-settings svg {
+  width: 17px;
+  height: 17px;
+}
+
+/* Popovers: Lush Frosted Glass Blur */
+#chat-plus-popover,
+#input-settings-popover {
+  bottom: calc(100% + 8px);
+  left: 0;
+  border-radius: var(--radius-md);
+  backdrop-filter: blur(24px) saturate(1.3) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.3) !important;
+  background: rgba(24, 26, 32, 0.65) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.16) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55),
+              inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
+  z-index: 100;
+}
+
+/* Safe hover bridges placed on wrappers to avoid clobbering popover ::after blur */
+.chat-plus-wrapper::after {
+  content: "";
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  height: 12px;
+  background: transparent;
+  pointer-events: auto;
+}
+
+.btn-input-settings::before {
+  content: "";
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  height: 12px;
+  background: transparent;
+  pointer-events: auto;
+}
+
+/* ─── Pod 2: Features (Thinking Effort + Dynamic Addons) ─────────── */
+
+.chat-pod-features {
+  padding: 0 6px;
+  z-index: 45;
+  overflow: visible !important;
+  width: var(--features-pod-width, auto);
+  transition: width 0.32s cubic-bezier(0.25, 1, 0.35, 1),
+              border-color 0.2s ease,
+              box-shadow 0.2s ease,
+              background-color 0.2s ease,
+              transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.chat-pod-features-inner {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 100%;
+  white-space: nowrap;
+}
+
+.chat-pod-features .thinking-effort-wrapper {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  height: 28px;
+}
+
+.chat-pod-features .thinking-effort-wrapper:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.active-lorebooks-container {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chat-imagegen-container {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ─── Pod 4: Input (Message Textarea Capsule) ────────────────────── */
+
+.chat-pod-input {
+  z-index: 10;
+  padding: 0 16px;
+  transition: border-color 0.2s ease,
+              box-shadow 0.2s ease,
+              background-color 0.2s ease,
+              min-height 0.24s cubic-bezier(0.16, 1, 0.3, 1),
+              padding 0.24s cubic-bezier(0.16, 1, 0.3, 1),
+              border-radius 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.chat-input-dock.is-inline .chat-pod-input {
+  height: 44px;
+  border-radius: 22px;
+  align-items: center;
+}
+
+.chat-input-dock.is-stacked .chat-pod-input {
+  height: auto;
+  min-height: 52px;
+  border-radius: 20px;
+  padding: 12px 16px;
+  align-items: flex-start;
+}
+
+.chat-pod-input:focus-within {
+  border-color: rgba(255, 255, 255, 0.35);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.38),
+              inset 0 1px 0 rgba(255, 255, 255, 0.38),
+              inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .message-input {
@@ -1329,87 +1639,47 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
   font-family: var(--font-sans);
   font-size: var(--text-base);
   line-height: 1.5;
-  padding: 4px var(--space-1);
+  padding: 0;
   margin: 0;
   resize: none;
-  max-height: 200px;
   outline: none;
+  user-select: text;
+}
+
+.chat-input-dock.is-inline .message-input {
+  height: 24px;
+  line-height: 24px;
+  overflow-y: hidden;
+}
+
+.chat-input-dock.is-stacked .message-input {
+  min-height: 28px;
+  max-height: 180px;
+  overflow-y: auto;
 }
 
 .message-input::placeholder {
   color: var(--text-secondary);
 }
 
-/* Bottom Controls Row */
-.input-bottom-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  width: 100%;
-  margin-top: 6px;
-  padding-top: 4px;
-  border-top: 1px solid rgba(255, 255, 255, 0.03); /* Subtle top divider */
-}
+/* ─── Pod 3: Actions (Free Context + Send / Stop) ─────────────────── */
 
-.input-bottom-left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-}
-
-.chat-plus-wrapper {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.btn-chat-plus {
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  color: var(--text-tertiary);
-  opacity: 0.6;
-  border: none;
-  border-radius: 50%;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.btn-input-settings {
-  width: 28px;
-  height: 28px;
-}
-
-.btn-chat-plus:hover {
-  opacity: 1;
-  color: var(--text-primary);
-  background: var(--bg-hover);
-}
-
-.btn-chat-plus svg {
-  width: 18px;
-  height: 18px;
-}
-
-#chat-plus-popover {
-  bottom: 100%;
-  left: 0;
-  margin-bottom: 8px;
-  width: 220px;
-  padding: 6px;
-  position: absolute;
-  z-index: 100;
-}
-
-.input-actions {
-  display: flex;
-  gap: var(--space-1);
+.chat-pod-send {
+  z-index: 20;
+  padding: 0 6px 0 10px;
+  gap: 6px;
   flex-shrink: 0;
-  align-items: center;
+}
+
+/* ─── Auxiliary Banners Above Dock ───────────────────────────────── */
+
+.auto-summary-recommendation,
+.image-suggestion-wrapper {
+  width: 100%;
+  max-width: 48rem;
+  margin-bottom: 8px;
+  pointer-events: all;
+  box-sizing: border-box;
 }
 
 .btn-send,
