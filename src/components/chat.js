@@ -1216,26 +1216,44 @@ export function initChat() {
   }
   window.updateFeaturesPodWidth = updateFeaturesPodWidth;
 
+  // ─── Dock Stacking Logic with Robust Hysteresis ───────────────────
+  function shouldDockStack() {
+    const dock = document.getElementById('chat-input-dock');
+    if (!dock || !messageInput) return false;
+
+    const dockWidth = dock.clientWidth || 800;
+    if (dockWidth < 580) return true; // Narrow container or GenAI panel open
+
+    const val = messageInput.value || '';
+    if (val.includes('\n')) return true; // Explicit newline always stacks
+
+    if (!val.trim()) return false; // Completely empty input always returns to inline
+
+    const currentlyStacked = dock.classList.contains('is-stacked');
+
+    if (!currentlyStacked) {
+      // INLINE -> STACKED:
+      // In inline mode, the textarea is 24px high (single line).
+      // Only stack if text wraps onto a second line (scrollHeight > 32px).
+      return messageInput.scrollHeight > 32;
+    } else {
+      // STACKED -> INLINE:
+      // Robust hysteresis: while the user is in stacked mode, stay stacked!
+      // Only collapse back if text is deleted down below 15 characters without newlines,
+      // which is guaranteed to fit comfortably inline without wrapping.
+      return val.trim().length >= 15;
+    }
+  }
+
+  // ─── Liquid Glass Dock Morphing Engine (Pure GPU FLIP Transform) ──
   function updateChatDockLayout(immediate = false) {
     const dock = document.getElementById('chat-input-dock');
     if (!dock || !messageInput) return;
 
-    const dockWidth = dock.clientWidth || 800;
-    const val = messageInput.value || '';
-    const hasNewline = val.includes('\n');
-    
-    // Check if multiline: either explicit newline or content scrollHeight indicates wrapping
-    let isMultiline = hasNewline;
-    if (!isMultiline && val.trim().length > 0) {
-      if (messageInput.scrollHeight > 36) {
-        isMultiline = true;
-      }
-    }
-
-    // Automatically stack if window/dock is narrow (< 580px) or multiline
-    const shouldStack = isMultiline || dockWidth < 580;
+    const shouldStack = shouldDockStack();
     const currentlyStacked = dock.classList.contains('is-stacked');
 
+    // If state hasn't changed, just adjust textarea height in stacked mode
     if (shouldStack === currentlyStacked) {
       if (shouldStack) {
         messageInput.style.height = 'auto';
@@ -1258,11 +1276,19 @@ export function initChat() {
       return;
     }
 
-    // Synchronous FLIP (First, Last, Invert, Play)
+    // ─── Pure FLIP Animation (Zero Flex-Reflow, Zero Button Jitter) ───
     const pods = Array.from(dock.querySelectorAll('.chat-pod'));
-    const firstRects = new Map();
-    pods.forEach(pod => firstRects.set(pod, pod.getBoundingClientRect()));
 
+    // 1. FIRST: Capture initial positions & dimensions
+    const firstRects = new Map();
+    pods.forEach(pod => {
+      // Cancel any running animations to avoid accumulating intermediate offsets
+      pod.getAnimations().forEach(a => a.cancel());
+      firstRects.set(pod, pod.getBoundingClientRect());
+    });
+    messageInput.getAnimations().forEach(a => a.cancel());
+
+    // 2. LAST: Apply class and let flexbox place elements in their resting positions
     dock.classList.toggle('is-stacked', shouldStack);
     dock.classList.toggle('is-inline', !shouldStack);
 
@@ -1273,6 +1299,8 @@ export function initChat() {
       messageInput.style.height = '';
     }
 
+    // 3. INVERT & PLAY: Animate strictly using GPU compositor transforms!
+    // NEVER animate width/height on in-flow flex children!
     pods.forEach(pod => {
       const first = firstRects.get(pod);
       const last = pod.getBoundingClientRect();
@@ -1281,14 +1309,52 @@ export function initChat() {
       const dx = first.left - last.left;
       const dy = first.top - last.top;
 
-      if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
-        pod.animate([
-          { transform: `translate(${dx}px, ${dy}px)` },
-          { transform: 'none' }
-        ], {
-          duration: 250,
-          easing: 'cubic-bezier(0.16, 1, 0.3, 1)'
-        });
+      if (pod.id === 'chat-pod-input') {
+        const sx = first.width / (last.width || 1);
+        const sy = first.height / (last.height || 1);
+
+        if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5 || Math.abs(sx - 1) > 0.01 || Math.abs(sy - 1) > 0.01) {
+          pod.animate([
+            {
+              transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`,
+              transformOrigin: 'top left'
+            },
+            {
+              transform: 'none',
+              transformOrigin: 'top left'
+            }
+          ], {
+            duration: 260,
+            easing: 'cubic-bezier(0.16, 1, 0.3, 1)'
+          });
+
+          // Counter-scale text content so font size stays 1:1 and crystal crisp!
+          messageInput.animate([
+            {
+              transform: `scale(${1 / (sx || 1)}, ${1 / (sy || 1)})`,
+              transformOrigin: 'top left'
+            },
+            {
+              transform: 'none',
+              transformOrigin: 'top left'
+            }
+          ], {
+            duration: 260,
+            easing: 'cubic-bezier(0.16, 1, 0.3, 1)'
+          });
+        }
+      } else {
+        // Neighbor pods (Tools, Features, Send) only translate their coordinates!
+        // No width changes, no reflow squashing, 100% smooth GPU glide!
+        if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+          pod.animate([
+            { transform: `translate(${dx}px, ${dy}px)` },
+            { transform: 'none' }
+          ], {
+            duration: 260,
+            easing: 'cubic-bezier(0.16, 1, 0.3, 1)'
+          });
+        }
       }
     });
   }
@@ -1304,7 +1370,7 @@ export function initChat() {
     if (window.ResizeObserver) {
       if (dock) {
         const dockRo = new ResizeObserver(() => {
-          updateChatDockLayout();
+          updateChatDockLayout(true);
         });
         dockRo.observe(dock);
       }
@@ -1317,7 +1383,7 @@ export function initChat() {
     }
 
     window.addEventListener('resize', () => {
-      updateChatDockLayout();
+      updateChatDockLayout(true);
     });
   }
 
