@@ -841,7 +841,7 @@ export function parseThinking(text, customOpen = null, customClose = null) {
   const defaultOpen = '<\\|?\\s*channel\\s*\\|?>?\\s*thought|<\\|?\\s*think(?:ing)?\\s*\\|?>|<\\|?\\s*thought\\s*\\|?>|<\\|?\\s*reasoning\\s*\\|?>|\\[THINK(?:ING)?\\]|\\[REASONING\\]';
   const openPattern = customOpen ? escapeRegExp(customOpen) + '|' + defaultOpen : defaultOpen;
   
-  const defaultClose = '<\\/\\s*think(?:ing)?\\s*>|<\\/\\s*thought\\s*>|<\\/\\s*reasoning\\s*>|<\\|?\\s*\\/+\\s*channel\\s*\\|?>|<\\|?\\s*\\/+\\s*think(?:ing)?\\s*\\|?>|<\\|?\\s*\\/+\\s*thought\\s*\\|?>|<\\|end_of_thought\\|?>|<\\|thought_end\\|?>|\\[\\/think(?:ing)?\\]|\\[\\/reasoning\\]|\\[THINKING_END\\]';
+  const defaultClose = '<\\/\\s*think(?:ing)?\\s*>|<\\/\\s*thought\\s*>|<\\/\\s*reasoning\\s*>|<\\|?\\s*\\/?\\s*channel\\s*\\|?>|<channel\\|?>|<\\|?\\s*\\/+\\s*think(?:ing)?\\s*\\|?>|<\\|?\\s*\\/+\\s*thought\\s*\\|?>|<\\|end_of_thought\\|?>|<\\|thought_end\\|?>|\\[\\/think(?:ing)?\\]|\\[\\/reasoning\\]|\\[THINKING_END\\]';
   const closePattern = customClose ? escapeRegExp(customClose) + '|' + defaultClose : defaultClose;
 
   const thinkRegex = new RegExp(`(?:${openPattern})([\\s\\S]*?)(?:${closePattern})`, 'i');
@@ -948,7 +948,7 @@ export function parseStreamThinking(text, customOpen = null, customClose = null)
   const openPattern = customOpen ? escapeRegExp(customOpen) + '|' + defaultOpen : defaultOpen;
   const startMatch = text.match(new RegExp(openPattern, 'i'));
   
-  const defaultClose = '<\\/\\s*think(?:ing)?\\s*>|<\\/\\s*thought\\s*>|<\\/\\s*reasoning\\s*>|<\\|?\\s*\\/+\\s*channel\\s*\\|?>|<\\|?\\s*\\/+\\s*think(?:ing)?\\s*\\|?>|<\\|?\\s*\\/+\\s*thought\\s*\\|?>|<\\|end_of_thought\\|?>|<\\|thought_end\\|?>|\\[\\/think(?:ing)?\\]|\\[\\/reasoning\\]|\\[THINKING_END\\]';
+  const defaultClose = '<\\/\\s*think(?:ing)?\\s*>|<\\/\\s*thought\\s*>|<\\/\\s*reasoning\\s*>|<\\|?\\s*\\/?\\s*channel\\s*\\|?>|<channel\\|?>|<\\|?\\s*\\/+\\s*think(?:ing)?\\s*\\|?>|<\\|?\\s*\\/+\\s*thought\\s*\\|?>|<\\|end_of_thought\\|?>|<\\|thought_end\\|?>|\\[\\/think(?:ing)?\\]|\\[\\/reasoning\\]|\\[THINKING_END\\]';
   const closePattern = customClose ? escapeRegExp(customClose) + '|' + defaultClose : defaultClose;
 
   const cleanOpenRegex = new RegExp(`^(?:${openPattern})\\s*`, 'gi');

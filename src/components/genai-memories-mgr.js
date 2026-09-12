@@ -3,6 +3,7 @@
    ════════════════════════════════════════════════════════════════════ */
 
 import { genaiMemoryStore } from '../services/genai-memory-store.js';
+import { settingsStore } from '../services/settings-store.js';
 import { showToast, showConfirm, openWindow, closeWindow } from '../main.js';
 import { escapeHtml, formatTime, formatExactTime } from '../utils/helpers.js';
 
@@ -10,12 +11,14 @@ let currentlyEditingId = null;
 
 export function initGenAIMemoriesMgr() {
   const btnOpen = document.getElementById('btn-open-genai-memories');
+  const btnOpenGear = document.getElementById('btn-genai-personalization-settings');
   const btnClose = document.getElementById('btn-close-genai-memories');
   const modal = document.getElementById('modal-genai-memories');
   const backdrop = modal ? modal.querySelector('.modal-backdrop') : null;
   const btnAdd = document.getElementById('btn-add-genai-memory');
   const btnClearAll = document.getElementById('btn-clear-all-genai-memories');
   const inputNew = document.getElementById('input-new-genai-memory');
+  const togglePersonalization = document.getElementById('toggle-genai-personalization');
 
   if (!modal) {
     console.error('modal-genai-memories element not found');
@@ -65,6 +68,40 @@ export function initGenAIMemoriesMgr() {
   if (btnClearAll) {
     btnClearAll.addEventListener('click', clearAllMemories);
   }
+
+  // Open modal from chat menu popover gear icon
+  if (btnOpenGear) {
+    btnOpenGear.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const chatMenuPopover = document.getElementById('genai-chat-menu-popover');
+      if (chatMenuPopover) {
+        chatMenuPopover.classList.add('hidden');
+      }
+      currentlyEditingId = null;
+      if (inputNew) inputNew.value = '';
+      openWindow(modal);
+      renderMemories();
+    });
+  }
+
+
+  // Personalization toggle in chat menu popover
+  if (togglePersonalization) {
+    togglePersonalization.checked = settingsStore.get().genai_personalization !== false;
+
+    togglePersonalization.addEventListener('change', (e) => {
+      const checked = e.target.checked;
+      settingsStore.save({ genai_personalization: checked });
+      showToast(checked ? 'Personalization enabled' : 'Personalization disabled');
+    });
+  }
+
+  // Sync when settings change elsewhere
+  window.addEventListener('settings-updated', () => {
+    if (togglePersonalization) {
+      togglePersonalization.checked = settingsStore.get().genai_personalization !== false;
+    }
+  });
 }
 
 async function addMemory() {

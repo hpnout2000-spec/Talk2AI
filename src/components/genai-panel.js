@@ -1198,9 +1198,13 @@ ${skill.content}
             }
 
             const callId = `call_${msgIdx}_${tIdx}`;
-            historyMsgs.push({
+            const reasoningText = (Array.isArray(e.thinking_blocks) && e.thinking_blocks[tIdx])
+              || (tIdx === 0 ? e.thinking : null)
+              || null;
+
+            const assistantMsg = {
               role: 'assistant',
-              content: partText || null,
+              content: null,
               tool_calls: [{
                 id: callId,
                 type: 'function',
@@ -1209,7 +1213,15 @@ ${skill.content}
                   arguments: JSON.stringify(t.action)
                 }
               }]
-            });
+            };
+
+            if (reasoningText && typeof reasoningText === 'string' && reasoningText.trim()) {
+              const cleanReasoning = reasoningText.trim();
+              assistantMsg.reasoning = cleanReasoning;
+              assistantMsg.reasoning_content = cleanReasoning;
+            }
+
+            historyMsgs.push(assistantMsg);
 
             let resultString = '';
             if (t.result && typeof t.result === 'object') {
@@ -1414,10 +1426,12 @@ ${ANIMA_BETTER_PROMPT_TEXT}`;
 
   // Inject GenAI Memories into system prompt (<memory>)
   let memoryInjection = '';
-  const memories = genaiMemoryStore.getAll();
-  if (memories.length > 0) {
-    const memoriesStr = memories.map(m => `- ${m.content}`).join('\n');
-    memoryInjection = `\n\n<memory>\n[GenAI Memories (Facts to remember — You MUST take these into account)]:\n${memoriesStr}\n</memory>`;
+  if (settings.genai_personalization !== false) {
+    const memories = genaiMemoryStore.getAll();
+    if (memories.length > 0) {
+      const memoriesStr = memories.map(m => `- ${m.content}`).join('\n');
+      memoryInjection = `\n\n<memory>\n[GenAI Memories (Facts to remember — You MUST take these into account)]:\n${memoriesStr}\n</memory>`;
+    }
   }
 
   let currentRagBlock = '';
@@ -4135,7 +4149,6 @@ function extractJsonAction(text) {
         };
       }
     }
-    return null;
   }
 
   // Support variations like {"genai_action", {'genai_action', or genai_action (unquoted)
@@ -4477,7 +4490,7 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
         assistantEntry.isInThinking = true;
         renderAssistantBubble(assistantEntry, bubbleEl, { cursor: true, streaming: true });
       }
-      if (assistantEntry.content) {
+      if (assistantEntry.content && !(settingsStore.get().gemma4_support && assistantEntry.tools?.some(t => t.state === 'done' && t.result))) {
         const cleanedContent = assistantEntry.content
           .replace(/\[\[THINKING_BLOCK(_\d+)?\]\]/g, '')
           .replace(/\n{3,}/g, '\n\n')
@@ -4966,6 +4979,40 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
               const parsed = useGLM ? parseGLMThinking(finalContinuation) : parseThinking(finalContinuation, settings.genai_reasoning_tag_open, settings.genai_reasoning_tag_close);
               parsedContinuation = parsed.content;
               parsedThinking = parsed.thinking || '';
+            }
+
+            const finishActionMatch = extractJsonAction(parsedContinuation);
+            if (finishActionMatch) {
+              let parsedAction = null;
+              try { parsedAction = healAndParseJsonAction(finishActionMatch.json); } catch (e) {}
+              if (parsedAction && (parsedAction.genai_action || parsedAction.name)) {
+                actionDetected = finishActionMatch.json;
+                const toolIdx = assistantEntry.tools.length;
+                const marker = `[[GENAI_TOOL_${toolIdx}]]`;
+                const beforeText = parsedContinuation.substring(0, finishActionMatch.startIdx).replace(/```json\s*$/, '').replace(/```\s*$/, '');
+                
+                assistantEntry.content = assistantEntry.content.substring(0, originalContentLength) + beforeText + marker;
+                
+                if (parsedThinking) {
+                  if (!assistantEntry.thinking_blocks) assistantEntry.thinking_blocks = [];
+                  if (!assistantEntry.thinking_time_blocks) assistantEntry.thinking_time_blocks = [];
+                  if (assistantEntry.thinking && assistantEntry.thinking_blocks.length === 0) {
+                    assistantEntry.thinking_blocks.push(assistantEntry.thinking);
+                    assistantEntry.thinking_time_blocks.push(assistantEntry.thinking_time || 0);
+                  }
+                  const activeIdx = assistantEntry.thinking_blocks.length > 0 ? (assistantEntry.thinking_blocks.length - 1) : 0;
+                  assistantEntry.thinking_blocks[activeIdx] = parsedThinking;
+                  assistantEntry.thinking_time_blocks[activeIdx] = thinkingTime;
+                  assistantEntry.thinking = assistantEntry.thinking_blocks.filter(Boolean).join('\n\n');
+                }
+                
+                const isCreatorTool = ['add_char_fact', 'remove_char_fact', 'set_char_final_text', 'show_char_tab'].includes(parsedAction.genai_action);
+                const tool = { action: parsedAction, state: isCreatorTool ? 'working' : 'awaiting_approval' };
+                assistantEntry.tools.push(tool);
+                renderAssistantBubble(assistantEntry, bubbleEl);
+                resolvePhase({ status: 'action' });
+                return;
+              }
             }
 
             assistantEntry.content = assistantEntry.content.substring(0, originalContentLength) + parsedContinuation;

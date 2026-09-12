@@ -1440,6 +1440,9 @@ Focus ONLY on what is known or can be directly inferred from the history. Keep t
       } else {
         contentText = msg.content || '';
       }
+      if (msg.reasoning_content || msg.reasoning) {
+        contentText += ' ' + (msg.reasoning_content || msg.reasoning);
+      }
       if (msg.tool_calls) {
         contentText += ' ' + JSON.stringify(msg.tool_calls);
       }
