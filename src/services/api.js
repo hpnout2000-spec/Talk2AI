@@ -522,13 +522,13 @@ export const api = {
         const contextTemplate = (settings.context_templates || []).find(t => t.id === contextId) || (settings.context_templates || [])[0] || {};
 
         const formatted = formatTextCompletionPrompt(clonedMessages, contextTemplate, instructTemplate, {
-          charName: options.charName || appState.currentCharacter?.name || 'Assistant',
-          userName: options.userName || settings.user_name || 'User',
-          charDescription: options.charDescription || appState.currentCharacter?.description || '',
-          charPersonality: options.charPersonality || appState.currentCharacter?.personality || '',
-          scenario: options.scenario || appState.currentCharacter?.scenario || '',
-          persona: options.persona || appState.activePersona?.description || '',
-          mesExamples: options.mesExamples || appState.currentCharacter?.mes_example || '',
+          charName: isGenAI ? (options.charName || 'Assistant') : (options.charName || appState.currentCharacter?.name || 'Assistant'),
+          userName: isGenAI ? 'User' : (options.userName || settings.user_name || 'User'),
+          charDescription: isGenAI ? (options.charDescription || '') : (options.charDescription || appState.currentCharacter?.description || ''),
+          charPersonality: isGenAI ? (options.charPersonality || '') : (options.charPersonality || appState.currentCharacter?.personality || ''),
+          scenario: isGenAI ? (options.scenario || '') : (options.scenario || appState.currentCharacter?.scenario || ''),
+          persona: isGenAI ? (options.persona || '') : (options.persona || appState.activePersona?.description || ''),
+          mesExamples: isGenAI ? (options.mesExamples || '') : (options.mesExamples || appState.currentCharacter?.mes_example || ''),
           systemPrompt: options.systemPrompt || '',
         });
 

@@ -212,43 +212,81 @@ export function renderMarkdown(text) {
   const resultLines = [];
   let inTable = false;
   let alignments = [];
+  let tableColCount = 0;
 
-  const tableRowRegex = /^\|(.+)\|$/;
-  const tableDelimiterRegex = /^\|\s*(?:\s*:?-+:?\s*\|)+\s*$/;
+  // Helper to split a table row into cell strings respecting escaped pipes
+  const parseTableCells = (rowStr) => {
+    let raw = rowStr.trim();
+    if (raw.startsWith('|')) raw = raw.substring(1);
+    if (raw.endsWith('|')) raw = raw.substring(0, raw.length - 1);
+
+    const cells = [];
+    let current = '';
+    let escaped = false;
+    for (let i = 0; i < raw.length; i++) {
+      const char = raw[i];
+      if (char === '\\' && !escaped) {
+        escaped = true;
+        current += char;
+      } else if (char === '|' && !escaped) {
+        cells.push(current.trim());
+        current = '';
+      } else {
+        current += char;
+        escaped = false;
+      }
+    }
+    cells.push(current.trim());
+    return cells;
+  };
+
+  const isDelimiterRow = (rowStr) => {
+    const trimmed = rowStr.trim();
+    return /^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?$/.test(trimmed) && trimmed.includes('-');
+  };
+
+  const isPossibleTableRow = (rowStr) => {
+    const trimmed = rowStr.trim();
+    return trimmed.includes('|');
+  };
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
     
     if (!inTable) {
       const nextLine = lines[i + 1] ? lines[i + 1].trim() : '';
-      if (tableRowRegex.test(line) && tableDelimiterRegex.test(nextLine)) {
+      if (isPossibleTableRow(line) && isDelimiterRow(nextLine)) {
         inTable = true;
-        const delims = nextLine.split('|').map(s => s.trim()).filter((s, idx, arr) => idx > 0 && idx < arr.length - 1);
+        const delims = parseTableCells(nextLine);
         alignments = delims.map(d => {
           if (d.startsWith(':') && d.endsWith(':')) return 'center';
           if (d.endsWith(':')) return 'right';
           return 'left';
         });
 
-        const headers = line.split('|').map(s => s.trim()).filter((s, idx, arr) => idx > 0 && idx < arr.length - 1);
+        const headers = parseTableCells(line);
+        tableColCount = Math.max(headers.length, alignments.length);
+
         let headerHtml = '<table><thead><tr>';
-        for (let colIdx = 0; colIdx < headers.length; colIdx++) {
+        for (let colIdx = 0; colIdx < tableColCount; colIdx++) {
           const align = alignments[colIdx] || 'left';
-          headerHtml += `<th style="text-align:${align}">${headers[colIdx]}</th>`;
+          const text = headers[colIdx] || '';
+          headerHtml += `<th style="text-align:${align}">${text}</th>`;
         }
         headerHtml += '</tr></thead><tbody>';
         resultLines.push(headerHtml);
-        i++;
+        i++; // skip delimiter row
       } else {
         resultLines.push(lines[i]);
       }
     } else {
-      if (tableRowRegex.test(line)) {
-        const cells = line.split('|').map(s => s.trim()).filter((s, idx, arr) => idx > 0 && idx < arr.length - 1);
+      if (isPossibleTableRow(line) && !isDelimiterRow(line)) {
+        const cells = parseTableCells(line);
         let rowHtml = '<tr>';
-        for (let colIdx = 0; colIdx < cells.length; colIdx++) {
+        for (let colIdx = 0; colIdx < tableColCount; colIdx++) {
           const align = alignments[colIdx] || 'left';
-          rowHtml += `<td style="text-align:${align}">${cells[colIdx]}</td>`;
+          const cellContent = cells[colIdx] !== undefined ? cells[colIdx] : '';
+          rowHtml += `<td style="text-align:${align}">${cellContent}</td>`;
         }
         rowHtml += '</tr>';
         resultLines.push(rowHtml);
@@ -1121,51 +1159,50 @@ class ThinkingSnippets extends HTMLElement {
   connectedCallback() {
     if (!this.isInitialized) {
       this.isInitialized = true;
-      if (!this.hasThoughts) {
-        // Start with the exact old Working... state
-        this.style.display = 'inline-grid';
-        this.style.gridTemplateAreas = '"overlap"';
-        this.style.alignItems = 'center';
-        
-        this.innerHTML = `<span class="thinking-snippet-layer" style="grid-area: overlap;">Processing...</span>`;
-        
-        // adjust initial bubble width for "Working..."
-        this.adjustBubbleWidth();
-      }
+      this.buildDOM();
     }
 
     const initialThoughts = this.getAttribute('thoughts') || '';
     if (initialThoughts) {
       this.updateProgress(initialThoughts);
+    } else {
+      this.adjustBubbleWidth();
     }
   }
 
-  transformToThinking() {
-    if (this.hasThoughts) return;
-    this.hasThoughts = true;
-    
+  buildDOM() {
     this.style.display = 'block';
-    this.style.gridTemplateAreas = 'none';
-    this.innerHTML = ''; // clear Working span
 
     // Create the main header block
     this.header = document.createElement('div');
-    this.header.className = 'thinking-preview-header';
-    
-    this.textSpan = document.createElement('span');
-    this.textSpan.className = 'thinking-snippet-layer thinking-active';
-    this.textSpan.textContent = 'Thinking...';
-    
-    this.header.appendChild(this.textSpan);
+    this.header.className = this.hasThoughts 
+      ? 'thinking-preview-header is-thinking' 
+      : 'thinking-preview-header is-processing';
+
+    // Fluid text cross-fade container (exits right, enters left)
+    this.textContainer = document.createElement('div');
+    this.textContainer.className = 'thinking-text-container';
+
+    this.processingSpan = document.createElement('span');
+    this.processingSpan.className = 'thinking-snippet-layer thinking-label-processing';
+    this.processingSpan.textContent = 'Processing...';
+
+    this.thinkingSpan = document.createElement('span');
+    this.thinkingSpan.className = 'thinking-snippet-layer thinking-label-thinking';
+    this.thinkingSpan.textContent = 'Thinking...';
+
+    this.textContainer.appendChild(this.processingSpan);
+    this.textContainer.appendChild(this.thinkingSpan);
+    this.header.appendChild(this.textContainer);
 
     // Progress bar container
     this.progressContainer = document.createElement('div');
     this.progressContainer.className = 'thinking-progress-container';
-    
+
     this.progressBar = document.createElement('div');
     this.progressBar.className = 'thinking-progress-bar';
     this.progressContainer.appendChild(this.progressBar);
-    
+
     this.header.appendChild(this.progressContainer);
 
     // Expanded view container
@@ -1240,13 +1277,14 @@ class ThinkingSnippets extends HTMLElement {
       this._lastScrollTop = current;
     }, { passive: true });
 
-    // Interactive click
+    // Interactive click: only expand if thoughts exist
     this.header.addEventListener('click', () => {
+      if (!this.hasThoughts) return;
       this.isExpanded = !this.isExpanded;
       this.header.classList.toggle('expanded', this.isExpanded);
       this.expandedView.classList.toggle('expanded', this.isExpanded);
-      
-      const bubble = this.closest('.genai-msg-bubble');
+
+      const bubble = this.getBubble();
       if (this.isExpanded) {
         if (bubble) {
            bubble.style.width = '100%';
@@ -1261,10 +1299,26 @@ class ThinkingSnippets extends HTMLElement {
       } else {
         if (bubble) {
            bubble.style.maxWidth = '';
+           if (!bubble.classList.contains('thinking-only')) {
+             bubble.style.width = '';
+             bubble.style.minHeight = '';
+             bubble.style.height = '';
+           }
         }
         this.adjustBubbleWidth();
       }
     });
+  }
+
+  transformToThinking() {
+    if (this.hasThoughts) return;
+    this.hasThoughts = true;
+
+    if (this.header) {
+      this.header.classList.remove('is-processing');
+      this.header.classList.add('is-thinking');
+    }
+    this.adjustBubbleWidth();
   }
 
   attributeChangedCallback(name, oldValue, newValue) {
@@ -1315,7 +1369,9 @@ class ThinkingSnippets extends HTMLElement {
     this.transformToThinking();
 
     // Update expanded text (unescape and format)
-    this.expandedView.innerHTML = escapeHtml(thoughtsText).replace(/\n/g, '<br>');
+    if (this.expandedView) {
+      this.expandedView.innerHTML = escapeHtml(thoughtsText).replace(/\n/g, '<br>');
+    }
 
     // Calculate progress with accurate token estimation:
     // Cyrillic (Russian) in modern BPE tokenizers averages ~2.1 chars/token.
@@ -1342,36 +1398,57 @@ class ThinkingSnippets extends HTMLElement {
       if (progress > 98) progress = 98; // Cap at 98% until finished
     }
     
-    this.progressBar.style.width = `${progress}%`;
+    if (this.progressBar) {
+      this.progressBar.style.width = `${progress}%`;
+    }
     
     if (this.isExpanded) {
       this.smoothScrollToBottom();
-    } else {
-      this.adjustBubbleWidth();
+    }
+  }
+
+  getBubble() {
+    return this.closest('.genai-msg-bubble') || this.closest('.message-content');
+  }
+
+  disconnectedCallback() {
+    const bubble = this.getBubble();
+    if (bubble && !bubble.classList.contains('thinking-only')) {
+      bubble.style.width = '';
+      bubble.style.minHeight = '';
+      bubble.style.height = '';
     }
   }
 
   adjustBubbleWidth() {
     const run = (retry) => {
-      const bubble = this.closest('.genai-msg-bubble');
-      if (!bubble || !bubble.classList.contains('thinking-only')) return;
+      const bubble = this.getBubble();
+      if (!bubble) return;
+      if (!bubble.classList.contains('thinking-only')) {
+        bubble.style.width = '';
+        bubble.style.minHeight = '';
+        bubble.style.height = '';
+        return;
+      }
       if (this.isExpanded) return;
       
-      const activeLayer = this.querySelector('.thinking-snippet-layer');
+      const activeLayer = this.hasThoughts 
+        ? (this.thinkingSpan || this.querySelector('.thinking-label-thinking'))
+        : (this.processingSpan || this.querySelector('.thinking-label-processing'));
       if (!activeLayer) return;
 
-      const layerWidth = activeLayer.offsetWidth || 120; // fallback width
+      const layerWidth = activeLayer.offsetWidth || (this.hasThoughts ? 85 : 80);
       if (layerWidth === 0 && !this.hasThoughts) {
-        if (retry < 3) requestAnimationFrame(() => run(retry + 1));
+        if (retry < 4) requestAnimationFrame(() => run(retry + 1));
         return;
       }
 
       const style = window.getComputedStyle(bubble);
-      const padH = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
-      const borderH = (parseFloat(style.borderLeftWidth) || 0) + (parseFloat(style.borderRightWidth) || 0);
+      const padH = (parseFloat(style.paddingLeft) || 14) + (parseFloat(style.paddingRight) || 14);
+      const borderH = (parseFloat(style.borderLeftWidth) || 1) + (parseFloat(style.borderRightWidth) || 1);
       
       // Ensure there's a min-width to accommodate text cleanly
-      const targetWidth = Math.max(layerWidth + padH + borderH + (this.hasThoughts ? 20 : 2), this.hasThoughts ? 140 : 0); 
+      const targetWidth = Math.max(layerWidth + padH + borderH + (this.hasThoughts ? 20 : 10), this.hasThoughts ? 140 : 110); 
       
       bubble.style.width = targetWidth + 'px';
     };
@@ -1749,4 +1826,70 @@ class GLMThinkingSnippets extends HTMLElement {
 
 if (!customElements.get('glm-thinking-snippets')) {
   customElements.define('glm-thinking-snippets', GLMThinkingSnippets);
+}
+
+export function smoothResize(el, updateFn) {
+  if (!el) return updateFn();
+  
+  const innerText = el.querySelector('.message-text, .genai-msg-text-container');
+  if (innerText) {
+    innerText.style.width = '';
+    innerText.style.minWidth = '';
+    innerText.style.maxWidth = '';
+  }
+
+  const startRect = el.getBoundingClientRect();
+  const startWidth = startRect.width;
+  const startHeight = startRect.height;
+  
+  el.style.transition = 'none';
+  el.style.width = 'fit-content';
+  el.style.height = 'auto';
+  el.style.minHeight = '0';
+  
+  updateFn();
+  
+  const endRect = el.getBoundingClientRect();
+  const endWidth = endRect.width;
+  const endHeight = endRect.height;
+  
+  if (Math.abs(startWidth - endWidth) < 1 && Math.abs(startHeight - endHeight) < 1) {
+    el.style.transition = '';
+    return;
+  }
+  
+  if (innerText) {
+    const computed = window.getComputedStyle(el);
+    const padL = parseFloat(computed.paddingLeft) || 0;
+    const padR = parseFloat(computed.paddingRight) || 0;
+    const borderL = parseFloat(computed.borderLeftWidth) || 0;
+    const borderR = parseFloat(computed.borderRightWidth) || 0;
+    const targetW = Math.ceil(endWidth - padL - padR - borderL - borderR + 2);
+    innerText.style.minWidth = targetW + 'px';
+    innerText.style.maxWidth = 'none';
+  }
+
+  el.style.width = startWidth + 'px';
+  el.style.height = startHeight + 'px';
+  void el.offsetHeight; // force reflow
+  
+  // Use a fast, fluid transition (180ms) so tokens stream smoothly without lagging
+  el.style.transition = 'width 0.18s cubic-bezier(0.16, 1, 0.3, 1), height 0.18s cubic-bezier(0.16, 1, 0.3, 1)';
+  el.style.width = endWidth + 'px';
+  el.style.height = endHeight + 'px';
+
+  el.addEventListener('transitionend', function handler(e) {
+    if (e.target !== el) return;
+    if (e.propertyName === 'width' || e.propertyName === 'height') {
+      el.style.width = 'fit-content';
+      el.style.height = 'auto';
+      el.style.transition = '';
+      if (innerText) {
+        innerText.style.width = '';
+        innerText.style.minWidth = '';
+        innerText.style.maxWidth = '';
+      }
+      el.removeEventListener('transitionend', handler);
+    }
+  });
 }

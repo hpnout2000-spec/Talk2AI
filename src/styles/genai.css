@@ -901,8 +901,9 @@ body.genai-fullscreen .genai-fullscreen-placeholder {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   box-shadow: none;
-  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1),
-              height 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+  transition: width 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+              height 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+              min-height 0.25s cubic-bezier(0.16, 1, 0.3, 1),
               padding 0.3s cubic-bezier(0.16, 1, 0.3, 1),
               border-radius 0.3s cubic-bezier(0.16, 1, 0.3, 1),
               background 0.3s ease,
@@ -910,7 +911,7 @@ body.genai-fullscreen .genai-fullscreen-placeholder {
 }
 
 .genai-msg.genai-assistant .genai-msg-bubble.thinking-only {
-  width: fit-content;
+  width: fit-content !important;
   padding: 6px 14px;
   border-radius: var(--radius-xl, 20px);
   background: rgba(255, 255, 255, 0.04);
@@ -918,6 +919,11 @@ body.genai-fullscreen .genai-fullscreen-placeholder {
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   line-height: 1;
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+              min-height 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              height 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              padding 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+              border-radius 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .genai-msg-bubble.thinking-only .thinking-inline {
@@ -961,7 +967,7 @@ body.genai-fullscreen .genai-msg.genai-assistant .genai-msg-bubble {
 }
 
 body.genai-fullscreen .genai-msg.genai-assistant .genai-msg-bubble.thinking-only {
-  width: fit-content;
+  width: fit-content !important;
   padding: 6px 14px;
   border-radius: var(--radius-xl, 20px);
   background: rgba(255, 255, 255, 0.04);
@@ -2371,7 +2377,7 @@ body.genai-mode-active .btn-toggle-right-sidebar {
 }
 
 .genai-inline-tool {
-  display: inline-flex;
+  display: flex;
   align-items: center;
 }
 

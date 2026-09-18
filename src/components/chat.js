@@ -24,6 +24,7 @@ import {
   escapeHtml,
   wrapWordsInSpans,
   unescapeString,
+  smoothResize,
 } from '../utils/helpers.js';
 import morphdom from '../vendor/morphdom.js';
 import { perf } from '../utils/perf.js';
@@ -2063,6 +2064,10 @@ async function sendMessage() {
   const assistantMsg = chatStore.addMessage('assistant', '', null, session);
   const msgElement = appendMessage(assistantMsg, true, character);
   const contentEl = msgElement.querySelector('.message-text');
+  const bubbleEl = msgElement.querySelector('.message-content');
+  if (bubbleEl) {
+    bubbleEl.classList.add('thinking-only');
+  }
 
   let fullResponse = (settings.force_reasoning && settings.reasoning_tag_open) ? unescapeString(settings.reasoning_tag_open) : '';
   let thinkingText = '';    // accumulated thinking from delta.reasoning_content
@@ -2076,8 +2081,8 @@ async function sendMessage() {
   // Dynamic options override
   const apiOptions = {};
 
-  // Show Processing... immediately while waiting for API response
-  contentEl.innerHTML = `<span class="chat-working-placeholder">Processing...</span>`;
+  // Show Processing... immediately in sleek capsule while waiting for API response
+  contentEl.innerHTML = createThinkingBlockHTML('', true, false, 0, settings.reasoning_effort, settings.max_tokens);
 
   // Morphdom options — shared between stream and final renders
   const morphOptions = {
@@ -2161,38 +2166,53 @@ async function sendMessage() {
         const isNewAnimation = settings.new_streaming_animation;
         const streamingSpeed = settings.streaming_speed || 45;
 
-        // Helper: renders content into contentEl using morphdom
+        const bubbleEl = msgElement.querySelector('.message-content');
+
         const renderChatContent = (dc, thinking, isInThinking, revealProgress) => {
           let html = '';
-          const showThinking = isInThinking || thinking;
-          if (showThinking) {
-            html += createThinkingBlockHTML(thinking, isInThinking, useGLM, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort, settings.max_tokens);
-          }
           const cleaned = stripJsonBlocks(dc, true);
-          let formatted = renderMarkdown(cleaned);
-          formatted = processCharacterMentions(formatted);
+          const hasText = cleaned.trim().length > 0;
+          const isThinkingOnly = !hasText && (isInThinking || !hasReceivedFirstChunk);
 
-          if (isNewAnimation) {
-            html += wrapWordsInSpans(formatted, true, revealProgress, streamingSpeed);
-            contentEl._rawCharCount = wrapWordsInSpans.lastTotalChars || 0;
+          if (isThinkingOnly) {
+            html += createThinkingBlockHTML(thinking || '', true, useGLM, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort, settings.max_tokens);
           } else {
-            html += wrapWordsInSpans(formatted);
-          }
+            if (isInThinking || thinking) {
+              html += createThinkingBlockHTML(thinking, isInThinking, useGLM, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort, settings.max_tokens);
+            }
+            let formatted = renderMarkdown(cleaned);
+            formatted = processCharacterMentions(formatted);
 
-          if (!cleaned.trim() && isStreaming && !isInThinking) {
-            html += `<span class="chat-working-placeholder">Processing...</span>`;
+            if (isNewAnimation) {
+              html += wrapWordsInSpans(formatted, true, revealProgress, streamingSpeed);
+              contentEl._rawCharCount = wrapWordsInSpans.lastTotalChars || 0;
+            } else {
+              html += wrapWordsInSpans(formatted);
+            }
           }
 
           const temp = document.createElement('div');
           temp.className = contentEl.className;
           temp.innerHTML = html;
 
-          morphdom(contentEl, temp, morphOptions);
+          smoothResize(bubbleEl, () => {
+            if (isThinkingOnly) {
+              if (bubbleEl) bubbleEl.classList.add('thinking-only');
+            } else {
+              if (bubbleEl) {
+                bubbleEl.classList.remove('thinking-only');
+              }
+            }
+            morphdom(contentEl, temp, morphOptions);
 
-          if (!isInThinking) {
-            getOrCreateChatCursor();
-            repositionChatCursor(contentEl);
-          }
+            if (!isInThinking && hasText) {
+              getOrCreateChatCursor();
+              repositionChatCursor(contentEl);
+            } else {
+              removeChatCursor();
+            }
+          });
+
           scrollToBottom(false);
         };
 
@@ -2244,6 +2264,14 @@ async function sendMessage() {
                 contentEl.classList.add('stream-finished');
                 const revealSpans = contentEl.querySelectorAll('.word-reveal');
                 revealSpans.forEach(span => span.classList.add('revealed'));
+                contentEl.style.width = '';
+                contentEl.style.minWidth = '';
+                contentEl.style.maxWidth = '';
+                if (bubbleEl) {
+                  bubbleEl.style.width = '';
+                  bubbleEl.style.height = '';
+                  bubbleEl.style.transition = '';
+                }
                 contentEl._revealInterval = null;
 
                 if (contentEl._onRevealFinish) {
@@ -2327,6 +2355,19 @@ async function sendMessage() {
             perf.start('morphdom-final-patch');
             morphdom(contentEl, tempFinal, morphOptions);
             perf.end('morphdom-final-patch');
+
+            if (contentEl) {
+              contentEl.style.width = '';
+              contentEl.style.minWidth = '';
+              contentEl.style.maxWidth = '';
+            }
+            if (bubbleEl) {
+              bubbleEl.classList.remove('thinking-only');
+              bubbleEl.style.width = '';
+              bubbleEl.style.minHeight = '';
+              bubbleEl.style.height = '';
+              bubbleEl.style.transition = '';
+            }
 
             let originalContent = parsedContent;
             let translatedContent = null;
@@ -3837,6 +3878,10 @@ async function triggerAssistantGeneration() {
   const assistantMsg = chatStore.addMessage('assistant', '', null, session);
   const msgElement = appendMessage(assistantMsg, true, character);
   const contentEl = msgElement.querySelector('.message-text');
+  const bubbleEl = msgElement.querySelector('.message-content');
+  if (bubbleEl) {
+    bubbleEl.classList.add('thinking-only');
+  }
 
   let fullResponse = (settings.force_reasoning && settings.reasoning_tag_open) ? unescapeString(settings.reasoning_tag_open) : '';
   let thinkingText2 = '';  // accumulated from delta.reasoning_content
@@ -3848,8 +3893,8 @@ async function triggerAssistantGeneration() {
   let thinkingActiveInline2 = false;
   const apiOptions = {};
 
-  // Show Processing... immediately while waiting for API response
-  contentEl.innerHTML = `<span class="chat-working-placeholder">Processing...</span>`;
+  // Show Processing... immediately in sleek capsule while waiting for API response
+  contentEl.innerHTML = createThinkingBlockHTML('', true, false, 0, settings.reasoning_effort, settings.max_tokens);
 
   const morphOptions2 = {
     childrenOnly: true,
@@ -3918,33 +3963,53 @@ async function triggerAssistantGeneration() {
       const isNewAnimation = settings.new_streaming_animation;
       const streamingSpeed = settings.streaming_speed || 45;
 
+      const bubbleEl = msgElement.querySelector('.message-content');
+
       const renderChatContent2 = (dc, thinking, isInThinking, revealProgress) => {
         let html = '';
-        if (isInThinking || thinking) html += createThinkingBlockHTML(thinking, isInThinking, useGLM, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort, settings.max_tokens);
         const cleaned2 = stripJsonBlocks(dc, true);
-        let formatted = renderMarkdown(cleaned2);
-        formatted = processCharacterMentions(formatted);
+        const hasText = cleaned2.trim().length > 0;
+        const isThinkingOnly = !hasText && (isInThinking || !hasReceivedFirstChunk2);
 
-        if (isNewAnimation) {
-          html += wrapWordsInSpans(formatted, true, revealProgress, streamingSpeed);
-          contentEl._rawCharCount = wrapWordsInSpans.lastTotalChars || 0;
+        if (isThinkingOnly) {
+          html += createThinkingBlockHTML(thinking || '', true, useGLM, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort, settings.max_tokens);
         } else {
-          html += wrapWordsInSpans(formatted);
-        }
+          if (isInThinking || thinking) {
+            html += createThinkingBlockHTML(thinking, isInThinking, useGLM, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort, settings.max_tokens);
+          }
+          let formatted = renderMarkdown(cleaned2);
+          formatted = processCharacterMentions(formatted);
 
-        if (!cleaned2.trim() && isStreaming2 && !isInThinking) {
-          html += `<span class="chat-working-placeholder">Processing...</span>`;
+          if (isNewAnimation) {
+            html += wrapWordsInSpans(formatted, true, revealProgress, streamingSpeed);
+            contentEl._rawCharCount = wrapWordsInSpans.lastTotalChars || 0;
+          } else {
+            html += wrapWordsInSpans(formatted);
+          }
         }
 
         const temp = document.createElement('div');
         temp.className = contentEl.className;
         temp.innerHTML = html;
-        morphdom(contentEl, temp, morphOptions2);
+        
+        smoothResize(bubbleEl, () => {
+          if (isThinkingOnly) {
+            if (bubbleEl) bubbleEl.classList.add('thinking-only');
+          } else {
+            if (bubbleEl) {
+              bubbleEl.classList.remove('thinking-only');
+            }
+          }
+          morphdom(contentEl, temp, morphOptions2);
 
-        if (!isInThinking) {
-          getOrCreateChatCursor();
-          repositionChatCursor(contentEl);
-        }
+          if (!isInThinking && hasText) {
+            getOrCreateChatCursor();
+            repositionChatCursor(contentEl);
+          } else {
+            removeChatCursor();
+          }
+        });
+
         scrollToBottom(false);
       };
 
@@ -4068,6 +4133,20 @@ async function triggerAssistantGeneration() {
             tempFinal.className = contentEl.className;
             tempFinal.innerHTML = finalHtml;
             morphdom(contentEl, tempFinal, morphOptions2);
+
+            if (contentEl) {
+              contentEl.style.width = '';
+              contentEl.style.minWidth = '';
+              contentEl.style.maxWidth = '';
+            }
+            const bubbleEl = msgElement.querySelector('.message-content');
+            if (bubbleEl) {
+              bubbleEl.classList.remove('thinking-only');
+              bubbleEl.style.width = '';
+              bubbleEl.style.minHeight = '';
+              bubbleEl.style.height = '';
+              bubbleEl.style.transition = '';
+            }
 
             let originalContent = parsedContent2;
 

@@ -11,7 +11,7 @@ import { skillsStore } from '../services/skills-store.js';
 import { gameStore } from '../services/game-store.js';
 import { groupChatStore } from '../services/group-chat-store.js';
 import { appState } from '../state.js';
-import { renderMarkdown, autoResizeTextarea, formatTime, formatExactTime, injectCursor, escapeHtml, parseThinking, parseStreamThinking, parseGLMThinking, stripLeadingThinkingTags, createThinkingBlockHTML, wrapWordsInSpans, unescapeString } from '../utils/helpers.js';
+import { renderMarkdown, autoResizeTextarea, formatTime, formatExactTime, injectCursor, escapeHtml, parseThinking, parseStreamThinking, parseGLMThinking, stripLeadingThinkingTags, createThinkingBlockHTML, wrapWordsInSpans, unescapeString, smoothResize } from '../utils/helpers.js';
 import morphdom from '../vendor/morphdom.js';
 import { generateImageComfyUI, checkComfyUIConnection, buildAutoPromptFromContext } from '../services/comfyui-service.js';
 import { loadChat } from './chat.js';
@@ -3161,12 +3161,17 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
 
   const renderSectionHtml = (sectionText, isProcessSection = false) => {
     let sHtml = '';
+    const normalizedSectionText = sectionText
+      .replace(/(\[\[GENAI_TOOL_\d+\]\])/g, '\n\n$1\n\n')
+      .replace(/(\[\[THINKING_BLOCK(_\d+)?\]\])/g, '\n\n$1\n\n')
+      .replace(/\n{3,}/g, '\n\n');
+
     if (entry.thinking_blocks && entry.thinking_blocks.length > 0) {
-      let tempText = sectionText;
+      let tempText = normalizedSectionText;
       
       if (!isProcessSection && entry.thinking_blocks[0] && !tempText.includes('[[THINKING_BLOCK_0]]')) {
         const isBlock0Active = (entry.thinking_blocks.length === 1 && (isInThinking || entry.isInThinking) && streaming);
-        const time0 = entry.thinking_time_blocks ? (entry.thinking_time_blocks[0] || 0) : (isBlock0Active ? (entry.thinking_time || 0) : (entry.thinking_blocks.length > 1 ? 0 : (entry.thinking_time || 0)));
+        const time0 = isBlock0Active ? (entry.thinking_time || 0) : (entry.thinking_time_blocks ? (entry.thinking_time_blocks[0] || 0) : (entry.thinking_time || 0));
         sHtml += createThinkingBlockHTML(entry.thinking_blocks[0], isBlock0Active, settings.glm47_support, time0, entry.resolved_effort || settings.genai_reasoning_effort);
       } else if (isProcessSection && entry.thinking_blocks[0] && !tempText.includes('[[THINKING_BLOCK_0]]')) {
         const time0 = entry.thinking_time_blocks ? (entry.thinking_time_blocks[0] || 0) : (entry.thinking_time || 0);
@@ -3199,24 +3204,24 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
       markdownHtml = markdownHtml.replace(/\[\[THINKING_BLOCK(_\d+)?\]\]/g, '');
       sHtml += markdownHtml;
     } else {
-      let match = sectionText.match(/\[\[THINKING_BLOCK(_\d+)?\]\]/);
+      let match = normalizedSectionText.match(/\[\[THINKING_BLOCK(_\d+)?\]\]/);
       if (match) {
         const splitIdx = match.index;
         const markerLength = match[0].length;
-        sHtml += renderMarkdown(sectionText.substring(0, splitIdx));
+        sHtml += renderMarkdown(normalizedSectionText.substring(0, splitIdx));
         if ((isInThinking || thinking) && !isProcessSection) {
           sHtml += createThinkingBlockHTML(thinking, isInThinking && streaming, settings.glm47_support, entry.thinking_time || 0, entry.resolved_effort || settings.genai_reasoning_effort);
         } else if (thinking && isProcessSection) {
           sHtml += createThinkingBlockHTML(thinking, false, settings.glm47_support, entry.thinking_time || 0, entry.resolved_effort || settings.genai_reasoning_effort);
         }
-        sHtml += renderMarkdown(sectionText.substring(splitIdx + markerLength));
+        sHtml += renderMarkdown(normalizedSectionText.substring(splitIdx + markerLength));
       } else {
         if ((isInThinking || thinking) && !isProcessSection) {
           sHtml += createThinkingBlockHTML(thinking, isInThinking && streaming, settings.glm47_support, entry.thinking_time || 0, entry.resolved_effort || settings.genai_reasoning_effort);
         } else if (thinking && isProcessSection) {
           sHtml += createThinkingBlockHTML(thinking, false, settings.glm47_support, entry.thinking_time || 0, entry.resolved_effort || settings.genai_reasoning_effort);
         }
-        sHtml += renderMarkdown(sectionText);
+        sHtml += renderMarkdown(normalizedSectionText);
       }
     }
 
@@ -3473,13 +3478,6 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
   const hasUserText = content.replace(/\[\[GENAI_TOOL_\d+\]\]/g, '').trim().length > 0;
   const isThinkingOnly = !hasUserText && !hasFinishedOrPendingTool;
 
-  if (isThinkingOnly) {
-    bubbleEl.classList.add('thinking-only');
-  } else {
-    bubbleEl.classList.remove('thinking-only');
-    bubbleEl.style.width = '';
-  }
-
   const isNewAnimation = settings.new_streaming_animation;
   const streamingSpeed = settings.streaming_speed || 45;
 
@@ -3583,41 +3581,51 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
     processGenaiBubbleDom(temp, streaming);
   }
 
-  morphdom(textCont, temp, {
-    childrenOnly: true,
-    getNodeKey: (node) => node.id || node.dataset?.wordIndex || null,
-    onBeforeElUpdated: (from, to) => {
-      if (from.nodeName === 'THINKING-SNIPPETS') {
-        if (to.hasAttribute('thoughts')) {
-          from.setAttribute('thoughts', to.getAttribute('thoughts'));
-        }
-        return false;
+  smoothResize(bubbleEl, () => {
+    if (isThinkingOnly) {
+      if (bubbleEl) bubbleEl.classList.add('thinking-only');
+    } else {
+      if (bubbleEl) {
+        bubbleEl.classList.remove('thinking-only');
       }
-      if (from.classList && from.classList.contains('word-reveal') && from.classList.contains('revealed')) {
-        to.classList.add('revealed');
-      }
-      // Force clearing of display: none style when elements should no longer be hidden
-      if (from.style && from.style.display === 'none' && to.style.display !== 'none') {
-        from.style.display = '';
-      }
-      // For table elements: replace innerHTML directly to avoid morphdom
-      // re-creating table rows which have no node keys, causing flicker/disappearance
-      if (from.nodeName === 'TABLE') {
-        if (from.innerHTML !== to.innerHTML) {
-          from.innerHTML = to.innerHTML;
-        }
-        return false;
-      }
-      if (shouldAnimate) {
-        if (from.classList?.contains('diagonal-word') && from.style.animationDelay) {
-          to.style.animationDelay = from.style.animationDelay;
-        }
-        if (from.classList?.contains('diagonal-animated-paragraph') && from.classList.contains('animated-applied')) {
-          to.classList.add('animated-applied');
-        }
-      }
-      return true;
     }
+    
+    morphdom(textCont, temp, {
+      childrenOnly: true,
+      getNodeKey: (node) => node.id || node.dataset?.wordIndex || null,
+      onBeforeElUpdated: (from, to) => {
+        if (from.nodeName === 'THINKING-SNIPPETS') {
+          if (to.hasAttribute('thoughts')) {
+            from.setAttribute('thoughts', to.getAttribute('thoughts'));
+          }
+          return false;
+        }
+        if (from.classList && from.classList.contains('word-reveal') && from.classList.contains('revealed')) {
+          to.classList.add('revealed');
+        }
+        // Force clearing of display: none style when elements should no longer be hidden
+        if (from.style && from.style.display === 'none' && to.style.display !== 'none') {
+          from.style.display = '';
+        }
+        // For table elements: replace innerHTML directly to avoid morphdom
+        // re-creating table rows which have no node keys, causing flicker/disappearance
+        if (from.nodeName === 'TABLE') {
+          if (from.innerHTML !== to.innerHTML) {
+            from.innerHTML = to.innerHTML;
+          }
+          return false;
+        }
+        if (shouldAnimate) {
+          if (from.classList?.contains('diagonal-word') && from.style.animationDelay) {
+            to.style.animationDelay = from.style.animationDelay;
+          }
+          if (from.classList?.contains('diagonal-animated-paragraph') && from.classList.contains('animated-applied')) {
+            to.classList.add('animated-applied');
+          }
+        }
+        return true;
+      }
+    });
   });
 
   if (shouldAnimate) {
@@ -3840,12 +3848,15 @@ function appendMsgEl(entry) {
     }
     htmlContent += renderedHTML;
     
-    bubbleEl.innerHTML = htmlContent;
-    bubbleEl.classList.remove('thinking-only');
-    bubbleEl.style.width = '';
+    smoothResize(bubbleEl, () => {
+      bubbleEl.innerHTML = htmlContent;
+      bubbleEl.classList.remove('thinking-only');
+    });
   } else {
     if (!entry.content && !entry.thinking) {
-      bubbleEl.innerHTML = `<div class="genai-bubble-text"><span class="chat-working-placeholder">Processing...</span></div>`;
+      const settings = settingsStore.get() || {};
+      const initialPlaceholderHtml = createThinkingBlockHTML('', true, false, 0, entry.resolved_effort || settings.genai_reasoning_effort, settings.genai_max_tokens);
+      bubbleEl.innerHTML = `<div class="genai-msg-text-container">${initialPlaceholderHtml}</div>`;
       bubbleEl.classList.add('thinking-only');
     } else {
       renderAssistantBubble(entry, bubbleEl);
@@ -4408,27 +4419,31 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
     assistantEntry = _continuationEntry;
     bubbleEl = _continuationBubble;
 
-    // If Extended thinking mode is off but we are using model thinking (genai_reasoning_effort !== 'none'),
-    // we want to transition to a new phase of generation by appending [[THINKING_BLOCK_p]]
-    // at the end of the existing content. This ensures the active thinking snippets appear at the bottom
-    // during thinking, but the final response is generated below it (so Done stays above the final response).
-    if (!isMaxThinking && effectiveEffort !== 'none') {
-      if (!assistantEntry.thinking_blocks) {
-        assistantEntry.thinking_blocks = [];
-      }
-      if (assistantEntry.thinking && assistantEntry.thinking_blocks.length === 0) {
-        assistantEntry.thinking_blocks.push(assistantEntry.thinking);
-      }
-      const nextBlockIdx = assistantEntry.thinking_blocks.length;
-      const marker = `[[THINKING_BLOCK_${nextBlockIdx}]]`;
-      if (!assistantEntry.content.includes(marker)) {
-        assistantEntry.content = assistantEntry.content.trim() ? assistantEntry.content + `\n\n${marker}\n\n` : `${marker}\n\n`;
-      }
-      assistantEntry.thinking_blocks[nextBlockIdx] = '';
-      if (!assistantEntry.thinking_time_blocks) assistantEntry.thinking_time_blocks = [];
-      assistantEntry.thinking_time_blocks[nextBlockIdx] = 0;
-      assistantEntry.isInThinking = true;
+    // Prepare thinking blocks on continuation so the next step gets its own thinking slot,
+    // and ensure content ends with newlines so tool badges and text never merge.
+    if (!assistantEntry.thinking_blocks) {
+      assistantEntry.thinking_blocks = [];
     }
+    if (!assistantEntry.thinking_time_blocks) {
+      assistantEntry.thinking_time_blocks = [];
+    }
+    if (assistantEntry.thinking && assistantEntry.thinking_blocks.length === 0) {
+      assistantEntry.thinking_blocks.push(assistantEntry.thinking);
+      assistantEntry.thinking_time_blocks.push(assistantEntry.thinking_time || 0);
+    }
+
+    if (assistantEntry.content && !assistantEntry.content.endsWith('\n\n')) {
+      assistantEntry.content = assistantEntry.content.trim() + '\n\n';
+    }
+
+    const nextBlockIdx = assistantEntry.thinking_blocks.length;
+    const marker = `[[THINKING_BLOCK_${nextBlockIdx}]]`;
+    if (!assistantEntry.content.includes(marker)) {
+      assistantEntry.content = assistantEntry.content + `${marker}\n\n`;
+    }
+    assistantEntry.thinking_blocks[nextBlockIdx] = '';
+    assistantEntry.thinking_time_blocks[nextBlockIdx] = 0;
+    assistantEntry.isInThinking = true;
 
     renderAssistantBubble(assistantEntry, bubbleEl, { cursor: true, streaming: true });
   } else {
@@ -4477,7 +4492,7 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
     } else if (maxPhase >= 2) {
       effortToUse = effectiveEffort || 'high';
       if (effortToUse === 'none') effortToUse = 'high'; // Should not happen, but fallback
-      if (isMaxThinking) {
+      if (isMaxThinking && !_continuationEntry) {
         const nextBlockIdx = assistantEntry.thinking_blocks ? assistantEntry.thinking_blocks.length : 0;
         const marker = `[[THINKING_BLOCK_${nextBlockIdx}]]`;
         if (!assistantEntry.content.includes(marker)) {
@@ -4660,7 +4675,8 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
                   parsedThinking = parsed.thinking || '';
                 }
                 
-                assistantEntry.content = assistantEntry.content.substring(0, originalContentLength) + parsedBefore + marker;
+                const cleanBefore = (parsedBefore || '').trim();
+                assistantEntry.content = assistantEntry.content.substring(0, originalContentLength) + (cleanBefore ? cleanBefore + '\n\n' : '') + marker + '\n\n';
                 if (parsedThinking) {
                   if (!assistantEntry.thinking_blocks) assistantEntry.thinking_blocks = [];
                   if (!assistantEntry.thinking_time_blocks) assistantEntry.thinking_time_blocks = [];
@@ -4681,6 +4697,16 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
                   assistantEntry.isInThinking = false;
                   thinkingTime = 0;
                   thinkingStartTime = Date.now();
+                } else {
+                  if (assistantEntry.thinking_blocks && assistantEntry.thinking_blocks.length > 0) {
+                    const lastIdx = assistantEntry.thinking_blocks.length - 1;
+                    if (!assistantEntry.thinking_blocks[lastIdx]) {
+                      assistantEntry.thinking_blocks.splice(lastIdx, 1);
+                      if (assistantEntry.thinking_time_blocks) assistantEntry.thinking_time_blocks.splice(lastIdx, 1);
+                      assistantEntry.content = assistantEntry.content.split(`[[THINKING_BLOCK_${lastIdx}]]\n\n`).join('');
+                      assistantEntry.content = assistantEntry.content.split(`[[THINKING_BLOCK_${lastIdx}]]`).join('');
+                    }
+                  }
                 }
                 originalContentLength = assistantEntry.content.length;
                 fullText = '';
@@ -4711,7 +4737,8 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
               parsedThinking2 = parsed.thinking || '';
             }
             
-            assistantEntry.content = assistantEntry.content.substring(0, originalContentLength) + parsedBefore2 + marker;
+            const cleanBefore2 = (parsedBefore2 || '').trim();
+            assistantEntry.content = assistantEntry.content.substring(0, originalContentLength) + (cleanBefore2 ? cleanBefore2 + '\n\n' : '') + marker + '\n\n';
             if (parsedThinking2) {
               if (!assistantEntry.thinking_blocks) assistantEntry.thinking_blocks = [];
               if (!assistantEntry.thinking_time_blocks) assistantEntry.thinking_time_blocks = [];
@@ -4732,6 +4759,16 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
               assistantEntry.isInThinking = false;
               thinkingTime = 0;
               thinkingStartTime = Date.now();
+            } else {
+              if (assistantEntry.thinking_blocks && assistantEntry.thinking_blocks.length > 0) {
+                const lastIdx = assistantEntry.thinking_blocks.length - 1;
+                if (!assistantEntry.thinking_blocks[lastIdx]) {
+                  assistantEntry.thinking_blocks.splice(lastIdx, 1);
+                  if (assistantEntry.thinking_time_blocks) assistantEntry.thinking_time_blocks.splice(lastIdx, 1);
+                  assistantEntry.content = assistantEntry.content.split(`[[THINKING_BLOCK_${lastIdx}]]\n\n`).join('');
+                  assistantEntry.content = assistantEntry.content.split(`[[THINKING_BLOCK_${lastIdx}]]`).join('');
+                }
+              }
             }
             originalContentLength = assistantEntry.content.length;
 
@@ -4897,34 +4934,30 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
           const currentIsInThinking = thinkingTextGenai ? thinkingActiveGenai : parsedInline.isInThinking;
 
           if (currentThinking || currentIsInThinking) {
-            if (!isMaxThinking) {
-              if (!assistantEntry.thinking_blocks) {
-                assistantEntry.thinking_blocks = [];
-              }
-              if (!assistantEntry.thinking_time_blocks) {
-                assistantEntry.thinking_time_blocks = [];
-              }
-              if (assistantEntry.thinking && assistantEntry.thinking_blocks.length === 0) {
-                assistantEntry.thinking_blocks.push(assistantEntry.thinking);
-                assistantEntry.thinking_time_blocks.push(assistantEntry.thinking_time || 0);
-              }
-              const blocksCopy = [...assistantEntry.thinking_blocks];
-              const timeBlocksCopy = [...assistantEntry.thinking_time_blocks];
-              const activeIdx = blocksCopy.length > 0 ? (blocksCopy.length - 1) : 0;
-              blocksCopy[activeIdx] = currentThinking;
-              
-              let currentBlockTime = thinkingTime;
-              if (currentBlockTime === 0 && (thinkingActiveGenai || thinkingActiveInlineGenai)) {
-                currentBlockTime = Math.round((Date.now() - thinkingStartTime) / 1000);
-              }
-              timeBlocksCopy[activeIdx] = currentBlockTime;
-              
-              assistantState.thinking_blocks = blocksCopy;
-              assistantState.thinking_time_blocks = timeBlocksCopy;
-              assistantState.thinking = blocksCopy.filter(Boolean).join('\n\n');
-            } else {
-              assistantState.thinking = assistantEntry.thinking ? assistantEntry.thinking + '\n\n' + currentThinking : currentThinking;
+            if (!assistantEntry.thinking_blocks) {
+              assistantEntry.thinking_blocks = [];
             }
+            if (!assistantEntry.thinking_time_blocks) {
+              assistantEntry.thinking_time_blocks = [];
+            }
+            if (assistantEntry.thinking && assistantEntry.thinking_blocks.length === 0) {
+              assistantEntry.thinking_blocks.push(assistantEntry.thinking);
+              assistantEntry.thinking_time_blocks.push(assistantEntry.thinking_time || 0);
+            }
+            const blocksCopy = [...assistantEntry.thinking_blocks];
+            const timeBlocksCopy = [...assistantEntry.thinking_time_blocks];
+            const activeIdx = blocksCopy.length > 0 ? (blocksCopy.length - 1) : 0;
+            blocksCopy[activeIdx] = currentThinking;
+            
+            let currentBlockTime = thinkingTime;
+            if (currentBlockTime === 0 && (thinkingActiveGenai || thinkingActiveInlineGenai)) {
+              currentBlockTime = Math.round((Date.now() - thinkingStartTime) / 1000);
+            }
+            timeBlocksCopy[activeIdx] = currentBlockTime;
+            
+            assistantState.thinking_blocks = blocksCopy;
+            assistantState.thinking_time_blocks = timeBlocksCopy;
+            assistantState.thinking = blocksCopy.filter(Boolean).join('\n\n');
             assistantState.isInThinking = currentIsInThinking;
           } else {
             assistantState.isInThinking = false;
@@ -4990,8 +5023,8 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
                 const toolIdx = assistantEntry.tools.length;
                 const marker = `[[GENAI_TOOL_${toolIdx}]]`;
                 const beforeText = parsedContinuation.substring(0, finishActionMatch.startIdx).replace(/```json\s*$/, '').replace(/```\s*$/, '');
-                
-                assistantEntry.content = assistantEntry.content.substring(0, originalContentLength) + beforeText + marker;
+                const cleanBefore = (beforeText || '').trim();
+                assistantEntry.content = assistantEntry.content.substring(0, originalContentLength) + (cleanBefore ? cleanBefore + '\n\n' : '') + marker + '\n\n';
                 
                 if (parsedThinking) {
                   if (!assistantEntry.thinking_blocks) assistantEntry.thinking_blocks = [];
@@ -5004,6 +5037,16 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
                   assistantEntry.thinking_blocks[activeIdx] = parsedThinking;
                   assistantEntry.thinking_time_blocks[activeIdx] = thinkingTime;
                   assistantEntry.thinking = assistantEntry.thinking_blocks.filter(Boolean).join('\n\n');
+                } else {
+                  if (assistantEntry.thinking_blocks && assistantEntry.thinking_blocks.length > 0) {
+                    const lastIdx = assistantEntry.thinking_blocks.length - 1;
+                    if (!assistantEntry.thinking_blocks[lastIdx]) {
+                      assistantEntry.thinking_blocks.splice(lastIdx, 1);
+                      if (assistantEntry.thinking_time_blocks) assistantEntry.thinking_time_blocks.splice(lastIdx, 1);
+                      assistantEntry.content = assistantEntry.content.split(`[[THINKING_BLOCK_${lastIdx}]]\n\n`).join('');
+                      assistantEntry.content = assistantEntry.content.split(`[[THINKING_BLOCK_${lastIdx}]]`).join('');
+                    }
+                  }
                 }
                 
                 const isCreatorTool = ['add_char_fact', 'remove_char_fact', 'set_char_final_text', 'show_char_tab'].includes(parsedAction.genai_action);
@@ -5020,23 +5063,29 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
               if (thinkingTime === 0) {
                 thinkingTime = Math.round((Date.now() - thinkingStartTime) / 1000);
               }
-              if (!isMaxThinking) {
-                if (!assistantEntry.thinking_blocks) {
-                  assistantEntry.thinking_blocks = [];
+              if (!assistantEntry.thinking_blocks) {
+                assistantEntry.thinking_blocks = [];
+              }
+              if (!assistantEntry.thinking_time_blocks) {
+                assistantEntry.thinking_time_blocks = [];
+              }
+              if (assistantEntry.thinking && assistantEntry.thinking_blocks.length === 0) {
+                assistantEntry.thinking_blocks.push(assistantEntry.thinking);
+                assistantEntry.thinking_time_blocks.push(assistantEntry.thinking_time || 0);
+              }
+              const activeIdx = assistantEntry.thinking_blocks.length > 0 ? (assistantEntry.thinking_blocks.length - 1) : 0;
+              assistantEntry.thinking_blocks[activeIdx] = parsedThinking;
+              assistantEntry.thinking_time_blocks[activeIdx] = thinkingTime;
+              assistantEntry.thinking = assistantEntry.thinking_blocks.filter(Boolean).join('\n\n');
+            } else {
+              if (assistantEntry.thinking_blocks && assistantEntry.thinking_blocks.length > 0) {
+                const lastIdx = assistantEntry.thinking_blocks.length - 1;
+                if (!assistantEntry.thinking_blocks[lastIdx]) {
+                  assistantEntry.thinking_blocks.splice(lastIdx, 1);
+                  if (assistantEntry.thinking_time_blocks) assistantEntry.thinking_time_blocks.splice(lastIdx, 1);
+                  assistantEntry.content = assistantEntry.content.split(`[[THINKING_BLOCK_${lastIdx}]]\n\n`).join('');
+                  assistantEntry.content = assistantEntry.content.split(`[[THINKING_BLOCK_${lastIdx}]]`).join('');
                 }
-                if (!assistantEntry.thinking_time_blocks) {
-                  assistantEntry.thinking_time_blocks = [];
-                }
-                if (assistantEntry.thinking && assistantEntry.thinking_blocks.length === 0) {
-                  assistantEntry.thinking_blocks.push(assistantEntry.thinking);
-                  assistantEntry.thinking_time_blocks.push(assistantEntry.thinking_time || 0);
-                }
-                const activeIdx = assistantEntry.thinking_blocks.length > 0 ? (assistantEntry.thinking_blocks.length - 1) : 0;
-                assistantEntry.thinking_blocks[activeIdx] = parsedThinking;
-                assistantEntry.thinking_time_blocks[activeIdx] = thinkingTime;
-                assistantEntry.thinking = assistantEntry.thinking_blocks.filter(Boolean).join('\n\n');
-              } else {
-                assistantEntry.thinking = assistantEntry.thinking ? assistantEntry.thinking + '\n\n' + parsedThinking : parsedThinking;
               }
             }
             assistantEntry.isInThinking = false;
@@ -5105,42 +5154,36 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
           }
           thinkingTextGenai += thinkChunk;
           
-          if (!isMaxThinking) {
-            if (!assistantEntry.thinking_blocks) {
-              assistantEntry.thinking_blocks = [];
-            }
-            if (!assistantEntry.thinking_time_blocks) {
-              assistantEntry.thinking_time_blocks = [];
-            }
-            if (assistantEntry.thinking && assistantEntry.thinking_blocks.length === 0) {
-              assistantEntry.thinking_blocks.push(assistantEntry.thinking);
-              assistantEntry.thinking_time_blocks.push(assistantEntry.thinking_time || 0);
-            }
-            const blocksCopy = [...assistantEntry.thinking_blocks];
-            const timeBlocksCopy = [...assistantEntry.thinking_time_blocks];
-            const activeIdx = blocksCopy.length > 0 ? (blocksCopy.length - 1) : 0;
-            blocksCopy[activeIdx] = thinkingTextGenai;
-            
-            let currentBlockTime = thinkingTime;
-            if (currentBlockTime === 0 && thinkingActiveGenai) {
-              currentBlockTime = Math.round((Date.now() - thinkingStartTime) / 1000);
-            }
-            timeBlocksCopy[activeIdx] = currentBlockTime;
-            
-            const displayState = { 
-              ...assistantEntry, 
-              thinking_blocks: blocksCopy,
-              thinking_time_blocks: timeBlocksCopy,
-              thinking: blocksCopy.filter(Boolean).join('\n\n'),
-              isInThinking: true, 
-              thinking_time: totalThinkingTime + currentBlockTime 
-            };
-            renderAssistantBubble(displayState, bubbleEl, { cursor: true, streaming: true });
-          } else {
-            let currentThinking = assistantEntry.thinking ? assistantEntry.thinking + '\n\n' + thinkingTextGenai : thinkingTextGenai;
-            const displayState = { ...assistantEntry, thinking: currentThinking, isInThinking: true, thinking_time: totalThinkingTime + thinkingTime };
-            renderAssistantBubble(displayState, bubbleEl, { cursor: true, streaming: true });
+          if (!assistantEntry.thinking_blocks) {
+            assistantEntry.thinking_blocks = [];
           }
+          if (!assistantEntry.thinking_time_blocks) {
+            assistantEntry.thinking_time_blocks = [];
+          }
+          if (assistantEntry.thinking && assistantEntry.thinking_blocks.length === 0) {
+            assistantEntry.thinking_blocks.push(assistantEntry.thinking);
+            assistantEntry.thinking_time_blocks.push(assistantEntry.thinking_time || 0);
+          }
+          const blocksCopy = [...assistantEntry.thinking_blocks];
+          const timeBlocksCopy = [...assistantEntry.thinking_time_blocks];
+          const activeIdx = blocksCopy.length > 0 ? (blocksCopy.length - 1) : 0;
+          blocksCopy[activeIdx] = thinkingTextGenai;
+          
+          let currentBlockTime = thinkingTime;
+          if (currentBlockTime === 0 && thinkingActiveGenai) {
+            currentBlockTime = Math.round((Date.now() - thinkingStartTime) / 1000);
+          }
+          timeBlocksCopy[activeIdx] = currentBlockTime;
+          
+          const displayState = { 
+            ...assistantEntry, 
+            thinking_blocks: blocksCopy,
+            thinking_time_blocks: timeBlocksCopy,
+            thinking: blocksCopy.filter(Boolean).join('\n\n'),
+            isInThinking: true, 
+            thinking_time: totalThinkingTime + currentBlockTime 
+          };
+          renderAssistantBubble(displayState, bubbleEl, { cursor: true, streaming: true });
           scrollToBottom();
         }
       );
@@ -5171,7 +5214,7 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
       } else {
         const finalizeGenAIUI = async () => {
           try {
-            if (settingsStore.get().genai_refine_thoughts && assistantEntry.thinking) {
+            if (settingsStore.get().genai_refine_thoughts && assistantEntry.thinking && (!assistantEntry.thinking_blocks || assistantEntry.thinking_blocks.length <= 1)) {
               const systemPrompt = "You are an expert in improving the internal thoughts of an AI model. Your task is to rephrase the thoughts on behalf of the AI as if they are first-person thoughts from the AI's perspective. Strictly avoid lists. Use natural paragraphs.";
               const originalThinking = assistantEntry.thinking;
               
