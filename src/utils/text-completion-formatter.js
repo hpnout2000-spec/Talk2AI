@@ -64,6 +64,13 @@ export function replaceCharUserMacros(text, charName = 'Assistant', userName = '
 }
 
 /**
+ * Escape regular expression special characters.
+ */
+export function escapeRegExp(string) {
+  return string ? string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : '';
+}
+
+/**
  * Unescapes string escape sequences like \n, \r, \t entered in text inputs.
  */
 export function unescapeString(str) {
@@ -144,15 +151,40 @@ export function formatTextCompletionPrompt(messages = [], contextTemplate = {}, 
 
   const replaceMacro = instructTemplate.replace_macro_in_sequences ?? true;
   const wrapNewline = instructTemplate.wrap_sequences_with_newline ?? false;
-  const includeNames = instructTemplate.include_names || 'none'; // 'none' | 'user_assistant' | 'all'
+  let includeNames = instructTemplate.include_names;
+  if (includeNames === undefined && instructTemplate.names_behavior !== undefined) {
+    if (instructTemplate.names_behavior === 0 || instructTemplate.names_behavior === 'none') includeNames = 'none';
+    else if (instructTemplate.names_behavior === 1 || instructTemplate.names_behavior === 'user_assistant' || instructTemplate.names_behavior === 'force') includeNames = 'user_assistant';
+    else if (instructTemplate.names_behavior === 2 || instructTemplate.names_behavior === 'all') includeNames = 'all';
+  }
+  if (!includeNames) includeNames = 'none';
+
+  const isInstructActive = !!(instructTemplate.id || instructTemplate.user_prefix || instructTemplate.assistant_prefix);
+
+  // When instruct mode is active, include_names strictly dictates name prefix behavior.
+  // 'none' explicitly disables prepending/appending names to turns and prompt prefill.
+  // When no instruct template is active (pure raw text completion), fallback to contextTemplate.always_add_character_name
+  // for the prompt generation suffix only.
+  const shouldIncludeTurnNames = isInstructActive
+    ? (includeNames === 'user_assistant' || includeNames === 'all')
+    : false;
+
+  const shouldIncludePromptCharName = isInstructActive
+    ? (includeNames === 'user_assistant' || includeNames === 'all')
+    : !!contextTemplate.always_add_character_name;
 
   const formatSeq = (seq) => {
     let s = unescapeString(seq);
     if (replaceMacro) {
       s = replaceCharUserMacros(s, charName, userName);
     }
-    if (wrapNewline && s && !s.startsWith('\n')) {
-      s = '\n' + s;
+    if (wrapNewline && s) {
+      if (!s.startsWith('\n')) {
+        s = '\n' + s;
+      }
+      if (!s.endsWith('\n')) {
+        s = s + '\n';
+      }
     }
     return s;
   };
@@ -169,6 +201,10 @@ export function formatTextCompletionPrompt(messages = [], contextTemplate = {}, 
     }
   }
 
+  // Regexes for stripping accidental/inherited name prefixes when includeNames is 'none'
+  const userPrefixRegex = new RegExp(`^(?:${escapeRegExp(userName)}|User):\\s*`, 'i');
+  const charPrefixRegex = new RegExp(`^(?:${escapeRegExp(charName)}|Assistant|Char):\\s*`, 'i');
+
   // Conversation turns
   for (let i = 0; i < messageHistory.length; i++) {
     const msg = messageHistory[i];
@@ -184,35 +220,28 @@ export function formatTextCompletionPrompt(messages = [], contextTemplate = {}, 
 
     if (isUser) {
       let turnContent = text;
-      if (contextTemplate.always_add_character_name || includeNames === 'user_assistant' || includeNames === 'all') {
+      if (shouldIncludeTurnNames) {
         if (!turnContent.startsWith(userName + ':')) {
           turnContent = `${userName}: ${turnContent}`;
         }
+      } else if (includeNames === 'none') {
+        turnContent = turnContent.replace(userPrefixRegex, '');
       }
 
-      let pfx = formatSeq(userPrefix);
+      const pfx = formatSeq(userPrefix);
       const sfx = formatSeq(userSuffix);
-      
-      // Ensure the prefix doesn't merge directly into the content if it lacks a separator
-      if (pfx && !pfx.endsWith('\n') && !pfx.endsWith(' ')) {
-        pfx += '\n';
-      }
-      
       promptParts.push(`${pfx}${turnContent}${sfx}`);
     } else {
       let turnContent = text;
-      if (contextTemplate.always_add_character_name || includeNames === 'user_assistant' || includeNames === 'all') {
+      if (shouldIncludeTurnNames) {
         if (!turnContent.startsWith(charName + ':')) {
           turnContent = `${charName}: ${turnContent}`;
         }
+      } else if (includeNames === 'none') {
+        turnContent = turnContent.replace(charPrefixRegex, '');
       }
 
-      let pfx = formatSeq(assistantPrefix);
-      
-      // Ensure the prefix doesn't merge directly into the content
-      if (pfx && !pfx.endsWith('\n') && !pfx.endsWith(' ')) {
-        pfx += '\n';
-      }
+      const pfx = formatSeq(assistantPrefix);
 
       if (isLastMessage) {
         // This is a prefill, do not append suffix
@@ -230,13 +259,11 @@ export function formatTextCompletionPrompt(messages = [], contextTemplate = {}, 
   
   if (!lastMsgIsAssistant) {
     let finalAssistantPrefix = formatSeq(assistantPrefix);
-    
-    // Ensure the prefix doesn't merge directly into the appended name
-    if (finalAssistantPrefix && !finalAssistantPrefix.endsWith('\n') && !finalAssistantPrefix.endsWith(' ')) {
-        finalAssistantPrefix += '\n';
-    }
 
-    if (contextTemplate.always_add_character_name || includeNames === 'user_assistant' || includeNames === 'all') {
+    if (shouldIncludePromptCharName) {
+      if (finalAssistantPrefix && !finalAssistantPrefix.endsWith('\n') && !finalAssistantPrefix.endsWith(' ')) {
+        finalAssistantPrefix += ' ';
+      }
       if (!finalAssistantPrefix.includes(charName + ':')) {
         finalAssistantPrefix += `${charName}: `;
       }

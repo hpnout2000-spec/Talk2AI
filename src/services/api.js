@@ -406,17 +406,26 @@ export const api = {
       }
       const isGenAI = options.isGenAI || false;
       const activePresetId = isGenAI ? (settings.active_genai_generation_preset_id || 'default') : (settings.active_generation_preset_id || 'default');
-      const completionMode = isGenAI ? (settings.genai_completion_mode || 'chat_completion') : (settings.completion_mode || 'chat_completion');
+      const activePreset = (settings.generation_presets || []).find(p => p.id === activePresetId);
 
-      let temp = options.temperature ?? (isGenAI ? settings.genai_temperature : settings.temperature);
-      let topP = options.top_p ?? (isGenAI ? settings.genai_top_p : settings.top_p);
-      let topK = options.top_k ?? (isGenAI ? settings.genai_top_k : settings.top_k);
-      let minP = options.min_p ?? (isGenAI ? settings.genai_min_p : settings.min_p) ?? 0.05;
-      let minPEnabled = options.min_p_enabled ?? (isGenAI ? settings.genai_min_p_enabled : settings.min_p_enabled) ?? true;
+      const isThinking = (effort && effort !== 'none') || 
+                         (activePreset?.force_reasoning) ||
+                         (activePreset?.preset_mode === 'thinking');
+
+      const useThinkingSettings = Boolean(isThinking && activePreset && !activePreset.is_sync && activePreset.thinking_settings);
+      const activeSource = useThinkingSettings ? { ...activePreset, ...activePreset.thinking_settings } : (activePreset || {});
+
+      const completionMode = options.completion_mode || activeSource.completion_mode || (isGenAI ? settings.genai_completion_mode : settings.completion_mode) || 'chat_completion';
+
+      let temp = options.temperature ?? activeSource.temperature ?? (isGenAI ? settings.genai_temperature : settings.temperature);
+      let topP = options.top_p ?? activeSource.top_p ?? (isGenAI ? settings.genai_top_p : settings.top_p);
+      let topK = options.top_k ?? activeSource.top_k ?? (isGenAI ? settings.genai_top_k : settings.top_k);
+      let minP = options.min_p ?? activeSource.min_p ?? (isGenAI ? settings.genai_min_p : settings.min_p) ?? 0.05;
+      let minPEnabled = options.min_p_enabled ?? activeSource.min_p_enabled ?? (isGenAI ? settings.genai_min_p_enabled : settings.min_p_enabled) ?? true;
 
       if (settings.qwen35_thinking_support && activePresetId === 'qwen3') {
-        const isThinking = effort === 'medium' || effort === 'high';
-        const tag = isThinking ? '/think' : '/no_think';
+        const isQwenThinking = effort === 'medium' || effort === 'high';
+        const tag = isQwenThinking ? '/think' : '/no_think';
         
         if (finalMessages.length > 0) {
           const lastMsgIndex = finalMessages.length - 1;
@@ -443,18 +452,18 @@ export const api = {
           }
         }
 
-        if (isThinking) {
-          temp = 0.6;
-          minP = 0.0;
-          minPEnabled = false;
-          topP = 0.95;
-          topK = 20;
+        if (isQwenThinking) {
+          temp = options.temperature ?? activeSource.temperature ?? 0.6;
+          minP = options.min_p ?? activeSource.min_p ?? 0.0;
+          minPEnabled = options.min_p_enabled ?? activeSource.min_p_enabled ?? false;
+          topP = options.top_p ?? activeSource.top_p ?? 0.95;
+          topK = options.top_k ?? activeSource.top_k ?? 20;
         } else {
-          temp = 0.7;
-          minP = 0.0;
-          minPEnabled = false;
-          topP = 0.8;
-          topK = 20;
+          temp = options.temperature ?? activeSource.temperature ?? 0.7;
+          minP = options.min_p ?? activeSource.min_p ?? 0.0;
+          minPEnabled = options.min_p_enabled ?? activeSource.min_p_enabled ?? false;
+          topP = options.top_p ?? activeSource.top_p ?? 0.8;
+          topK = options.top_k ?? activeSource.top_k ?? 20;
           
           if (finalMessages.length > 0) {
             const lastMsgIndex = finalMessages.length - 1;
@@ -510,14 +519,14 @@ export const api = {
         }
       }
 
-      const maxTokens = options.max_tokens || (isGenAI ? settings.genai_max_tokens : settings.max_tokens);
-      const repPenalty = options.rep_penalty ?? (isGenAI ? settings.genai_rep_penalty : settings.rep_penalty);
-      const presPenalty = options.presence_penalty ?? (isGenAI ? settings.genai_presence_penalty : settings.presence_penalty) ?? 0.0;
+      const maxTokens = options.max_tokens || activeSource.max_tokens || (isGenAI ? settings.genai_max_tokens : settings.max_tokens);
+      const repPenalty = options.rep_penalty ?? activeSource.rep_penalty ?? (isGenAI ? settings.genai_rep_penalty : settings.rep_penalty);
+      const presPenalty = options.presence_penalty ?? activeSource.presence_penalty ?? (isGenAI ? settings.genai_presence_penalty : settings.presence_penalty) ?? 0.0;
 
       let body;
       if (completionMode === 'text_completion') {
-        const instructId = isGenAI ? (settings.genai_active_instruct_template_id || 'gemma2') : (settings.active_instruct_template_id || 'gemma2');
-        const contextId = isGenAI ? (settings.genai_active_context_template_id || 'gemma2') : (settings.active_context_template_id || 'gemma2');
+        const instructId = activeSource.active_instruct_template_id || (isGenAI ? settings.genai_active_instruct_template_id : settings.active_instruct_template_id) || 'gemma2';
+        const contextId = activeSource.active_context_template_id || (isGenAI ? settings.genai_active_context_template_id : settings.active_context_template_id) || 'gemma2';
         const instructTemplate = (settings.instruct_templates || []).find(t => t.id === instructId) || (settings.instruct_templates || [])[0] || {};
         const contextTemplate = (settings.context_templates || []).find(t => t.id === contextId) || (settings.context_templates || [])[0] || {};
 
@@ -556,7 +565,7 @@ export const api = {
         };
       }
 
-      const sf = options.smoothing_factor ?? (isGenAI ? settings.genai_smoothing_factor : settings.smoothing_factor) ?? 0;
+      const sf = options.smoothing_factor ?? activeSource.smoothing_factor ?? (isGenAI ? settings.genai_smoothing_factor : settings.smoothing_factor) ?? 0;
       if (sf > 0) {
         body.smoothing_factor = sf;
       }
@@ -565,23 +574,23 @@ export const api = {
         body.min_p = minP;
       }
 
-      const adaptiveTargetEnabled = options.adaptive_target_enabled ?? (isGenAI ? settings.genai_adaptive_target_enabled : settings.adaptive_target_enabled) ?? true;
+      const adaptiveTargetEnabled = options.adaptive_target_enabled ?? activeSource.adaptive_target_enabled ?? (isGenAI ? settings.genai_adaptive_target_enabled : settings.adaptive_target_enabled) ?? true;
       if (adaptiveTargetEnabled) {
-        body.adaptive_target = options.adaptive_target ?? (isGenAI ? settings.genai_adaptive_target : settings.adaptive_target) ?? 0.8;
+        body.adaptive_target = options.adaptive_target ?? activeSource.adaptive_target ?? (isGenAI ? settings.genai_adaptive_target : settings.adaptive_target) ?? 0.8;
       }
 
-      const adaptiveDecayEnabled = options.adaptive_decay_enabled ?? (isGenAI ? settings.genai_adaptive_decay_enabled : settings.adaptive_decay_enabled) ?? true;
+      const adaptiveDecayEnabled = options.adaptive_decay_enabled ?? activeSource.adaptive_decay_enabled ?? (isGenAI ? settings.genai_adaptive_decay_enabled : settings.adaptive_decay_enabled) ?? true;
       if (adaptiveDecayEnabled) {
-        body.adaptive_decay = options.adaptive_decay ?? (isGenAI ? settings.genai_adaptive_decay : settings.adaptive_decay) ?? 0.9;
+        body.adaptive_decay = options.adaptive_decay ?? activeSource.adaptive_decay ?? (isGenAI ? settings.genai_adaptive_decay : settings.adaptive_decay) ?? 0.9;
       }
 
-      const dryEnabled = options.dry_multiplier_enabled ?? (isGenAI ? settings.genai_dry_multiplier_enabled : settings.dry_multiplier_enabled) ?? false;
+      const dryEnabled = options.dry_multiplier_enabled ?? activeSource.dry_multiplier_enabled ?? (isGenAI ? settings.genai_dry_multiplier_enabled : settings.dry_multiplier_enabled) ?? false;
       if (dryEnabled) {
-        body.dry_multiplier = options.dry_multiplier ?? (isGenAI ? settings.genai_dry_multiplier : settings.dry_multiplier) ?? 0.8;
-        body.dry_base = options.dry_base ?? (isGenAI ? settings.genai_dry_base : settings.dry_base) ?? 1.75;
-        body.dry_allowed_length = options.dry_allowed_length ?? (isGenAI ? settings.genai_dry_allowed_length : settings.dry_allowed_length) ?? 2;
+        body.dry_multiplier = options.dry_multiplier ?? activeSource.dry_multiplier ?? (isGenAI ? settings.genai_dry_multiplier : settings.dry_multiplier) ?? 0.8;
+        body.dry_base = options.dry_base ?? activeSource.dry_base ?? (isGenAI ? settings.genai_dry_base : settings.dry_base) ?? 1.75;
+        body.dry_allowed_length = options.dry_allowed_length ?? activeSource.dry_allowed_length ?? (isGenAI ? settings.genai_dry_allowed_length : settings.dry_allowed_length) ?? 2;
         
-        let breakers = options.dry_sequence_breakers ?? (isGenAI ? settings.genai_dry_sequence_breakers : settings.dry_sequence_breakers);
+        let breakers = options.dry_sequence_breakers ?? activeSource.dry_sequence_breakers ?? (isGenAI ? settings.genai_dry_sequence_breakers : settings.dry_sequence_breakers);
         if (typeof breakers === 'string') {
           try {
             breakers = JSON.parse(breakers);
@@ -593,9 +602,9 @@ export const api = {
       }
 
       // Sampler Order
-      const samplerOrderEnabled = options.sampler_order_enabled ?? (isGenAI ? settings.genai_sampler_order_enabled : settings.sampler_order_enabled);
+      const samplerOrderEnabled = options.sampler_order_enabled ?? activeSource.sampler_order_enabled ?? (isGenAI ? settings.genai_sampler_order_enabled : settings.sampler_order_enabled);
       if (samplerOrderEnabled) {
-        let order = options.sampler_order ?? (isGenAI ? settings.genai_sampler_order : settings.sampler_order);
+        let order = options.sampler_order ?? activeSource.sampler_order ?? (isGenAI ? settings.genai_sampler_order : settings.sampler_order);
         if (typeof order === 'string') {
           try {
             order = JSON.parse(order);
@@ -610,9 +619,9 @@ export const api = {
 
       // Extended samplers
       const getSamplerOpt = (key, defaultVal = null) => {
-        const isEnabled = options[`${key}_enabled`] ?? (isGenAI ? settings[`genai_${key}_enabled`] : settings[`${key}_enabled`]);
+        const isEnabled = options[`${key}_enabled`] ?? activeSource[`${key}_enabled`] ?? (isGenAI ? settings[`genai_${key}_enabled`] : settings[`${key}_enabled`]);
         if (isEnabled) {
-          return options[key] ?? (isGenAI ? settings[`genai_${key}`] : settings[key]) ?? defaultVal;
+          return options[key] ?? activeSource[key] ?? (isGenAI ? settings[`genai_${key}`] : settings[key]) ?? defaultVal;
         }
         return null;
       };
@@ -626,46 +635,46 @@ export const api = {
       const tfs = getSamplerOpt('tfs');
       if (tfs !== null) body.tfs = tfs;
 
-      const mirostatEnabled = options.mirostat_enabled ?? (isGenAI ? settings.genai_mirostat_enabled : settings.mirostat_enabled);
+      const mirostatEnabled = options.mirostat_enabled ?? activeSource.mirostat_enabled ?? (isGenAI ? settings.genai_mirostat_enabled : settings.mirostat_enabled);
       if (mirostatEnabled) {
-        body.mirostat_mode = options.mirostat_mode ?? (isGenAI ? settings.genai_mirostat_mode : settings.mirostat_mode) ?? 0;
-        body.mirostat_tau = options.mirostat_tau ?? (isGenAI ? settings.genai_mirostat_tau : settings.mirostat_tau) ?? 5.0;
-        body.mirostat_eta = options.mirostat_eta ?? (isGenAI ? settings.genai_mirostat_eta : settings.mirostat_eta) ?? 0.1;
+        body.mirostat_mode = options.mirostat_mode ?? activeSource.mirostat_mode ?? (isGenAI ? settings.genai_mirostat_mode : settings.mirostat_mode) ?? 0;
+        body.mirostat_tau = options.mirostat_tau ?? activeSource.mirostat_tau ?? (isGenAI ? settings.genai_mirostat_tau : settings.mirostat_tau) ?? 5.0;
+        body.mirostat_eta = options.mirostat_eta ?? activeSource.mirostat_eta ?? (isGenAI ? settings.genai_mirostat_eta : settings.mirostat_eta) ?? 0.1;
       }
-      const xtcEnabled = options.xtc_enabled ?? (isGenAI ? settings.genai_xtc_enabled : settings.xtc_enabled);
+      const xtcEnabled = options.xtc_enabled ?? activeSource.xtc_enabled ?? (isGenAI ? settings.genai_xtc_enabled : settings.xtc_enabled);
       if (xtcEnabled) {
-        body.xtc_threshold = options.xtc_threshold ?? (isGenAI ? settings.genai_xtc_threshold : settings.xtc_threshold) ?? 0.1;
-        body.xtc_probability = options.xtc_probability ?? (isGenAI ? settings.genai_xtc_probability : settings.xtc_probability) ?? 0.0;
+        body.xtc_threshold = options.xtc_threshold ?? activeSource.xtc_threshold ?? (isGenAI ? settings.genai_xtc_threshold : settings.xtc_threshold) ?? 0.1;
+        body.xtc_probability = options.xtc_probability ?? activeSource.xtc_probability ?? (isGenAI ? settings.genai_xtc_probability : settings.xtc_probability) ?? 0.0;
       }
-      const dynatempEnabled = options.dynatemp_enabled ?? (isGenAI ? settings.genai_dynatemp_enabled : settings.dynatemp_enabled);
+      const dynatempEnabled = options.dynatemp_enabled ?? activeSource.dynatemp_enabled ?? (isGenAI ? settings.genai_dynatemp_enabled : settings.dynatemp_enabled);
       if (dynatempEnabled) {
-        body.dynatemp_range = options.dynatemp_range ?? (isGenAI ? settings.genai_dynatemp_range : settings.dynatemp_range) ?? 0.0;
-        body.dynatemp_exponent = options.dynatemp_exponent ?? (isGenAI ? settings.genai_dynatemp_exponent : settings.dynatemp_exponent) ?? 1.0;
+        body.dynatemp_range = options.dynatemp_range ?? activeSource.dynatemp_range ?? (isGenAI ? settings.genai_dynatemp_range : settings.dynatemp_range) ?? 0.0;
+        body.dynatemp_exponent = options.dynatemp_exponent ?? activeSource.dynatemp_exponent ?? (isGenAI ? settings.genai_dynatemp_exponent : settings.dynatemp_exponent) ?? 1.0;
       }
       const topNSigma = getSamplerOpt('top_n_sigma');
       if (topNSigma !== null) { body.top_n_sigma = topNSigma; body.nsigma = topNSigma; }
-      const repPenRangeEnabled = options.rep_pen_range_enabled ?? (isGenAI ? settings.genai_rep_pen_range_enabled : settings.rep_pen_range_enabled);
+      const repPenRangeEnabled = options.rep_pen_range_enabled ?? activeSource.rep_pen_range_enabled ?? (isGenAI ? settings.genai_rep_pen_range_enabled : settings.rep_pen_range_enabled);
       if (repPenRangeEnabled) {
-        body.rep_pen_range = options.rep_pen_range ?? (isGenAI ? settings.genai_rep_pen_range : settings.rep_pen_range) ?? 0;
-        body.rep_pen_slope = options.rep_pen_slope ?? (isGenAI ? settings.genai_rep_pen_slope : settings.rep_pen_slope) ?? 1.0;
+        body.rep_pen_range = options.rep_pen_range ?? activeSource.rep_pen_range ?? (isGenAI ? settings.genai_rep_pen_range : settings.rep_pen_range) ?? 0;
+        body.rep_pen_slope = options.rep_pen_slope ?? activeSource.rep_pen_slope ?? (isGenAI ? settings.genai_rep_pen_slope : settings.rep_pen_slope) ?? 1.0;
       }
       const minTokens = getSamplerOpt('min_tokens');
       if (minTokens !== null) body.min_tokens = minTokens;
-      const cfgEnabled = options.guidance_scale_enabled ?? (isGenAI ? settings.genai_guidance_scale_enabled : settings.guidance_scale_enabled);
+      const cfgEnabled = options.guidance_scale_enabled ?? activeSource.guidance_scale_enabled ?? (isGenAI ? settings.genai_guidance_scale_enabled : settings.guidance_scale_enabled);
       if (cfgEnabled) {
-        body.guidance_scale = options.guidance_scale ?? (isGenAI ? settings.genai_guidance_scale : settings.guidance_scale) ?? 1.0;
-        const negPrompt = options.negative_prompt ?? (isGenAI ? settings.genai_negative_prompt : settings.negative_prompt);
+        body.guidance_scale = options.guidance_scale ?? activeSource.guidance_scale ?? (isGenAI ? settings.genai_guidance_scale : settings.guidance_scale) ?? 1.0;
+        const negPrompt = options.negative_prompt ?? activeSource.negative_prompt ?? (isGenAI ? settings.genai_negative_prompt : settings.negative_prompt);
         if (negPrompt) body.negative_prompt = negPrompt;
       }
-      const ignoreEos = options.ignore_eos ?? (isGenAI ? settings.genai_ignore_eos : settings.ignore_eos);
+      const ignoreEos = options.ignore_eos ?? activeSource.ignore_eos ?? (isGenAI ? settings.genai_ignore_eos : settings.ignore_eos);
       if (ignoreEos) { body.ignore_eos = true; body.ban_eos_token = true; }
-      const bannedStrings = options.banned_strings ?? (isGenAI ? settings.genai_banned_strings : settings.banned_strings);
+      const bannedStrings = options.banned_strings ?? activeSource.banned_strings ?? (isGenAI ? settings.genai_banned_strings : settings.banned_strings);
       if (bannedStrings) {
         body.banned_strings = typeof bannedStrings === 'string' ? bannedStrings.split(',').map(s => s.trim()).filter(Boolean) : bannedStrings;
       }
-      const logitBiasEnabled = options.logit_bias_enabled ?? (isGenAI ? settings.genai_logit_bias_enabled : settings.logit_bias_enabled);
+      const logitBiasEnabled = options.logit_bias_enabled ?? activeSource.logit_bias_enabled ?? (isGenAI ? settings.genai_logit_bias_enabled : settings.logit_bias_enabled);
       if (logitBiasEnabled) {
-        const rawBias = options.logit_bias ?? (isGenAI ? settings.genai_logit_bias : settings.logit_bias);
+        const rawBias = options.logit_bias ?? activeSource.logit_bias ?? (isGenAI ? settings.genai_logit_bias : settings.logit_bias);
         const parsedBias = parseLogitBias(rawBias);
         if (parsedBias) {
           body.logit_bias = parsedBias;

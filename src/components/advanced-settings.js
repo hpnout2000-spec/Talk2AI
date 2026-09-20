@@ -22,6 +22,16 @@ let currentGenAIPresetMode = 'none';
 let isGenAIPresetSync = true;
 let currentGenerationPresetMode = 'none';
 let isGenerationPresetSync = true;
+function clonePresetSettings(preset) {
+  if (!preset) return {};
+  const clone = JSON.parse(JSON.stringify(preset));
+  delete clone.thinking_settings;
+  delete clone.is_sync;
+  delete clone.preset_mode;
+  delete clone.id;
+  delete clone.name;
+  return clone;
+}
 
 function updateGenerationPresetModeUI() {
   const btnNone = document.getElementById('btn-generation-preset-mode-none');
@@ -103,6 +113,21 @@ export function initAdvancedSettings() {
 
   btnClose.addEventListener('click', () => closeWindow(modal));
   btnSave.addEventListener('click', saveAll);
+
+  // Preset JSON Importer
+  const btnImportJson = document.getElementById('btn-import-advanced-json');
+  const inputImportJson = document.getElementById('input-import-advanced-json');
+  if (btnImportJson && inputImportJson) {
+    btnImportJson.addEventListener('click', () => {
+      inputImportJson.value = '';
+      inputImportJson.click();
+    });
+    inputImportJson.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      await handleImportPresetFile(file);
+    });
+  }
 
   // Tab switching
   navItems.forEach(item => {
@@ -428,7 +453,8 @@ export function initAdvancedSettings() {
   document.getElementById('btn-delete-generation-preset')?.addEventListener('click', () => deleteGenerationPreset(false));
   document.getElementById('btn-delete-genai-preset')?.addEventListener('click', () => deleteGenerationPreset(true));
 
-  document.getElementById('btn-preset-mode-sync')?.addEventListener('click', () => {
+  document.getElementById('btn-preset-mode-sync')?.addEventListener('click', async () => {
+    updateActiveGenerationPreset(true);
     isGenAIPresetSync = !isGenAIPresetSync;
     const activeId = currentSettings.active_genai_generation_preset_id;
     const preset = currentSettings.generation_presets.find(p => p.id === activeId);
@@ -436,41 +462,56 @@ export function initAdvancedSettings() {
       preset.is_sync = isGenAIPresetSync;
       if (isGenAIPresetSync) {
         currentGenAIPresetMode = 'none';
-        delete preset.thinking_settings;
+        preset.preset_mode = 'none';
+        preset.thinking_settings = clonePresetSettings(preset);
+        showToast('Standard & Thinking synchronized');
+      } else {
+        if (!preset.thinking_settings) {
+          preset.thinking_settings = clonePresetSettings(preset);
+        }
+        showToast('Standard & Thinking unlinked for custom editing');
       }
-      preset.preset_mode = currentGenAIPresetMode;
       applyGenerationPreset(activeId, true);
+      await settingsStore.save({ generation_presets: currentSettings.generation_presets });
     }
     updateGenAIPresetModeUI();
   });
   
-  document.getElementById('btn-preset-mode-none')?.addEventListener('click', () => {
-    if (isGenAIPresetSync) return;
+  document.getElementById('btn-preset-mode-none')?.addEventListener('click', async () => {
+    const activeId = currentSettings.active_genai_generation_preset_id;
+    const preset = currentSettings.generation_presets.find(p => p.id === activeId);
+    if (!preset) return;
+
+    updateActiveGenerationPreset(true);
     currentGenAIPresetMode = 'none';
-    const activeId = currentSettings.active_genai_generation_preset_id;
-    const preset = currentSettings.generation_presets.find(p => p.id === activeId);
-    if (preset) preset.preset_mode = 'none';
+    preset.preset_mode = 'none';
     updateGenAIPresetModeUI();
-    applyGenerationPreset(currentSettings.active_genai_generation_preset_id, true);
+    applyGenerationPreset(activeId, true);
+    await settingsStore.save({ generation_presets: currentSettings.generation_presets });
   });
   
-  document.getElementById('btn-preset-mode-thinking')?.addEventListener('click', () => {
-    if (isGenAIPresetSync) return;
-    currentGenAIPresetMode = 'thinking';
+  document.getElementById('btn-preset-mode-thinking')?.addEventListener('click', async () => {
     const activeId = currentSettings.active_genai_generation_preset_id;
     const preset = currentSettings.generation_presets.find(p => p.id === activeId);
-    if (preset) {
-      preset.preset_mode = 'thinking';
-      if (!preset.thinking_settings) {
-        preset.thinking_settings = {};
-        updateActiveGenerationPreset(true);
-      }
+    if (!preset) return;
+
+    updateActiveGenerationPreset(true);
+    if (isGenAIPresetSync) {
+      isGenAIPresetSync = false;
+      preset.is_sync = false;
     }
+    if (!preset.thinking_settings) {
+      preset.thinking_settings = clonePresetSettings(preset);
+    }
+    currentGenAIPresetMode = 'thinking';
+    preset.preset_mode = 'thinking';
     updateGenAIPresetModeUI();
-    applyGenerationPreset(currentSettings.active_genai_generation_preset_id, true);
+    applyGenerationPreset(activeId, true);
+    await settingsStore.save({ generation_presets: currentSettings.generation_presets });
   });
 
-  document.getElementById('btn-generation-preset-mode-sync')?.addEventListener('click', () => {
+  document.getElementById('btn-generation-preset-mode-sync')?.addEventListener('click', async () => {
+    updateActiveGenerationPreset(false);
     isGenerationPresetSync = !isGenerationPresetSync;
     const activeId = currentSettings.active_generation_preset_id;
     const preset = currentSettings.generation_presets.find(p => p.id === activeId);
@@ -478,38 +519,52 @@ export function initAdvancedSettings() {
       preset.is_sync = isGenerationPresetSync;
       if (isGenerationPresetSync) {
         currentGenerationPresetMode = 'none';
-        delete preset.thinking_settings;
+        preset.preset_mode = 'none';
+        preset.thinking_settings = clonePresetSettings(preset);
+        showToast('Standard & Thinking synchronized');
+      } else {
+        if (!preset.thinking_settings) {
+          preset.thinking_settings = clonePresetSettings(preset);
+        }
+        showToast('Standard & Thinking unlinked for custom editing');
       }
-      preset.preset_mode = currentGenerationPresetMode;
       applyGenerationPreset(activeId, false);
+      await settingsStore.save({ generation_presets: currentSettings.generation_presets });
     }
     updateGenerationPresetModeUI();
   });
   
-  document.getElementById('btn-generation-preset-mode-none')?.addEventListener('click', () => {
-    if (isGenerationPresetSync) return;
+  document.getElementById('btn-generation-preset-mode-none')?.addEventListener('click', async () => {
+    const activeId = currentSettings.active_generation_preset_id;
+    const preset = currentSettings.generation_presets.find(p => p.id === activeId);
+    if (!preset) return;
+
+    updateActiveGenerationPreset(false);
     currentGenerationPresetMode = 'none';
-    const activeId = currentSettings.active_generation_preset_id;
-    const preset = currentSettings.generation_presets.find(p => p.id === activeId);
-    if (preset) preset.preset_mode = 'none';
+    preset.preset_mode = 'none';
     updateGenerationPresetModeUI();
-    applyGenerationPreset(currentSettings.active_generation_preset_id, false);
+    applyGenerationPreset(activeId, false);
+    await settingsStore.save({ generation_presets: currentSettings.generation_presets });
   });
   
-  document.getElementById('btn-generation-preset-mode-thinking')?.addEventListener('click', () => {
-    if (isGenerationPresetSync) return;
-    currentGenerationPresetMode = 'thinking';
+  document.getElementById('btn-generation-preset-mode-thinking')?.addEventListener('click', async () => {
     const activeId = currentSettings.active_generation_preset_id;
     const preset = currentSettings.generation_presets.find(p => p.id === activeId);
-    if (preset) {
-      preset.preset_mode = 'thinking';
-      if (!preset.thinking_settings) {
-        preset.thinking_settings = {};
-        updateActiveGenerationPreset(false);
-      }
+    if (!preset) return;
+
+    updateActiveGenerationPreset(false);
+    if (isGenerationPresetSync) {
+      isGenerationPresetSync = false;
+      preset.is_sync = false;
     }
+    if (!preset.thinking_settings) {
+      preset.thinking_settings = clonePresetSettings(preset);
+    }
+    currentGenerationPresetMode = 'thinking';
+    preset.preset_mode = 'thinking';
     updateGenerationPresetModeUI();
-    applyGenerationPreset(currentSettings.active_generation_preset_id, false);
+    applyGenerationPreset(activeId, false);
+    await settingsStore.save({ generation_presets: currentSettings.generation_presets });
   });
 
   // Advanced Formatting Templates listeners
@@ -1317,30 +1372,24 @@ function applyGenerationPreset(presetId, isGenAI) {
   if (isGenAI) {
     currentSettings.active_genai_generation_preset_id = presetId;
     isGenAIPresetSync = preset.is_sync ?? true;
-    currentGenAIPresetMode = preset.preset_mode || 'none';
-    if (isGenAIPresetSync) currentGenAIPresetMode = 'none';
+    currentGenAIPresetMode = isGenAIPresetSync ? 'none' : (preset.preset_mode || 'none');
     if (typeof updateGenAIPresetModeUI === 'function') updateGenAIPresetModeUI();
 
-    const source = (!isGenAIPresetSync && currentGenAIPresetMode === 'thinking' && preset.thinking_settings) 
-      ? preset.thinking_settings 
+    const source = (!isGenAIPresetSync && currentGenAIPresetMode === 'thinking') 
+      ? { ...preset, ...(preset.thinking_settings || {}) } 
       : preset;
 
-    if (source.completion_mode) {
-      const el = document.getElementById('adv-setting-genai-completion-mode');
-      if (el) {
-        el.value = source.completion_mode;
-        const grp = document.getElementById('genai-text-completion-templates-group');
-        if (grp) grp.style.display = source.completion_mode === 'text_completion' ? 'flex' : 'none';
-      }
+    const compEl = document.getElementById('adv-setting-genai-completion-mode');
+    if (compEl) {
+      const compVal = source.completion_mode || 'chat_completion';
+      compEl.value = compVal;
+      const grp = document.getElementById('genai-text-completion-templates-group');
+      if (grp) grp.style.display = compVal === 'text_completion' ? 'flex' : 'none';
     }
-    if (source.active_instruct_template_id) {
-      const el = document.getElementById('adv-setting-genai-instruct-template-select');
-      if (el) el.value = source.active_instruct_template_id;
-    }
-    if (source.active_context_template_id) {
-      const el = document.getElementById('adv-setting-genai-context-template-select');
-      if (el) el.value = source.active_context_template_id;
-    }
+    const instEl = document.getElementById('adv-setting-genai-instruct-template-select');
+    if (instEl) instEl.value = source.active_instruct_template_id || 'gemma2';
+    const ctxEl = document.getElementById('adv-setting-genai-context-template-select');
+    if (ctxEl) ctxEl.value = source.active_context_template_id || 'gemma2';
     setRangeValue('adv-setting-genai-max-tokens', 'adv-genai-max-tokens-value', source.max_tokens);
     setRangeValue('adv-setting-genai-temperature', 'adv-genai-temperature-value', source.temperature);
     setRangeValue('adv-setting-genai-top-p', 'adv-genai-top-p-value', source.top_p);
@@ -1382,30 +1431,24 @@ function applyGenerationPreset(presetId, isGenAI) {
   } else {
     currentSettings.active_generation_preset_id = presetId;
     isGenerationPresetSync = preset.is_sync ?? true;
-    currentGenerationPresetMode = preset.preset_mode || 'none';
-    if (isGenerationPresetSync) currentGenerationPresetMode = 'none';
+    currentGenerationPresetMode = isGenerationPresetSync ? 'none' : (preset.preset_mode || 'none');
     if (typeof updateGenerationPresetModeUI === 'function') updateGenerationPresetModeUI();
 
-    const source = (!isGenerationPresetSync && currentGenerationPresetMode === 'thinking' && preset.thinking_settings) 
-      ? preset.thinking_settings 
+    const source = (!isGenerationPresetSync && currentGenerationPresetMode === 'thinking') 
+      ? { ...preset, ...(preset.thinking_settings || {}) } 
       : preset;
 
-    if (source.completion_mode) {
-      const el = document.getElementById('adv-setting-completion-mode');
-      if (el) {
-        el.value = source.completion_mode;
-        const grp = document.getElementById('text-completion-templates-group');
-        if (grp) grp.style.display = source.completion_mode === 'text_completion' ? 'flex' : 'none';
-      }
+    const compEl = document.getElementById('adv-setting-completion-mode');
+    if (compEl) {
+      const compVal = source.completion_mode || 'chat_completion';
+      compEl.value = compVal;
+      const grp = document.getElementById('text-completion-templates-group');
+      if (grp) grp.style.display = compVal === 'text_completion' ? 'flex' : 'none';
     }
-    if (source.active_instruct_template_id) {
-      const el = document.getElementById('adv-setting-instruct-template-select');
-      if (el) el.value = source.active_instruct_template_id;
-    }
-    if (source.active_context_template_id) {
-      const el = document.getElementById('adv-setting-context-template-select');
-      if (el) el.value = source.active_context_template_id;
-    }
+    const instEl = document.getElementById('adv-setting-instruct-template-select');
+    if (instEl) instEl.value = source.active_instruct_template_id || 'gemma2';
+    const ctxEl = document.getElementById('adv-setting-context-template-select');
+    if (ctxEl) ctxEl.value = source.active_context_template_id || 'gemma2';
     setRangeValue('adv-setting-max-tokens', 'adv-max-tokens-value', source.max_tokens);
     setRangeValue('adv-setting-temperature', 'adv-temperature-value', source.temperature);
     setRangeValue('adv-setting-top-p', 'adv-top-p-value', source.top_p);
@@ -1688,7 +1731,7 @@ function setupRangeInput(inputId, valueId, isGenAI = null) {
 
 function updateActiveGenerationPreset(isGenAI) {
   const activeId = isGenAI ? currentSettings.active_genai_generation_preset_id : currentSettings.active_generation_preset_id;
-  if (!activeId || activeId.startsWith('default') || activeId.startsWith('glm') || activeId.startsWith('qwen') || activeId.startsWith('gemma')) return;
+  if (!activeId) return;
 
   const preset = currentSettings.generation_presets.find(p => p.id === activeId);
   if (!preset) return;
@@ -1696,7 +1739,7 @@ function updateActiveGenerationPreset(isGenAI) {
   if (isGenAI) {
     let target = preset;
     if (!preset.is_sync && currentGenAIPresetMode === 'thinking') {
-      if (!preset.thinking_settings) preset.thinking_settings = {};
+      if (!preset.thinking_settings) preset.thinking_settings = clonePresetSettings(preset);
       target = preset.thinking_settings;
     }
 
@@ -1731,44 +1774,10 @@ function updateActiveGenerationPreset(isGenAI) {
     }
     target.genai_system_prompt_addition = document.getElementById('adv-setting-genai-system-prompt')?.value.trim() || '';
     Object.assign(target, extractExtendedSamplersFromUI(true));
-    
-    // Sync to other tab if it uses the same custom preset
-    if (currentSettings.active_generation_preset_id === activeId) {
-      if (document.getElementById('adv-setting-completion-mode')) document.getElementById('adv-setting-completion-mode').value = preset.completion_mode || 'chat_completion';
-      if (document.getElementById('adv-setting-instruct-template-select')) document.getElementById('adv-setting-instruct-template-select').value = preset.active_instruct_template_id || 'gemma2';
-      if (document.getElementById('adv-setting-context-template-select')) document.getElementById('adv-setting-context-template-select').value = preset.active_context_template_id || 'gemma2';
-      setRangeValue('adv-setting-max-tokens', 'adv-max-tokens-value', preset.max_tokens);
-      setRangeValue('adv-setting-temperature', 'adv-temperature-value', preset.temperature);
-      setRangeValue('adv-setting-top-p', 'adv-top-p-value', preset.top_p);
-      setRangeValue('adv-setting-top-k', 'adv-top-k-value', preset.top_k);
-      setRangeValue('adv-setting-rep-penalty', 'adv-rep-penalty-value', preset.rep_penalty);
-      setRangeValue('adv-setting-smoothing-factor', 'adv-smoothing-factor-value', preset.smoothing_factor || 0);
-      setRangeValue('adv-setting-min-p', 'adv-min-p-value', preset.min_p || 0.05);
-      if (document.getElementById('adv-setting-min-p-enabled')) document.getElementById('adv-setting-min-p-enabled').checked = preset.min_p_enabled ?? true;
-      setRangeValue('adv-setting-adaptive-target', 'adv-adaptive-target-value', preset.adaptive_target || 0.8);
-      if (document.getElementById('adv-setting-adaptive-target-enabled')) document.getElementById('adv-setting-adaptive-target-enabled').checked = preset.adaptive_target_enabled ?? true;
-      setRangeValue('adv-setting-adaptive-decay', 'adv-adaptive-decay-value', preset.adaptive_decay || 0.9);
-      if (document.getElementById('adv-setting-adaptive-decay-enabled')) document.getElementById('adv-setting-adaptive-decay-enabled').checked = preset.adaptive_decay_enabled ?? true;
-      setRangeValue('adv-setting-presence-penalty', 'adv-presence-penalty-value', preset.presence_penalty ?? 0);
-      if (document.getElementById('adv-setting-force-reasoning')) document.getElementById('adv-setting-force-reasoning').checked = preset.force_reasoning;
-      if (document.getElementById('adv-setting-reasoning-open')) document.getElementById('adv-setting-reasoning-open').value = preset.reasoning_tag_open;
-      if (document.getElementById('adv-setting-reasoning-close')) document.getElementById('adv-setting-reasoning-close').value = preset.reasoning_tag_close;
-      if (document.getElementById('adv-setting-dry-enabled')) document.getElementById('adv-setting-dry-enabled').checked = preset.dry_multiplier_enabled ?? false;
-      const ctrls = document.getElementById('dry-sampler-controls');
-      if (ctrls) ctrls.style.display = (preset.dry_multiplier_enabled ?? false) ? 'flex' : 'none';
-      setRangeValue('adv-setting-dry-multiplier', 'adv-dry-multiplier-value', preset.dry_multiplier ?? 0.8);
-      setRangeValue('adv-setting-dry-base', 'adv-dry-base-value', preset.dry_base ?? 1.75);
-      setRangeValue('adv-setting-dry-allowed-length', 'adv-dry-allowed-length-value', preset.dry_allowed_length ?? 2);
-      const breakersInput = document.getElementById('adv-setting-dry-sequence-breakers');
-      if (breakersInput) {
-        breakersInput.value = typeof preset.dry_sequence_breakers === 'string' ? preset.dry_sequence_breakers : JSON.stringify(preset.dry_sequence_breakers || ["\n", ":", "\"", "*"]);
-      }
-      applyExtendedSamplersToUI(preset, false);
-    }
   } else {
     let target = preset;
     if (!preset.is_sync && currentGenerationPresetMode === 'thinking') {
-      if (!preset.thinking_settings) preset.thinking_settings = {};
+      if (!preset.thinking_settings) preset.thinking_settings = clonePresetSettings(preset);
       target = preset.thinking_settings;
     }
 
@@ -1802,40 +1811,6 @@ function updateActiveGenerationPreset(isGenAI) {
       target.dry_sequence_breakers = ["\n", ":", "\"", "*"];
     }
     Object.assign(target, extractExtendedSamplersFromUI(false));
-    
-    // Sync to other tab if it uses the same custom preset
-    if (currentSettings.active_genai_generation_preset_id === activeId) {
-      if (document.getElementById('adv-setting-genai-completion-mode')) document.getElementById('adv-setting-genai-completion-mode').value = preset.completion_mode || 'chat_completion';
-      if (document.getElementById('adv-setting-genai-instruct-template-select')) document.getElementById('adv-setting-genai-instruct-template-select').value = preset.active_instruct_template_id || 'gemma2';
-      if (document.getElementById('adv-setting-genai-context-template-select')) document.getElementById('adv-setting-genai-context-template-select').value = preset.active_context_template_id || 'gemma2';
-      setRangeValue('adv-setting-genai-max-tokens', 'adv-genai-max-tokens-value', preset.max_tokens);
-      setRangeValue('adv-setting-genai-temperature', 'adv-genai-temperature-value', preset.temperature);
-      setRangeValue('adv-setting-genai-top-p', 'adv-genai-top-p-value', preset.top_p);
-      setRangeValue('adv-setting-genai-top-k', 'adv-genai-top-k-value', preset.top_k);
-      setRangeValue('adv-setting-genai-rep-penalty', 'adv-genai-rep-penalty-value', preset.rep_penalty);
-      setRangeValue('adv-setting-genai-smoothing-factor', 'adv-genai-smoothing-factor-value', preset.smoothing_factor || 0);
-      setRangeValue('adv-setting-genai-min-p', 'adv-genai-min-p-value', preset.min_p || 0.05);
-      if (document.getElementById('adv-setting-genai-min-p-enabled')) document.getElementById('adv-setting-genai-min-p-enabled').checked = preset.min_p_enabled ?? true;
-      setRangeValue('adv-setting-genai-adaptive-target', 'adv-genai-adaptive-target-value', preset.adaptive_target || 0.8);
-      if (document.getElementById('adv-setting-genai-adaptive-target-enabled')) document.getElementById('adv-setting-genai-adaptive-target-enabled').checked = preset.adaptive_target_enabled ?? true;
-      setRangeValue('adv-setting-genai-adaptive-decay', 'adv-genai-adaptive-decay-value', preset.adaptive_decay || 0.9);
-      if (document.getElementById('adv-setting-genai-adaptive-decay-enabled')) document.getElementById('adv-setting-genai-adaptive-decay-enabled').checked = preset.adaptive_decay_enabled ?? true;
-      setRangeValue('adv-setting-genai-presence-penalty', 'adv-genai-presence-penalty-value', preset.presence_penalty ?? 0);
-      if (document.getElementById('adv-setting-genai-force-reasoning')) document.getElementById('adv-setting-genai-force-reasoning').checked = preset.force_reasoning;
-      if (document.getElementById('adv-setting-genai-reasoning-open')) document.getElementById('adv-setting-genai-reasoning-open').value = preset.reasoning_tag_open;
-      if (document.getElementById('adv-setting-genai-reasoning-close')) document.getElementById('adv-setting-genai-reasoning-close').value = preset.reasoning_tag_close;
-      if (document.getElementById('adv-setting-genai-dry-enabled')) document.getElementById('adv-setting-genai-dry-enabled').checked = preset.dry_multiplier_enabled ?? false;
-      const ctrls = document.getElementById('genai-dry-sampler-controls');
-      if (ctrls) ctrls.style.display = (preset.dry_multiplier_enabled ?? false) ? 'flex' : 'none';
-      setRangeValue('adv-setting-genai-dry-multiplier', 'adv-genai-dry-multiplier-value', preset.dry_multiplier ?? 0.8);
-      setRangeValue('adv-setting-genai-dry-base', 'adv-genai-dry-base-value', preset.dry_base ?? 1.75);
-      setRangeValue('adv-setting-genai-dry-allowed-length', 'adv-genai-dry-allowed-length-value', preset.dry_allowed_length ?? 2);
-      const breakersInput = document.getElementById('adv-setting-genai-dry-sequence-breakers');
-      if (breakersInput) {
-        breakersInput.value = typeof preset.dry_sequence_breakers === 'string' ? preset.dry_sequence_breakers : JSON.stringify(preset.dry_sequence_breakers || ["\n", ":", "\"", "*"]);
-      }
-      applyExtendedSamplersToUI(preset, true);
-    }
   }
 }
 
@@ -1853,6 +1828,9 @@ function setRangeValue(inputId, valueId, value) {
 }
 
 async function saveAll() {
+  updateActiveGenerationPreset(false);
+  updateActiveGenerationPreset(true);
+
   const historyToggle = document.getElementById('setting-ai-comments-history');
   
   const updatedSettings = {
@@ -2420,7 +2398,7 @@ function setupFormattingTemplateListeners() {
       position: 'top',
       example_separator: '***',
       chat_start: '',
-      always_add_character_name: true,
+      always_add_character_name: false,
       collapse_newlines: false,
       trim_spaces: true,
       separators_as_stop: false,
@@ -2586,3 +2564,409 @@ function setupFormattingTemplateListeners() {
     }
   });
 }
+
+/**
+ * Handles importing SillyTavern JSON preset files (containing instruct, context, sysprompt, and/or sampler presets)
+ */
+async function handleImportPresetFile(file) {
+  try {
+    const text = await file.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseErr) {
+      showToast('Error parsing JSON file: invalid JSON format');
+      return;
+    }
+
+    if (!data || typeof data !== 'object') {
+      showToast('Invalid preset file: root must be an object');
+      return;
+    }
+
+    const fileNameClean = file.name.replace(/\.[^/.]+$/, "");
+    const detected = [];
+
+    // 1. Detect Instruct Template
+    const rawInstruct = data.instruct || (data.input_sequence !== undefined ? data : null);
+    if (rawInstruct && (rawInstruct.input_sequence !== undefined || rawInstruct.output_sequence !== undefined || rawInstruct.user_prefix !== undefined)) {
+      detected.push({
+        type: 'instruct',
+        name: rawInstruct.name || fileNameClean,
+        data: rawInstruct
+      });
+    }
+
+    // 2. Detect Context Template
+    const rawContext = data.context || (data.story_string !== undefined ? data : null);
+    if (rawContext && rawContext.story_string !== undefined) {
+      detected.push({
+        type: 'context',
+        name: rawContext.name || fileNameClean,
+        data: rawContext
+      });
+    }
+
+    // 3. Detect System Prompt Preset
+    const rawSysPrompt = data.sysprompt || (data.content !== undefined && !data.story_string && !data.input_sequence ? data : null);
+    if (rawSysPrompt && rawSysPrompt.content !== undefined) {
+      detected.push({
+        type: 'sysprompt',
+        name: rawSysPrompt.name || fileNameClean,
+        data: rawSysPrompt
+      });
+    }
+
+    // 4. Detect Generation / Sampler Preset
+    const rawPreset = data.preset || (data.temp !== undefined || data.temperature !== undefined || data.top_p !== undefined ? data : null);
+    if (rawPreset && (rawPreset.temp !== undefined || rawPreset.temperature !== undefined || rawPreset.top_p !== undefined || rawPreset.top_k !== undefined)) {
+      detected.push({
+        type: 'preset',
+        name: rawPreset.name || fileNameClean,
+        data: rawPreset
+      });
+    }
+
+    if (detected.length === 0) {
+      showToast('No recognizable presets or templates found in this JSON file.');
+      return;
+    }
+
+    // Build English confirmation dialog content
+    const typeLabels = {
+      instruct: 'Instruct Template',
+      context: 'Context Template',
+      sysprompt: 'System Prompt',
+      preset: 'Generation Preset'
+    };
+
+    const detectedLines = detected.map(d => `• ${typeLabels[d.type]}: "${d.name}"`);
+    const confirmMessage = `The following preset(s) were found in "${file.name}":\n\n` +
+      detectedLines.join('\n') +
+      `\n\nWould you like to import and apply these settings now?`;
+
+    const confirmed = await showConfirm('Import Presets', confirmMessage);
+    if (!confirmed) {
+      return;
+    }
+
+    // Execute Import
+    let newInstructId = null;
+    let newContextId = null;
+    let newSysPromptId = null;
+    let newGenerationId = null;
+
+    // Process in order: instruct -> context -> sysprompt -> generation preset
+    const order = ['instruct', 'context', 'sysprompt', 'preset'];
+    const sortedDetected = detected.sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type));
+
+    for (const item of sortedDetected) {
+      if (item.type === 'instruct') {
+        const d = item.data;
+        const id = 'inst_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+        let includeNames = 'none';
+        if (d.names_behavior !== undefined) {
+          if (d.names_behavior === 'always' || d.names_behavior === 1 || d.names_behavior === 'force' || d.names_behavior === 'user_assistant') {
+            includeNames = 'user_assistant';
+          } else if (d.names_behavior === 'all' || d.names_behavior === 2) {
+            includeNames = 'all';
+          } else {
+            includeNames = 'none';
+          }
+        } else if (d.include_names) {
+          includeNames = d.include_names;
+        }
+
+        const template = {
+          id,
+          name: d.name || fileNameClean,
+          activation_regex: d.activation_regex || '',
+          wrap_sequences_with_newline: d.wrap !== undefined ? !!d.wrap : !!d.wrap_sequences_with_newline,
+          replace_macro_in_sequences: d.macro !== undefined ? !!d.macro : (d.replace_macro_in_sequences !== undefined ? !!d.replace_macro_in_sequences : true),
+          sequences_as_stop_strings: d.use_stop_strings !== undefined ? !!d.use_stop_strings : (d.sequences_as_stop_strings !== undefined ? !!d.sequences_as_stop_strings : true),
+          skip_example_dialogues: !!d.skip_examples || !!d.skip_example_dialogues,
+          include_names: includeNames,
+          user_prefix: d.input_sequence !== undefined ? d.input_sequence : (d.user_prefix || ''),
+          user_suffix: d.input_suffix !== undefined ? d.input_suffix : (d.user_suffix || ''),
+          assistant_prefix: d.output_sequence !== undefined ? d.output_sequence : (d.assistant_prefix || ''),
+          assistant_suffix: d.output_suffix !== undefined ? d.output_suffix : (d.assistant_suffix || ''),
+          story_prefix: d.system_sequence !== undefined ? d.system_sequence : (d.story_prefix || ''),
+          story_suffix: d.system_suffix !== undefined ? d.system_suffix : (d.story_suffix || ''),
+          system_prefix: d.system_sequence !== undefined ? d.system_sequence : (d.system_prefix || ''),
+          system_suffix: d.system_suffix !== undefined ? d.system_suffix : (d.system_suffix || '')
+        };
+
+        if (!currentSettings.instruct_templates) currentSettings.instruct_templates = [];
+        currentSettings.instruct_templates.push(template);
+        editingInstructTemplateId = id;
+        currentSettings.active_instruct_template_id = id;
+        newInstructId = id;
+      }
+
+      if (item.type === 'context') {
+        const d = item.data;
+        const id = 'ctx_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+        const template = {
+          id,
+          name: d.name || fileNameClean,
+          story_string: d.story_string || '',
+          position: d.position || 'top',
+          example_separator: d.example_separator !== undefined ? d.example_separator : '***',
+          chat_start: d.chat_start || '',
+          always_add_character_name: d.always_force_name2 !== undefined ? !!d.always_force_name2 : !!d.always_add_character_name,
+          collapse_newlines: !!d.collapse_newlines,
+          trim_spaces: d.trim_spaces !== undefined ? !!d.trim_spaces : true,
+          trim_incomplete_sentences: d.trim_sentences !== undefined ? !!d.trim_sentences : !!d.trim_incomplete_sentences,
+          separators_as_stop: d.use_stop_strings !== undefined ? !!d.use_stop_strings : !!d.separators_as_stop,
+          names_as_stop: d.names_as_stop_strings !== undefined ? !!d.names_as_stop_strings : !!d.names_as_stop
+        };
+
+        if (!currentSettings.context_templates) currentSettings.context_templates = [];
+        currentSettings.context_templates.push(template);
+        editingContextTemplateId = id;
+        currentSettings.active_context_template_id = id;
+        newContextId = id;
+      }
+
+      if (item.type === 'sysprompt') {
+        const d = item.data;
+        const id = 'custom_sys_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+        const promptPreset = {
+          id,
+          name: d.name || fileNameClean,
+          content: d.content || ''
+        };
+
+        if (!currentSettings.system_prompt_presets) currentSettings.system_prompt_presets = [];
+        currentSettings.system_prompt_presets.push(promptPreset);
+        editingPresetId = id;
+        currentSettings.active_system_prompt_preset_id = id;
+        newSysPromptId = id;
+      }
+
+      if (item.type === 'preset') {
+        const d = item.data;
+        const id = 'gen_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+        
+        let breakers = ["\n", ":", "\"", "*"];
+        if (d.dry_sequence_breakers) {
+          if (Array.isArray(d.dry_sequence_breakers)) {
+            breakers = d.dry_sequence_breakers;
+          } else if (typeof d.dry_sequence_breakers === 'string') {
+            try { breakers = JSON.parse(d.dry_sequence_breakers); } catch (e) { breakers = ["\n", ":", "\"", "*"]; }
+          }
+        }
+
+        const preset = {
+          id,
+          name: d.name || fileNameClean,
+          completion_mode: (newInstructId || newContextId || d.completion_mode === 'text_completion') ? 'text_completion' : (d.completion_mode || 'chat_completion'),
+          active_instruct_template_id: newInstructId || currentSettings.active_instruct_template_id || 'gemma2',
+          active_context_template_id: newContextId || currentSettings.active_context_template_id || 'gemma2',
+          max_tokens: d.genamt !== undefined ? parseInt(d.genamt) : (d.max_tokens !== undefined ? parseInt(d.max_tokens) : 2048),
+          temperature: d.temp !== undefined ? parseFloat(d.temp) : (d.temperature !== undefined ? parseFloat(d.temperature) : 0.7),
+          top_p: d.top_p !== undefined ? parseFloat(d.top_p) : 0.9,
+          top_k: d.top_k !== undefined ? parseInt(d.top_k) : 40,
+          rep_penalty: d.rep_pen !== undefined ? parseFloat(d.rep_pen) : (d.rep_penalty !== undefined ? parseFloat(d.rep_penalty) : 1.0),
+          smoothing_factor: d.smoothing_factor !== undefined ? parseFloat(d.smoothing_factor) : 0,
+          min_p: d.min_p !== undefined ? parseFloat(d.min_p) : 0.05,
+          min_p_enabled: (d.min_p !== undefined && parseFloat(d.min_p) > 0) || d.min_p_enabled === true,
+          adaptive_target: d.adaptive_target !== undefined ? parseFloat(d.adaptive_target) : 0.8,
+          adaptive_target_enabled: d.adaptive_target_enabled !== undefined ? !!d.adaptive_target_enabled : true,
+          adaptive_decay: d.adaptive_decay !== undefined ? parseFloat(d.adaptive_decay) : 0.9,
+          adaptive_decay_enabled: d.adaptive_decay_enabled !== undefined ? !!d.adaptive_decay_enabled : true,
+          presence_penalty: d.presence_pen !== undefined ? parseFloat(d.presence_pen) : (d.presence_penalty !== undefined ? parseFloat(d.presence_penalty) : 0.0),
+          force_reasoning: d.include_reasoning !== undefined ? !!d.include_reasoning : !!d.force_reasoning,
+          reasoning_tag_open: d.reasoning_tag_open || '<think>',
+          reasoning_tag_close: d.reasoning_tag_close || '</think>',
+
+          // DRY
+          dry_multiplier_enabled: d.dry_multiplier !== undefined ? parseFloat(d.dry_multiplier) > 0 : !!d.dry_multiplier_enabled,
+          dry_multiplier: d.dry_multiplier !== undefined ? parseFloat(d.dry_multiplier) : 0.8,
+          dry_base: d.dry_base !== undefined ? parseFloat(d.dry_base) : 1.75,
+          dry_allowed_length: d.dry_allowed_length !== undefined ? parseInt(d.dry_allowed_length) : 2,
+          dry_sequence_breakers: breakers,
+          dry_penalty_last_n_enabled: d.dry_penalty_last_n !== undefined ? parseInt(d.dry_penalty_last_n) > 0 : !!d.dry_penalty_last_n_enabled,
+          dry_penalty_last_n: d.dry_penalty_last_n !== undefined ? parseInt(d.dry_penalty_last_n) : 0,
+
+          // Dynatemp
+          dynatemp_enabled: d.dynatemp !== undefined ? !!d.dynatemp : !!d.dynatemp_enabled,
+          dynatemp_min: d.min_temp !== undefined ? parseFloat(d.min_temp) : (d.dynatemp_min !== undefined ? parseFloat(d.dynatemp_min) : 0.5),
+          dynatemp_max: d.max_temp !== undefined ? parseFloat(d.max_temp) : (d.dynatemp_max !== undefined ? parseFloat(d.dynatemp_max) : 3.0),
+          dynatemp_range: (d.max_temp !== undefined && d.min_temp !== undefined) ? Math.max(0, (parseFloat(d.max_temp) - parseFloat(d.min_temp)) / 2) : (d.dynatemp_range !== undefined ? parseFloat(d.dynatemp_range) : 0.0),
+          dynatemp_exponent: d.dynatemp_exponent !== undefined ? parseFloat(d.dynatemp_exponent) : 1.0,
+
+          // Extended samplers
+          typical_p_enabled: (d.typical_p !== undefined && parseFloat(d.typical_p) < 1) || !!d.typical_p_enabled,
+          typical_p: d.typical_p !== undefined ? parseFloat(d.typical_p) : 1.0,
+          frequency_penalty_enabled: (d.freq_pen !== undefined && parseFloat(d.freq_pen) !== 0) || (d.frequency_penalty !== undefined && parseFloat(d.frequency_penalty) !== 0) || !!d.frequency_penalty_enabled,
+          frequency_penalty: d.freq_pen !== undefined ? parseFloat(d.freq_pen) : (d.frequency_penalty !== undefined ? parseFloat(d.frequency_penalty) : 0.0),
+          top_a_enabled: (d.top_a !== undefined && parseFloat(d.top_a) > 0) || !!d.top_a_enabled,
+          top_a: d.top_a !== undefined ? parseFloat(d.top_a) : 0.0,
+          tfs_enabled: (d.tfs !== undefined && parseFloat(d.tfs) < 1) || !!d.tfs_enabled,
+          tfs: d.tfs !== undefined ? parseFloat(d.tfs) : 1.0,
+          mirostat_enabled: (d.mirostat_mode !== undefined && parseInt(d.mirostat_mode) > 0) || !!d.mirostat_enabled,
+          mirostat_mode: d.mirostat_mode !== undefined ? parseInt(d.mirostat_mode) : 0,
+          mirostat_tau: d.mirostat_tau !== undefined ? parseFloat(d.mirostat_tau) : 5.0,
+          mirostat_eta: d.mirostat_eta !== undefined ? parseFloat(d.mirostat_eta) : 0.1,
+          xtc_enabled: (d.xtc_probability !== undefined && parseFloat(d.xtc_probability) > 0) || !!d.xtc_enabled,
+          xtc_threshold: d.xtc_threshold !== undefined ? parseFloat(d.xtc_threshold) : 0.10,
+          xtc_probability: d.xtc_probability !== undefined ? parseFloat(d.xtc_probability) : 0.0,
+          top_n_sigma_enabled: (d.nsigma !== undefined && parseFloat(d.nsigma) > 0) || !!d.top_n_sigma_enabled,
+          top_n_sigma: d.nsigma !== undefined ? parseFloat(d.nsigma) : 0.0,
+          rep_pen_range_enabled: (d.rep_pen_range !== undefined && parseInt(d.rep_pen_range) > 0) || !!d.rep_pen_range_enabled,
+          rep_pen_range: d.rep_pen_range !== undefined ? parseInt(d.rep_pen_range) : 0,
+          rep_pen_slope: d.rep_pen_slope !== undefined ? parseFloat(d.rep_pen_slope) : 1.0,
+          smoothing_curve_enabled: (d.smoothing_curve !== undefined && parseFloat(d.smoothing_curve) !== 1) || !!d.smoothing_curve_enabled,
+          smoothing_curve: d.smoothing_curve !== undefined ? parseFloat(d.smoothing_curve) : 1.0,
+          min_tokens_enabled: (d.min_length !== undefined && parseInt(d.min_length) > 0) || !!d.min_tokens_enabled,
+          min_tokens: d.min_length !== undefined ? parseInt(d.min_length) : 0,
+          guidance_scale_enabled: (d.guidance_scale !== undefined && parseFloat(d.guidance_scale) !== 1) || !!d.guidance_scale_enabled,
+          guidance_scale: d.guidance_scale !== undefined ? parseFloat(d.guidance_scale) : 1.0,
+          negative_prompt: d.negative_prompt || '',
+          ignore_eos_enabled: !!d.ignore_eos_token || !!d.ban_eos_token,
+          ignore_eos: !!d.ignore_eos_token || !!d.ban_eos_token,
+          banned_strings_enabled: !!(d.banned_tokens || d.global_banned_tokens),
+          banned_strings: d.banned_tokens || d.global_banned_tokens || '',
+          logit_bias_enabled: Array.isArray(d.logit_bias) && d.logit_bias.length > 0,
+          logit_bias: Array.isArray(d.logit_bias) ? JSON.stringify(d.logit_bias) : (d.logit_bias || ''),
+          sampler_order_enabled: Array.isArray(d.sampler_order),
+          sampler_order: d.sampler_order || [6, 0, 1, 3, 4, 2, 5],
+          is_sync: true,
+          preset_mode: 'none'
+        };
+
+        if (!currentSettings.generation_presets) currentSettings.generation_presets = [];
+        currentSettings.generation_presets.push(preset);
+        currentSettings.active_generation_preset_id = id;
+        newGenerationId = id;
+      }
+    }
+
+    // Refresh UI components
+    renderPresets();
+    renderGenerationPresetsUI();
+    renderFormattingTemplatesUI();
+
+    if (newSysPromptId) {
+      selectPreset(newSysPromptId);
+    }
+
+    if (newGenerationId) {
+      applyGenerationPreset(newGenerationId, false);
+    } else {
+      if (newInstructId) {
+        currentSettings.active_instruct_template_id = newInstructId;
+        const el = document.getElementById('adv-setting-instruct-template-select');
+        if (el) el.value = newInstructId;
+      }
+      if (newContextId) {
+        currentSettings.active_context_template_id = newContextId;
+        const el = document.getElementById('adv-setting-context-template-select');
+        if (el) el.value = newContextId;
+      }
+      if (newInstructId || newContextId) {
+        const compEl = document.getElementById('adv-setting-completion-mode');
+        if (compEl) {
+          compEl.value = 'text_completion';
+          currentSettings.completion_mode = 'text_completion';
+          const grp = document.getElementById('text-completion-templates-group');
+          if (grp) grp.style.display = 'flex';
+        }
+      }
+    }
+
+    // Synchronize top-level currentSettings sampler values with active generation preset
+    const activeGenPreset = (currentSettings.generation_presets || []).find(p => p.id === currentSettings.active_generation_preset_id);
+    if (activeGenPreset) {
+      Object.assign(currentSettings, {
+        max_tokens: activeGenPreset.max_tokens,
+        temperature: activeGenPreset.temperature,
+        top_p: activeGenPreset.top_p,
+        top_k: activeGenPreset.top_k,
+        rep_penalty: activeGenPreset.rep_penalty,
+        smoothing_factor: activeGenPreset.smoothing_factor,
+        min_p: activeGenPreset.min_p,
+        min_p_enabled: activeGenPreset.min_p_enabled,
+        adaptive_target: activeGenPreset.adaptive_target,
+        adaptive_target_enabled: activeGenPreset.adaptive_target_enabled,
+        adaptive_decay: activeGenPreset.adaptive_decay,
+        adaptive_decay_enabled: activeGenPreset.adaptive_decay_enabled,
+        presence_penalty: activeGenPreset.presence_penalty,
+        force_reasoning: activeGenPreset.force_reasoning,
+        reasoning_tag_open: activeGenPreset.reasoning_tag_open,
+        reasoning_tag_close: activeGenPreset.reasoning_tag_close,
+        dry_multiplier_enabled: activeGenPreset.dry_multiplier_enabled,
+        dry_multiplier: activeGenPreset.dry_multiplier,
+        dry_base: activeGenPreset.dry_base,
+        dry_allowed_length: activeGenPreset.dry_allowed_length,
+        dry_sequence_breakers: activeGenPreset.dry_sequence_breakers,
+        dry_penalty_last_n_enabled: activeGenPreset.dry_penalty_last_n_enabled,
+        dry_penalty_last_n: activeGenPreset.dry_penalty_last_n,
+        dynatemp_enabled: activeGenPreset.dynatemp_enabled,
+        dynatemp_min: activeGenPreset.dynatemp_min,
+        dynatemp_max: activeGenPreset.dynatemp_max,
+        dynatemp_range: activeGenPreset.dynatemp_range,
+        dynatemp_exponent: activeGenPreset.dynatemp_exponent,
+        typical_p: activeGenPreset.typical_p,
+        typical_p_enabled: activeGenPreset.typical_p_enabled,
+        frequency_penalty: activeGenPreset.frequency_penalty,
+        frequency_penalty_enabled: activeGenPreset.frequency_penalty_enabled,
+        top_a: activeGenPreset.top_a,
+        top_a_enabled: activeGenPreset.top_a_enabled,
+        tfs: activeGenPreset.tfs,
+        tfs_enabled: activeGenPreset.tfs_enabled,
+        mirostat_enabled: activeGenPreset.mirostat_enabled,
+        mirostat_mode: activeGenPreset.mirostat_mode,
+        mirostat_tau: activeGenPreset.mirostat_tau,
+        mirostat_eta: activeGenPreset.mirostat_eta,
+        xtc_enabled: activeGenPreset.xtc_enabled,
+        xtc_threshold: activeGenPreset.xtc_threshold,
+        xtc_probability: activeGenPreset.xtc_probability,
+        top_n_sigma_enabled: activeGenPreset.top_n_sigma_enabled,
+        top_n_sigma: activeGenPreset.top_n_sigma,
+        rep_pen_range_enabled: activeGenPreset.rep_pen_range_enabled,
+        rep_pen_range: activeGenPreset.rep_pen_range,
+        rep_pen_slope: activeGenPreset.rep_pen_slope,
+        min_tokens_enabled: activeGenPreset.min_tokens_enabled,
+        min_tokens: activeGenPreset.min_tokens,
+        guidance_scale_enabled: activeGenPreset.guidance_scale_enabled,
+        guidance_scale: activeGenPreset.guidance_scale,
+        negative_prompt: activeGenPreset.negative_prompt,
+        ignore_eos: activeGenPreset.ignore_eos,
+        ignore_eos_enabled: activeGenPreset.ignore_eos_enabled,
+        banned_strings: activeGenPreset.banned_strings,
+        banned_strings_enabled: activeGenPreset.banned_strings_enabled,
+        logit_bias: activeGenPreset.logit_bias,
+        logit_bias_enabled: activeGenPreset.logit_bias_enabled,
+        completion_mode: activeGenPreset.completion_mode || currentSettings.completion_mode,
+        active_instruct_template_id: activeGenPreset.active_instruct_template_id || currentSettings.active_instruct_template_id,
+        active_context_template_id: activeGenPreset.active_context_template_id || currentSettings.active_context_template_id
+      });
+    }
+
+    updateAllToggleVisualStates();
+
+    // Persist all imported settings
+    await settingsStore.save({
+      ...settingsStore.get(),
+      ...currentSettings,
+      instruct_templates: currentSettings.instruct_templates,
+      context_templates: currentSettings.context_templates,
+      generation_presets: currentSettings.generation_presets,
+      system_prompt_presets: currentSettings.system_prompt_presets,
+      active_instruct_template_id: currentSettings.active_instruct_template_id,
+      active_context_template_id: currentSettings.active_context_template_id,
+      active_generation_preset_id: currentSettings.active_generation_preset_id,
+      active_system_prompt_preset_id: currentSettings.active_system_prompt_preset_id,
+      completion_mode: currentSettings.completion_mode
+    });
+
+    window.dispatchEvent(new CustomEvent('settings-updated'));
+    showToast('Presets imported and applied successfully!');
+  } catch (err) {
+    console.error('Error importing preset JSON:', err);
+    showToast(`Failed to import presets: ${err.message}`);
+  }
+}
+

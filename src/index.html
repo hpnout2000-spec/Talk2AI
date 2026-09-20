@@ -3820,7 +3820,7 @@
             <h2 id="dialog-title">Dialog</h2>
           </div>
           <div class="modal-body">
-            <p id="dialog-message" style="margin-bottom: 1.5rem; color: var(--text-secondary); line-height: 1.5;"></p>
+            <p id="dialog-message" style="margin-bottom: 1.5rem; color: var(--text-secondary); line-height: 1.5; white-space: pre-line;"></p>
             <div id="dialog-input-container" class="hidden">
               <input type="text" id="dialog-input" class="form-control" style="width: 100%;" />
             </div>
@@ -5348,6 +5348,7 @@
                             <span class="toggle-slider"></span>
                           </label>
                         </div>
+                        <p class="sampler-hint">Appends character name at the prompt end in raw non-instruct completion mode.</p>
                       </div>
 
                       <div class="sampler-control-row">
@@ -5562,8 +5563,21 @@
               </div>
             </div>
           </div>
-          <div class="modal-footer">
-            <button id="btn-save-advanced" class="btn-primary">Save Changes</button>
+          <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="modal-footer-left">
+              <input type="file" id="input-import-advanced-json" accept=".json" style="display: none;" />
+              <button type="button" id="btn-import-advanced-json" class="btn-secondary" title="Import Presets from JSON (SillyTavern format)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 15px; height: 15px; margin-right: 6px;">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                <span>Import</span>
+              </button>
+            </div>
+            <div class="modal-footer-right" style="display: flex; gap: var(--space-3);">
+              <button id="btn-save-advanced" class="btn-primary">Save Changes</button>
+            </div>
           </div>
         </div>
       </div>
