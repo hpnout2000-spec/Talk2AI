@@ -184,7 +184,7 @@
               </svg>
               <span>Import</span>
             </button>
-              <input type="file" id="import-input" accept=".png,.json" hidden />
+              <input type="file" id="import-input" accept=".png,.webp,.json" hidden />
             </div>
             </div>
           </div>
@@ -1672,6 +1672,12 @@
             </div>
           </div>
           <div class="modal-footer">
+            <button id="btn-export-character-png" type="button" class="btn-secondary" style="margin-right: auto;" title="Export as SillyTavern PNG Card">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; margin-right: 4px; vertical-align: middle;">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Export Card (PNG)
+            </button>
             <button id="btn-cancel-character" class="btn-secondary">Cancel</button>
             <button id="btn-save-character" class="btn-primary">Save Character</button>
           </div>
@@ -4069,28 +4075,28 @@
                               <label for="adv-setting-dynatemp-min">Min Temp</label>
                               <span id="adv-dynatemp-min-value" class="sampler-badge">0.65</span>
                             </div>
-                            <input type="range" id="adv-setting-dynatemp-min" min="0" max="2" step="0.01" value="0.65" />
+                            <input type="range" id="adv-setting-dynatemp-min" min="0" max="5" step="0.01" value="0.65" />
                           </div>
                           <div class="sampler-control-row">
                             <div class="sampler-label-wrap">
                               <label for="adv-setting-dynatemp-max">Max Temp</label>
                               <span id="adv-dynatemp-max-value" class="sampler-badge">1.35</span>
                             </div>
-                            <input type="range" id="adv-setting-dynatemp-max" min="0" max="2" step="0.01" value="1.35" />
+                            <input type="range" id="adv-setting-dynatemp-max" min="0" max="5" step="0.01" value="1.35" />
                           </div>
                           <div class="sampler-control-row">
                             <div class="sampler-label-wrap">
                               <label for="adv-setting-dynatemp-range">Range</label>
                               <span id="adv-dynatemp-range-value" class="sampler-badge">0.00</span>
                             </div>
-                            <input type="range" id="adv-setting-dynatemp-range" min="0" max="2" step="0.01" value="0.00" />
+                            <input type="range" id="adv-setting-dynatemp-range" min="0" max="5" step="0.01" value="0.00" />
                           </div>
                           <div class="sampler-control-row">
                             <div class="sampler-label-wrap">
                               <label for="adv-setting-dynatemp-exponent">Exponent</label>
                               <span id="adv-dynatemp-exponent-value" class="sampler-badge">1.00</span>
                             </div>
-                            <input type="range" id="adv-setting-dynatemp-exponent" min="0" max="5" step="0.01" value="1.00" />
+                            <input type="range" id="adv-setting-dynatemp-exponent" min="0" max="10" step="0.01" value="1.00" />
                           </div>
                         </div>
                       </div>
@@ -4708,28 +4714,28 @@
                               <label for="adv-setting-genai-dynatemp-min">Min Temp</label>
                               <span id="adv-genai-dynatemp-min-value" class="sampler-badge">0.65</span>
                             </div>
-                            <input type="range" id="adv-setting-genai-dynatemp-min" min="0" max="2" step="0.01" value="0.65" />
+                            <input type="range" id="adv-setting-genai-dynatemp-min" min="0" max="5" step="0.01" value="0.65" />
                           </div>
                           <div class="sampler-control-row">
                             <div class="sampler-label-wrap">
                               <label for="adv-setting-genai-dynatemp-max">Max Temp</label>
                               <span id="adv-genai-dynatemp-max-value" class="sampler-badge">1.35</span>
                             </div>
-                            <input type="range" id="adv-setting-genai-dynatemp-max" min="0" max="2" step="0.01" value="1.35" />
+                            <input type="range" id="adv-setting-genai-dynatemp-max" min="0" max="5" step="0.01" value="1.35" />
                           </div>
                           <div class="sampler-control-row">
                             <div class="sampler-label-wrap">
                               <label for="adv-setting-genai-dynatemp-range">Range</label>
                               <span id="adv-genai-dynatemp-range-value" class="sampler-badge">0.00</span>
                             </div>
-                            <input type="range" id="adv-setting-genai-dynatemp-range" min="0" max="2" step="0.01" value="0.00" />
+                            <input type="range" id="adv-setting-genai-dynatemp-range" min="0" max="5" step="0.01" value="0.00" />
                           </div>
                           <div class="sampler-control-row">
                             <div class="sampler-label-wrap">
                               <label for="adv-setting-genai-dynatemp-exponent">Exponent</label>
                               <span id="adv-genai-dynatemp-exponent-value" class="sampler-badge">1.00</span>
                             </div>
-                            <input type="range" id="adv-setting-genai-dynatemp-exponent" min="0" max="5" step="0.01" value="1.00" />
+                            <input type="range" id="adv-setting-genai-dynatemp-exponent" min="0" max="10" step="0.01" value="1.00" />
                           </div>
                         </div>
                       </div>
@@ -5329,6 +5335,12 @@
                         <input type="text" id="adv-fmt-example-separator" class="form-control" placeholder="***" />
                         <p class="sampler-hint">String used to separate example dialogue turns.</p>
                       </div>
+
+                      <div class="sampler-control-row">
+                        <label for="adv-fmt-chat-start" style="font-weight: 600;">Chat Start</label>
+                        <input type="text" id="adv-fmt-chat-start" class="form-control" placeholder="e.g. [CHAT_START]" />
+                        <p class="sampler-hint">Prefix inserted right before dialogue history begins.</p>
+                      </div>
                     </div>
 
                     <!-- Card 3: Formatting & Stop Sequences -->
@@ -5348,7 +5360,18 @@
                             <span class="toggle-slider"></span>
                           </label>
                         </div>
-                        <p class="sampler-hint">Appends character name at the prompt end in raw non-instruct completion mode.</p>
+                        <p class="sampler-hint">Appends character name at the prompt end for generation prefill.</p>
+                      </div>
+
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-fmt-use-stop-strings">Use Stop Strings</label>
+                          <label class="toggle-switch">
+                            <input type="checkbox" id="adv-fmt-use-stop-strings" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                        <p class="sampler-hint">Master toggle to enforce stop strings. If disabled, model relies on native EOS.</p>
                       </div>
 
                       <div class="sampler-control-row">
@@ -5366,6 +5389,16 @@
                           <label for="adv-fmt-trim-spaces">Trim spaces</label>
                           <label class="toggle-switch">
                             <input type="checkbox" id="adv-fmt-trim-spaces" />
+                            <span class="toggle-slider"></span>
+                          </label>
+                        </div>
+                      </div>
+
+                      <div class="sampler-control-row">
+                        <div class="sampler-label-wrap">
+                          <label for="adv-fmt-trim-sentences">Trim incomplete sentences</label>
+                          <label class="toggle-switch">
+                            <input type="checkbox" id="adv-fmt-trim-sentences" />
                             <span class="toggle-slider"></span>
                           </label>
                         </div>
@@ -5466,9 +5499,9 @@
                       <div class="sampler-control-row">
                         <label for="adv-fmt-include-names" style="font-weight: 600;">Include Names</label>
                         <select id="adv-fmt-include-names" class="form-control" style="background: var(--bg-tertiary);">
-                          <option value="none">None</option>
-                          <option value="user_assistant">User and Assistant</option>
+                          <option value="none">Never</option>
                           <option value="all">Groups and Past Personas</option>
+                          <option value="always">Always</option>
                         </select>
                         <p class="sampler-hint">Automatically prepends name prefix (e.g. "User: ") to messages.</p>
                       </div>
@@ -5501,6 +5534,18 @@
                             <span class="toggle-slider"></span>
                           </label>
                         </div>
+                      </div>
+
+                      <div class="sampler-control-row">
+                        <label for="adv-fmt-stop-sequence" style="font-weight: 600;">Custom Stop Sequence</label>
+                        <input type="text" id="adv-fmt-stop-sequence" class="form-control" placeholder="e.g. </s>" />
+                        <p class="sampler-hint">Custom sequence or token to stop generation.</p>
+                      </div>
+
+                      <div class="sampler-control-row">
+                        <label for="adv-fmt-user-alignment-message" style="font-weight: 600;">User Alignment Message</label>
+                        <input type="text" id="adv-fmt-user-alignment-message" class="form-control" placeholder="e.g. Example 1" />
+                        <p class="sampler-hint">Optional alignment text injected for dummy user turns or roleplay guidelines.</p>
                       </div>
                     </div>
 

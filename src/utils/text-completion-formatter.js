@@ -153,25 +153,26 @@ export function formatTextCompletionPrompt(messages = [], contextTemplate = {}, 
   const wrapNewline = instructTemplate.wrap_sequences_with_newline ?? false;
   let includeNames = instructTemplate.include_names;
   if (includeNames === undefined && instructTemplate.names_behavior !== undefined) {
-    if (instructTemplate.names_behavior === 0 || instructTemplate.names_behavior === 'none') includeNames = 'none';
-    else if (instructTemplate.names_behavior === 1 || instructTemplate.names_behavior === 'user_assistant' || instructTemplate.names_behavior === 'force') includeNames = 'user_assistant';
-    else if (instructTemplate.names_behavior === 2 || instructTemplate.names_behavior === 'all') includeNames = 'all';
+    if (instructTemplate.names_behavior === 0 || instructTemplate.names_behavior === 'none' || instructTemplate.names_behavior === 'never') includeNames = 'none';
+    else if (instructTemplate.names_behavior === 1 || instructTemplate.names_behavior === 'all' || instructTemplate.names_behavior === 'groups') includeNames = 'all';
+    else if (instructTemplate.names_behavior === 2 || instructTemplate.names_behavior === 'always' || instructTemplate.names_behavior === 'user_assistant' || instructTemplate.names_behavior === 'force') includeNames = 'always';
   }
+  if (includeNames === 'user_assistant') includeNames = 'always';
   if (!includeNames) includeNames = 'none';
 
   const isInstructActive = !!(instructTemplate.id || instructTemplate.user_prefix || instructTemplate.assistant_prefix);
 
-  // When instruct mode is active, include_names strictly dictates name prefix behavior.
-  // 'none' explicitly disables prepending/appending names to turns and prompt prefill.
-  // When no instruct template is active (pure raw text completion), fallback to contextTemplate.always_add_character_name
-  // for the prompt generation suffix only.
+  // When instruct mode is active, include_names controls turn name prefixes.
+  // 'always' and 'all' prepend names to turns.
   const shouldIncludeTurnNames = isInstructActive
-    ? (includeNames === 'user_assistant' || includeNames === 'all')
+    ? (includeNames === 'always' || includeNames === 'all')
     : false;
 
-  const shouldIncludePromptCharName = isInstructActive
-    ? (includeNames === 'user_assistant' || includeNames === 'all')
-    : !!contextTemplate.always_add_character_name;
+  // Character name in generation prompt prefill:
+  // Honored if always_add_character_name / always_force_name2 is true in context, or if include_names is 'always' / 'all'.
+  const shouldIncludePromptCharName = !!contextTemplate.always_add_character_name ||
+    !!contextTemplate.always_force_name2 ||
+    (isInstructActive && (includeNames === 'always' || includeNames === 'all'));
 
   const formatSeq = (seq) => {
     let s = unescapeString(seq);
@@ -199,6 +200,11 @@ export function formatTextCompletionPrompt(messages = [], contextTemplate = {}, 
     } else {
       promptParts.push(storyString);
     }
+  }
+
+  // Chat Start sequence (e.g. marker before dialogue turns begin)
+  if (contextTemplate.chat_start) {
+    promptParts.push(formatSeq(contextTemplate.chat_start));
   }
 
   // Regexes for stripping accidental/inherited name prefixes when includeNames is 'none'
@@ -232,6 +238,18 @@ export function formatTextCompletionPrompt(messages = [], contextTemplate = {}, 
       const sfx = formatSeq(userSuffix);
       promptParts.push(`${pfx}${turnContent}${sfx}`);
     } else {
+      // If an assistant turn is not preceded by a user turn (e.g. first turn greeting or consecutive assistant messages),
+      // inject user_alignment_message if defined to preserve instruct sequence alternation (e.g. Mistral format).
+      const prevMsg = i > 0 ? messageHistory[i - 1] : null;
+      if (((i === 0) || (prevMsg && prevMsg.role !== 'user')) && instructTemplate.user_alignment_message) {
+        let alignMsg = replaceCharUserMacros(instructTemplate.user_alignment_message, charName, userName);
+        if (shouldIncludeTurnNames && !alignMsg.startsWith(userName + ':')) {
+          alignMsg = `${userName}: ${alignMsg}`;
+        }
+        const uPfx = formatSeq(userPrefix);
+        const uSfx = formatSeq(userSuffix);
+        promptParts.push(`${uPfx}${alignMsg}${uSfx}`);
+      }
       let turnContent = text;
       if (shouldIncludeTurnNames) {
         if (!turnContent.startsWith(charName + ':')) {
@@ -279,28 +297,34 @@ export function formatTextCompletionPrompt(messages = [], contextTemplate = {}, 
 
   // 4. Determine Stop Sequences
   const stopSet = new Set();
+  const useStopStrings = contextTemplate.use_stop_strings !== undefined ? !!contextTemplate.use_stop_strings : true;
 
-  if (userSuffix) stopSet.add(formatSeq(userSuffix).trim());
-  if (assistantSuffix) stopSet.add(formatSeq(assistantSuffix).trim());
-  if (userPrefix) stopSet.add(formatSeq(userPrefix).trim());
+  if (useStopStrings) {
+    if (userSuffix) stopSet.add(formatSeq(userSuffix).trim());
+    if (assistantSuffix) stopSet.add(formatSeq(assistantSuffix).trim());
+    if (userPrefix) stopSet.add(formatSeq(userPrefix).trim());
 
-  if (contextTemplate.names_as_stop) {
-    stopSet.add(`\n${userName}:`);
-    // Removed \n${charName}: to prevent immediate stop sequence triggering
-    // when the prompt ends with the character name or the model generates its own name.
+    if (contextTemplate.names_as_stop) {
+      stopSet.add(`\n${userName}:`);
+    }
+
+    if (contextTemplate.separators_as_stop && contextTemplate.example_separator) {
+      stopSet.add(contextTemplate.example_separator.trim());
+    }
+
+    // Standard common tokens if sequences as stop strings
+    if (instructTemplate.sequences_as_stop_strings) {
+      stopSet.add('<end_of_turn>');
+      stopSet.add('<|end_of_text|>');
+      stopSet.add('<|eot_id|>');
+      stopSet.add('<|im_end|>');
+      stopSet.add('</s>');
+    }
   }
 
-  if (contextTemplate.separators_as_stop && contextTemplate.example_separator) {
-    stopSet.add(contextTemplate.example_separator.trim());
-  }
-
-  // Standard common tokens if sequences as stop strings
-  if (instructTemplate.sequences_as_stop_strings) {
-    stopSet.add('<end_of_turn>');
-    stopSet.add('<|end_of_text|>');
-    stopSet.add('<|eot_id|>');
-    stopSet.add('<|im_end|>');
-    stopSet.add('</s>');
+  // Explicit custom stop sequence defined in instruct template
+  if (instructTemplate.stop_sequence) {
+    stopSet.add(formatSeq(instructTemplate.stop_sequence).trim());
   }
 
   const stopArray = Array.from(stopSet).filter(s => s && s.length > 0);

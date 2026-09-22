@@ -398,7 +398,7 @@ export function initAdvancedSettings() {
       const temp = parseFloat(tempEl.value);
       const range = parseFloat(rangeEl.value);
       minEl.value = Math.max(0, temp - range);
-      maxEl.value = Math.min(2, temp + range);
+      maxEl.value = Math.min(parseFloat(maxEl.max) || 5, temp + range);
       updateUI();
     });
 
@@ -406,7 +406,7 @@ export function initAdvancedSettings() {
       const temp = parseFloat(tempEl.value);
       const range = parseFloat(rangeEl.value);
       minEl.value = Math.max(0, temp - range);
-      maxEl.value = Math.min(2, temp + range);
+      maxEl.value = Math.min(parseFloat(maxEl.max) || 5, temp + range);
       updateUI();
     });
 
@@ -2215,9 +2215,12 @@ function loadContextTemplateToEditor(id) {
   if (document.getElementById('adv-fmt-story-string')) document.getElementById('adv-fmt-story-string').value = t.story_string || '';
   if (document.getElementById('adv-fmt-context-position')) document.getElementById('adv-fmt-context-position').value = t.position || 'top';
   if (document.getElementById('adv-fmt-example-separator')) document.getElementById('adv-fmt-example-separator').value = t.example_separator !== undefined ? t.example_separator : '***';
-  if (document.getElementById('adv-fmt-always-add-name')) document.getElementById('adv-fmt-always-add-name').checked = !!t.always_add_character_name;
+  if (document.getElementById('adv-fmt-chat-start')) document.getElementById('adv-fmt-chat-start').value = t.chat_start || '';
+  if (document.getElementById('adv-fmt-always-add-name')) document.getElementById('adv-fmt-always-add-name').checked = (t.always_add_character_name !== undefined ? !!t.always_add_character_name : !!t.always_force_name2);
+  if (document.getElementById('adv-fmt-use-stop-strings')) document.getElementById('adv-fmt-use-stop-strings').checked = t.use_stop_strings !== undefined ? !!t.use_stop_strings : true;
   if (document.getElementById('adv-fmt-collapse-newlines')) document.getElementById('adv-fmt-collapse-newlines').checked = !!t.collapse_newlines;
   if (document.getElementById('adv-fmt-trim-spaces')) document.getElementById('adv-fmt-trim-spaces').checked = !!t.trim_spaces;
+  if (document.getElementById('adv-fmt-trim-sentences')) document.getElementById('adv-fmt-trim-sentences').checked = (t.trim_sentences !== undefined ? !!t.trim_sentences : !!t.trim_incomplete_sentences);
   if (document.getElementById('adv-fmt-separators-as-stop')) document.getElementById('adv-fmt-separators-as-stop').checked = !!t.separators_as_stop;
   if (document.getElementById('adv-fmt-names-as-stop')) document.getElementById('adv-fmt-names-as-stop').checked = !!t.names_as_stop;
 
@@ -2236,7 +2239,10 @@ function loadInstructTemplateToEditor(id) {
   if (document.getElementById('adv-fmt-wrap-newlines')) document.getElementById('adv-fmt-wrap-newlines').checked = !!t.wrap_sequences_with_newline;
   if (document.getElementById('adv-fmt-replace-macro')) document.getElementById('adv-fmt-replace-macro').checked = !!t.replace_macro_in_sequences;
   if (document.getElementById('adv-fmt-seq-as-stop')) document.getElementById('adv-fmt-seq-as-stop').checked = !!t.sequences_as_stop_strings;
-  if (document.getElementById('adv-fmt-include-names')) document.getElementById('adv-fmt-include-names').value = t.include_names || 'none';
+  const incNames = (t.include_names === 'user_assistant' || t.include_names === 'always') ? 'always' : (t.include_names || 'none');
+  if (document.getElementById('adv-fmt-include-names')) document.getElementById('adv-fmt-include-names').value = incNames;
+  if (document.getElementById('adv-fmt-stop-sequence')) document.getElementById('adv-fmt-stop-sequence').value = t.stop_sequence || '';
+  if (document.getElementById('adv-fmt-user-alignment-message')) document.getElementById('adv-fmt-user-alignment-message').value = t.user_alignment_message || '';
 
   if (document.getElementById('adv-fmt-user-prefix')) document.getElementById('adv-fmt-user-prefix').value = t.user_prefix || '';
   if (document.getElementById('adv-fmt-user-suffix')) document.getElementById('adv-fmt-user-suffix').value = t.user_suffix || '';
@@ -2455,6 +2461,8 @@ function setupFormattingTemplateListeners() {
       replace_macro_in_sequences: true,
       sequences_as_stop_strings: true,
       include_names: 'none',
+      stop_sequence: '',
+      user_alignment_message: '',
       story_prefix: '<start_of_turn>user\n',
       story_suffix: '<end_of_turn>\n',
       user_prefix: '<start_of_turn>user\n',
@@ -2517,14 +2525,19 @@ function setupFormattingTemplateListeners() {
     t.story_string = document.getElementById('adv-fmt-story-string')?.value || '';
     t.position = document.getElementById('adv-fmt-context-position')?.value || 'top';
     t.example_separator = document.getElementById('adv-fmt-example-separator')?.value ?? '';
+    t.chat_start = document.getElementById('adv-fmt-chat-start')?.value || '';
     t.always_add_character_name = !!document.getElementById('adv-fmt-always-add-name')?.checked;
+    t.always_force_name2 = t.always_add_character_name;
+    t.use_stop_strings = !!document.getElementById('adv-fmt-use-stop-strings')?.checked;
     t.collapse_newlines = !!document.getElementById('adv-fmt-collapse-newlines')?.checked;
     t.trim_spaces = !!document.getElementById('adv-fmt-trim-spaces')?.checked;
+    t.trim_sentences = !!document.getElementById('adv-fmt-trim-sentences')?.checked;
+    t.trim_incomplete_sentences = t.trim_sentences;
     t.separators_as_stop = !!document.getElementById('adv-fmt-separators-as-stop')?.checked;
     t.names_as_stop = !!document.getElementById('adv-fmt-names-as-stop')?.checked;
   };
 
-  ['adv-fmt-context-name', 'adv-fmt-story-string', 'adv-fmt-context-position', 'adv-fmt-example-separator', 'adv-fmt-always-add-name', 'adv-fmt-collapse-newlines', 'adv-fmt-trim-spaces', 'adv-fmt-separators-as-stop', 'adv-fmt-names-as-stop'].forEach(id => {
+  ['adv-fmt-context-name', 'adv-fmt-story-string', 'adv-fmt-context-position', 'adv-fmt-example-separator', 'adv-fmt-chat-start', 'adv-fmt-always-add-name', 'adv-fmt-use-stop-strings', 'adv-fmt-collapse-newlines', 'adv-fmt-trim-spaces', 'adv-fmt-trim-sentences', 'adv-fmt-separators-as-stop', 'adv-fmt-names-as-stop'].forEach(id => {
     const el = document.getElementById(id);
     if (el) {
       el.addEventListener('input', syncContextEditor);
@@ -2548,6 +2561,8 @@ function setupFormattingTemplateListeners() {
     t.replace_macro_in_sequences = !!document.getElementById('adv-fmt-replace-macro')?.checked;
     t.sequences_as_stop_strings = !!document.getElementById('adv-fmt-seq-as-stop')?.checked;
     t.include_names = document.getElementById('adv-fmt-include-names')?.value || 'none';
+    t.stop_sequence = document.getElementById('adv-fmt-stop-sequence')?.value || '';
+    t.user_alignment_message = document.getElementById('adv-fmt-user-alignment-message')?.value || '';
     t.user_prefix = document.getElementById('adv-fmt-user-prefix')?.value || '';
     t.user_suffix = document.getElementById('adv-fmt-user-suffix')?.value || '';
     t.assistant_prefix = document.getElementById('adv-fmt-assistant-prefix')?.value || '';
@@ -2556,7 +2571,7 @@ function setupFormattingTemplateListeners() {
     t.story_suffix = document.getElementById('adv-fmt-story-suffix')?.value || '';
   };
 
-  ['adv-fmt-instruct-name', 'adv-fmt-activation-regex', 'adv-fmt-wrap-newlines', 'adv-fmt-replace-macro', 'adv-fmt-seq-as-stop', 'adv-fmt-include-names', 'adv-fmt-user-prefix', 'adv-fmt-user-suffix', 'adv-fmt-assistant-prefix', 'adv-fmt-assistant-suffix', 'adv-fmt-story-prefix', 'adv-fmt-story-suffix'].forEach(id => {
+  ['adv-fmt-instruct-name', 'adv-fmt-activation-regex', 'adv-fmt-wrap-newlines', 'adv-fmt-replace-macro', 'adv-fmt-seq-as-stop', 'adv-fmt-include-names', 'adv-fmt-stop-sequence', 'adv-fmt-user-alignment-message', 'adv-fmt-user-prefix', 'adv-fmt-user-suffix', 'adv-fmt-assistant-prefix', 'adv-fmt-assistant-suffix', 'adv-fmt-story-prefix', 'adv-fmt-story-suffix'].forEach(id => {
     const el = document.getElementById(id);
     if (el) {
       el.addEventListener('input', syncInstructEditor);
@@ -2666,16 +2681,22 @@ async function handleImportPresetFile(file) {
         const id = 'inst_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
         let includeNames = 'none';
         if (d.names_behavior !== undefined) {
-          if (d.names_behavior === 'always' || d.names_behavior === 1 || d.names_behavior === 'force' || d.names_behavior === 'user_assistant') {
-            includeNames = 'user_assistant';
-          } else if (d.names_behavior === 'all' || d.names_behavior === 2) {
+          if (d.names_behavior === 'always' || d.names_behavior === 2 || d.names_behavior === 'force' || d.names_behavior === 'user_assistant') {
+            includeNames = 'always';
+          } else if (d.names_behavior === 'all' || d.names_behavior === 1 || d.names_behavior === 'groups') {
             includeNames = 'all';
           } else {
             includeNames = 'none';
           }
         } else if (d.include_names) {
-          includeNames = d.include_names;
+          includeNames = (d.include_names === 'user_assistant' || d.include_names === 'always') ? 'always' : d.include_names;
         }
+
+        const rawContextObj = data.context || (data.story_string !== undefined ? data : null);
+        const contextStopSetting = rawContextObj?.use_stop_strings;
+        const seqAsStop = (contextStopSetting !== undefined)
+          ? !!contextStopSetting
+          : (d.use_stop_strings !== undefined ? !!d.use_stop_strings : (d.sequences_as_stop_strings !== undefined ? !!d.sequences_as_stop_strings : true));
 
         const template = {
           id,
@@ -2683,9 +2704,11 @@ async function handleImportPresetFile(file) {
           activation_regex: d.activation_regex || '',
           wrap_sequences_with_newline: d.wrap !== undefined ? !!d.wrap : !!d.wrap_sequences_with_newline,
           replace_macro_in_sequences: d.macro !== undefined ? !!d.macro : (d.replace_macro_in_sequences !== undefined ? !!d.replace_macro_in_sequences : true),
-          sequences_as_stop_strings: d.use_stop_strings !== undefined ? !!d.use_stop_strings : (d.sequences_as_stop_strings !== undefined ? !!d.sequences_as_stop_strings : true),
+          sequences_as_stop_strings: seqAsStop,
           skip_example_dialogues: !!d.skip_examples || !!d.skip_example_dialogues,
           include_names: includeNames,
+          stop_sequence: d.stop_sequence || '',
+          user_alignment_message: d.user_alignment_message || '',
           user_prefix: d.input_sequence !== undefined ? d.input_sequence : (d.user_prefix || ''),
           user_suffix: d.input_suffix !== undefined ? d.input_suffix : (d.user_suffix || ''),
           assistant_prefix: d.output_sequence !== undefined ? d.output_sequence : (d.assistant_prefix || ''),
@@ -2713,11 +2736,15 @@ async function handleImportPresetFile(file) {
           position: d.position || 'top',
           example_separator: d.example_separator !== undefined ? d.example_separator : '***',
           chat_start: d.chat_start || '',
-          always_add_character_name: d.always_force_name2 !== undefined ? !!d.always_force_name2 : !!d.always_add_character_name,
+          use_stop_strings: d.use_stop_strings !== undefined ? !!d.use_stop_strings : true,
+          always_add_character_name: d.always_force_name2 !== undefined ? !!d.always_force_name2 : (d.always_add_character_name !== undefined ? !!d.always_add_character_name : true),
+          always_force_name2: d.always_force_name2 !== undefined ? !!d.always_force_name2 : true,
           collapse_newlines: !!d.collapse_newlines,
           trim_spaces: d.trim_spaces !== undefined ? !!d.trim_spaces : true,
+          trim_sentences: d.trim_sentences !== undefined ? !!d.trim_sentences : !!d.trim_incomplete_sentences,
           trim_incomplete_sentences: d.trim_sentences !== undefined ? !!d.trim_sentences : !!d.trim_incomplete_sentences,
-          separators_as_stop: d.use_stop_strings !== undefined ? !!d.use_stop_strings : !!d.separators_as_stop,
+          single_line: !!d.single_line,
+          separators_as_stop: d.separators_as_stop !== undefined ? !!d.separators_as_stop : false,
           names_as_stop: d.names_as_stop_strings !== undefined ? !!d.names_as_stop_strings : !!d.names_as_stop
         };
 
@@ -2757,6 +2784,14 @@ async function handleImportPresetFile(file) {
           }
         }
 
+        // Set context limit (prompt_token_limit) if present in preset
+        if (d.max_length !== undefined && parseInt(d.max_length) > 0) {
+          const maxLen = parseInt(d.max_length);
+          currentSettings.prompt_token_limit = maxLen;
+          const promptLimitEl = document.getElementById('setting-prompt-token-limit');
+          if (promptLimitEl) promptLimitEl.value = maxLen;
+        }
+
         const preset = {
           id,
           name: d.name || fileNameClean,
@@ -2772,9 +2807,9 @@ async function handleImportPresetFile(file) {
           min_p: d.min_p !== undefined ? parseFloat(d.min_p) : 0.05,
           min_p_enabled: (d.min_p !== undefined && parseFloat(d.min_p) > 0) || d.min_p_enabled === true,
           adaptive_target: d.adaptive_target !== undefined ? parseFloat(d.adaptive_target) : 0.8,
-          adaptive_target_enabled: d.adaptive_target_enabled !== undefined ? !!d.adaptive_target_enabled : true,
+          adaptive_target_enabled: d.adaptive_target_enabled !== undefined ? !!d.adaptive_target_enabled : false,
           adaptive_decay: d.adaptive_decay !== undefined ? parseFloat(d.adaptive_decay) : 0.9,
-          adaptive_decay_enabled: d.adaptive_decay_enabled !== undefined ? !!d.adaptive_decay_enabled : true,
+          adaptive_decay_enabled: d.adaptive_decay_enabled !== undefined ? !!d.adaptive_decay_enabled : false,
           presence_penalty: d.presence_pen !== undefined ? parseFloat(d.presence_pen) : (d.presence_penalty !== undefined ? parseFloat(d.presence_penalty) : 0.0),
           force_reasoning: d.include_reasoning !== undefined ? !!d.include_reasoning : !!d.force_reasoning,
           reasoning_tag_open: d.reasoning_tag_open || '<think>',
@@ -2951,6 +2986,7 @@ async function handleImportPresetFile(file) {
     await settingsStore.save({
       ...settingsStore.get(),
       ...currentSettings,
+      prompt_token_limit: currentSettings.prompt_token_limit || settingsStore.get().prompt_token_limit,
       instruct_templates: currentSettings.instruct_templates,
       context_templates: currentSettings.context_templates,
       generation_presets: currentSettings.generation_presets,

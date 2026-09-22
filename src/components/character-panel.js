@@ -7,6 +7,8 @@ import { showToast, showConfirm, closeModal, openWindow, closeWindow } from '../
 import { appState } from '../state.js';
 import { selectCharacter, updateChatHistory } from './chat.js';
 import { escapeHtml, readFileAsDataURL } from '../utils/helpers.js';
+import { parseCharacterCardFile, exportCharacterCard } from '../utils/character-card-parser.js';
+import { lorebookStore } from '../services/lorebook-store.js';
 let editingCharacterId = null;
 
 export function initCharacterPanel() {
@@ -89,70 +91,113 @@ export function initCharacterPanel() {
     }
   });
 
-  // Import character card
+  // Character Card Import & Drag-and-Drop
+  async function handleCharacterImportFile(file) {
+    if (!file) return;
+
+    try {
+      showToast('Reading character card...', 'info');
+      const { character, avatarDataUrl, lorebook } = await parseCharacterCardFile(file);
+
+      openCharacterEditor({
+        name: character.name,
+        description: character.description,
+        personality: character.personality,
+        image_tags: character.image_tags,
+        scenario: character.scenario,
+        system_prompt: character.system_prompt,
+        first_message: character.first_message,
+        alternate_greetings: character.alternate_greetings,
+        message_examples: character.message_examples,
+        avatar: avatarDataUrl || character.avatar || '',
+      });
+
+      let msg = `Loaded "${character.name}" from card`;
+      if (lorebook && lorebook.entries?.length) {
+        try {
+          const savedBook = await lorebookStore.save(lorebook);
+          msg += ` (Embedded lorebook "${savedBook.name}" imported!)`;
+        } catch (err) {
+          console.warn('[CharacterPanel] Failed to auto-save embedded lorebook:', err);
+        }
+      }
+      showToast(msg);
+    } catch (err) {
+      console.error('[CharacterPanel] Failed to import character card:', err);
+      showToast(`Failed to import character: ${err.message || 'Invalid card format'}`, 'error');
+    }
+  }
+
   document.getElementById('btn-import-character').addEventListener('click', () => {
     document.getElementById('import-input').click();
   });
 
   document.getElementById('import-input').addEventListener('change', async (e) => {
     const file = e.target.files[0];
-    if (!file) return;
-
-    try {
-      if (file.name.toLowerCase().endsWith('.png')) {
-        const tags = await ExifReader.load(file);
-        let charDataRaw = null;
-        if (tags['chara']) {
-          charDataRaw = tags['chara'].description;
-        } else if (tags['ccv3']) {
-          charDataRaw = tags['ccv3'].description;
-        }
-
-        if (charDataRaw) {
-          // Fix base64 padding issues
-          const b64 = charDataRaw.padEnd(charDataRaw.length + (4 - charDataRaw.length % 4) % 4, '=');
-          // UTF-8 decoding for base64
-          const jsonStr = new TextDecoder().decode(Uint8Array.from(atob(b64), c => c.charCodeAt(0)));
-          const charData = JSON.parse(jsonStr);
-          const parsedChar = charData.data || charData;
-          
-          openCharacterEditor({
-            name: parsedChar.name || '',
-            description: parsedChar.description || '',
-            personality: parsedChar.personality || '',
-            scenario: parsedChar.scenario || '',
-            system_prompt: parsedChar.system_prompt || '',
-            first_message: parsedChar.first_mes || parsedChar.first_message || '',
-            alternate_greetings: parsedChar.alternate_greetings || [],
-            avatar: await readFileAsDataURL(file),
-            message_examples: parsedChar.message_examples || parsedChar.mes_example || '',
-          });
-          showToast('Character loaded from card');
-        } else {
-          showToast('No character data found in this PNG', 'error');
-        }
-      } else if (file.name.toLowerCase().endsWith('.json')) {
-        const text = await file.text();
-        const charData = JSON.parse(text);
-        const parsedChar = charData.data || charData;
-        openCharacterEditor({
-          name: parsedChar.name || '',
-          description: parsedChar.description || '',
-          personality: parsedChar.personality || '',
-          scenario: parsedChar.scenario || '',
-          system_prompt: parsedChar.system_prompt || '',
-          first_message: parsedChar.first_mes || parsedChar.first_message || '',
-          alternate_greetings: parsedChar.alternate_greetings || [],
-          message_examples: parsedChar.message_examples || parsedChar.mes_example || '',
-        });
-        showToast('Character loaded from JSON');
-      }
-    } catch (err) {
-      console.error(err);
-      showToast('Failed to import character', 'error');
+    if (file) {
+      await handleCharacterImportFile(file);
     }
     // reset input
     e.target.value = '';
+  });
+
+  // Drag and Drop cards onto sidebar or character editor modal
+  const dropTargets = [
+    document.getElementById('characters-section'),
+    document.getElementById('sidebar'),
+    charModal?.querySelector('.modal-content')
+  ].filter(Boolean);
+
+  dropTargets.forEach(target => {
+    target.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      target.classList.add('card-drop-active');
+    });
+
+    target.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      target.classList.remove('card-drop-active');
+    });
+
+    target.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      target.classList.remove('card-drop-active');
+
+      const files = e.dataTransfer?.files;
+      if (files && files.length > 0) {
+        await handleCharacterImportFile(files[0]);
+      }
+    });
+  });
+
+  // Export card as SillyTavern PNG from editor
+  document.getElementById('btn-export-character-png')?.addEventListener('click', async () => {
+    const name = document.getElementById('char-name').value.trim() || 'Character';
+    const preview = document.getElementById('avatar-preview');
+    const charData = {
+      name,
+      avatar: preview.dataset.avatarData || '',
+      description: document.getElementById('char-description').value,
+      personality: document.getElementById('char-personality').value,
+      image_tags: document.getElementById('char-image-tags').value,
+      scenario: document.getElementById('char-scenario').value,
+      system_prompt: document.getElementById('char-system-prompt').value,
+      message_examples: document.getElementById('char-message-examples').value,
+      first_message: document.getElementById('char-first-message').value,
+      alternate_greetings: Array.from(document.querySelectorAll('.alt-greeting-textarea')).map(ta => ta.value.trim()).filter(v => v !== ''),
+    };
+
+    try {
+      showToast('Exporting SillyTavern PNG card...');
+      await exportCharacterCard(charData, 'png');
+      showToast('Character card exported as PNG!');
+    } catch (err) {
+      console.error('[CharacterPanel] Export failed:', err);
+      showToast(`Export failed: ${err.message}`, 'error');
+    }
   });
 
   // Close modal on backdrop click
@@ -296,6 +341,11 @@ export function renderCharacterList() {
           <div class="character-item-desc">${escapeHtml(char.personality || char.description || '').substring(0, 50)}</div>
         </div>
         <div class="character-item-actions">
+          <button class="export-char" data-export-char="${char.id}" title="Export SillyTavern PNG Card">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+          </button>
           <button class="edit" data-edit-char="${char.id}" title="Edit">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -320,6 +370,25 @@ export function renderCharacterList() {
       const character = characterStore.getById(id);
       if (character) {
         selectCharacter(character);
+      }
+    });
+  });
+
+  // Export handlers
+  list.querySelectorAll('[data-export-char]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.exportChar;
+      const character = characterStore.getById(id);
+      if (character) {
+        try {
+          showToast(`Exporting "${character.name}" card...`, 'info');
+          await exportCharacterCard(character, 'png');
+          showToast(`Exported "${character.name}" as PNG!`);
+        } catch (err) {
+          console.error('[CharacterPanel] Export error:', err);
+          showToast(`Export failed: ${err.message}`, 'error');
+        }
       }
     });
   });
@@ -519,6 +588,11 @@ function renderGalleryGrid() {
       <div class="character-card" data-char-id="${char.id}">
         <div class="character-card-avatar">${avatarHtml}</div>
         <div class="character-card-actions">
+           <button class="btn-icon small export-char" data-export-char="${char.id}" title="Export SillyTavern PNG Card">
+             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+             </svg>
+           </button>
            <button class="btn-icon small edit" data-edit-char="${char.id}" title="Edit">
              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
@@ -548,6 +622,24 @@ function renderGalleryGrid() {
         selectCharacter(character);
         closeCharacterGallery();
         renderCharacterList();
+      }
+    });
+  });
+
+  grid.querySelectorAll('[data-export-char]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const id = btn.dataset.exportChar;
+      const character = characterStore.getById(id);
+      if (character) {
+        try {
+          showToast(`Exporting "${character.name}" card...`, 'info');
+          await exportCharacterCard(character, 'png');
+          showToast(`Exported "${character.name}" as PNG!`);
+        } catch (err) {
+          console.error('[CharacterPanel] Export error:', err);
+          showToast(`Export failed: ${err.message}`, 'error');
+        }
       }
     });
   });
