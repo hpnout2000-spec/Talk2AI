@@ -121,7 +121,27 @@ export function startRelativeTimeUpdater() {
 export function renderMarkdown(text) {
   if (!text) return '';
 
-  let html = escapeHtml(text);
+  // Hide HTML comments (<!-- ... -->) from chat display, matching SillyTavern behavior.
+  // Code blocks (``` or `) are preserved intact so code examples are not stripped.
+  let processedText = text;
+  if (processedText.includes('<!--')) {
+    const codeBlocks = [];
+    processedText = processedText.replace(/(```[\s\S]*?```|`[^`\n]+`)/g, (match) => {
+      const token = `__CODE_BLOCK_${codeBlocks.length}__`;
+      codeBlocks.push(match);
+      return token;
+    });
+
+    processedText = processedText.replace(/<!--[\s\S]*?(?:-->|$)/g, '');
+
+    codeBlocks.forEach((code, idx) => {
+      processedText = processedText.replace(`__CODE_BLOCK_${idx}__`, code);
+    });
+
+    processedText = processedText.replace(/^\s*[\r\n]+/, '');
+  }
+
+  let html = escapeHtml(processedText);
 
   // Custom Image syntax: ![alt](url)
   html = html.replace(/!\[(.*?)\]\((.*?)\)/g, (match, alt, url) => {

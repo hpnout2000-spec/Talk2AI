@@ -61,6 +61,9 @@ export function initCharacterPanel() {
     addAltGreetingField();
   });
 
+  document.getElementById('char-system-prompt')?.addEventListener('input', updateEditorTokenBadges);
+  document.getElementById('char-post-history-instructions')?.addEventListener('input', updateEditorTokenBadges);
+
   // Quick insert tags for Message Examples
   document.getElementById('btn-insert-start')?.addEventListener('click', () => {
     insertTextAtCursor('char-message-examples', '<START>\n');
@@ -106,9 +109,11 @@ export function initCharacterPanel() {
         image_tags: character.image_tags,
         scenario: character.scenario,
         system_prompt: character.system_prompt,
+        post_history_instructions: character.post_history_instructions || '',
+        message_examples: character.message_examples,
+        creator_notes: character.creator_notes || '',
         first_message: character.first_message,
         alternate_greetings: character.alternate_greetings,
-        message_examples: character.message_examples,
         avatar: avatarDataUrl || character.avatar || '',
       });
 
@@ -185,7 +190,9 @@ export function initCharacterPanel() {
       image_tags: document.getElementById('char-image-tags').value,
       scenario: document.getElementById('char-scenario').value,
       system_prompt: document.getElementById('char-system-prompt').value,
+      post_history_instructions: document.getElementById('char-post-history-instructions')?.value || '',
       message_examples: document.getElementById('char-message-examples').value,
+      creator_notes: document.getElementById('char-creator-notes')?.value || '',
       first_message: document.getElementById('char-first-message').value,
       alternate_greetings: Array.from(document.querySelectorAll('.alt-greeting-textarea')).map(ta => ta.value.trim()).filter(v => v !== ''),
     };
@@ -251,6 +258,7 @@ Do not include any Markdown formatting like \`\`\`json or any other text. Return
         document.getElementById('char-image-tags').value = charData.image_tags || '';
         document.getElementById('char-scenario').value = charData.scenario || '';
         document.getElementById('char-system-prompt').value = charData.system_prompt || '';
+        document.getElementById('char-creator-notes').value = charData.creator_notes || charData.authors_note || '';
         document.getElementById('char-first-message').value = charData.first_message || '';
         document.getElementById('char-message-examples').value = charData.message_examples || charData.mes_example || '';
         showToast('Character generated successfully!');
@@ -429,7 +437,7 @@ export function renderCharacterList() {
 
 // ─── Character Editor Modal ─────────────────────────────────────────
 
-function openCharacterEditor(character = null) {
+export function openCharacterEditor(character = null) {
   editingCharacterId = character?.id || null;
   const modal = document.getElementById('character-modal');
   const title = document.getElementById('modal-title');
@@ -443,8 +451,12 @@ function openCharacterEditor(character = null) {
   document.getElementById('char-image-tags').value = character?.image_tags || '';
   document.getElementById('char-scenario').value = character?.scenario || '';
   document.getElementById('char-system-prompt').value = character?.system_prompt || '';
+  document.getElementById('char-post-history-instructions').value = character?.post_history_instructions || character?.post_history_instruction || '';
   document.getElementById('char-message-examples').value = character?.message_examples || '';
+  document.getElementById('char-creator-notes').value = character?.creator_notes || character?.authors_note || character?.author_notes || character?.comment || '';
   document.getElementById('char-first-message').value = character?.first_message || '';
+
+  updateEditorTokenBadges();
 
   const preview = document.getElementById('avatar-preview');
   if (character?.avatar) {
@@ -461,6 +473,24 @@ function openCharacterEditor(character = null) {
   renderAltGreetings(character?.alternate_greetings || []);
 
   openWindow(modal);
+}
+
+export function updateEditorTokenBadges() {
+  const sysEl = document.getElementById('char-system-prompt');
+  const sysBadge = document.getElementById('char-system-prompt-token-count');
+  if (sysEl && sysBadge) {
+    const text = sysEl.value.trim();
+    const count = text ? Math.ceil(text.length / (/[а-яА-ЯёЁ]/.test(text) ? 2.3 : 3.3)) : 0;
+    sysBadge.textContent = count > 0 ? `(~${count} tokens)` : '';
+  }
+
+  const phiEl = document.getElementById('char-post-history-instructions');
+  const phiBadge = document.getElementById('char-phi-token-count');
+  if (phiEl && phiBadge) {
+    const text = phiEl.value.trim();
+    const count = text ? Math.ceil(text.length / (/[а-яА-ЯёЁ]/.test(text) ? 2.3 : 3.3)) : 0;
+    phiBadge.textContent = count > 0 ? `(~${count} tokens)` : '';
+  }
 }
 
 function renderAltGreetings(greetings) {
@@ -517,7 +547,9 @@ async function saveCharacter() {
     image_tags: document.getElementById('char-image-tags').value,
     scenario: document.getElementById('char-scenario').value,
     system_prompt: document.getElementById('char-system-prompt').value,
+    post_history_instructions: document.getElementById('char-post-history-instructions')?.value || '',
     message_examples: document.getElementById('char-message-examples').value,
+    creator_notes: document.getElementById('char-creator-notes')?.value || '',
     first_message: document.getElementById('char-first-message').value,
     alternate_greetings: Array.from(document.querySelectorAll('.alt-greeting-textarea')).map(ta => ta.value.trim()).filter(v => v !== ''),
   };

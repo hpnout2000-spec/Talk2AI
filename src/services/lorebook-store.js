@@ -269,7 +269,11 @@ export const lorebookStore = {
         const entryName = entry.memo || entry.id;
         
         // Trigger % check
-        const trigger = entry.triggerPercent !== undefined ? entry.triggerPercent : 100;
+        const trigger = entry.triggerPercent !== undefined ? Number(entry.triggerPercent) : 100;
+        if (trigger <= 0) {
+          console.log(`❌ [${entryName}] Skipped (0% trigger probability).`);
+          continue;
+        }
         if (trigger < 100) {
           const roll = Math.random() * 100;
           if (roll > trigger) {
@@ -387,8 +391,8 @@ export const lorebookStore = {
 
     // Final sorting: sort by Order (ascending, so higher order = inserted last)
     finals.sort((a, b) => {
-      const oA = a.order !== undefined ? a.order : 100;
-      const oB = b.order !== undefined ? b.order : 100;
+      const oA = Number(a.order !== undefined ? a.order : 100);
+      const oB = Number(b.order !== undefined ? b.order : 100);
       return oA - oB;
     });
 

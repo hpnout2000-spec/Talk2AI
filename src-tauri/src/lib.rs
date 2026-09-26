@@ -38,6 +38,12 @@ pub struct Character {
     pub last_chat_at: String,
     #[serde(default)]
     pub message_examples: String,
+    #[serde(default)]
+    pub creator_notes: String,
+    #[serde(default)]
+    pub image_tags: String,
+    #[serde(default)]
+    pub post_history_instructions: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -723,14 +729,15 @@ async fn route_push_character(
     if !check_auth(&q, &headers, addr.ip().to_string(), &s) {
         return (StatusCode::UNAUTHORIZED, "Unauthorized").into_response();
     }
-    let character: Character = match serde_json::from_value(payload) {
-        Ok(c) => c,
-        Err(e) => return (StatusCode::BAD_REQUEST, format!("Invalid character: {}", e)).into_response(),
+    let id = match payload.get("id").and_then(|v| v.as_str()) {
+        Some(id) if !id.is_empty() && !id.contains('/') && !id.contains('\\') && !id.contains("..") => id.to_string(),
+        _ => return (StatusCode::BAD_REQUEST, "Invalid character id").into_response(),
     };
     let dir = get_app_dir().join("characters");
     ensure_dir(&dir);
-    let path = dir.join(format!("{}.json", character.id));
-    match fs::write(&path, serde_json::to_string_pretty(&character).unwrap()) {
+    let path = dir.join(format!("{}.json", id));
+    let pretty_str = serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string());
+    match fs::write(&path, pretty_str) {
         Ok(_) => {
             use tauri::Emitter;
             let _ = s.app_handle.emit("host-data-updated", ());
@@ -1169,25 +1176,33 @@ fn cancel_client_relay(event_id: String) {
 
 #[tauri::command]
 fn save_character(data: String) -> Result<String, String> {
-    let character: Character = serde_json::from_str(&data).map_err(|e| e.to_string())?;
+    let char_val: serde_json::Value = serde_json::from_str(&data).map_err(|e| format!("Invalid JSON: {}", e))?;
+    let id = char_val.get("id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "Missing id in character data".to_string())?;
+
+    if id.contains('/') || id.contains('\\') || id.contains("..") {
+        return Err("Invalid character id".to_string());
+    }
+
     let dir = get_app_dir().join("characters");
     ensure_dir(&dir);
-    let path = dir.join(format!("{}.json", character.id));
-    fs::write(&path, serde_json::to_string_pretty(&character).unwrap())
-        .map_err(|e| e.to_string())?;
-    Ok(character.id.clone())
+    let path = dir.join(format!("{}.json", id));
+    let pretty_str = serde_json::to_string_pretty(&char_val).unwrap_or(data);
+    fs::write(&path, pretty_str).map_err(|e| e.to_string())?;
+    Ok(id.to_string())
 }
 
 #[tauri::command]
 fn load_characters() -> Result<String, String> {
     let dir = get_app_dir().join("characters");
     ensure_dir(&dir);
-    let mut characters: Vec<Character> = Vec::new();
+    let mut characters: Vec<serde_json::Value> = Vec::new();
     if let Ok(entries) = fs::read_dir(&dir) {
         for entry in entries.flatten() {
             if entry.path().extension().map_or(false, |e| e == "json") {
                 if let Ok(content) = fs::read_to_string(entry.path()) {
-                    if let Ok(character) = serde_json::from_str::<Character>(&content) {
+                    if let Ok(character) = serde_json::from_str::<serde_json::Value>(&content) {
                         characters.push(character);
                     }
                 }

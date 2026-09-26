@@ -52,15 +52,75 @@ export function compileTemplate(template, data = {}) {
 }
 
 /**
+ * Resolves SillyTavern randomization macros:
+ * - {{random::option1::option2::...}} (double-colon delimiter)
+ * - {{random:option1,option2,...}} (comma delimiter)
+ * - {{pick::...}} / {{pick:...}}
+ * - {{roll 1d20}} / {{roll:1d20}} / {{roll 20}}
+ *
+ * Supports nested macros and resolves from inside out.
+ */
+export function resolveRandomMacros(text) {
+  if (!text || typeof text !== 'string') return '';
+
+  let result = text;
+
+  // 1. Resolve {{roll ...}} macros first
+  result = result.replace(/\{\{roll(?:::|:|\s+)(?:(\d+)d(\d+)|(\d+))\}\}/gi, (match, count, sides, singleSides) => {
+    if (singleSides) {
+      const s = parseInt(singleSides, 10);
+      return String(Math.floor(Math.random() * s) + 1);
+    }
+    const c = parseInt(count, 10) || 1;
+    const s = parseInt(sides, 10) || 6;
+    let total = 0;
+    for (let i = 0; i < c; i++) {
+      total += Math.floor(Math.random() * s) + 1;
+    }
+    return String(total);
+  });
+
+  // 2. Resolve {{random:...}} and {{pick:...}}
+  // We resolve innermost macros iteratively (up to 10 passes to prevent infinite loops)
+  const randomRegex = /\{\{(?:random|pick)(?:::|:)((?:(?!\{\{)[\s\S])*?)\}\}/gi;
+
+  for (let pass = 0; pass < 10; pass++) {
+    if (!randomRegex.test(result)) break;
+    randomRegex.lastIndex = 0;
+
+    result = result.replace(randomRegex, (match, argsString) => {
+      let s = argsString.trim();
+      if (s.startsWith('::')) {
+        s = s.slice(2);
+      }
+      let items;
+      if (s.includes('::')) {
+        items = s.split('::');
+      } else {
+        items = s.split(',');
+      }
+      const choices = items.map(item => item.trim()).filter(Boolean);
+      if (choices.length === 0) return '';
+      const chosen = choices[Math.floor(Math.random() * choices.length)];
+      return chosen;
+    });
+  }
+
+  return result;
+}
+
+/**
  * Replace character & user macros in string: {{char}}, {{user}}, <char>, <user>
+ * as well as dynamic random macros: {{random:...}}, {{random::...}}
  */
 export function replaceCharUserMacros(text, charName = 'Assistant', userName = 'User') {
   if (!text || typeof text !== 'string') return '';
-  return text
+  const replaced = text
     .replace(/\{\{char\}\}/gi, charName)
     .replace(/\{\{user\}\}/gi, userName)
     .replace(/<char>/gi, charName)
     .replace(/<user>/gi, userName);
+  return resolveRandomMacros(replaced);
 }
 
 /**

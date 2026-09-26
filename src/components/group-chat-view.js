@@ -20,6 +20,7 @@ import {
 import { showToast, showConfirm } from '../main.js';
 import morphdom from '../vendor/morphdom.js';
 import { parseMessageExamples } from '../utils/message-examples-parser.js';
+import { replaceCharUserMacros } from '../utils/text-completion-formatter.js';
 
 // ─── DOM refs ────────────────────────────────────────────────────────
 let messagesContainer;
@@ -367,6 +368,12 @@ export function buildGroupApiMessages(respondingChar, allCharacters, session) {
         messages.push({ role: 'user', content: `${name}: ${m.content}` });
       }
     }
+  }
+
+  const phi = respondingChar.post_history_instructions || respondingChar.post_history_instruction || '';
+  if (phi && phi.trim()) {
+    const formattedPhi = replaceCharUserMacros(phi.trim(), respondingChar.name, userName);
+    messages.push({ role: 'system', content: formattedPhi });
   }
 
   if (settings.force_reasoning && settings.reasoning_tag_open) {

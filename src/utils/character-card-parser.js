@@ -260,7 +260,7 @@ export function normalizeCharacterCard(rawObj) {
   const personality = char.personality || '';
   const scenario = char.scenario || char.world_scenario || rawObj.scenario || '';
   const system_prompt = char.system_prompt || char.system || '';
-  const post_history_instructions = char.post_history_instructions || '';
+  const post_history_instructions = char.post_history_instructions || char.post_history_instruction || rawObj.post_history_instructions || rawObj.post_history_instruction || '';
   const first_message = char.first_mes || char.first_message || char.char_greeting || rawObj.first_message || '';
 
   // Alternate Greetings
@@ -285,8 +285,8 @@ export function normalizeCharacterCard(rawObj) {
   }
   const image_tags = char.image_tags || (tags.length ? tags.join(', ') : '');
 
-  // Creator notes
-  const creator_notes = char.creator_notes || char.comment || char.creatorcomment || rawObj.creator_notes || '';
+  // Creator / Author notes (SillyTavern spec: creator_notes)
+  const creator_notes = char.creator_notes || char.authors_note || char.author_notes || char.author_note || char.comment || char.creatorcomment || rawObj.creator_notes || rawObj.authors_note || rawObj.comment || '';
 
   // Embedded Lorebook (character_book / world_info)
   const character_book = char.character_book || char.world_info || rawObj.character_book || null;
@@ -324,43 +324,94 @@ export function convertEmbeddedLorebook(characterBook, charName = 'Character') {
   if (!entriesArray.length) return null;
 
   const entries = entriesArray.map((ent, idx) => {
-    let keys = ent.key || ent.keys || [];
+    let keys = ent.keys || ent.key || ent.extensions?.keys || ent.extensions?.key || [];
     if (typeof keys === 'string') keys = keys.split(',').map(s => s.trim()).filter(Boolean);
     if (!Array.isArray(keys)) keys = [];
 
-    let filter = ent.keysecondary || ent.filter || [];
+    let filter = ent.secondary_keys || ent.secondaryKeys || ent.keysecondary || ent.filter || ent.extensions?.secondary_keys || ent.extensions?.keysecondary || ent.extensions?.filter || [];
     if (typeof filter === 'string') filter = filter.split(',').map(s => s.trim()).filter(Boolean);
     if (!Array.isArray(filter)) filter = [];
 
+    const rawPos = ent.position ?? ent.extensions?.position;
     let position = 'Before Char';
-    if (ent.position === 1 || ent.position === 'after_char') position = 'After Char';
-    if (ent.position === 2 || ent.position === 'top') position = 'Top';
-    if (ent.position === 3 || ent.position === 'bottom') position = 'Bottom';
+    if (rawPos === 1 || rawPos === '1' || rawPos === 'after_char' || rawPos === 'After Char') position = 'After Char';
+    else if (rawPos === 2 || rawPos === '2' || rawPos === 'top' || rawPos === 'an_top' || rawPos === 'Top') position = 'Top';
+    else if (rawPos === 3 || rawPos === '3' || rawPos === 'bottom' || rawPos === 'an_bottom' || rawPos === 'Bottom') position = 'Bottom';
 
+    const rawLogic = 
+      ent.selectiveLogic ?? 
+      ent.selective_logic ?? 
+      ent.logic ?? 
+      ent.extensions?.selectiveLogic ?? 
+      ent.extensions?.selective_logic ?? 
+      ent.extensions?.logic;
     let logic = 'AND ANY';
-    if (ent.logic === 1 || ent.logic === 'AND ALL' || ent.logic === 'AND_ALL') logic = 'AND ALL';
-    if (ent.logic === 2 || ent.logic === 'NOT ANY' || ent.logic === 'NOT_ANY') logic = 'NOT ANY';
-    if (ent.logic === 3 || ent.logic === 'NOT ALL' || ent.logic === 'NOT_ALL') logic = 'NOT ALL';
+    if (rawLogic === 1 || rawLogic === '1' || rawLogic === 'NOT ALL' || rawLogic === 'NOT_ALL') logic = 'NOT ALL';
+    else if (rawLogic === 2 || rawLogic === '2' || rawLogic === 'AND ALL' || rawLogic === 'AND_ALL') logic = 'AND ALL';
+    else if (rawLogic === 3 || rawLogic === '3' || rawLogic === 'NOT ANY' || rawLogic === 'NOT_ANY') logic = 'NOT ANY';
+    else if (rawLogic === 0 || rawLogic === '0' || rawLogic === 'AND ANY' || rawLogic === 'AND_ANY') logic = 'AND ANY';
+
+    // Order / insertion_order (higher order = closer to context end, higher priority)
+    const rawOrder = 
+      ent.insertion_order ?? 
+      ent.order ?? 
+      ent.priority ?? 
+      ent.insertionOrder ?? 
+      ent.extensions?.insertion_order ?? 
+      ent.extensions?.order ?? 
+      ent.extensions?.priority ?? 
+      ent.displayIndex ?? 
+      ent.display_index ?? 
+      100;
+    const numOrder = Number(rawOrder);
+    const order = !isNaN(numOrder) ? numOrder : 100;
+
+    // Probability / Trigger %
+    let triggerPercent = 100;
+    const useProb = 
+      ent.useProbability ?? 
+      ent.use_probability ?? 
+      ent.extensions?.useProbability ?? 
+      ent.extensions?.use_probability;
+    if (useProb === false) {
+      triggerPercent = 100;
+    } else {
+      const rawProb = 
+        ent.probability ?? 
+        ent.extensions?.probability ?? 
+        ent.chance ?? 
+        ent.extensions?.chance ?? 
+        ent.triggerPercent ?? 
+        ent.trigger_percent ?? 
+        ent.trigger ?? 
+        ent.extensions?.trigger;
+      if (rawProb !== undefined && rawProb !== null && rawProb !== '') {
+        const numProb = Number(rawProb);
+        triggerPercent = !isNaN(numProb) ? Math.max(0, Math.min(100, numProb)) : 100;
+      }
+    }
+
+    const isConstant = !!(ent.constant || ent.extensions?.constant || ent.strategy === 'constant' || ent.selective === false);
 
     return {
       id: ent.uid != null ? String(ent.uid) : String(Date.now() + idx),
       keys,
       filter,
-      content: ent.content || ent.text || '',
-      enabled: ent.enabled !== false,
-      memo: ent.comment || ent.name || ent.memo || '',
-      strategy: ent.constant ? 'constant' : 'selective',
+      content: ent.content || ent.text || ent.extensions?.content || '',
+      enabled: ent.enabled !== false && ent.disable !== true && ent.disabled !== true,
+      memo: ent.comment || ent.name || ent.memo || ent.extensions?.comment || ent.extensions?.name || '',
+      strategy: isConstant ? 'constant' : 'selective',
+      constant: isConstant,
       position,
       logic,
-      inclusionGroup: ent.group || ent.inclusionGroup || '',
-      groupWeight: ent.weight ?? ent.groupWeight ?? 100,
-      sticky: ent.sticky ?? 0,
-      cooldown: ent.cooldown ?? 0,
-      delay: ent.delay ?? 0,
-      triggerPercent: ent.chance ?? ent.triggerPercent ?? 100,
-      order: ent.insertion_order ?? ent.order ?? ent.priority ?? 100,
-      depth: ent.depth ?? 4,
-      constant: !!ent.constant
+      inclusionGroup: ent.group || ent.inclusionGroup || ent.extensions?.group || ent.extensions?.inclusionGroup || '',
+      groupWeight: Number(ent.groupWeight ?? ent.group_weight ?? ent.weight ?? ent.extensions?.groupWeight ?? ent.extensions?.group_weight ?? 100) || 100,
+      sticky: Number(ent.sticky ?? ent.extensions?.sticky ?? 0) || 0,
+      cooldown: Number(ent.cooldown ?? ent.extensions?.cooldown ?? 0) || 0,
+      delay: Number(ent.delay ?? ent.extensions?.delay ?? 0) || 0,
+      depth: Number(ent.depth ?? ent.extensions?.depth ?? 4) || 4,
+      triggerPercent,
+      order
     };
   });
 

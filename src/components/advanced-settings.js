@@ -257,15 +257,33 @@ export function initAdvancedSettings() {
 
   // Completion Mode Select Listeners
   document.getElementById('adv-setting-completion-mode')?.addEventListener('change', (e) => {
-    const isText = e.target.value === 'text_completion';
+    const val = e.target.value;
+    const isText = val === 'text_completion';
     const grp = document.getElementById('text-completion-templates-group');
     if (grp) grp.style.display = isText ? 'flex' : 'none';
+    if (currentSettings?.active_generation_preset_id === currentSettings?.active_genai_generation_preset_id) {
+      const genaiEl = document.getElementById('adv-setting-genai-completion-mode');
+      if (genaiEl) {
+        genaiEl.value = val;
+        const genaiGrp = document.getElementById('genai-text-completion-templates-group');
+        if (genaiGrp) genaiGrp.style.display = isText ? 'flex' : 'none';
+      }
+    }
     updateActiveGenerationPreset(false);
   });
   document.getElementById('adv-setting-genai-completion-mode')?.addEventListener('change', (e) => {
-    const isText = e.target.value === 'text_completion';
+    const val = e.target.value;
+    const isText = val === 'text_completion';
     const grp = document.getElementById('genai-text-completion-templates-group');
     if (grp) grp.style.display = isText ? 'flex' : 'none';
+    if (currentSettings?.active_generation_preset_id === currentSettings?.active_genai_generation_preset_id) {
+      const stdEl = document.getElementById('adv-setting-completion-mode');
+      if (stdEl) {
+        stdEl.value = val;
+        const stdGrp = document.getElementById('text-completion-templates-group');
+        if (stdGrp) stdGrp.style.display = isText ? 'flex' : 'none';
+      }
+    }
     updateActiveGenerationPreset(true);
   });
 
@@ -273,6 +291,11 @@ export function initAdvancedSettings() {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('change', () => {
+      if (currentSettings?.active_generation_preset_id === currentSettings?.active_genai_generation_preset_id) {
+        const otherId = isGenAI ? id.replace('adv-setting-genai-', 'adv-setting-') : id.replace('adv-setting-', 'adv-setting-genai-');
+        const otherEl = document.getElementById(otherId);
+        if (otherEl) otherEl.checked = el.checked;
+      }
       updateAllToggleVisualStates();
       updateActiveGenerationPreset(isGenAI);
     });
@@ -318,12 +341,16 @@ export function initAdvancedSettings() {
   const addInputListener = (id, isGenAI) => {
     const el = document.getElementById(id);
     if (!el) return;
-    el.addEventListener('input', () => {
+    const syncAndUpdate = () => {
+      if (currentSettings?.active_generation_preset_id === currentSettings?.active_genai_generation_preset_id) {
+        const otherId = isGenAI ? id.replace('adv-setting-genai-', 'adv-setting-') : id.replace('adv-setting-', 'adv-setting-genai-');
+        const otherEl = document.getElementById(otherId);
+        if (otherEl) otherEl.value = el.value;
+      }
       updateActiveGenerationPreset(isGenAI);
-    });
-    el.addEventListener('change', () => {
-      updateActiveGenerationPreset(isGenAI);
-    });
+    };
+    el.addEventListener('input', syncAndUpdate);
+    el.addEventListener('change', syncAndUpdate);
   };
   addInputListener('adv-setting-reasoning-open', false);
   addInputListener('adv-setting-reasoning-close', false);
@@ -468,6 +495,10 @@ export function initAdvancedSettings() {
       } else {
         if (!preset.thinking_settings) {
           preset.thinking_settings = clonePresetSettings(preset);
+        } else {
+          preset.thinking_settings.completion_mode = preset.completion_mode;
+          preset.thinking_settings.active_instruct_template_id = preset.active_instruct_template_id;
+          preset.thinking_settings.active_context_template_id = preset.active_context_template_id;
         }
         showToast('Standard & Thinking unlinked for custom editing');
       }
@@ -502,6 +533,10 @@ export function initAdvancedSettings() {
     }
     if (!preset.thinking_settings) {
       preset.thinking_settings = clonePresetSettings(preset);
+    } else {
+      preset.thinking_settings.completion_mode = preset.completion_mode;
+      preset.thinking_settings.active_instruct_template_id = preset.active_instruct_template_id;
+      preset.thinking_settings.active_context_template_id = preset.active_context_template_id;
     }
     currentGenAIPresetMode = 'thinking';
     preset.preset_mode = 'thinking';
@@ -525,6 +560,10 @@ export function initAdvancedSettings() {
       } else {
         if (!preset.thinking_settings) {
           preset.thinking_settings = clonePresetSettings(preset);
+        } else {
+          preset.thinking_settings.completion_mode = preset.completion_mode;
+          preset.thinking_settings.active_instruct_template_id = preset.active_instruct_template_id;
+          preset.thinking_settings.active_context_template_id = preset.active_context_template_id;
         }
         showToast('Standard & Thinking unlinked for custom editing');
       }
@@ -559,6 +598,10 @@ export function initAdvancedSettings() {
     }
     if (!preset.thinking_settings) {
       preset.thinking_settings = clonePresetSettings(preset);
+    } else {
+      preset.thinking_settings.completion_mode = preset.completion_mode;
+      preset.thinking_settings.active_instruct_template_id = preset.active_instruct_template_id;
+      preset.thinking_settings.active_context_template_id = preset.active_context_template_id;
     }
     currentGenerationPresetMode = 'thinking';
     preset.preset_mode = 'thinking';
@@ -1381,15 +1424,15 @@ function applyGenerationPreset(presetId, isGenAI) {
 
     const compEl = document.getElementById('adv-setting-genai-completion-mode');
     if (compEl) {
-      const compVal = source.completion_mode || 'chat_completion';
+      const compVal = preset.completion_mode || source.completion_mode || 'chat_completion';
       compEl.value = compVal;
       const grp = document.getElementById('genai-text-completion-templates-group');
       if (grp) grp.style.display = compVal === 'text_completion' ? 'flex' : 'none';
     }
     const instEl = document.getElementById('adv-setting-genai-instruct-template-select');
-    if (instEl) instEl.value = source.active_instruct_template_id || 'gemma2';
+    if (instEl) instEl.value = preset.active_instruct_template_id || source.active_instruct_template_id || 'gemma2';
     const ctxEl = document.getElementById('adv-setting-genai-context-template-select');
-    if (ctxEl) ctxEl.value = source.active_context_template_id || 'gemma2';
+    if (ctxEl) ctxEl.value = preset.active_context_template_id || source.active_context_template_id || 'gemma2';
     setRangeValue('adv-setting-genai-max-tokens', 'adv-genai-max-tokens-value', source.max_tokens);
     setRangeValue('adv-setting-genai-temperature', 'adv-genai-temperature-value', source.temperature);
     setRangeValue('adv-setting-genai-top-p', 'adv-genai-top-p-value', source.top_p);
@@ -1440,15 +1483,15 @@ function applyGenerationPreset(presetId, isGenAI) {
 
     const compEl = document.getElementById('adv-setting-completion-mode');
     if (compEl) {
-      const compVal = source.completion_mode || 'chat_completion';
+      const compVal = preset.completion_mode || source.completion_mode || 'chat_completion';
       compEl.value = compVal;
       const grp = document.getElementById('text-completion-templates-group');
       if (grp) grp.style.display = compVal === 'text_completion' ? 'flex' : 'none';
     }
     const instEl = document.getElementById('adv-setting-instruct-template-select');
-    if (instEl) instEl.value = source.active_instruct_template_id || 'gemma2';
+    if (instEl) instEl.value = preset.active_instruct_template_id || source.active_instruct_template_id || 'gemma2';
     const ctxEl = document.getElementById('adv-setting-context-template-select');
-    if (ctxEl) ctxEl.value = source.active_context_template_id || 'gemma2';
+    if (ctxEl) ctxEl.value = preset.active_context_template_id || source.active_context_template_id || 'gemma2';
     setRangeValue('adv-setting-max-tokens', 'adv-max-tokens-value', source.max_tokens);
     setRangeValue('adv-setting-temperature', 'adv-temperature-value', source.temperature);
     setRangeValue('adv-setting-top-p', 'adv-top-p-value', source.top_p);
@@ -1723,6 +1766,23 @@ function setupRangeInput(inputId, valueId, isGenAI = null) {
     const pct = ((val - min) / (max - min)) * 100;
     input.style.setProperty('--range-fill', `${pct}%`);
     
+    if (isGenAI !== null && currentSettings?.active_generation_preset_id === currentSettings?.active_genai_generation_preset_id) {
+      const otherInputId = isGenAI ? inputId.replace('adv-setting-genai-', 'adv-setting-') : inputId.replace('adv-setting-', 'adv-setting-genai-');
+      const otherValueId = isGenAI ? valueId.replace('adv-genai-', 'adv-') : valueId.replace('adv-', 'adv-genai-');
+      const otherInput = document.getElementById(otherInputId);
+      const otherValueEl = document.getElementById(otherValueId);
+      if (otherInput) {
+        otherInput.value = input.value;
+        const oMin = parseFloat(otherInput.min);
+        const oMax = parseFloat(otherInput.max);
+        const oPct = ((val - oMin) / (oMax - oMin)) * 100;
+        otherInput.style.setProperty('--range-fill', `${oPct}%`);
+      }
+      if (otherValueEl) {
+        otherValueEl.textContent = formatRangeBadgeValue(input);
+      }
+    }
+
     if (isGenAI !== null) {
       updateActiveGenerationPreset(isGenAI);
     }
@@ -1737,15 +1797,29 @@ function updateActiveGenerationPreset(isGenAI) {
   if (!preset) return;
 
   if (isGenAI) {
+    preset.preset_mode = currentGenAIPresetMode;
     let target = preset;
     if (!preset.is_sync && currentGenAIPresetMode === 'thinking') {
       if (!preset.thinking_settings) preset.thinking_settings = clonePresetSettings(preset);
       target = preset.thinking_settings;
     }
 
-    target.completion_mode = document.getElementById('adv-setting-genai-completion-mode')?.value || target.completion_mode;
-    target.active_instruct_template_id = document.getElementById('adv-setting-genai-instruct-template-select')?.value || target.active_instruct_template_id;
-    target.active_context_template_id = document.getElementById('adv-setting-genai-context-template-select')?.value || target.active_context_template_id;
+    const compModeVal = document.getElementById('adv-setting-genai-completion-mode')?.value;
+    if (compModeVal) {
+      preset.completion_mode = compModeVal;
+      if (preset.thinking_settings) preset.thinking_settings.completion_mode = compModeVal;
+    }
+    const instructVal = document.getElementById('adv-setting-genai-instruct-template-select')?.value;
+    if (instructVal) {
+      preset.active_instruct_template_id = instructVal;
+      if (preset.thinking_settings) preset.thinking_settings.active_instruct_template_id = instructVal;
+    }
+    const contextVal = document.getElementById('adv-setting-genai-context-template-select')?.value;
+    if (contextVal) {
+      preset.active_context_template_id = contextVal;
+      if (preset.thinking_settings) preset.thinking_settings.active_context_template_id = contextVal;
+    }
+
     target.max_tokens = parseInt(document.getElementById('adv-setting-genai-max-tokens').value);
     target.temperature = parseFloat(document.getElementById('adv-setting-genai-temperature').value);
     target.top_p = parseFloat(document.getElementById('adv-setting-genai-top-p').value);
@@ -1774,16 +1848,34 @@ function updateActiveGenerationPreset(isGenAI) {
     }
     target.genai_system_prompt_addition = document.getElementById('adv-setting-genai-system-prompt')?.value.trim() || '';
     Object.assign(target, extractExtendedSamplersFromUI(true));
+
+    if (preset.is_sync) {
+      preset.thinking_settings = clonePresetSettings(preset);
+    }
   } else {
+    preset.preset_mode = currentGenerationPresetMode;
     let target = preset;
     if (!preset.is_sync && currentGenerationPresetMode === 'thinking') {
       if (!preset.thinking_settings) preset.thinking_settings = clonePresetSettings(preset);
       target = preset.thinking_settings;
     }
 
-    target.completion_mode = document.getElementById('adv-setting-completion-mode')?.value || target.completion_mode;
-    target.active_instruct_template_id = document.getElementById('adv-setting-instruct-template-select')?.value || target.active_instruct_template_id;
-    target.active_context_template_id = document.getElementById('adv-setting-context-template-select')?.value || target.active_context_template_id;
+    const compModeVal = document.getElementById('adv-setting-completion-mode')?.value;
+    if (compModeVal) {
+      preset.completion_mode = compModeVal;
+      if (preset.thinking_settings) preset.thinking_settings.completion_mode = compModeVal;
+    }
+    const instructVal = document.getElementById('adv-setting-instruct-template-select')?.value;
+    if (instructVal) {
+      preset.active_instruct_template_id = instructVal;
+      if (preset.thinking_settings) preset.thinking_settings.active_instruct_template_id = instructVal;
+    }
+    const contextVal = document.getElementById('adv-setting-context-template-select')?.value;
+    if (contextVal) {
+      preset.active_context_template_id = contextVal;
+      if (preset.thinking_settings) preset.thinking_settings.active_context_template_id = contextVal;
+    }
+
     target.max_tokens = parseInt(document.getElementById('adv-setting-max-tokens').value);
     target.temperature = parseFloat(document.getElementById('adv-setting-temperature').value);
     target.top_p = parseFloat(document.getElementById('adv-setting-top-p').value);
@@ -1811,6 +1903,10 @@ function updateActiveGenerationPreset(isGenAI) {
       target.dry_sequence_breakers = ["\n", ":", "\"", "*"];
     }
     Object.assign(target, extractExtendedSamplersFromUI(false));
+
+    if (preset.is_sync) {
+      preset.thinking_settings = clonePresetSettings(preset);
+    }
   }
 }
 
@@ -1828,31 +1924,45 @@ function setRangeValue(inputId, valueId, value) {
 }
 
 async function saveAll() {
-  updateActiveGenerationPreset(false);
-  updateActiveGenerationPreset(true);
+  const isGenAITabActive = document.querySelector('#advanced-settings-modal .nav-item.active')?.dataset.tab === 'genai-generation';
+
+  if (currentSettings.active_generation_preset_id === currentSettings.active_genai_generation_preset_id) {
+    if (isGenAITabActive) {
+      updateActiveGenerationPreset(true);
+      applyGenerationPreset(currentSettings.active_generation_preset_id, false);
+    } else {
+      updateActiveGenerationPreset(false);
+      applyGenerationPreset(currentSettings.active_genai_generation_preset_id, true);
+    }
+  } else {
+    updateActiveGenerationPreset(false);
+    updateActiveGenerationPreset(true);
+  }
 
   const historyToggle = document.getElementById('setting-ai-comments-history');
+  const activeStdPreset = currentSettings.generation_presets?.find(p => p.id === currentSettings.active_generation_preset_id);
+  const activeGenAIPreset = currentSettings.generation_presets?.find(p => p.id === currentSettings.active_genai_generation_preset_id);
   
   const updatedSettings = {
     ...currentSettings,
-    max_tokens: parseInt(document.getElementById('adv-setting-max-tokens').value),
-    temperature: parseFloat(document.getElementById('adv-setting-temperature').value),
-    top_p: parseFloat(document.getElementById('adv-setting-top-p').value),
-    top_k: parseInt(document.getElementById('adv-setting-top-k').value),
-    rep_penalty: parseFloat(document.getElementById('adv-setting-rep-penalty').value),
-    smoothing_factor: parseFloat(document.getElementById('adv-setting-smoothing-factor').value),
-    min_p: parseFloat(document.getElementById('adv-setting-min-p').value),
-    min_p_enabled: document.getElementById('adv-setting-min-p-enabled') ? document.getElementById('adv-setting-min-p-enabled').checked : true,
-    adaptive_target: parseFloat(document.getElementById('adv-setting-adaptive-target').value),
-    adaptive_target_enabled: document.getElementById('adv-setting-adaptive-target-enabled') ? document.getElementById('adv-setting-adaptive-target-enabled').checked : true,
-    adaptive_decay: parseFloat(document.getElementById('adv-setting-adaptive-decay').value),
-    adaptive_decay_enabled: document.getElementById('adv-setting-adaptive-decay-enabled') ? document.getElementById('adv-setting-adaptive-decay-enabled').checked : true,
-    presence_penalty: parseFloat(document.getElementById('adv-setting-presence-penalty').value),
-    dry_multiplier_enabled: document.getElementById('adv-setting-dry-enabled') ? document.getElementById('adv-setting-dry-enabled').checked : false,
-    dry_multiplier: parseFloat(document.getElementById('adv-setting-dry-multiplier').value),
-    dry_base: parseFloat(document.getElementById('adv-setting-dry-base').value),
-    dry_allowed_length: parseInt(document.getElementById('adv-setting-dry-allowed-length').value),
-    dry_sequence_breakers: (() => {
+    max_tokens: activeStdPreset?.max_tokens ?? parseInt(document.getElementById('adv-setting-max-tokens').value),
+    temperature: activeStdPreset?.temperature ?? parseFloat(document.getElementById('adv-setting-temperature').value),
+    top_p: activeStdPreset?.top_p ?? parseFloat(document.getElementById('adv-setting-top-p').value),
+    top_k: activeStdPreset?.top_k ?? parseInt(document.getElementById('adv-setting-top-k').value),
+    rep_penalty: activeStdPreset?.rep_penalty ?? parseFloat(document.getElementById('adv-setting-rep-penalty').value),
+    smoothing_factor: activeStdPreset?.smoothing_factor ?? parseFloat(document.getElementById('adv-setting-smoothing-factor').value),
+    min_p: activeStdPreset?.min_p ?? parseFloat(document.getElementById('adv-setting-min-p').value),
+    min_p_enabled: activeStdPreset?.min_p_enabled ?? (document.getElementById('adv-setting-min-p-enabled') ? document.getElementById('adv-setting-min-p-enabled').checked : true),
+    adaptive_target: activeStdPreset?.adaptive_target ?? parseFloat(document.getElementById('adv-setting-adaptive-target').value),
+    adaptive_target_enabled: activeStdPreset?.adaptive_target_enabled ?? (document.getElementById('adv-setting-adaptive-target-enabled') ? document.getElementById('adv-setting-adaptive-target-enabled').checked : true),
+    adaptive_decay: activeStdPreset?.adaptive_decay ?? parseFloat(document.getElementById('adv-setting-adaptive-decay').value),
+    adaptive_decay_enabled: activeStdPreset?.adaptive_decay_enabled ?? (document.getElementById('adv-setting-adaptive-decay-enabled') ? document.getElementById('adv-setting-adaptive-decay-enabled').checked : true),
+    presence_penalty: activeStdPreset?.presence_penalty ?? parseFloat(document.getElementById('adv-setting-presence-penalty').value),
+    dry_multiplier_enabled: activeStdPreset?.dry_multiplier_enabled ?? (document.getElementById('adv-setting-dry-enabled') ? document.getElementById('adv-setting-dry-enabled').checked : false),
+    dry_multiplier: activeStdPreset?.dry_multiplier ?? parseFloat(document.getElementById('adv-setting-dry-multiplier').value),
+    dry_base: activeStdPreset?.dry_base ?? parseFloat(document.getElementById('adv-setting-dry-base').value),
+    dry_allowed_length: activeStdPreset?.dry_allowed_length ?? parseInt(document.getElementById('adv-setting-dry-allowed-length').value),
+    dry_sequence_breakers: activeStdPreset?.dry_sequence_breakers ?? (() => {
       let breakers = document.getElementById('adv-setting-dry-sequence-breakers')?.value || '["\\n", ":", "\\"", "*"]';
       try {
         return JSON.parse(breakers);
@@ -1860,31 +1970,31 @@ async function saveAll() {
         return ["\n", ":", "\"", "*"];
       }
     })(),
-    dynatemp_enabled: document.getElementById('adv-setting-dynatemp-enabled') ? document.getElementById('adv-setting-dynatemp-enabled').checked : (currentSettings.dynatemp_enabled ?? false),
-    dynatemp_min: parseFloat(document.getElementById('adv-setting-dynatemp-min')?.value ?? (currentSettings.dynatemp_min ?? 0.65)),
-    dynatemp_max: parseFloat(document.getElementById('adv-setting-dynatemp-max')?.value ?? (currentSettings.dynatemp_max ?? 1.35)),
-    dynatemp_range: parseFloat(document.getElementById('adv-setting-dynatemp-range')?.value ?? (currentSettings.dynatemp_range ?? 0.0)),
-    dynatemp_exponent: parseFloat(document.getElementById('adv-setting-dynatemp-exponent')?.value ?? (currentSettings.dynatemp_exponent ?? 1.0)),
+    dynatemp_enabled: activeStdPreset?.dynatemp_enabled ?? (document.getElementById('adv-setting-dynatemp-enabled') ? document.getElementById('adv-setting-dynatemp-enabled').checked : (currentSettings.dynatemp_enabled ?? false)),
+    dynatemp_min: activeStdPreset?.dynatemp_min ?? parseFloat(document.getElementById('adv-setting-dynatemp-min')?.value ?? (currentSettings.dynatemp_min ?? 0.65)),
+    dynatemp_max: activeStdPreset?.dynatemp_max ?? parseFloat(document.getElementById('adv-setting-dynatemp-max')?.value ?? (currentSettings.dynatemp_max ?? 1.35)),
+    dynatemp_range: activeStdPreset?.dynatemp_range ?? parseFloat(document.getElementById('adv-setting-dynatemp-range')?.value ?? (currentSettings.dynatemp_range ?? 0.0)),
+    dynatemp_exponent: activeStdPreset?.dynatemp_exponent ?? parseFloat(document.getElementById('adv-setting-dynatemp-exponent')?.value ?? (currentSettings.dynatemp_exponent ?? 1.0)),
     active_generation_preset_id: currentSettings.active_generation_preset_id,
 
-    genai_max_tokens: parseInt(document.getElementById('adv-setting-genai-max-tokens').value),
-    genai_temperature: parseFloat(document.getElementById('adv-setting-genai-temperature').value),
-    genai_top_p: parseFloat(document.getElementById('adv-setting-genai-top-p').value),
-    genai_top_k: parseInt(document.getElementById('adv-setting-genai-top-k').value),
-    genai_rep_penalty: parseFloat(document.getElementById('adv-setting-genai-rep-penalty').value),
-    genai_smoothing_factor: parseFloat(document.getElementById('adv-setting-genai-smoothing-factor').value),
-    genai_min_p: parseFloat(document.getElementById('adv-setting-genai-min-p').value),
-    genai_min_p_enabled: document.getElementById('adv-setting-genai-min-p-enabled') ? document.getElementById('adv-setting-genai-min-p-enabled').checked : true,
-    genai_adaptive_target: parseFloat(document.getElementById('adv-setting-genai-adaptive-target').value),
-    genai_adaptive_target_enabled: document.getElementById('adv-setting-genai-adaptive-target-enabled') ? document.getElementById('adv-setting-genai-adaptive-target-enabled').checked : true,
-    genai_adaptive_decay: parseFloat(document.getElementById('adv-setting-genai-adaptive-decay').value),
-    genai_adaptive_decay_enabled: document.getElementById('adv-setting-genai-adaptive-decay-enabled') ? document.getElementById('adv-setting-genai-adaptive-decay-enabled').checked : true,
-    genai_presence_penalty: parseFloat(document.getElementById('adv-setting-genai-presence-penalty').value),
-    genai_dry_multiplier_enabled: document.getElementById('adv-setting-genai-dry-enabled') ? document.getElementById('adv-setting-genai-dry-enabled').checked : false,
-    genai_dry_multiplier: parseFloat(document.getElementById('adv-setting-genai-dry-multiplier').value),
-    genai_dry_base: parseFloat(document.getElementById('adv-setting-genai-dry-base').value),
-    genai_dry_allowed_length: parseInt(document.getElementById('adv-setting-genai-dry-allowed-length').value),
-    genai_dry_sequence_breakers: (() => {
+    genai_max_tokens: activeGenAIPreset?.max_tokens ?? parseInt(document.getElementById('adv-setting-genai-max-tokens').value),
+    genai_temperature: activeGenAIPreset?.temperature ?? parseFloat(document.getElementById('adv-setting-genai-temperature').value),
+    genai_top_p: activeGenAIPreset?.top_p ?? parseFloat(document.getElementById('adv-setting-genai-top-p').value),
+    genai_top_k: activeGenAIPreset?.top_k ?? parseInt(document.getElementById('adv-setting-genai-top-k').value),
+    genai_rep_penalty: activeGenAIPreset?.rep_penalty ?? parseFloat(document.getElementById('adv-setting-genai-rep-penalty').value),
+    genai_smoothing_factor: activeGenAIPreset?.smoothing_factor ?? parseFloat(document.getElementById('adv-setting-genai-smoothing-factor').value),
+    genai_min_p: activeGenAIPreset?.min_p ?? parseFloat(document.getElementById('adv-setting-genai-min-p').value),
+    genai_min_p_enabled: activeGenAIPreset?.min_p_enabled ?? (document.getElementById('adv-setting-genai-min-p-enabled') ? document.getElementById('adv-setting-genai-min-p-enabled').checked : true),
+    genai_adaptive_target: activeGenAIPreset?.adaptive_target ?? parseFloat(document.getElementById('adv-setting-genai-adaptive-target').value),
+    genai_adaptive_target_enabled: activeGenAIPreset?.adaptive_target_enabled ?? (document.getElementById('adv-setting-genai-adaptive-target-enabled') ? document.getElementById('adv-setting-genai-adaptive-target-enabled').checked : true),
+    genai_adaptive_decay: activeGenAIPreset?.adaptive_decay ?? parseFloat(document.getElementById('adv-setting-genai-adaptive-decay').value),
+    genai_adaptive_decay_enabled: activeGenAIPreset?.adaptive_decay_enabled ?? (document.getElementById('adv-setting-genai-adaptive-decay-enabled') ? document.getElementById('adv-setting-genai-adaptive-decay-enabled').checked : true),
+    genai_presence_penalty: activeGenAIPreset?.presence_penalty ?? parseFloat(document.getElementById('adv-setting-genai-presence-penalty').value),
+    genai_dry_multiplier_enabled: activeGenAIPreset?.dry_multiplier_enabled ?? (document.getElementById('adv-setting-genai-dry-enabled') ? document.getElementById('adv-setting-genai-dry-enabled').checked : false),
+    genai_dry_multiplier: activeGenAIPreset?.dry_multiplier ?? parseFloat(document.getElementById('adv-setting-genai-dry-multiplier').value),
+    genai_dry_base: activeGenAIPreset?.dry_base ?? parseFloat(document.getElementById('adv-setting-genai-dry-base').value),
+    genai_dry_allowed_length: activeGenAIPreset?.dry_allowed_length ?? parseInt(document.getElementById('adv-setting-genai-dry-allowed-length').value),
+    genai_dry_sequence_breakers: activeGenAIPreset?.dry_sequence_breakers ?? (() => {
       let breakers = document.getElementById('adv-setting-genai-dry-sequence-breakers')?.value || '["\\n", ":", "\\"", "*"]';
       try {
         return JSON.parse(breakers);
@@ -1892,25 +2002,26 @@ async function saveAll() {
         return ["\n", ":", "\"", "*"];
       }
     })(),
-    genai_dynatemp_enabled: document.getElementById('adv-setting-genai-dynatemp-enabled') ? document.getElementById('adv-setting-genai-dynatemp-enabled').checked : (currentSettings.genai_dynatemp_enabled ?? false),
-    genai_dynatemp_min: parseFloat(document.getElementById('adv-setting-genai-dynatemp-min')?.value ?? (currentSettings.genai_dynatemp_min ?? 0.65)),
-    genai_dynatemp_max: parseFloat(document.getElementById('adv-setting-genai-dynatemp-max')?.value ?? (currentSettings.genai_dynatemp_max ?? 1.35)),
-    genai_dynatemp_range: parseFloat(document.getElementById('adv-setting-genai-dynatemp-range')?.value ?? (currentSettings.genai_dynatemp_range ?? 0.0)),
-    genai_dynatemp_exponent: parseFloat(document.getElementById('adv-setting-genai-dynatemp-exponent')?.value ?? (currentSettings.genai_dynatemp_exponent ?? 1.0)),
+    genai_dynatemp_enabled: activeGenAIPreset?.dynatemp_enabled ?? (document.getElementById('adv-setting-genai-dynatemp-enabled') ? document.getElementById('adv-setting-genai-dynatemp-enabled').checked : (currentSettings.genai_dynatemp_enabled ?? false)),
+    genai_dynatemp_min: activeGenAIPreset?.dynatemp_min ?? parseFloat(document.getElementById('adv-setting-genai-dynatemp-min')?.value ?? (currentSettings.genai_dynatemp_min ?? 0.65)),
+    genai_dynatemp_max: activeGenAIPreset?.dynatemp_max ?? parseFloat(document.getElementById('adv-setting-genai-dynatemp-max')?.value ?? (currentSettings.genai_dynatemp_max ?? 1.35)),
+    genai_dynatemp_range: activeGenAIPreset?.dynatemp_range ?? parseFloat(document.getElementById('adv-setting-genai-dynatemp-range')?.value ?? (currentSettings.genai_dynatemp_range ?? 0.0)),
+    genai_dynatemp_exponent: activeGenAIPreset?.dynatemp_exponent ?? parseFloat(document.getElementById('adv-setting-genai-dynatemp-exponent')?.value ?? (currentSettings.genai_dynatemp_exponent ?? 1.0)),
     active_genai_generation_preset_id: currentSettings.active_genai_generation_preset_id,
     genai_system_prompt_addition: document.getElementById('adv-setting-genai-system-prompt') ? document.getElementById('adv-setting-genai-system-prompt').value.trim() : (currentSettings.genai_system_prompt_addition || ""),
     
-    force_reasoning: document.getElementById('adv-setting-force-reasoning') ? document.getElementById('adv-setting-force-reasoning').checked : !!currentSettings.force_reasoning,
-    reasoning_tag_open: document.getElementById('adv-setting-reasoning-open') ? document.getElementById('adv-setting-reasoning-open').value : (currentSettings.reasoning_tag_open || '<think>'),
-    reasoning_tag_close: document.getElementById('adv-setting-reasoning-close') ? document.getElementById('adv-setting-reasoning-close').value : (currentSettings.reasoning_tag_close || '</think>'),
+    force_reasoning: activeStdPreset?.force_reasoning ?? (document.getElementById('adv-setting-force-reasoning') ? document.getElementById('adv-setting-force-reasoning').checked : !!currentSettings.force_reasoning),
+    reasoning_tag_open: activeStdPreset?.reasoning_tag_open ?? (document.getElementById('adv-setting-reasoning-open') ? document.getElementById('adv-setting-reasoning-open').value : (currentSettings.reasoning_tag_open || '<think>')),
+    reasoning_tag_close: activeStdPreset?.reasoning_tag_close ?? (document.getElementById('adv-setting-reasoning-close') ? document.getElementById('adv-setting-reasoning-close').value : (currentSettings.reasoning_tag_close || '</think>')),
 
-    genai_force_reasoning: document.getElementById('adv-setting-genai-force-reasoning') ? document.getElementById('adv-setting-genai-force-reasoning').checked : !!currentSettings.genai_force_reasoning,
-    genai_reasoning_tag_open: document.getElementById('adv-setting-genai-reasoning-open') ? document.getElementById('adv-setting-genai-reasoning-open').value : (currentSettings.genai_reasoning_tag_open || '<think>'),
-    genai_reasoning_tag_close: document.getElementById('adv-setting-genai-reasoning-close') ? document.getElementById('adv-setting-genai-reasoning-close').value : (currentSettings.genai_reasoning_tag_close || '</think>'),
+    genai_force_reasoning: activeGenAIPreset?.force_reasoning ?? (document.getElementById('adv-setting-genai-force-reasoning') ? document.getElementById('adv-setting-genai-force-reasoning').checked : !!currentSettings.genai_force_reasoning),
+    genai_reasoning_tag_open: activeGenAIPreset?.reasoning_tag_open ?? (document.getElementById('adv-setting-genai-reasoning-open') ? document.getElementById('adv-setting-genai-reasoning-open').value : (currentSettings.genai_reasoning_tag_open || '<think>')),
+    genai_reasoning_tag_close: activeGenAIPreset?.reasoning_tag_close ?? (document.getElementById('adv-setting-genai-reasoning-close') ? document.getElementById('adv-setting-genai-reasoning-close').value : (currentSettings.genai_reasoning_tag_close || '</think>')),
+
     
-    completion_mode: document.getElementById('adv-setting-completion-mode')?.value || 'chat_completion',
-    active_instruct_template_id: document.getElementById('adv-setting-instruct-template-select')?.value || 'gemma2',
-    active_context_template_id: document.getElementById('adv-setting-context-template-select')?.value || 'gemma2',
+    completion_mode: activeStdPreset?.completion_mode || document.getElementById('adv-setting-completion-mode')?.value || 'chat_completion',
+    active_instruct_template_id: activeStdPreset?.active_instruct_template_id || document.getElementById('adv-setting-instruct-template-select')?.value || 'gemma2',
+    active_context_template_id: activeStdPreset?.active_context_template_id || document.getElementById('adv-setting-context-template-select')?.value || 'gemma2',
 
     typical_p_enabled: document.getElementById('adv-setting-typical-p-enabled')?.checked ?? false,
     typical_p: parseFloat(document.getElementById('adv-setting-typical-p')?.value ?? 1.0),
@@ -1943,9 +2054,9 @@ async function saveAll() {
     logit_bias_enabled: document.getElementById('adv-setting-logit-bias-enabled')?.checked ?? false,
     logit_bias: document.getElementById('adv-setting-logit-bias')?.value || '',
 
-    genai_completion_mode: document.getElementById('adv-setting-genai-completion-mode')?.value || 'chat_completion',
-    genai_active_instruct_template_id: document.getElementById('adv-setting-genai-instruct-template-select')?.value || 'gemma2',
-    genai_active_context_template_id: document.getElementById('adv-setting-genai-context-template-select')?.value || 'gemma2',
+    genai_completion_mode: activeGenAIPreset?.completion_mode || document.getElementById('adv-setting-genai-completion-mode')?.value || 'chat_completion',
+    genai_active_instruct_template_id: activeGenAIPreset?.active_instruct_template_id || document.getElementById('adv-setting-genai-instruct-template-select')?.value || 'gemma2',
+    genai_active_context_template_id: activeGenAIPreset?.active_context_template_id || document.getElementById('adv-setting-genai-context-template-select')?.value || 'gemma2',
 
     genai_typical_p_enabled: document.getElementById('adv-setting-genai-typical-p-enabled')?.checked ?? false,
     genai_typical_p: parseFloat(document.getElementById('adv-setting-genai-typical-p')?.value ?? 1.0),
@@ -1986,6 +2097,7 @@ async function saveAll() {
     ai_comments_history_enabled: historyToggle ? historyToggle.checked : currentSettings.ai_comments_history_enabled,
   };
 
+  currentSettings = { ...currentSettings, ...updatedSettings };
   await settingsStore.save(updatedSettings);
   
   // Try to toggle the button visibility if chat is active

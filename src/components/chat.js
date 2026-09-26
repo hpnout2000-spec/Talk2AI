@@ -33,6 +33,7 @@ import { buildGroupApiMessages } from './group-chat-view.js';
 import { generateImageComfyUI } from '../services/comfyui-service.js';
 import { initLorebookButtons, renderLorebookEditorList } from './lorebook-ui.js';
 import { parseMessageExamples } from '../utils/message-examples-parser.js';
+import { replaceCharUserMacros } from '../utils/text-completion-formatter.js';
 // Lazy notify GenAI panel when a response arrives (avoids circular import)
 function notifyGenAI(response, characterName) {
   import('../components/genai-panel.js').then(m => m.notifyGenAIResponse(response, characterName)).catch(() => { });
@@ -117,8 +118,146 @@ let emptyState;
 let headerCharName;
 let headerCharStatus;
 let headerAvatar;
+let charMorphContainer;
+let charMorphTrigger;
+let btnCloseCharMorph;
+let charMorphPhoto;
+let charMorphName;
+let charMorphNotesBox;
+let charMorphNotesBadge;
+let charMorphNotesPreview;
+let charMorphNotesFull;
+let btnCharMorphEdit;
 let btnInputSettings;
 let inputSettingsPopover;
+
+export function getCharIdleStatus(character) {
+  if (!character) return 'Click to expand';
+  const notes = (character.creator_notes || character.authors_note || character.author_notes || character.comment || '').trim();
+  if (notes) {
+    const seen = localStorage.getItem('seen_an_hover_' + character.id);
+    return seen ? 'Click to expand' : "Author's Notes available";
+  }
+  return 'Click to expand';
+}
+
+export function resetCharStatus() {
+  if (!headerCharStatus) return;
+  headerCharStatus.classList.remove('generating');
+  headerCharStatus.textContent = getCharIdleStatus(appState.currentCharacter);
+}
+
+function extractPreviewNotes(text) {
+  if (!text) return 'No author\'s notes available.';
+  const trimmed = text.trim();
+  const match = trimmed.match(/(?:.*?[.!?]+(?:\s+|$)){1,2}/s);
+  if (match && match[0] && match[0].trim().length < trimmed.length) {
+    return match[0].trim();
+  }
+  return trimmed;
+}
+
+export function updateCharMorphCard(character) {
+  if (!charMorphContainer) return;
+
+  if (!character) {
+    if (charMorphPhoto) {
+      charMorphPhoto.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/>
+      </svg>`;
+    }
+    if (charMorphName) charMorphName.textContent = 'Select a character';
+    if (charMorphNotesPreview) charMorphNotesPreview.textContent = 'No character selected.';
+    if (charMorphNotesFull) charMorphNotesFull.textContent = 'No character selected.';
+    if (charMorphNotesBadge) charMorphNotesBadge.style.display = 'none';
+    return;
+  }
+
+  // Update photo
+  if (charMorphPhoto) {
+    if (character.avatar) {
+      charMorphPhoto.innerHTML = `<img src="${character.avatar}" alt="${escapeHtml(character.name)}">`;
+    } else {
+      charMorphPhoto.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/>
+      </svg>`;
+    }
+  }
+
+  // Update name
+  if (charMorphName) {
+    charMorphName.textContent = character.name;
+  }
+
+  // Update Author's Notes preview & full
+  const rawNotes = (character.creator_notes || character.authors_note || character.author_notes || character.comment || '').trim();
+  if (rawNotes) {
+    const settings = settingsStore.get();
+    const userName = appState.currentChat?.user_name || settings.user_name || 'User';
+    const notes = replaceCharUserMacros(rawNotes, character.name || 'Assistant', userName);
+    const previewNotes = extractPreviewNotes(notes);
+    if (charMorphNotesPreview) charMorphNotesPreview.innerHTML = renderMarkdown(previewNotes);
+    if (charMorphNotesFull) charMorphNotesFull.innerHTML = renderMarkdown(notes);
+    if (charMorphNotesBadge) {
+      charMorphNotesBadge.style.display = '';
+      charMorphNotesBadge.textContent = charMorphContainer.classList.contains('stage-full') ? 'Click to collapse' : 'Click to enlarge';
+    }
+  } else {
+    if (charMorphNotesPreview) charMorphNotesPreview.innerHTML = 'No author\'s notes available.';
+    if (charMorphNotesFull) charMorphNotesFull.innerHTML = 'No author\'s notes available.';
+    if (charMorphNotesBadge) {
+      charMorphNotesBadge.style.display = 'none';
+    }
+  }
+
+  // Measure text dimensions to accurately size collapsed pill without runaway growth
+  requestAnimationFrame(() => {
+    if (!charMorphContainer) return;
+    const nameEl = document.getElementById('header-char-name');
+    const statusEl = document.getElementById('header-char-status');
+    const nameW = nameEl ? nameEl.scrollWidth : 60;
+    const statusW = statusEl ? statusEl.scrollWidth : 60;
+    const textW = Math.max(Math.min(160, nameW), Math.min(180, statusW));
+    const collapsedWidth = Math.max(160, Math.min(270, textW + 74));
+    charMorphContainer.style.setProperty('--char-morph-collapsed-width', `${collapsedWidth}px`);
+  });
+}
+
+export function openCharMorph() {
+  if (!charMorphContainer || !appState.currentCharacter) return;
+  charMorphContainer.classList.remove('stage-full');
+  charMorphContainer.classList.add('open');
+  if (charMorphNotesBadge) charMorphNotesBadge.textContent = 'Click to enlarge';
+
+  if (appState.currentCharacter) {
+    localStorage.setItem('seen_an_hover_' + appState.currentCharacter.id, 'true');
+    if (headerCharStatus) {
+      headerCharStatus.textContent = 'Click to expand';
+    }
+  }
+}
+
+export function closeCharMorph() {
+  if (!charMorphContainer) return;
+  charMorphContainer.classList.remove('open', 'stage-full');
+  if (charMorphNotesBadge) charMorphNotesBadge.textContent = 'Click to enlarge';
+}
+
+export function toggleCharMorphFullStage() {
+  if (!charMorphContainer || !charMorphContainer.classList.contains('open')) return;
+  const rawNotes = (appState.currentCharacter?.creator_notes || appState.currentCharacter?.authors_note || appState.currentCharacter?.author_notes || appState.currentCharacter?.comment || '').trim();
+  if (!rawNotes) return;
+  const isFull = charMorphContainer.classList.contains('stage-full');
+  if (isFull) {
+    charMorphContainer.classList.remove('stage-full');
+    if (charMorphNotesBadge) charMorphNotesBadge.textContent = 'Click to enlarge';
+    if (charMorphNotesBox) charMorphNotesBox.title = 'Click to expand full Author\'s Notes';
+  } else {
+    charMorphContainer.classList.add('stage-full');
+    if (charMorphNotesBadge) charMorphNotesBadge.textContent = 'Click to collapse';
+    if (charMorphNotesBox) charMorphNotesBox.title = 'Click to collapse Author\'s Notes';
+  }
+}
 
 
 // ─── Context Indicator & Breakdown Modal DOM Elements ───────────────
@@ -370,6 +509,76 @@ export function initChat() {
   headerCharName = document.getElementById('header-char-name');
   headerCharStatus = document.getElementById('header-char-status');
   headerAvatar = document.getElementById('header-avatar');
+  charMorphContainer = document.getElementById('current-character-info');
+  charMorphTrigger = document.getElementById('char-morph-trigger');
+  btnCloseCharMorph = document.getElementById('btn-close-char-morph');
+  charMorphPhoto = document.getElementById('char-morph-photo');
+  charMorphName = document.getElementById('char-morph-name');
+  charMorphNotesBox = document.getElementById('char-morph-notes-box');
+  charMorphNotesBadge = document.getElementById('char-morph-notes-badge');
+  charMorphNotesPreview = document.getElementById('char-morph-notes-preview');
+  charMorphNotesFull = document.getElementById('char-morph-notes-full');
+  btnCharMorphEdit = document.getElementById('btn-char-morph-edit');
+
+  if (charMorphTrigger) {
+    charMorphTrigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!appState.currentCharacter) return;
+      if (charMorphContainer?.classList.contains('open')) {
+        closeCharMorph();
+      } else {
+        openCharMorph();
+      }
+    });
+  }
+
+  if (charMorphContainer) {
+    charMorphContainer.addEventListener('mouseenter', () => {
+      const char = appState.currentCharacter;
+      if (char) {
+        localStorage.setItem('seen_an_hover_' + char.id, 'true');
+        if (headerCharStatus && headerCharStatus.textContent === "Author's Notes available") {
+          headerCharStatus.textContent = 'Click to expand';
+        }
+      }
+    });
+
+    charMorphContainer.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+  }
+
+  if (btnCloseCharMorph) {
+    btnCloseCharMorph.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeCharMorph();
+    });
+  }
+
+  if (charMorphNotesBox) {
+    charMorphNotesBox.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleCharMorphFullStage();
+    });
+  }
+
+  if (btnCharMorphEdit) {
+    btnCharMorphEdit.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      closeCharMorph();
+      if (appState.currentCharacter) {
+        const { openCharacterEditor } = await import('./character-panel.js');
+        openCharacterEditor(appState.currentCharacter);
+      }
+    });
+  }
+
+  document.addEventListener('click', () => {
+    if (charMorphContainer?.classList.contains('open')) {
+      closeCharMorph();
+    }
+  });
+
   btnInputSettings = document.getElementById('btn-input-settings');
   inputSettingsPopover = document.getElementById('input-settings-popover');
 
@@ -1719,8 +1928,7 @@ export function startNewChat(character = null) {
     // but some apps randomize. We'll start with index 0 (primary).
     session.selected_greeting_index = 0;
 
-    let processedContent = content.replace(/\{\{user\}\}/gi, userName);
-    processedContent = processedContent.replace(/\{\{char\}\}/gi, char.name);
+    let processedContent = replaceCharUserMacros(content, char.name, userName);
 
     const msg = chatStore.addMessage('assistant', processedContent, null, session);
     characterStore.updateLastChat(char.id);
@@ -1796,7 +2004,7 @@ export async function selectCharacter(character, sessionId = null) {
     // Update header
     if (headerCharName) headerCharName.textContent = 'Select a character';
     if (headerCharStatus) {
-      headerCharStatus.textContent = 'Ready';
+      headerCharStatus.textContent = 'Click to expand';
       headerCharStatus.classList.remove('generating');
     }
     if (headerAvatar) {
@@ -1804,6 +2012,8 @@ export async function selectCharacter(character, sessionId = null) {
         <circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/>
       </svg>`;
     }
+    closeCharMorph();
+    updateCharMorphCard(null);
 
     // Clear messages
     if (messagesContainer) {
@@ -1846,7 +2056,8 @@ export async function selectCharacter(character, sessionId = null) {
 
   // Update header
   headerCharName.textContent = character.name;
-  headerCharStatus.textContent = 'Ready';
+  headerCharStatus.textContent = getCharIdleStatus(character);
+  headerCharStatus.classList.remove('generating');
 
   if (character.avatar) {
     headerAvatar.innerHTML = `<img src="${character.avatar}" alt="${escapeHtml(character.name)}">`;
@@ -1855,6 +2066,9 @@ export async function selectCharacter(character, sessionId = null) {
       <circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/>
     </svg>`;
   }
+
+  updateCharMorphCard(character);
+  closeCharMorph();
 
   // 1. Clear history list immediately to provide instant feedback
   const list = document.getElementById('chat-history-list');
@@ -2035,24 +2249,18 @@ async function sendMessage() {
 
   // If outgoing translation is enabled, translate first
   if (settings.translate_user_messages) {
-    headerCharStatus.textContent = 'Translating your message...';
-    headerCharStatus.classList.add('generating');
     const target = settings.outgoing_target_language || 'English';
     const translated = await performStreamingTranslation(userContentEl, content, target);
     if (translated) {
       chatStore.updateMessage(userMsg.id, { translated_content: translated });
       await chatStore.saveSession(session);
     }
-    headerCharStatus.textContent = 'Ready';
-    headerCharStatus.classList.remove('generating');
   }
 
   // Start generation
   appState.isGenerating = true;
   appState.abortController = new AbortController();
   setChatActionState('stop');
-  headerCharStatus.textContent = 'Generating...';
-  headerCharStatus.classList.add('generating');
 
   // Build messages array for API (will use translated_content for user messages if available)
   const apiMessages = await buildApiMessages(character, session);
@@ -2374,10 +2582,6 @@ async function sendMessage() {
 
             // Auto-translation (AI response)
             if (settings.auto_translate && originalContent) {
-              if (headerCharStatus) {
-                headerCharStatus.textContent = 'Translating...';
-                headerCharStatus.classList.add('generating');
-              }
               translatedContent = await performStreamingTranslation(contentEl, originalContent, settings.target_language);
             }
 
@@ -2469,8 +2673,7 @@ async function sendMessage() {
             appState.abortController = null;
             setChatActionState('send');
             if (headerCharStatus) {
-              headerCharStatus.textContent = 'Ready';
-              headerCharStatus.classList.remove('generating');
+              resetCharStatus();
             }
             updateChatHistory();
             updateRegenerateVisibility();
@@ -2525,8 +2728,7 @@ async function sendMessage() {
           appState.isGenerating = false;
           appState.abortController = null;
           setChatActionState('send');
-          headerCharStatus.textContent = isAborted ? 'Ready' : 'Error';
-          headerCharStatus.classList.remove('generating');
+          resetCharStatus();
           updateContextIndicator();
         }
         window.dispatchEvent(new CustomEvent('genai-chat-response-finished', { detail: { error: err?.message } }));
@@ -2840,10 +3042,27 @@ async function computeContextAndTrimHistory(character, session, signal = null) {
     if (!tokenObj.precise) pinnedTokensPrecise = false;
   }
 
+  // 5b. Count tokens for Post-History Instructions (PHI)
+  const rawPhi = character.post_history_instructions || character.post_history_instruction || '';
+  let phiTokens = 0;
+  let phiText = '';
+  let phiTokensPrecise = true;
+  if (rawPhi && rawPhi.trim()) {
+    phiText = replaceCharUserMacros(rawPhi.trim(), character.name || 'Assistant', userName);
+    const phiKey = `phi_${character.id}_${phiText.length}`;
+    let phiTokensObj = tokenCountCache.get(phiKey);
+    if (phiTokensObj === undefined) {
+      phiTokensObj = await api.countTokensDetailed(phiText, signal);
+      tokenCountCache.set(phiKey, phiTokensObj);
+    }
+    phiTokens = phiTokensObj.value;
+    if (!phiTokensObj.precise) phiTokensPrecise = false;
+  }
+
   // 6. Sliding Window Calculation
   const maxTokensSetting = settings.max_tokens || 2048;
   const safetyBuffer = 100;
-  const basePromptTokens = charTokens + systemTokens + memoryTokens + summaryTokens + pinnedTokens;
+  const basePromptTokens = charTokens + systemTokens + memoryTokens + summaryTokens + pinnedTokens + phiTokens;
   const totalPromptBudget = maxContext - maxTokensSetting - safetyBuffer;
 
   // Determine sliding window start: after last chunk's endMsgId, or from index KEEP_FIRST
@@ -2930,6 +3149,11 @@ async function computeContextAndTrimHistory(character, session, signal = null) {
       const contentText = msg.role === 'user' ? (msg.translated_content || msg.content) : (msg.original_text || msg.content);
       msgs.push({ role: msg.role, content: contentText });
     }
+
+    if (phiText) {
+      msgs.push({ role: 'system', content: phiText });
+    }
+
     return msgs;
   };
 
@@ -2969,6 +3193,7 @@ async function computeContextAndTrimHistory(character, session, signal = null) {
                      systemTokensObj.precise &&
                      summaryTokensObj.precise &&
                      pinnedTokensPrecise &&
+                     phiTokensPrecise &&
                      trimmedMessages.every(msg => {
                        const contentText = msg.role === 'user' ? (msg.translated_content || msg.content) : (msg.original_text || msg.content);
                        const cachedItem = tokenCountCache.get(`msg_${msg.id}_${contentText.length}`);
@@ -2982,6 +3207,8 @@ async function computeContextAndTrimHistory(character, session, signal = null) {
     charText,
     systemTokens,
     systemText: systemContentPure,
+    phiTokens,
+    phiText,
     memoryTokens,
     memoryText,
     summaryTokens,
@@ -3088,8 +3315,7 @@ async function buildApiMessages(character, session) {
   }
 
   // Replace placeholders
-  systemContent = systemContent.replace(/\{\{user\}\}/gi, userName);
-  systemContent = systemContent.replace(/\{\{char\}\}/gi, character.name);
+  systemContent = replaceCharUserMacros(systemContent, character.name, userName);
 
   const personaId = session.persona_id || settings.active_persona_id || 'default';
   const personas = settings.personas || [];
@@ -3097,7 +3323,7 @@ async function buildApiMessages(character, session) {
 
   // Inject persona description if active
   if (activePersona && activePersona.description) {
-    let personaStr = activePersona.description.replace(/\{\{user\}\}/gi, userName).replace(/\{\{char\}\}/gi, character.name);
+    let personaStr = replaceCharUserMacros(activePersona.description, character.name, userName);
     systemContent += `\n\n[USER PERSONA]\nThe user's persona is as follows. Treat the user as this persona:\n${personaStr}`;
   }
 
@@ -3182,7 +3408,7 @@ Before answering, you must use your internal monologue channel.
       const matchedEntries = lorebookStore.scanText(textToScan, activeBooks);
       if (matchedEntries.length > 0) {
         console.log(`[Lorebooks] Activated ${matchedEntries.length} entries.`);
-        const lorebookText = matchedEntries.map(e => e.content).join('\n\n');
+        const lorebookText = matchedEntries.map(e => replaceCharUserMacros(e.content, character.name || 'Assistant', userName)).join('\n\n');
         messages.push({ role: 'system', content: `[World Info / Lorebook Context]\n${lorebookText}` });
       }
     }
@@ -3244,6 +3470,12 @@ Before answering, you must use your internal monologue channel.
         }
       }
     }
+  }
+  // ─── POST-HISTORY INSTRUCTIONS (PHI) ──────────────────────────────
+  // Injected after history at depth 0, right before generation / reasoning prefill
+  const phiContent = (result && result.phiText) ? result.phiText : (character.post_history_instructions ? replaceCharUserMacros(character.post_history_instructions.trim(), character.name || 'Assistant', userName) : '');
+  if (phiContent) {
+    messages.push({ role: 'system', content: phiContent });
   }
 
   // FORCE REASONING PREFILL
@@ -3442,9 +3674,6 @@ function appendMessage(msg, isStreaming = false, character = null) {
       return;
     }
 
-    headerCharStatus.textContent = 'Translating message...';
-    headerCharStatus.classList.add('generating');
-
     // Ensure spans exist for the replacement effect
     if (!contentEl.querySelector('.word-blur')) {
       const displayContent = (msg.translated_content && !msg.show_original) ? msg.translated_content : msg.content;
@@ -3459,9 +3688,6 @@ function appendMessage(msg, isStreaming = false, character = null) {
       chatStore.updateMessage(msg.id, { translated_content: translated, show_original: false });
       await chatStore.saveSession(appState.currentChat);
     }
-
-    headerCharStatus.textContent = 'Ready';
-    headerCharStatus.classList.remove('generating');
   });
 
   // Copy button
@@ -3563,8 +3789,7 @@ async function swipeGreeting(messageId, direction) {
   const newContent = greetings[currentIdx];
   const settings = settingsStore.get();
   const userName = settings.user_name || 'User';
-  let processedContent = newContent.replace(/\{\{user\}\}/gi, userName);
-  processedContent = processedContent.replace(/\{\{char\}\}/gi, char.name);
+  let processedContent = replaceCharUserMacros(newContent, char.name, userName);
 
   // Update store
   chatStore.updateMessage(messageId, { content: processedContent, translated_content: null });
@@ -3868,8 +4093,6 @@ async function triggerAssistantGeneration() {
   window.dispatchEvent(new CustomEvent('character-list-updated'));
 
   setChatActionState('stop');
-  headerCharStatus.textContent = 'Generating...';
-  headerCharStatus.classList.add('generating');
 
   // Build messages
   const apiMessages = await buildApiMessages(character, session);
@@ -4152,10 +4375,6 @@ async function triggerAssistantGeneration() {
 
             let translatedContent = null;
             if (settings.auto_translate && originalContent) {
-              if (headerCharStatus) {
-                headerCharStatus.textContent = 'Translating...';
-                headerCharStatus.classList.add('generating');
-              }
               translatedContent = await performStreamingTranslation(contentEl, originalContent, settings.target_language);
             }
 
@@ -4243,8 +4462,7 @@ async function triggerAssistantGeneration() {
             appState.abortController = null;
             setChatActionState('send');
             if (headerCharStatus) {
-              headerCharStatus.textContent = 'Ready';
-              headerCharStatus.classList.remove('generating');
+              resetCharStatus();
             }
             updateChatHistory();
             updateRegenerateVisibility();
@@ -4297,8 +4515,7 @@ async function triggerAssistantGeneration() {
         appState.isGenerating = false;
         appState.abortController = null;
         setChatActionState('send');
-        headerCharStatus.textContent = isAborted ? 'Ready' : 'Error';
-        headerCharStatus.classList.remove('generating');
+        resetCharStatus();
       },
       apiOptions,
       // onThinkingChunk (delta.reasoning_content from KoboldCpp thinking models)
@@ -5368,8 +5585,6 @@ async function triggerAutomaticImageGeneration(character, session, assistantRepl
 
   if (appState.currentCharacter?.id === character.id) {
     setChatActionState('stop');
-    headerCharStatus.textContent = 'Generating illustration...';
-    headerCharStatus.classList.add('generating');
   }
 
   // Preserve the original text of the message so we can restore/append cleanly
@@ -5521,8 +5736,7 @@ You MUST respond strictly in the following JSON format. Output ONLY raw JSON, do
       appState.isGenerating = false;
       appState.abortController = null;
       setChatActionState('send');
-      headerCharStatus.textContent = 'Ready';
-      headerCharStatus.classList.remove('generating');
+      resetCharStatus();
       updateRegenerateVisibility();
       scrollToBottom();
     } else {
@@ -5694,8 +5908,6 @@ async function triggerAutomaticImageGenerationWithPrompt(character, session, msg
 
   if (appState.currentCharacter?.id === character.id) {
     setChatActionState('stop');
-    headerCharStatus.textContent = 'Generating illustration...';
-    headerCharStatus.classList.add('generating');
   }
 
   if (!msg.original_text) msg.original_text = msg.content;
@@ -5707,8 +5919,7 @@ async function triggerAutomaticImageGenerationWithPrompt(character, session, msg
       appState.isGenerating = false;
       appState.abortController = null;
       setChatActionState('send');
-      headerCharStatus.textContent = 'Ready';
-      headerCharStatus.classList.remove('generating');
+      resetCharStatus();
       updateRegenerateVisibility();
       scrollToBottom();
     } else {
@@ -6126,6 +6337,8 @@ export async function updateContextIndicator(debounce = false, forceRecalculate 
     charText: result.charText,
     systemTokens: result.systemTokens,
     systemText: result.systemText,
+    phiTokens: result.phiTokens || 0,
+    phiText: result.phiText || '',
     memoryTokens: result.memoryTokens,
     memoryText: result.memoryText,
     summaryTokens: result.summaryTokens,
@@ -6183,22 +6396,29 @@ export async function populateContextDetailsModal(session) {
 
   // 2. Set bar widths
   const getPercent = (val) => `${(val / breakdown.maxContext) * 100}%`;
+  const totalSystemTokens = breakdown.systemTokens + (breakdown.phiTokens || 0);
   if (barCharCard) barCharCard.style.width = getPercent(breakdown.charTokens);
-  if (barSystemPrompt) barSystemPrompt.style.width = getPercent(breakdown.systemTokens);
+  if (barSystemPrompt) barSystemPrompt.style.width = getPercent(totalSystemTokens);
   if (barMemoryContext) barMemoryContext.style.width = getPercent(breakdown.memoryTokens);
   if (barAutoSummary) barAutoSummary.style.width = getPercent(breakdown.summaryTokens || 0);
   if (barChatHistory) barChatHistory.style.width = getPercent(breakdown.historyTokens);
 
   // 3. Update legend values
   if (legendCharCard) legendCharCard.textContent = `${breakdown.charTokens}t`;
-  if (legendSystemPrompt) legendSystemPrompt.textContent = `${breakdown.systemTokens}t`;
+  if (legendSystemPrompt) legendSystemPrompt.textContent = `${totalSystemTokens}t`;
   if (legendMemoryContext) legendMemoryContext.textContent = `${breakdown.memoryTokens}t`;
   if (legendAutoSummary) legendAutoSummary.textContent = `${breakdown.summaryTokens || 0}t`;
   if (legendChatHistory) legendChatHistory.textContent = `${breakdown.fullHistoryTokens || breakdown.historyTokens}t`;
 
   // 4. Update accordion badges
   if (badgeDetailsChar) badgeDetailsChar.textContent = `${breakdown.charTokens} tokens`;
-  if (badgeDetailsSystem) badgeDetailsSystem.textContent = `${breakdown.systemTokens} tokens`;
+  if (badgeDetailsSystem) {
+    if (breakdown.phiTokens > 0) {
+      badgeDetailsSystem.textContent = `${totalSystemTokens} tokens (${breakdown.systemTokens} prompt + ${breakdown.phiTokens} post-history)`;
+    } else {
+      badgeDetailsSystem.textContent = `${breakdown.systemTokens} tokens`;
+    }
+  }
   if (badgeDetailsMemory) badgeDetailsMemory.textContent = `${breakdown.memoryTokens} tokens`;
   if (badgeDetailsSummary) badgeDetailsSummary.textContent = `${breakdown.summaryTokens || 0} tokens`;
   if (badgeDetailsHistory) {
@@ -6251,7 +6471,11 @@ export async function populateContextDetailsModal(session) {
 
   // 5. Update content texts
   if (contentDetailsChar) contentDetailsChar.textContent = breakdown.charText || '(No character description fields configured)';
-  if (contentDetailsSystem) contentDetailsSystem.textContent = breakdown.systemText || '(No system prompt or rules configured)';
+  let systemDisplayText = breakdown.systemText || '(No system prompt or rules configured)';
+  if (breakdown.phiText) {
+    systemDisplayText += `\n\n--- Post-History Instructions (${breakdown.phiTokens || 0} tokens) ---\n${breakdown.phiText}`;
+  }
+  if (contentDetailsSystem) contentDetailsSystem.textContent = systemDisplayText;
   if (contentDetailsMemory) contentDetailsMemory.textContent = breakdown.memoryText || '(No memory context active)';
 
   // 6. Render summary chunks list

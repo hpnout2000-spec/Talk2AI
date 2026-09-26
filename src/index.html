@@ -352,7 +352,7 @@
                   <line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>
                 </svg>
               </button>
-              <div id="current-character-info" class="current-character-info">
+              <div id="current-character-info" class="current-character-info" title="Character details">
                 <div class="cloud-progressive-blur" aria-hidden="true">
                   <span class="c-layer c-layer--1"></span>
                   <span class="c-layer c-layer--2"></span>
@@ -360,14 +360,62 @@
                   <span class="c-layer c-layer--4"></span>
                   <span class="c-layer c-layer--5"></span>
                 </div>
-                <div id="header-avatar" class="header-avatar">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                    <circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/>
-                  </svg>
+                <!-- Trigger Pill (Collapsed State) -->
+                <div id="char-morph-trigger" class="char-morph-trigger">
+                  <div id="header-avatar" class="header-avatar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                      <circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/>
+                    </svg>
+                  </div>
+                  <div class="char-morph-trigger-text">
+                    <div id="header-char-name" class="header-char-name">Select a character</div>
+                    <div id="header-char-status" class="header-char-status">Click to expand</div>
+                  </div>
                 </div>
-                <div>
-                  <div id="header-char-name" class="header-char-name">Select a character</div>
-                  <div id="header-char-status" class="header-char-status">Ready</div>
+
+                <!-- Expanded Content View (2-Stage Morphing Card) -->
+                <div id="char-morph-popover" class="char-morph-content">
+                  <div class="char-morph-header">
+                    <span class="char-morph-title">Character Info</span>
+                    <button id="btn-close-char-morph" class="btn-close-morph" type="button" title="Close">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;">
+                        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                      </svg>
+                    </button>
+                  </div>
+
+                  <!-- Character Top Photo & Identity -->
+                  <div class="char-morph-banner-wrap">
+                    <div id="char-morph-photo" class="char-morph-photo">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/>
+                      </svg>
+                    </div>
+                    <div id="char-morph-name" class="char-morph-name">Select a character</div>
+                  </div>
+
+                  <!-- Author's Notes Interactive Box (Click to expand/collapse full notes) -->
+                  <div id="char-morph-notes-box" class="char-morph-notes-box" title="Click to expand full Author's Notes">
+                    <div class="char-morph-notes-header">
+                      <span class="char-morph-notes-tag">Author's Notes</span>
+                      <span id="char-morph-notes-badge" class="char-morph-notes-badge">Click to enlarge</span>
+                    </div>
+                    <div class="char-morph-notes-body">
+                      <div id="char-morph-notes-preview" class="char-morph-notes-preview">No author's notes available.</div>
+                      <div id="char-morph-notes-full" class="char-morph-notes-full">No author's notes available.</div>
+                    </div>
+                  </div>
+
+                  <!-- Card Action Footer -->
+                  <div class="char-morph-actions">
+                    <button id="btn-char-morph-edit" type="button" class="btn-secondary small" title="Open Character Editor">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px; margin-right: 5px;">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                      </svg>
+                      Edit Character
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1639,8 +1687,21 @@
               <textarea id="char-scenario" rows="2" placeholder="Current scenario/setting..."></textarea>
             </div>
             <div class="form-group">
-              <label for="char-system-prompt">System Prompt</label>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <label for="char-system-prompt" style="margin: 0;">System Prompt</label>
+                <span id="char-system-prompt-token-count" style="font-size: 11px; color: var(--text-tertiary); font-family: var(--font-mono, monospace);"></span>
+              </div>
               <textarea id="char-system-prompt" rows="4" placeholder="Full system prompt for the LLM..."></textarea>
+            </div>
+            <div class="form-group">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <label for="char-post-history-instructions" style="margin: 0; font-weight: 600;">Post-History Instructions</label>
+                <span id="char-phi-token-count" style="font-size: 11px; color: var(--text-tertiary); font-family: var(--font-mono, monospace);"></span>
+              </div>
+              <small style="color: var(--text-tertiary); font-size: 11px; margin-bottom: 6px; display: block;">
+                Authoritative instructions injected at the end of context after chat history (SillyTavern post_history_instructions / jailbreak).
+              </small>
+              <textarea id="char-post-history-instructions" rows="4" placeholder="Instructions injected after chat history (e.g. formatting constraints, behavior guidelines, jailbreak)..."></textarea>
             </div>
             <div class="form-group">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
@@ -1655,6 +1716,13 @@
                 Dialogue examples demonstrate speech style. Use <code>&lt;START&gt;</code> to separate dialogue scenes.
               </small>
               <textarea id="char-message-examples" rows="6" style="font-family: var(--font-mono, monospace); font-size: 12px; line-height: 1.4;" placeholder="<START>&#10;{{user}}: Hello, how are you?&#10;{{char}}: *smiles* I'm doing great! How can I help you today?&#10;<START>&#10;{{user}}: Can you assist me?&#10;{{char}}: Of course! Lead the way."></textarea>
+            </div>
+            <div class="form-group">
+              <label for="char-creator-notes">Author's Notes</label>
+              <small style="color: var(--text-tertiary); font-size: 11px; margin-bottom: 6px; display: block;">
+                Creator / Author commentary, roleplay advice, and notes (SillyTavern creator_notes).
+              </small>
+              <textarea id="char-creator-notes" rows="3" placeholder="Notes from the character creator, roleplay guidelines..."></textarea>
             </div>
             <div class="form-group">
               <label for="char-first-message">First Message</label>

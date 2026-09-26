@@ -30,6 +30,8 @@ export const characterStore = {
       if (result) {
         parsedTauri = JSON.parse(result).map(c => ({
           ...c,
+          creator_notes: c.creator_notes || c.authors_note || c.author_notes || c.comment || '',
+          post_history_instructions: c.post_history_instructions || c.post_history_instruction || '',
           last_chat_at: c.last_chat_at || c.created_at || new Date().toISOString()
         }));
       }
@@ -43,6 +45,8 @@ export const characterStore = {
       if (saved) {
         parsedLocal = JSON.parse(saved).map(c => ({
           ...c,
+          creator_notes: c.creator_notes || c.authors_note || c.author_notes || c.comment || '',
+          post_history_instructions: c.post_history_instructions || c.post_history_instruction || '',
           last_chat_at: c.last_chat_at || c.created_at || new Date().toISOString()
         }));
       }
@@ -61,7 +65,17 @@ export const characterStore = {
         const tauriTime = new Date(c.last_chat_at || 0).getTime();
         const localTime = new Date(localChar.last_chat_at || 0).getTime();
         if (tauriTime > localTime) {
-          mergedMap.set(c.id, c);
+          mergedMap.set(c.id, {
+            ...c,
+            creator_notes: c.creator_notes || localChar.creator_notes || '',
+            post_history_instructions: c.post_history_instructions || localChar.post_history_instructions || ''
+          });
+        } else {
+          mergedMap.set(c.id, {
+            ...localChar,
+            creator_notes: localChar.creator_notes || c.creator_notes || '',
+            post_history_instructions: localChar.post_history_instructions || c.post_history_instructions || ''
+          });
         }
       } else {
         mergedMap.set(c.id, c);
@@ -69,6 +83,9 @@ export const characterStore = {
     });
 
     characters = Array.from(mergedMap.values());
+    try {
+      localStorage.setItem('llmchat_characters', JSON.stringify(characters));
+    } catch (e) {}
 
     return characters;
   },
@@ -97,11 +114,13 @@ export const characterStore = {
       image_tags: characterData.image_tags || '',
       scenario: characterData.scenario || '',
       system_prompt: characterData.system_prompt || '',
+      post_history_instructions: characterData.post_history_instructions || '',
       first_message: characterData.first_message || '',
       alternate_greetings: characterData.alternate_greetings || [],
       created_at: characterData.created_at || new Date().toISOString(),
       last_chat_at: characterData.last_chat_at || characterData.created_at || new Date().toISOString(),
       message_examples: characterData.message_examples || '',
+      creator_notes: characterData.creator_notes || '',
     };
 
     if (isNew) {

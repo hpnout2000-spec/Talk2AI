@@ -581,7 +581,10 @@ export const settingsStore = {
           const defaultIds = DEFAULTS.generation_presets.map(p => p.id);
           const userPresets = parsed.generation_presets.filter(p => !defaultIds.includes(p.id));
           parsed.generation_presets = [
-            ...DEFAULTS.generation_presets,
+            ...DEFAULTS.generation_presets.map(def => {
+              const saved = parsed.generation_presets.find(p => p.id === def.id);
+              return saved ? { ...def, ...saved } : def;
+            }),
             ...userPresets
           ];
         }
@@ -611,7 +614,10 @@ export const settingsStore = {
             const defaultIds = DEFAULTS.generation_presets.map(p => p.id);
             const userPresets = parsed.generation_presets.filter(p => !defaultIds.includes(p.id));
             parsed.generation_presets = [
-              ...DEFAULTS.generation_presets,
+              ...DEFAULTS.generation_presets.map(def => {
+                const saved = parsed.generation_presets.find(p => p.id === def.id);
+                return saved ? { ...def, ...saved } : def;
+              }),
               ...userPresets
             ];
           }
