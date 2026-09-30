@@ -399,12 +399,6 @@ async function init() {
     });
   }
 
-  // Global click-outside handler for name popover
-  document.addEventListener('click', (e) => {
-    if (userNamePopover && !userNamePopover.contains(e.target) && !btnSetName.contains(e.target)) {
-      userNamePopover.classList.add('hidden');
-    }
-  });
 
   // Load characters and books
   const characters = await characterStore.load();

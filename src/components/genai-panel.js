@@ -59,6 +59,7 @@ creatorTabsList.forEach(tab => { creatorState[tab] = { facts: [], text: '' }; })
 
 // ─── Skill Creator State ─────────────────────────────────────────────
 let isSkillCreatorMode = false;
+const COGNITIVE_ACTIONS = ['recall_memories', 'save_to_smart_context'];
 
 // ─── DOM refs ───────────────────────────────────────────────────────
 let messagesEl, inputEl, sendBtn, stopBtn, clearBtn, closeBtn, fullscreenBtn, brushBtn;
@@ -254,8 +255,9 @@ STEP-BY-STEP SEARCH WORKFLOW FOR CHARACTER/CHAT ACTIONS (IMPORTANT! FIRST, YOU M
 4. Switch/Execute: Once you have the real retrieved ID from the tool result, execute the final action (like switch_chat, delete_memory, rename_chat, etc.).
 
 SPEECH & FORMAT RULES:
-1. 1-10 WORD PREEMPTIVE HEADS-UP: Before you send a JSON action, you may notify the user. This status preamble MUST be extremely brief (strictly 1-4 words maximum), written in the EXACT same language as the user's latest query, and must be informative, reflecting what exactly you are going to search for or do.
-   * Good: "Got it! let me search it..."
+1. 1-10 WORD PREEMPTIVE HEADS-UP (EXCEPT THE recall_memories AND save_to_smart_context: YOU MUST EXECUTE THEM BEFORE ANYTHING ELSE): Before you send a JSON action, you may notify the user. This status preamble MUST be extremely brief (strictly 1-4 words maximum), written in the EXACT same language as the user's latest query, and must be informative, reflecting what exactly you are going to search for or do.
+   * STRICT PROHIBITION FOR recall_memories AND save_to_smart_context: You are STRICTLY FORBIDDEN from writing ANY words, preamble, status message, introduction, or text before executing {"genai_action":"recall_memories",...} or {"genai_action":"save_to_smart_context"}. For these two commands, you must output the JSON action IMMEDIATELY as the very first text with ZERO preamble or words before it!
+   * Good (for other tools): "Got it! let me search it..."
 2. JSON ACTION FORMAT: Emitting a JSON action is your way of calling functions. Emitted JSON must be on its own line. STOP generating immediately after outputting a JSON block — do not write any text after the JSON object.
 3. Since you're an adaptive AI, embrace the character, if you think user wants you to. At the end of your response, decide for yourself whether a follow-up or conclusion is actually needed; if you decide to include one, make it subtle, playful, and implicit rather than an explicit or forced question.
 4. Do NOT write or mention about ID to user.
@@ -273,6 +275,7 @@ SPEECH & FORMAT RULES:
 
 SPECIAL Directives:
 - personal memory system: You can add_memory, delete_memory, and list_memories.
+- Advanced Personalization & Smart Context: When the user asks to remember past discussions, refers to previous conversations/topics, or when you need relevant context from previous chats to give a personalized answer, execute {"genai_action":"recall_memories","query":"..."} to actively retrieve summaries from your long-term memory. When the user asks you to remember/memorize the current chat or when important conclusions are reached, execute {"genai_action":"save_to_smart_context"} to permanently summarize and index this conversation into Smart Context. CRITICAL: Never output any words or preamble before these two actions; emit the JSON action immediately on a clean line with zero text before it.
 - Group Chats: You can manage groups and response modes. Do not switch to group chats unless explicitly asked.
 - Game GM Mode: You can interact with games and actions.
 - Application Settings: If the user asks about settings, wants to inspect current settings, or wants to change settings, you MUST read the "App Settings.json" skill by executing {"genai_action":"read_skill","filename":"App Settings.json"} to get the list of available settings, their keys, descriptions, and current values.
@@ -648,6 +651,18 @@ ${settings.genai_viewimage_enabled ? `
     - Do NOT use JSON format for this command, output it inline as text. The system will automatically attach the image to your next request so you can analyze it.
 ` : ''}
 
+
+34. recall_memories: Actively search past conversations and chat summaries in your long-term Smart Context memory.
+    - When to use: When the user asks about past conversations, refers to previous chats/topics/projects, asks "what did we talk about before?", or when you need relevant context from previous chats to give a personalized and accurate response.
+    - Parameters:
+      - "query": string (required) - search terms, key concepts, or question to look up in past chat summaries.
+      - "tags": array of strings (optional) - topic tags or keywords.
+    - Example: {"genai_action":"recall_memories","query":"PostgreSQL architecture discussion"}
+
+35. save_to_smart_context: Summarize and permanently save the current conversation into your Smart Context long-term memory.
+    - When to use: When the user asks you to remember or save this conversation, or when important conclusions, code decisions, or facts were reached that should be remembered in future chats.
+    - Parameters: None.
+    - Example: {"genai_action":"save_to_smart_context"}
 
 44. add_char_fact: Add a numbered fact to a specific character creation tab.
     - When to use: When the user provides a detail about the character in Character Creation mode.
@@ -2663,6 +2678,108 @@ async function executeTool(action, onStatus = null, onPreview = null, onComplete
   }
 
 
+  if (name === 'recall_memories') {
+    const query = action.query || '';
+    let searchStr = query;
+    if (Array.isArray(action.tags) && action.tags.length > 0) {
+      searchStr += ' ' + action.tags.join(' ');
+    }
+    searchStr = searchStr.trim();
+    if (!searchStr) {
+      return { error: 'Search query is empty.' };
+    }
+
+    try {
+      let results = [];
+      try {
+        results = await genaiEmbeddingsStore.search(searchStr, {
+          topK: 6,
+          threshold: 0.22,
+          maxPerSession: 2,
+          excludeSessionId: currentGenaiSessionId
+        });
+      } catch (embErr) {
+        console.warn('Embeddings search error, fallback to keyword matching:', embErr);
+      }
+
+      let memories = [];
+      if (results && results.length > 0) {
+        memories = results.map(r => {
+          const pastSession = (genaiSessions || []).find(s => String(s.id) === String(r.session_id));
+          return {
+            chat_title: pastSession?.title || 'Past Chat',
+            date: pastSession?.updated_at ? new Date(pastSession.updated_at).toLocaleDateString() : undefined,
+            summary: r.text
+          };
+        });
+      }
+
+      // If embeddings returned 0 results, search genaiSessions by keywords / tags
+      if (memories.length === 0 && genaiSessions && genaiSessions.length > 0) {
+        const queryTerms = searchStr.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+        const otherSessions = genaiSessions.filter(s => String(s.id) !== String(currentGenaiSessionId) && s.summary && !s.smart_context_disabled);
+        const matches = [];
+        for (const s of otherSessions) {
+          const hay = ((s.title || '') + ' ' + (s.summary || '') + ' ' + (s.summary_chunks || []).join(' ')).toLowerCase();
+          const matchCount = queryTerms.filter(t => hay.includes(t)).length;
+          if (matchCount > 0) {
+            matches.push({ session: s, score: matchCount });
+          }
+        }
+        matches.sort((a, b) => b.score - a.score);
+        memories = matches.slice(0, 6).map(m => ({
+          chat_title: m.session.title || 'Past Chat',
+          date: m.session.updated_at ? new Date(m.session.updated_at).toLocaleDateString() : undefined,
+          summary: m.session.summary
+        }));
+      }
+
+      const count = memories.length;
+      return {
+        success: true,
+        query: searchStr,
+        count: count,
+        found: count,
+        memories: memories,
+        message: count > 0 ? `Found ${count} past chat summaries.` : 'No relevant past chat summaries found.'
+      };
+    } catch (err) {
+      console.error('recall_memories failed:', err);
+      return { error: err.message || String(err) };
+    }
+  }
+
+  if (name === 'save_to_smart_context') {
+    let session = (genaiSessions || []).find(s => String(s.id) === String(currentGenaiSessionId));
+    if (!session) {
+      session = ensureGenaiSession();
+    }
+
+    try {
+      saveHistory(); // Ensure session.messages is up to date
+
+      const { updateSessionSummaryIfNeeded } = await import('./genai-smart-context-mgr.js');
+      await updateSessionSummaryIfNeeded(session, true);
+
+      if (window.renderSmartContextChats) {
+        window.renderSmartContextChats();
+      }
+      if (window.renderRecentChatsList) {
+        window.renderRecentChatsList();
+      }
+
+      return {
+        success: true,
+        session_id: session.id,
+        title: session.title || 'Current Chat',
+        summary: session.summary || 'Summary generated and saved successfully.'
+      };
+    } catch (err) {
+      console.error('save_to_smart_context failed:', err);
+      return { error: err.message || String(err) };
+    }
+  }
+
   if (name === 'silent') {
     return { silent: true };
   }
@@ -2722,6 +2839,11 @@ function resultBadgeForAction(action, result) {
   // Web Browser tool badges
   if (name === 'web_search') return actionBadgeHtml('result-data', '', `Web Search · completed for "${action.query}"`);
   if (name === 'web_fetch') return actionBadgeHtml('result-data', '', `Web Fetch · completed for "${action.url}"`);
+  if (name === 'recall_memories') {
+    const count = result?.count ?? result?.found ?? (result?.memories?.length) ?? 0;
+    return actionBadgeHtml('result-data', '', `Memories · Recalled ${count} past summaries`);
+  }
+  if (name === 'save_to_smart_context') return actionBadgeHtml('result-data', '', `Smart Context · Saved conversation`);
 
   if (name === 'ImageRed' || name === 'analyze_image') {
     const isVision = name === 'analyze_image';
@@ -3159,6 +3281,13 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
     });
   }
 
+  const hasFinishedOrPendingTool = entry.tools && entry.tools.some(t => t.state !== 'working' && !COGNITIVE_ACTIONS.includes(t.action?.genai_action));
+  const hasUserText = content
+    .replace(/\[\[GENAI_TOOL_\d+\]\]/g, '')
+    .replace(/\[\[THINKING_BLOCK(_\d+)?\]\]/g, '')
+    .trim().length > 0;
+  const isThinkingOnly = !hasUserText && !hasFinishedOrPendingTool;
+
   const renderSectionHtml = (sectionText, isProcessSection = false) => {
     let sHtml = '';
     const normalizedSectionText = sectionText
@@ -3172,7 +3301,7 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
       if (!isProcessSection && entry.thinking_blocks[0] && !tempText.includes('[[THINKING_BLOCK_0]]')) {
         const isBlock0Active = (entry.thinking_blocks.length === 1 && (isInThinking || entry.isInThinking) && streaming);
         const time0 = isBlock0Active ? (entry.thinking_time || 0) : (entry.thinking_time_blocks ? (entry.thinking_time_blocks[0] || 0) : (entry.thinking_time || 0));
-        sHtml += createThinkingBlockHTML(entry.thinking_blocks[0], isBlock0Active, settings.glm47_support, time0, entry.resolved_effort || settings.genai_reasoning_effort);
+        sHtml += createThinkingBlockHTML(entry.thinking_blocks[0], isBlock0Active, settings.glm47_support, time0, entry.resolved_effort || settings.genai_reasoning_effort, null, isBlock0Active ? (entry.cognitive_state || '') : '');
       } else if (isProcessSection && entry.thinking_blocks[0] && !tempText.includes('[[THINKING_BLOCK_0]]')) {
         const time0 = entry.thinking_time_blocks ? (entry.thinking_time_blocks[0] || 0) : (entry.thinking_time || 0);
         sHtml += createThinkingBlockHTML(entry.thinking_blocks[0], false, settings.glm47_support, time0, entry.resolved_effort || settings.genai_reasoning_effort);
@@ -3183,6 +3312,16 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
       for (let p = 0; p < entry.thinking_blocks.length; p++) {
         const marker = `[[THINKING_BLOCK_${p}]]`;
         if (markdownHtml.includes(marker)) {
+          const isPriorCognitiveBlock = !isProcessSection && streaming && isThinkingOnly && (p < entry.thinking_blocks.length - 1);
+          if (isPriorCognitiveBlock) {
+            markdownHtml = markdownHtml.split('<p>' + marker + '</p>').join('');
+            markdownHtml = markdownHtml.split('<p>\n' + marker + '\n</p>').join('');
+            markdownHtml = markdownHtml.split('<p>\r\n' + marker + '\r\n</p>').join('');
+            markdownHtml = markdownHtml.replace(new RegExp('<p>\\s*' + marker.replace(/\[/g, '\\[').replace(/\]/g, '\\]') + '\\s*<\\/p>', 'g'), marker);
+            markdownHtml = markdownHtml.split(marker).join('');
+            continue;
+          }
+
           const isThisBlockActive = !isProcessSection && (p === entry.thinking_blocks.length - 1) && (isInThinking || entry.isInThinking) && streaming;
           const blockTime = entry.thinking_time_blocks ? (entry.thinking_time_blocks[p] || 0) : (isThisBlockActive ? (entry.thinking_time || 0) : 0);
           const blockHtml = createThinkingBlockHTML(
@@ -3190,7 +3329,9 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
             isThisBlockActive,
             settings.glm47_support,
             blockTime,
-            entry.resolved_effort || settings.genai_reasoning_effort
+            entry.resolved_effort || settings.genai_reasoning_effort,
+            null,
+            isThisBlockActive ? (entry.cognitive_state || '') : ''
           );
           markdownHtml = markdownHtml.split('<p>' + marker + '</p>').join(marker);
           markdownHtml = markdownHtml.split('<p>\n' + marker + '\n</p>').join(marker);
@@ -3210,14 +3351,14 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
         const markerLength = match[0].length;
         sHtml += renderMarkdown(normalizedSectionText.substring(0, splitIdx));
         if ((isInThinking || thinking) && !isProcessSection) {
-          sHtml += createThinkingBlockHTML(thinking, isInThinking && streaming, settings.glm47_support, entry.thinking_time || 0, entry.resolved_effort || settings.genai_reasoning_effort);
+          sHtml += createThinkingBlockHTML(thinking, isInThinking && streaming, settings.glm47_support, entry.thinking_time || 0, entry.resolved_effort || settings.genai_reasoning_effort, null, (isInThinking && streaming) ? (entry.cognitive_state || '') : '');
         } else if (thinking && isProcessSection) {
           sHtml += createThinkingBlockHTML(thinking, false, settings.glm47_support, entry.thinking_time || 0, entry.resolved_effort || settings.genai_reasoning_effort);
         }
         sHtml += renderMarkdown(normalizedSectionText.substring(splitIdx + markerLength));
       } else {
         if ((isInThinking || thinking) && !isProcessSection) {
-          sHtml += createThinkingBlockHTML(thinking, isInThinking && streaming, settings.glm47_support, entry.thinking_time || 0, entry.resolved_effort || settings.genai_reasoning_effort);
+          sHtml += createThinkingBlockHTML(thinking, isInThinking && streaming, settings.glm47_support, entry.thinking_time || 0, entry.resolved_effort || settings.genai_reasoning_effort, null, (isInThinking && streaming) ? (entry.cognitive_state || '') : '');
         } else if (thinking && isProcessSection) {
           sHtml += createThinkingBlockHTML(thinking, false, settings.glm47_support, entry.thinking_time || 0, entry.resolved_effort || settings.genai_reasoning_effort);
         }
@@ -3240,6 +3381,15 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
 
       entry.tools.forEach((tool, idx) => {
         const marker = `[[GENAI_TOOL_${idx}]]`;
+        if (tool.action && COGNITIVE_ACTIONS.includes(tool.action.genai_action)) {
+          if (!isProcessSection && isGeneratingOrWorking) {
+            if (sHtml.includes(marker)) {
+              sHtml = sHtml.split('<p>' + marker + '</p>').join('');
+              sHtml = sHtml.split(marker).join('');
+            }
+            return;
+          }
+        }
         if (!sHtml.includes(marker)) return;
 
         let badgeHtml = '';
@@ -3416,48 +3566,52 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
   }
 
   let html = '';
-  if (!isGeneratingOrWorking && lastMarkerEnd !== -1 && ((entry.tools && entry.tools.length > 0) || (entry.thinking_blocks && entry.thinking_blocks.length > 1))) {
+  const hasAnyTools = entry.tools && entry.tools.length > 0;
+  if (!isGeneratingOrWorking && lastMarkerEnd !== -1 && (hasAnyTools || (entry.thinking_blocks && entry.thinking_blocks.length > 1))) {
     const processText = processedText.substring(0, lastMarkerEnd);
     const finalText = processedText.substring(lastMarkerEnd).trim();
 
-    if (finalText.length > 0) {
-      const processHtml = renderSectionHtml(processText, true);
-      let finalHtml = renderMarkdown(finalText);
-      suggestData.forEach((data, idx) => {
-        const token = `@@GENAI_INLINE_SUGGEST_PLACEHOLDER_${idx}@@`;
-        let renderedText = renderMarkdown(data.innerText || '');
-        if (renderedText.startsWith('<p>') && renderedText.endsWith('</p>')) {
-          renderedText = renderedText.substring(3, renderedText.length - 4);
-        }
-        const spanHtml = `<span class="genai-inline-text-suggest" data-target="${escapeHtml(data.target)}" data-message="${escapeHtml(data.message)}">${renderedText}</span>`;
-        finalHtml = finalHtml.split(token).join(spanHtml);
-      });
-
-      const totalSeconds = entry.thinking_time || 0;
-      let doneHeaderText = 'Done';
-      if (totalSeconds >= 5) {
-        doneHeaderText = `Done for ${totalSeconds}s`;
-      } else if (totalSeconds > 0) {
-        doneHeaderText = `Done for a few seconds.`;
-      } else {
-        doneHeaderText = `Done`;
+    const processHtml = renderSectionHtml(processText, true);
+    let finalHtml = renderMarkdown(finalText);
+    suggestData.forEach((data, idx) => {
+      const token = `@@GENAI_INLINE_SUGGEST_PLACEHOLDER_${idx}@@`;
+      let renderedText = renderMarkdown(data.innerText || '');
+      if (renderedText.startsWith('<p>') && renderedText.endsWith('</p>')) {
+        renderedText = renderedText.substring(3, renderedText.length - 4);
       }
+      const spanHtml = `<span class="genai-inline-text-suggest" data-target="${escapeHtml(data.target)}" data-message="${escapeHtml(data.message)}">${renderedText}</span>`;
+      finalHtml = finalHtml.split(token).join(spanHtml);
+    });
 
-      const wrappedProcess = `
-        <div class="thinking-inline system-timeline-item" style="margin-bottom: var(--space-2);">
-          <div class="thinking-inline-header thinking-toggle-header" onclick="this.closest('.thinking-inline').classList.toggle('thinking-expanded')">
-            <span class="thinking-done-text">${escapeHtml(doneHeaderText)}</span>
-          </div>
-          <div class="thinking-inline-content" style="white-space: normal;">
-            ${processHtml}
-          </div>
-        </div>
-      `;
+    const totalSeconds = (entry.thinking_time_blocks && entry.thinking_time_blocks.length > 0)
+      ? entry.thinking_time_blocks.reduce((a, b) => a + (b || 0), 0)
+      : (entry.thinking_time || 0);
 
-      html = wrappedProcess + '<div class="genai-final-response">' + finalHtml + '</div>';
+    let doneHeaderText = 'Done';
+    if (totalSeconds >= 5) {
+      doneHeaderText = `Done for ${totalSeconds}s`;
+    } else if (totalSeconds > 0) {
+      doneHeaderText = `Done for a few seconds`;
     } else {
-      html = renderSectionHtml(processedText, false);
+      doneHeaderText = `Done`;
     }
+
+    if (entry.tools && entry.tools.some(t => COGNITIVE_ACTIONS.includes(t.action?.genai_action))) {
+      doneHeaderText += ' · Used memory';
+    }
+
+    const wrappedProcess = `
+      <div class="thinking-inline system-timeline-item" style="margin-bottom: var(--space-2);">
+        <div class="thinking-inline-header thinking-toggle-header" onclick="this.closest('.thinking-inline').classList.toggle('thinking-expanded')">
+          <span class="thinking-done-text">${escapeHtml(doneHeaderText)}</span>
+        </div>
+        <div class="thinking-inline-content" style="white-space: normal;">
+          ${processHtml}
+        </div>
+      </div>
+    `;
+
+    html = wrappedProcess + (finalHtml ? '<div class="genai-final-response">' + finalHtml + '</div>' : '');
   } else {
     html = renderSectionHtml(processedText, false);
   }
@@ -3465,7 +3619,9 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
   const shouldShowWorking = preemptiveWorking || hasWorkingTool;
   const showCursor = cursor && !shouldShowWorking;
 
-  if (preemptiveWorking) {
+  const isCognitiveRunning = entry.tools && entry.tools.some(t => t.state === 'working' && COGNITIVE_ACTIONS.includes(t.action?.genai_action));
+  const hasThinkingPill = entry.isInThinking || (entry.thinking_blocks && entry.thinking_blocks.length > 0) || entry.thinking;
+  if (preemptiveWorking && !isCognitiveRunning && !hasThinkingPill) {
     const nextIdx = entry.tools ? entry.tools.length : 0;
     html += `<div class="genai-inline-tool genai-tool-working" id="genai-tool-${nextIdx}"><span class="genai-working-text">Working...</span></div>`;
   }
@@ -3473,10 +3629,6 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
   if (showCursor) {
     html = injectCursor(html);
   }
-
-  const hasFinishedOrPendingTool = entry.tools && entry.tools.some(t => t.state !== 'working');
-  const hasUserText = content.replace(/\[\[GENAI_TOOL_\d+\]\]/g, '').trim().length > 0;
-  const isThinkingOnly = !hasUserText && !hasFinishedOrPendingTool;
 
   const isNewAnimation = settings.new_streaming_animation;
   const streamingSpeed = settings.streaming_speed || 45;
@@ -3597,6 +3749,14 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
         if (from.nodeName === 'THINKING-SNIPPETS') {
           if (to.hasAttribute('thoughts')) {
             from.setAttribute('thoughts', to.getAttribute('thoughts'));
+          }
+          if (to.hasAttribute('cognitive-state')) {
+            const newCog = to.getAttribute('cognitive-state');
+            if (from.getAttribute('cognitive-state') !== newCog) {
+              from.setAttribute('cognitive-state', newCog);
+            }
+          } else if (from.hasAttribute('cognitive-state')) {
+            from.removeAttribute('cognitive-state');
           }
           return false;
         }
@@ -4419,6 +4579,9 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
     assistantEntry = _continuationEntry;
     bubbleEl = _continuationBubble;
 
+    const lastTool = assistantEntry.tools && assistantEntry.tools.length > 0 ? assistantEntry.tools[assistantEntry.tools.length - 1] : null;
+    const wasCognitive = lastTool && COGNITIVE_ACTIONS.includes(lastTool.action?.genai_action);
+
     // Prepare thinking blocks on continuation so the next step gets its own thinking slot,
     // and ensure content ends with newlines so tool badges and text never merge.
     if (!assistantEntry.thinking_blocks) {
@@ -4444,6 +4607,14 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
     assistantEntry.thinking_blocks[nextBlockIdx] = '';
     assistantEntry.thinking_time_blocks[nextBlockIdx] = 0;
     assistantEntry.isInThinking = true;
+
+    if (wasCognitive) {
+      assistantEntry.cognitive_state = 'thinking';
+      const snippet = bubbleEl?.querySelector('thinking-snippets') || document.getElementById('genai-thinking-snippets');
+      if (snippet && snippet.setCognitiveState) {
+        snippet.setCognitiveState('thinking');
+      }
+    }
 
     renderAssistantBubble(assistantEntry, bubbleEl, { cursor: true, streaming: true });
   } else {
@@ -4627,6 +4798,63 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
             }
 
             if (parsedAction) {
+              const isCognitiveTool = COGNITIVE_ACTIONS.includes(parsedAction.genai_action);
+              if (isCognitiveTool) {
+                const cogState = parsedAction.genai_action === 'recall_memories' ? 'recalling' : 'remembering';
+                assistantEntry.cognitive_state = cogState;
+                assistantEntry.isInThinking = true;
+
+                let parsedThinkingCognitive = '';
+                if (thinkingTextGenai) {
+                  parsedThinkingCognitive = thinkingTextGenai;
+                } else {
+                  const parsed = parseThinking(before, settings.genai_reasoning_tag_open, settings.genai_reasoning_tag_close);
+                  parsedThinkingCognitive = parsed.thinking || '';
+                }
+
+                if (!assistantEntry.thinking_blocks) assistantEntry.thinking_blocks = [];
+                if (!assistantEntry.thinking_time_blocks) assistantEntry.thinking_time_blocks = [];
+                if (assistantEntry.thinking && assistantEntry.thinking_blocks.length === 0) {
+                  assistantEntry.thinking_blocks.push(assistantEntry.thinking);
+                  assistantEntry.thinking_time_blocks.push(assistantEntry.thinking_time || 0);
+                }
+                const activeIdx = assistantEntry.thinking_blocks.length > 0 ? (assistantEntry.thinking_blocks.length - 1) : 0;
+                if (parsedThinkingCognitive) {
+                  assistantEntry.thinking_blocks[activeIdx] = parsedThinkingCognitive;
+                  let abTime = thinkingTime;
+                  if (abTime === 0 && (thinkingActiveGenai || thinkingActiveInlineGenai)) abTime = Math.round((Date.now() - thinkingStartTime) / 1000);
+                  assistantEntry.thinking_time_blocks[activeIdx] = abTime;
+                  assistantEntry.thinking = assistantEntry.thinking_blocks.filter(Boolean).join('\n\n');
+                  totalThinkingTime += abTime;
+                  assistantEntry.thinking_time = totalThinkingTime;
+                }
+
+                const toolIdx = assistantEntry.tools.length;
+                const toolMarker = `[[GENAI_TOOL_${toolIdx}]]`;
+                const block0Marker = `[[THINKING_BLOCK_${activeIdx}]]`;
+
+                let baseContent = assistantEntry.content.substring(0, originalContentLength);
+                if (!baseContent.includes(block0Marker)) {
+                  baseContent = `${block0Marker}\n\n`;
+                }
+                if (!baseContent.includes(toolMarker)) {
+                  baseContent = baseContent.trim() + `\n\n${toolMarker}\n\n`;
+                }
+                assistantEntry.content = baseContent;
+
+                assistantEntry.tools.push({ action: parsedAction, state: 'working' });
+
+                const snippet = bubbleEl?.querySelector('thinking-snippets') || document.getElementById('genai-thinking-snippets');
+                if (snippet && snippet.setCognitiveState) {
+                  snippet.setCognitiveState(cogState);
+                }
+
+                renderAssistantBubble(assistantEntry, bubbleEl, { cursor: true, streaming: true });
+                scrollToBottom();
+                abortController.abort();
+                return;
+              }
+
               const isCreatorTool = ['add_char_fact', 'remove_char_fact', 'set_char_final_text', 'show_char_tab'].includes(parsedAction.genai_action);
               const isWebTool = ['web_search', 'web_fetch'].includes(parsedAction.genai_action);
 
@@ -4871,6 +5099,11 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
           } else {
             if (parsedInline.thinking || parsedInline.isInThinking) {
               displayContent = parsedInline.content;
+              if (parsedInline.isInThinking && assistantEntry.cognitive_state && assistantEntry.cognitive_state !== 'thinking') {
+                assistantEntry.cognitive_state = 'thinking';
+                const snippet = bubbleEl?.querySelector('thinking-snippets') || document.getElementById('genai-thinking-snippets');
+                if (snippet && snippet.setCognitiveState) snippet.setCognitiveState('thinking');
+              }
             }
           }
 
@@ -4902,7 +5135,22 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
 
           if (isInsideUnclosedJsonCodeBlock) {
             finalDisplay = displayContent.substring(0, unclosedTickIndex);
-            showPreemptiveWorking = true;
+            const isCogRecalling = afterTick.includes('recall_memories');
+            const isCogRemembering = afterTick.includes('save_to_smart_context');
+            if (isCogRecalling) {
+              assistantEntry.cognitive_state = 'recalling';
+              const snippet = bubbleEl?.querySelector('thinking-snippets') || document.getElementById('genai-thinking-snippets');
+              if (snippet && snippet.setCognitiveState) snippet.setCognitiveState('recalling');
+            } else if (isCogRemembering) {
+              assistantEntry.cognitive_state = 'remembering';
+              const snippet = bubbleEl?.querySelector('thinking-snippets') || document.getElementById('genai-thinking-snippets');
+              if (snippet && snippet.setCognitiveState) snippet.setCognitiveState('remembering');
+            } else {
+              assistantEntry.cognitive_state = 'working';
+              const snippet = bubbleEl?.querySelector('thinking-snippets') || document.getElementById('genai-thinking-snippets');
+              if (snippet && snippet.setCognitiveState) snippet.setCognitiveState('working');
+              showPreemptiveWorking = true;
+            }
           } else {
             if (startJsonIndex !== -1) {
               const afterBrace = displayContent.substring(startJsonIndex);
@@ -4918,7 +5166,22 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
               if (isJsonBlock || afterBrace.length < 25) {
                 if (isBraceUnclosed(displayContent, startJsonIndex)) {
                   finalDisplay = displayContent.substring(0, startJsonIndex);
-                  showPreemptiveWorking = true;
+                  const isCogRecalling = normalized.includes('recall_memories');
+                  const isCogRemembering = normalized.includes('save_to_smart_context');
+                  if (isCogRecalling) {
+                    assistantEntry.cognitive_state = 'recalling';
+                    const snippet = bubbleEl?.querySelector('thinking-snippets') || document.getElementById('genai-thinking-snippets');
+                    if (snippet && snippet.setCognitiveState) snippet.setCognitiveState('recalling');
+                  } else if (isCogRemembering) {
+                    assistantEntry.cognitive_state = 'remembering';
+                    const snippet = bubbleEl?.querySelector('thinking-snippets') || document.getElementById('genai-thinking-snippets');
+                    if (snippet && snippet.setCognitiveState) snippet.setCognitiveState('remembering');
+                  } else {
+                    assistantEntry.cognitive_state = 'working';
+                    const snippet = bubbleEl?.querySelector('thinking-snippets') || document.getElementById('genai-thinking-snippets');
+                    if (snippet && snippet.setCognitiveState) snippet.setCognitiveState('working');
+                    showPreemptiveWorking = true;
+                  }
                 }
               }
             }
@@ -4927,11 +5190,24 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
           let assistantState = { 
             ...assistantEntry, 
             content: assistantEntry.content.substring(0, originalContentLength) + finalDisplay,
-            thinking_time: totalThinkingTime + thinkingTime
+            thinking_time: totalThinkingTime + thinkingTime,
+            cognitive_state: assistantEntry.cognitive_state
           };
 
           const currentThinking = thinkingTextGenai || parsedInline.thinking || '';
-          const currentIsInThinking = thinkingTextGenai ? thinkingActiveGenai : parsedInline.isInThinking;
+          let currentIsInThinking = thinkingTextGenai ? thinkingActiveGenai : parsedInline.isInThinking;
+
+          // If thinking has occurred, but no user text has started streaming yet
+          // (e.g. model is outputting an action or JSON command or whitespace before response),
+          // keep the active thinking bubble mounted so it transitions smoothly instead of disappearing!
+          if (!currentIsInThinking && currentThinking && finalDisplay.trim().length === 0) {
+            currentIsInThinking = true;
+            if (!assistantEntry.cognitive_state || assistantEntry.cognitive_state === 'none' || assistantEntry.cognitive_state === 'thinking') {
+              assistantEntry.cognitive_state = 'working';
+              const snippet = bubbleEl?.querySelector('thinking-snippets') || document.getElementById('genai-thinking-snippets');
+              if (snippet && snippet.setCognitiveState) snippet.setCognitiveState('working');
+            }
+          }
 
           if (currentThinking || currentIsInThinking) {
             if (!assistantEntry.thinking_blocks) {
@@ -5020,6 +5296,45 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
               try { parsedAction = healAndParseJsonAction(finishActionMatch.json); } catch (e) {}
               if (parsedAction && (parsedAction.genai_action || parsedAction.name)) {
                 actionDetected = finishActionMatch.json;
+                const isCognitiveTool = COGNITIVE_ACTIONS.includes(parsedAction.genai_action);
+                if (isCognitiveTool) {
+                  const cogState = parsedAction.genai_action === 'recall_memories' ? 'recalling' : 'remembering';
+                  assistantEntry.cognitive_state = cogState;
+                  assistantEntry.isInThinking = true;
+                  if (!assistantEntry.thinking_blocks) assistantEntry.thinking_blocks = [];
+                  if (!assistantEntry.thinking_time_blocks) assistantEntry.thinking_time_blocks = [];
+                  if (assistantEntry.thinking && assistantEntry.thinking_blocks.length === 0) {
+                    assistantEntry.thinking_blocks.push(assistantEntry.thinking);
+                    assistantEntry.thinking_time_blocks.push(assistantEntry.thinking_time || 0);
+                  }
+                  const activeIdx = assistantEntry.thinking_blocks.length > 0 ? (assistantEntry.thinking_blocks.length - 1) : 0;
+                  if (parsedThinking) {
+                    assistantEntry.thinking_blocks[activeIdx] = parsedThinking;
+                    assistantEntry.thinking_time_blocks[activeIdx] = thinkingTime;
+                    assistantEntry.thinking = assistantEntry.thinking_blocks.filter(Boolean).join('\n\n');
+                  }
+                  const toolIdx = assistantEntry.tools.length;
+                  const toolMarker = `[[GENAI_TOOL_${toolIdx}]]`;
+                  const block0Marker = `[[THINKING_BLOCK_${activeIdx}]]`;
+
+                  let baseContent = assistantEntry.content.substring(0, originalContentLength);
+                  if (!baseContent.includes(block0Marker)) {
+                    baseContent = `${block0Marker}\n\n`;
+                  }
+                  if (!baseContent.includes(toolMarker)) {
+                    baseContent = baseContent.trim() + `\n\n${toolMarker}\n\n`;
+                  }
+                  assistantEntry.content = baseContent;
+
+                  assistantEntry.tools.push({ action: parsedAction, state: 'working' });
+                  const snippet = bubbleEl?.querySelector('thinking-snippets') || document.getElementById('genai-thinking-snippets');
+                  if (snippet && snippet.setCognitiveState) {
+                    snippet.setCognitiveState(cogState);
+                  }
+                  renderAssistantBubble(assistantEntry, bubbleEl, { cursor: true, streaming: true });
+                  resolvePhase({ status: 'action' });
+                  return;
+                }
                 const toolIdx = assistantEntry.tools.length;
                 const marker = `[[GENAI_TOOL_${toolIdx}]]`;
                 const beforeText = parsedContinuation.substring(0, finishActionMatch.startIdx).replace(/```json\s*$/, '').replace(/```\s*$/, '');
@@ -5135,6 +5450,11 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
             thinkingStartTime = Date.now();
           }
           thinkingTextGenai += thinkChunk;
+          if (assistantEntry.cognitive_state && assistantEntry.cognitive_state !== 'thinking') {
+            assistantEntry.cognitive_state = 'thinking';
+            const snippet = bubbleEl?.querySelector('thinking-snippets') || document.getElementById('genai-thinking-snippets');
+            if (snippet && snippet.setCognitiveState) snippet.setCognitiveState('thinking');
+          }
           
           if (!assistantEntry.thinking_blocks) {
             assistantEntry.thinking_blocks = [];
@@ -5294,6 +5614,32 @@ async function handleActionDetected(assistantEntry, bubbleEl) {
     const name = tool.action.genai_action || tool.action.name;
     const isWebTool = name === 'web_search' || name === 'web_fetch';
     const uiToolIdx = isWebTool ? getUiToolIdx(assistantEntry, toolIdx) : toolIdx;
+
+    if (COGNITIVE_ACTIONS.includes(name)) {
+      const cogState = name === 'recall_memories' ? 'recalling' : 'remembering';
+      assistantEntry.cognitive_state = cogState;
+      assistantEntry.isInThinking = true;
+      const snippet = bubbleEl?.querySelector('thinking-snippets') || document.getElementById('genai-thinking-snippets');
+      if (snippet && snippet.setCognitiveState) {
+        snippet.setCognitiveState(cogState);
+      }
+      tool.state = 'working';
+      renderAssistantBubble(assistantEntry, bubbleEl, { cursor: true, streaming: true });
+      scrollToBottom();
+
+      const result = await executeTool(tool.action);
+
+      tool.state = 'done';
+      tool.result = result;
+      assistantEntry.cognitive_state = 'thinking';
+      if (snippet && snippet.setCognitiveState) {
+        snippet.setCognitiveState('thinking');
+      }
+      saveHistory();
+      isGenerating = false;
+      continueAfterTool(tool.action, result, assistantEntry, bubbleEl);
+      return;
+    }
 
     if (name === 'viewimage') {
       tool.state = 'working';
@@ -5786,6 +6132,10 @@ function continueAfterTool(action, result, assistantEntry, bubbleEl) {
     instruction += `\n\nCRITICAL REMINDER: You just retrieved the list of available skills. If you find a suitable skill (like a rule file, etc.), you MUST ask the user if they want to activate it for the current session, or offer them an interactive suggestion button to do so. Remember, a skill is NOT active until you call {"genai_action":"set_skill_active","filename":"...","active":true}!`;
   } else if (action.genai_action === 'read_skill') {
     instruction += `\n\nCRITICAL REMINDER: You just read the content of the skill "${action.filename}". If the user wants to apply these rules/skills in the conversation, they must be activated! You MUST explicitly ask the user if they want to activate this skill for the current chat session, and offer them an interactive suggestion button to do so. Remember, a skill is NOT active until you call {"genai_action":"set_skill_active","filename":"...","active":true}!`;
+  } else if (action.genai_action === 'recall_memories') {
+    instruction += `\n\nCRITICAL REMINDER: You just retrieved relevant memory summaries from past chats. Review them carefully and naturally incorporate relevant details into your response to address the user's questions or thoughts. Do not mention that you called recall_memories or explain the technical retrieval process; speak naturally and personal.`;
+  } else if (action.genai_action === 'save_to_smart_context') {
+    instruction += `\n\nCRITICAL REMINDER: The current session summary has been successfully updated and indexed into your smart context memory. Briefly and warmly let the user know what key information or context was remembered/updated.`;
   }
 
   if (action.genai_action === 'list_memories') {
@@ -5810,6 +6160,7 @@ function finishGeneration() {
   if (lastBubble && assistantMsgs.length > 0) {
     const lastEntry = genaiHistory[genaiHistory.length - 1];
     if (lastEntry && lastEntry.role === 'assistant') {
+      delete lastEntry.cognitive_state;
       const bubble = lastBubble.querySelector('.genai-msg-bubble');
       if (bubble) {
         renderAssistantBubble(lastEntry, bubble, { cursor: false, streaming: false });

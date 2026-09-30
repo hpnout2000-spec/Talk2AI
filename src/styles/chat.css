@@ -3400,6 +3400,34 @@ body:not(.ai-comments-enabled) .btn-ai-comment {
   word-break: break-all;
 }
 
+.context-history-item.is-excluded {
+  opacity: 0.72;
+  border-left-color: rgba(148, 163, 184, 0.35) !important;
+}
+
+.context-history-item.is-excluded .context-history-item-header {
+  color: var(--text-tertiary) !important;
+}
+
+.context-history-item-tokens {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.context-history-excluded-label {
+  color: var(--text-tertiary);
+  font-weight: 400;
+  text-transform: none;
+  font-style: italic;
+  font-size: 10px;
+}
+
+.context-history-item.is-excluded .context-history-item-tokens,
+.context-history-item.is-excluded .context-history-excluded-tokens {
+  color: var(--text-tertiary) !important;
+}
+
 /* Modal refresh button styling and rotation animation */
 #btn-refresh-context svg {
   transition: transform 0.2s ease;
@@ -3858,6 +3886,14 @@ glm-thinking-snippets .glm-snippet.active {
   cursor: default;
   min-width: 105px;
 }
+.thinking-preview-header.is-recalling {
+  cursor: default;
+  min-width: 180px;
+}
+.thinking-preview-header.is-remembering {
+  cursor: default;
+  min-width: 155px;
+}
 .thinking-preview-header:not(.is-processing):hover {
   background: var(--bg-hover);
 }
@@ -3878,36 +3914,140 @@ glm-thinking-snippets .glm-snippet.active {
 .thinking-label-processing,
 .thinking-label-thinking {
   grid-area: label;
+  white-space: nowrap;
+  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), 
+              transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+
+.thinking-label-working,
+.thinking-label-recalling,
+.thinking-label-remembering {
+  position: absolute;
+  top: 0;
+  left: 0;
+  white-space: nowrap;
   transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), 
               transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   will-change: opacity, transform;
 }
 
 /* In processing state: processing is visible, thinking waits on the left */
-.thinking-preview-header.is-processing .thinking-label-processing {
-  opacity: 1;
-  transform: translateX(0);
-  pointer-events: auto;
-}
-.thinking-preview-header.is-processing .thinking-label-thinking {
+/* Default: hidden on left */
+.thinking-label-processing,
+.thinking-label-thinking,
+.thinking-label-working,
+.thinking-label-recalling,
+.thinking-label-remembering {
   opacity: 0;
   transform: translateX(-8px);
   pointer-events: none;
 }
 
-/* In thinking state: processing floats out to the right, thinking glides in from the left */
-.thinking-preview-header:not(.is-processing) .thinking-label-processing {
-  opacity: 0;
-  transform: translateX(8px);
-  pointer-events: none;
-}
-.thinking-preview-header:not(.is-processing) .thinking-label-thinking {
+/* In processing state: processing is visible */
+.thinking-preview-header.is-processing .thinking-label-processing {
   opacity: 1;
   transform: translateX(0);
   pointer-events: auto;
 }
 
+/* In thinking state (when not in recalling or remembering or working): thinking is visible, processing floats out to the right */
+.thinking-preview-header.is-thinking:not(.is-recalling):not(.is-remembering):not(.is-working) .thinking-label-processing,
+.thinking-preview-header.is-thinking:not(.is-recalling):not(.is-remembering):not(.is-working) .thinking-label-working,
+.thinking-preview-header.is-thinking:not(.is-recalling):not(.is-remembering):not(.is-working) .thinking-label-recalling,
+.thinking-preview-header.is-thinking:not(.is-recalling):not(.is-remembering):not(.is-working) .thinking-label-remembering {
+  opacity: 0;
+  transform: translateX(8px);
+  pointer-events: none;
+}
+.thinking-preview-header.is-thinking:not(.is-recalling):not(.is-remembering):not(.is-working) .thinking-label-thinking {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+/* In working state: processing and thinking float out to the right, working glides in from the left */
+.thinking-preview-header.is-working .thinking-label-processing,
+.thinking-preview-header.is-working .thinking-label-thinking,
+.thinking-preview-header.is-working .thinking-label-recalling,
+.thinking-preview-header.is-working .thinking-label-remembering {
+  opacity: 0;
+  transform: translateX(8px);
+  pointer-events: none;
+}
+.thinking-preview-header.is-working .thinking-label-working {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+/* In recalling state: processing, thinking, and working float out to the right, recalling glides in from the left */
+.thinking-preview-header.is-recalling .thinking-label-processing,
+.thinking-preview-header.is-recalling .thinking-label-thinking,
+.thinking-preview-header.is-recalling .thinking-label-working,
+.thinking-preview-header.is-recalling .thinking-label-remembering {
+  opacity: 0;
+  transform: translateX(8px);
+  pointer-events: none;
+}
+.thinking-preview-header.is-recalling .thinking-label-recalling {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+/* In remembering state: processing, thinking, working, and recalling float out to the right, remembering glides in from the left */
+.thinking-preview-header.is-remembering .thinking-label-processing,
+.thinking-preview-header.is-remembering .thinking-label-thinking,
+.thinking-preview-header.is-remembering .thinking-label-working,
+.thinking-preview-header.is-remembering .thinking-label-recalling {
+  opacity: 0;
+  transform: translateX(8px);
+  pointer-events: none;
+}
+.thinking-preview-header.is-remembering .thinking-label-remembering {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+.thinking-preview-header.is-recalling .thinking-progress-container,
+.thinking-preview-header.is-remembering .thinking-progress-container,
+.thinking-preview-header.is-working .thinking-progress-container {
+  max-height: 2px;
+  height: 2px;
+  opacity: 1;
+  margin-top: 4px;
+}
+.thinking-preview-header.is-recalling .thinking-progress-bar,
+.thinking-preview-header.is-remembering .thinking-progress-bar,
+.thinking-preview-header.is-working .thinking-progress-bar {
+  position: absolute;
+  top: 0;
+  left: -40%;
+  width: 40% !important;
+  background: linear-gradient(90deg, #3b82f6 0%, #60a5fa 100%);
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.4);
+  border-radius: 2px;
+  animation: cognitiveProgressSlide 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+@keyframes cognitiveProgressSlide {
+  0% {
+    left: -40%;
+    width: 40%;
+  }
+  50% {
+    left: 30%;
+    width: 50%;
+  }
+  100% {
+    left: 100%;
+    width: 40%;
+  }
+}
+
 .thinking-progress-container {
+  position: relative;
   height: 2px;
   max-height: 2px;
   background: rgba(255, 255, 255, 0.08);

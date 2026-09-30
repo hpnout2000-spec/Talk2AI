@@ -1087,7 +1087,7 @@ export function isBudgetExceededMessage(text) {
 /**
  * Generate thinking block HTML structure
  */
-export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, thinkingTime = 0, reasoningEffortSetting = null, maxTokens = null) {
+export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, thinkingTime = 0, reasoningEffortSetting = null, maxTokens = null, cognitiveState = '') {
   const settings = settingsStore.get() || {};
   const effort = reasoningEffortSetting || settings.reasoning_effort || 'high';
 
@@ -1147,7 +1147,8 @@ export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, t
   if (isActive) {
     const escapedThoughts = escapeHtml(cleanThinking);
     const mTokens = maxTokens || settings.max_tokens || settings.genai_max_tokens || 2048;
-    return `<div class="thinking-inline thinking-inline-active system-timeline-item"><div class="thinking-inline-header"><thinking-snippets id="genai-thinking-snippets" thoughts="${escapedThoughts}" effort="${effort}" max-tokens="${mTokens}"></thinking-snippets></div></div>`;
+    const cogAttr = cognitiveState ? ` cognitive-state="${escapeHtml(cognitiveState)}"` : '';
+    return `<div class="thinking-inline thinking-inline-active system-timeline-item"><div class="thinking-inline-header"><thinking-snippets id="genai-thinking-snippets" thoughts="${escapedThoughts}" effort="${effort}" max-tokens="${mTokens}"${cogAttr}></thinking-snippets></div></div>`;
   }
   let doneText = '';
   if (thinkingTime >= 5) {
@@ -1155,7 +1156,7 @@ export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, t
   } else {
     doneText = `thought for a few seconds.`;
   }
-  return '<div class="thinking-inline system-timeline-item"><div class="thinking-inline-header thinking-toggle-header" onclick="this.closest(\'.thinking-inline\').classList.toggle(\'thinking-expanded\')"><span class="thinking-done-text">' + escapeHtml(doneText) + '</span></div><div class="thinking-inline-content">' + escapeHtml(cleanThinking).replace(/\n/g, '<br>') + '</div></div>';
+  return '<div class="thinking-inline system-timeline-item"><div class="thinking-inline-header thinking-toggle-header" onclick="event.stopPropagation(); this.closest(\'.thinking-inline\').classList.toggle(\'thinking-expanded\')"><span class="thinking-done-text">' + escapeHtml(doneText) + '</span></div><div class="thinking-inline-content">' + escapeHtml(cleanThinking).replace(/\n/g, '<br>') + '</div></div>';
 }
 
 /**
@@ -1170,10 +1171,11 @@ class ThinkingSnippets extends HTMLElement {
     this._isScrolling = false;
     this._scrollRafId = null;
     this._lastScrollTop = 0;
+    this._cognitiveState = 'none';
   }
 
   static get observedAttributes() {
-    return ['thoughts', 'effort', 'max-tokens'];
+    return ['thoughts', 'effort', 'max-tokens', 'cognitive-state'];
   }
 
   connectedCallback() {
@@ -1187,6 +1189,10 @@ class ThinkingSnippets extends HTMLElement {
       this.updateProgress(initialThoughts);
     } else {
       this.adjustBubbleWidth();
+    }
+    const initialCognitive = this.getAttribute('cognitive-state') || '';
+    if (initialCognitive) {
+      this.setCognitiveState(initialCognitive);
     }
   }
 
@@ -1213,6 +1219,22 @@ class ThinkingSnippets extends HTMLElement {
 
     this.textContainer.appendChild(this.processingSpan);
     this.textContainer.appendChild(this.thinkingSpan);
+
+    this.workingSpan = document.createElement('span');
+    this.workingSpan.className = 'thinking-snippet-layer thinking-label-working';
+    this.workingSpan.textContent = 'Working...';
+
+    this.recallingSpan = document.createElement('span');
+    this.recallingSpan.className = 'thinking-snippet-layer thinking-label-recalling';
+    this.recallingSpan.textContent = 'Searching memories...';
+
+    this.rememberingSpan = document.createElement('span');
+    this.rememberingSpan.className = 'thinking-snippet-layer thinking-label-remembering';
+    this.rememberingSpan.textContent = 'Remembering...';
+
+    this.textContainer.appendChild(this.workingSpan);
+    this.textContainer.appendChild(this.recallingSpan);
+    this.textContainer.appendChild(this.rememberingSpan);
     this.header.appendChild(this.textContainer);
 
     // Progress bar container
@@ -1330,6 +1352,28 @@ class ThinkingSnippets extends HTMLElement {
     });
   }
 
+  setCognitiveState(state) {
+    this._cognitiveState = state || 'none';
+    if (!this.header) return;
+
+    this.header.classList.remove('is-recalling', 'is-remembering', 'is-working');
+
+    if (state === 'recalling') {
+      this.header.classList.add('is-recalling');
+    } else if (state === 'remembering') {
+      this.header.classList.add('is-remembering');
+    } else if (state === 'working') {
+      this.header.classList.add('is-working');
+    } else if (state === 'thinking') {
+      this.transformToThinking();
+    } else if (state === 'processing') {
+      this.hasThoughts = false;
+      this.header.classList.add('is-processing');
+      this.header.classList.remove('is-thinking');
+    }
+    this.adjustBubbleWidth();
+  }
+
   transformToThinking() {
     if (this.hasThoughts) return;
     this.hasThoughts = true;
@@ -1344,6 +1388,9 @@ class ThinkingSnippets extends HTMLElement {
   attributeChangedCallback(name, oldValue, newValue) {
     if ((name === 'thoughts' || name === 'effort' || name === 'max-tokens') && newValue !== oldValue) {
       this.updateProgress(this.getAttribute('thoughts') || '');
+    }
+    if (name === 'cognitive-state' && newValue !== oldValue) {
+      this.setCognitiveState(newValue);
     }
   }
 
@@ -1452,13 +1499,23 @@ class ThinkingSnippets extends HTMLElement {
       }
       if (this.isExpanded) return;
       
-      const activeLayer = this.hasThoughts 
-        ? (this.thinkingSpan || this.querySelector('.thinking-label-thinking'))
-        : (this.processingSpan || this.querySelector('.thinking-label-processing'));
+      const isCog = this._cognitiveState === 'recalling' || this._cognitiveState === 'remembering' || this._cognitiveState === 'working';
+      const activeLayer = (this._cognitiveState === 'recalling')
+        ? (this.recallingSpan || this.querySelector('.thinking-label-recalling'))
+        : (this._cognitiveState === 'remembering')
+        ? (this.rememberingSpan || this.querySelector('.thinking-label-remembering'))
+        : (this._cognitiveState === 'working')
+        ? (this.workingSpan || this.querySelector('.thinking-label-working'))
+        : (this.hasThoughts 
+            ? (this.thinkingSpan || this.querySelector('.thinking-label-thinking'))
+            : (this.processingSpan || this.querySelector('.thinking-label-processing')));
+
+
+
       if (!activeLayer) return;
 
-      const layerWidth = activeLayer.offsetWidth || (this.hasThoughts ? 85 : 80);
-      if (layerWidth === 0 && !this.hasThoughts) {
+      const layerWidth = activeLayer.offsetWidth || (isCog ? (this._cognitiveState === 'working' ? 95 : 135) : (this.hasThoughts ? 85 : 80));
+      if (layerWidth === 0 && !this.hasThoughts && !isCog) {
         if (retry < 4) requestAnimationFrame(() => run(retry + 1));
         return;
       }
@@ -1468,7 +1525,10 @@ class ThinkingSnippets extends HTMLElement {
       const borderH = (parseFloat(style.borderLeftWidth) || 1) + (parseFloat(style.borderRightWidth) || 1);
       
       // Ensure there's a min-width to accommodate text cleanly
-      const targetWidth = Math.max(layerWidth + padH + borderH + (this.hasThoughts ? 20 : 10), this.hasThoughts ? 140 : 110); 
+      const minW = isCog 
+        ? (this._cognitiveState === 'recalling' ? 180 : (this._cognitiveState === 'remembering' ? 155 : 140))
+        : (this.hasThoughts ? 140 : 110);
+      const targetWidth = Math.max(layerWidth + padH + borderH + (isCog ? (this._cognitiveState === 'working' ? 20 : 24) : (this.hasThoughts ? 20 : 10)), minW);
       
       bubble.style.width = targetWidth + 'px';
     };

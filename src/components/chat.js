@@ -804,10 +804,10 @@ export function initChat() {
 
       // Calculate context breakdown and summary needs based on 70% threshold
       const breakdown = await computeContextAndTrimHistory(character, session);
-      let needs = calculateSummaryNeeds(session, breakdown.maxContext, breakdown.baseTokens);
+      let needs = calculateSummaryNeeds(session, breakdown.maxContext, breakdown.fullContextTokens, breakdown.unsummarizedMessages);
 
       if (!needs.needsMore) {
-        const usedPct = Math.round((breakdown.baseTokens / breakdown.maxContext) * 100);
+        const usedPct = Math.round(((breakdown.fullContextTokens || breakdown.baseTokens) / breakdown.maxContext) * 100);
         showToast(`Context usage is ${usedPct}% (below 70% threshold). No summary needed!`, 'info');
         return;
       }
@@ -825,9 +825,9 @@ export function initChat() {
           createdCount++;
 
           const freshBreakdown = await computeContextAndTrimHistory(character, session);
-          needs = calculateSummaryNeeds(session, freshBreakdown.maxContext, freshBreakdown.baseTokens);
+          needs = calculateSummaryNeeds(session, freshBreakdown.maxContext, freshBreakdown.fullContextTokens, freshBreakdown.unsummarizedMessages);
           await updateContextIndicator(false, true);
-          populateContextDetailsModal(session, freshBreakdown);
+          populateContextDetailsModal(session);
         }
         if (createdCount > 0) {
           showToast(`Generated ${createdCount} summary chunk(s)! Context usage reduced below 70%.`, 'success');
@@ -2862,8 +2862,10 @@ async function computeContextAndTrimHistory(character, session, signal = null) {
   const personaId = session.persona_id || settings.active_persona_id || 'default';
   const activePersona = (settings.personas || []).find(p => p.id === personaId);
 
-  // 1. Get max context length
-  const maxContext = await api.getMaxContextLength();
+  // 1. Get max context length and subtract response generation tokens
+  const rawMaxContext = await api.getMaxContextLength();
+  const maxTokensSetting = settings.max_tokens || 2048;
+  const maxContext = Math.max(256, rawMaxContext - maxTokensSetting);
 
   // 2. Count tokens for Character Card (description + personality + scenario)
   const charData = {
@@ -3060,10 +3062,10 @@ async function computeContextAndTrimHistory(character, session, signal = null) {
   }
 
   // 6. Sliding Window Calculation
-  const maxTokensSetting = settings.max_tokens || 2048;
   const safetyBuffer = 100;
-  const basePromptTokens = charTokens + systemTokens + memoryTokens + summaryTokens + pinnedTokens + phiTokens;
-  const totalPromptBudget = maxContext - maxTokensSetting - safetyBuffer;
+  const totalBasePromptTokens = charTokens + systemTokens + memoryTokens + summaryTokens + phiTokens;
+  const basePromptTokens = totalBasePromptTokens + pinnedTokens;
+  const totalPromptBudget = maxContext - safetyBuffer;
 
   // Determine sliding window start: after last chunk's endMsgId, or from index KEEP_FIRST
   let historyStartIdx = KEEP_FIRST;
@@ -3102,7 +3104,7 @@ async function computeContextAndTrimHistory(character, session, signal = null) {
   // Go backward to fit within budget (estimate first using local token counts)
   let estimatedHistoryTokens = 0;
   const trimmedMessages = [];
-  const estimatedBudget = maxContext - maxTokensSetting - 15; // Leave at least 15 tokens free
+  const estimatedBudget = maxContext - 15; // Leave at least 15 tokens free
 
   for (let i = messagesMeta.length - 1; i >= 0; i--) {
     const item = messagesMeta[i];
@@ -3162,31 +3164,59 @@ async function computeContextAndTrimHistory(character, session, signal = null) {
   let exactTokensObj = await api.countMessagesTokensDetailed(testMsgs, signal);
 
   // Prune further if the server token count exceeds the limit (leaving 15 tokens free)
-  while (exactTokensObj.value > maxContext - maxTokensSetting - 15 && trimmedMessages.length > 0) {
+  while (exactTokensObj.value > maxContext - 15 && trimmedMessages.length > 0) {
     trimmedMessages.shift(); // Remove the oldest message
     testMsgs = buildTestMessages(trimmedMessages);
     exactTokensObj = await api.countMessagesTokensDetailed(testMsgs, signal);
   }
 
   // Calculate tokens of ALL unsummarized history messages
-  let fullHistoryTokens = 0;
+  let fullHistoryMetaTokens = 0;
   for (const item of messagesMeta) {
     const cachedItem = tokenCountCache.get(item.msgKey);
     const tokens = cachedItem ? cachedItem.value : 0;
-    fullHistoryTokens += tokens + 4;
+    fullHistoryMetaTokens += tokens + 4;
   }
-  const fullContextTokens = basePromptTokens + fullHistoryTokens;
+  const fullHistoryTokens = pinnedTokens + fullHistoryMetaTokens;
+  const fullContextTokens = totalBasePromptTokens + fullHistoryTokens;
+  const inWindowHistoryTokens = pinnedTokens + Math.max(0, exactTokensObj.value - basePromptTokens);
 
-  const historyItems = trimmedMessages.map(msg => {
+  const trimmedIds = new Set(trimmedMessages.map(m => m.id));
+  const historyItems = [];
+
+  // 1. Add pinned messages (first KEEP_FIRST messages)
+  for (const msg of pinnedMessages) {
     const contentText = msg.role === 'user' ? (msg.translated_content || msg.content) : (msg.original_text || msg.content);
     const cachedItem = tokenCountCache.get(`msg_${msg.id}_${contentText.length}`);
     const tokens = cachedItem ? cachedItem.value : 0;
-    return {
+    const msgIndex = session.messages.findIndex(m => m.id === msg.id);
+    historyItems.push({
+      id: msg.id,
+      index: msgIndex !== -1 ? msgIndex + 1 : historyItems.length + 1,
       role: msg.role,
       text: contentText,
-      tokens: tokens
-    };
-  });
+      tokens: tokens,
+      inWindow: true,
+      isPinned: true
+    });
+  }
+
+  // 2. Add unsummarized messages (both excluded and in-window)
+  for (const item of messagesMeta) {
+    const cachedItem = tokenCountCache.get(item.msgKey);
+    const tokens = cachedItem ? cachedItem.value : 0;
+    const inWin = trimmedIds.has(item.msg.id);
+    const msgIndex = session.messages.findIndex(m => m.id === item.msg.id);
+    historyItems.push({
+      id: item.msg.id,
+      index: msgIndex !== -1 ? msgIndex + 1 : historyItems.length + 1,
+      role: item.msg.role,
+      text: item.contentText,
+      tokens: tokens,
+      inWindow: inWin,
+      isPinned: false
+    });
+  }
 
   const allPrecise = charTokensObj.precise &&
                      memoryTokensObj.precise &&
@@ -3203,6 +3233,8 @@ async function computeContextAndTrimHistory(character, session, signal = null) {
 
   return {
     maxContext,
+    rawMaxContext,
+    reservedTokens: maxTokensSetting,
     charTokens,
     charText,
     systemTokens,
@@ -3216,7 +3248,7 @@ async function computeContextAndTrimHistory(character, session, signal = null) {
     pinnedMessages,
     fullHistoryTokens,
     fullContextTokens,
-    historyTokens: exactTokensObj.value - basePromptTokens,
+    historyTokens: inWindowHistoryTokens,
     historyItems,
     trimmedMessages,
     unsummarizedMessages: messagesMeta.map(m => m.msg),
@@ -6103,7 +6135,7 @@ function getContextSignature(character, session, settings) {
     return `${m.id}:${contentText ? contentText.length : 0}`;
   }).join(',');
 
-  return `${charText.length}_${memoryText.length}_${systemContentPure.length}_${chunksText.length}_[${msgsSig}]`;
+  return `${charText.length}_${memoryText.length}_${systemContentPure.length}_${chunksText.length}_[${msgsSig}]_${settings.max_tokens || 2048}`;
 }
 
 export async function updateContextIndicator(debounce = false, forceRecalculate = false) {
@@ -6333,6 +6365,8 @@ export async function updateContextIndicator(debounce = false, forceRecalculate 
   // Cache breakdown details for the popup modal
   session._contextBreakdown = {
     maxContext: result.maxContext,
+    rawMaxContext: result.rawMaxContext,
+    reservedTokens: result.reservedTokens,
     charTokens: result.charTokens,
     charText: result.charText,
     systemTokens: result.systemTokens,
@@ -6385,6 +6419,11 @@ export async function populateContextDetailsModal(session) {
       contextTotalInfo.textContent = `${breakdown.baseTokens.toLocaleString()} / ${breakdown.maxContext.toLocaleString()} in window (${fullPct}% total chat history)`;
     } else {
       contextTotalInfo.textContent = `${breakdown.totalUsed.toLocaleString()} / ${breakdown.maxContext.toLocaleString()} tokens used`;
+    }
+    if (breakdown.rawMaxContext && breakdown.reservedTokens) {
+      contextTotalInfo.title = `Prompt budget: ${breakdown.maxContext.toLocaleString()} tokens (${breakdown.rawMaxContext.toLocaleString()} total context − ${breakdown.reservedTokens.toLocaleString()} reserved for max output generation)`;
+    } else {
+      contextTotalInfo.title = '';
     }
   }
   const activePercent = breakdown.fullContextTokens || breakdown.totalUsed;
@@ -6544,18 +6583,35 @@ export async function populateContextDetailsModal(session) {
   // 6. Populate history messages list
   if (contentDetailsHistory) {
     contentDetailsHistory.innerHTML = '';
-    if (breakdown.historyItems.length === 0) {
+    if (!breakdown.historyItems || breakdown.historyItems.length === 0) {
       contentDetailsHistory.innerHTML = '<div style="padding:12px; color:var(--text-tertiary); font-size:var(--text-xs); text-align:center;">No chat messages yet</div>';
     } else {
+      let shownSummaryNotice = false;
+      const hasSummaryChunks = breakdown.summaryChunks && breakdown.summaryChunks.length > 0;
+
       breakdown.historyItems.forEach((item, index) => {
+        // If there are summary chunks, show a divider between pinned messages and the remaining history
+        if (hasSummaryChunks && !item.isPinned && !shownSummaryNotice) {
+          shownSummaryNotice = true;
+          const noticeEl = document.createElement('div');
+          noticeEl.style.cssText = 'padding: 6px 12px; margin: 2px 0 6px 0; border-radius: var(--radius-sm); background: rgba(56, 189, 248, 0.08); border: 1px dashed rgba(56, 189, 248, 0.3); font-size: 11px; color: #38bdf8; text-align: center;';
+          noticeEl.textContent = `⚡ Earlier messages are summarized in Auto Summary (${breakdown.summaryChunks.length} chunk${breakdown.summaryChunks.length === 1 ? '' : 's'})`;
+          contentDetailsHistory.appendChild(noticeEl);
+        }
+
         const itemEl = document.createElement('div');
-        itemEl.className = `context-history-item role-${item.role}`;
+        itemEl.className = `context-history-item role-${item.role}${item.inWindow ? '' : ' is-excluded'}`;
         let displayVal = item.text;
+
+        const msgNumber = item.index ?? (index + 1);
+        const tokensHtml = item.inWindow
+          ? `<span class="context-history-item-tokens">${item.tokens} tokens</span>`
+          : `<span class="context-history-item-tokens"><span class="context-history-excluded-label">(excluded from context)</span><span class="context-history-excluded-tokens">${item.tokens} tokens</span></span>`;
 
         itemEl.innerHTML = `
           <div class="context-history-item-header">
-            <span>#${index + 1} · ${item.role}</span>
-            <span>${item.tokens} tokens</span>
+            <span>#${msgNumber} · ${item.role}</span>
+            ${tokensHtml}
           </div>
           <div class="context-history-item-body">${escapeHtml(displayVal)}</div>
         `;
