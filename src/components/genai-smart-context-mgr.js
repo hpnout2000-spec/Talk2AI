@@ -570,8 +570,11 @@ export async function updateSessionSummaryIfNeeded(session, force = false) {
             c = stripThinkingTags(c);
             c = c.replace(/\[\[THINKING_BLOCK(_\d+)?\]\]/g, '').replace(/\[\[GENAI_TOOL_\d+\]\]/g, '').trim();
           }
+          if (!c) return null;
           return `${m.role === 'user' ? 'User' : 'Assistant'}: ${c}`;
-        }).join('\n\n') + '\nEND OF THE CHUNK. MAKE SUMMARY NOW';
+        }).filter(Boolean).join('\n\n');
+
+        if (!textToSummarize) continue;
         
         const payload = [
           {
@@ -580,13 +583,16 @@ export async function updateSessionSummaryIfNeeded(session, force = false) {
           },
           {
             role: 'user',
-            content: textToSummarize
+            content: textToSummarize + '\n\nEND OF THE CHUNK. MAKE SUMMARY NOW'
           }
         ];
 
         const summary = await api.chatCompletion(payload, { 
-          priority: 'background',
-          temperature: 0.8,
+          isGenAI: true,
+          completion_mode: 'chat_completion',
+          priority: force ? 'normal' : 'background',
+          temperature: 0.3,
+          max_tokens: 500,
           reasoning_effort: 'none',
           stripThinking: true
         });
@@ -614,8 +620,11 @@ export async function updateSessionSummaryIfNeeded(session, force = false) {
         ];
         
         const combined = await api.chatCompletion(payload, {
-          priority: 'background',
-          temperature: 0.8,
+          isGenAI: true,
+          completion_mode: 'chat_completion',
+          priority: force ? 'normal' : 'background',
+          temperature: 0.3,
+          max_tokens: 600,
           reasoning_effort: 'none',
           stripThinking: true
         });
@@ -624,7 +633,32 @@ export async function updateSessionSummaryIfNeeded(session, force = false) {
       }
 
       finalSummary = cleanSummaryText(finalSummary);
+
+      if (!finalSummary) {
+        if (summaries.length > 0) {
+          finalSummary = summaries[0];
+        } else {
+          // Construct substantive fallback from meaningful messages so the session is preserved
+          const meaningful = messages
+            .map(m => {
+              let c = (m.content || '').replace(/\[\[THINKING_BLOCK(_\d+)?\]\]/g, '').replace(/\[\[GENAI_TOOL_\d+\]\]/g, '').trim();
+              c = stripThinkingTags(c).trim();
+              if (!c) return null;
+              return `${m.role === 'user' ? 'User' : 'Assistant'}: ${c.substring(0, 150)}`;
+            })
+            .filter(Boolean)
+            .slice(-6);
+
+          if (meaningful.length > 0) {
+            finalSummary = `Overview of conversation: ${meaningful.join(' | ')}`.substring(0, 400);
+          }
+        }
+      }
+
       const cleanedSummaries = summaries.map(s => cleanSummaryText(s)).filter(Boolean);
+      if (cleanedSummaries.length === 0 && finalSummary) {
+        cleanedSummaries.push(finalSummary);
+      }
 
       // Save summary and all intermediate chunks to session
       session.summary = finalSummary;
@@ -633,7 +667,7 @@ export async function updateSessionSummaryIfNeeded(session, force = false) {
       saveHistory();
       
       // Save all summary chunks (both intermediate and final) to the embeddings RAG store
-      const allChunksToIndex = summaries.length > 1 && finalSummary ? [...summaries, finalSummary] : summaries;
+      const allChunksToIndex = summaries.length > 1 && finalSummary ? [...summaries, finalSummary] : (cleanedSummaries.length > 0 ? cleanedSummaries : (finalSummary ? [finalSummary] : []));
       if (allChunksToIndex.length > 0) {
         await genaiEmbeddingsStore.saveSessionChunks(session.id, allChunksToIndex);
       } else {
@@ -643,6 +677,28 @@ export async function updateSessionSummaryIfNeeded(session, force = false) {
       console.log(`[Smart Context] Summary completed for session ${session.id}.`);
     } catch (err) {
       console.error(`[Smart Context] Failed to summarize session ${session.id}:`, err);
+      if (force) {
+        const meaningful = messages
+          .map(m => {
+            let c = (m.content || '').replace(/\[\[THINKING_BLOCK(_\d+)?\]\]/g, '').replace(/\[\[GENAI_TOOL_\d+\]\]/g, '').trim();
+            c = stripThinkingTags(c).trim();
+            if (!c) return null;
+            return `${m.role === 'user' ? 'User' : 'Assistant'}: ${c.substring(0, 150)}`;
+          })
+          .filter(Boolean)
+          .slice(-6);
+
+        if (meaningful.length > 0) {
+          const fallback = `Overview of conversation: ${meaningful.join(' | ')}`.substring(0, 400);
+          session.summary = fallback;
+          session.summary_chunks = [fallback];
+          session.smart_context_disabled = false;
+          saveHistory();
+          await genaiEmbeddingsStore.saveSessionChunks(session.id, [fallback]).catch(console.error);
+        } else {
+          throw err;
+        }
+      }
     } finally {
       delete activeSummarizations[strId];
       delete activeSummarizations[session.id];
@@ -747,3 +803,7 @@ export function getAndResetProceedOverride() {
 }
 
 window.updateSessionSummary = (session) => updateSessionSummaryIfNeeded(session, true);
+window.updateSessionSummaryIfNeeded = updateSessionSummaryIfNeeded;
+window.renderSmartContextChats = renderSmartContextChats;
+window.scheduleSmartContextAutoUpdate = scheduleSmartContextAutoUpdate;
+window.getAndResetProceedOverride = getAndResetProceedOverride;

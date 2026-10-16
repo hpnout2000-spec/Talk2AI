@@ -368,7 +368,7 @@ const DEFAULTS = {
   user_name: 'User',
   active_persona_id: 'default',
   personas: [
-    { id: 'default', name: 'Default Persona', description: '' }
+    { id: 'default', name: 'Name only', description: '' }
   ],
   reasoning_effort: 'none',
   previous_reasoning_effort: 'medium',
@@ -638,6 +638,19 @@ export const settingsStore = {
             ];
           }
           settings = { ...DEFAULTS, ...parsed };
+        }
+      }
+
+      // Ensure personas array is valid and default persona is 'Name only' with no description
+      if (!Array.isArray(settings.personas) || settings.personas.length === 0) {
+        settings.personas = [{ id: 'default', name: 'Name only', description: '' }];
+      } else {
+        const defP = settings.personas.find(p => p.id === 'default');
+        if (defP) {
+          defP.name = 'Name only';
+          defP.description = '';
+        } else {
+          settings.personas.unshift({ id: 'default', name: 'Name only', description: '' });
         }
       }
     } catch (e) {

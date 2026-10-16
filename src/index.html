@@ -446,7 +446,26 @@
                       </svg>
                     </button>
                   </div>
-                  <input type="text" id="user-name-edit-input" placeholder="Enter your name..." />
+                  <div class="user-morph-persona-row">
+                    <span class="user-morph-persona-label">Persona:</span>
+                    <div class="user-morph-persona-dropdown-wrap" id="user-morph-persona-dropdown-wrap">
+                      <button type="button" class="user-morph-persona-trigger" id="btn-user-morph-persona-trigger">
+                        <span class="user-morph-persona-name" id="user-morph-persona-selected-name">Name only</span>
+                        <svg class="user-morph-persona-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <polyline points="6 9 12 15 18 9"></polyline>
+                        </svg>
+                      </button>
+                      <div class="user-morph-persona-menu hidden" id="user-morph-persona-menu">
+                        <div class="user-morph-persona-list" id="user-morph-persona-list"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="user-morph-input-wrap" id="user-morph-input-wrap">
+                    <input type="text" id="user-name-edit-input" placeholder="Enter your name..." />
+                  </div>
+                  <div id="user-name-locked-notice" class="user-name-locked-notice hidden">
+                    <span>🔒 Name is set by active persona</span>
+                  </div>
                   <label class="user-morph-checkbox-label">
                     <input type="checkbox" id="user-name-chat-only" />
                     <span>Apply to this chat only</span>
@@ -2031,12 +2050,14 @@
             <!-- Persona Edit Form -->
             <div style="flex: 2; display: flex; flex-direction: column;" id="persona-edit-form" class="hidden">
               <div class="form-group">
-                <label for="persona-name">Persona Name</label>
-                <input type="text" id="persona-name" placeholder="e.g. Wizard..." />
+                <label for="persona-name">Persona Name (Character Name)</label>
+                <input type="text" id="persona-name" placeholder="e.g. Wizard, Alex..." />
+                <span id="persona-name-hint" style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px; display: block;"></span>
               </div>
               <div class="form-group" style="flex: 1; display: flex; flex-direction: column;">
                 <label for="persona-description">Description (System Prompt)</label>
                 <textarea id="persona-description" rows="6" placeholder="Describe your persona..." style="flex: 1; resize: none;"></textarea>
+                <span id="persona-desc-hint" style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px; display: block;"></span>
               </div>
               <div style="display: flex; gap: 8px; margin-top: 12px; height: 32px; align-items: center; justify-content: flex-end;">
                 <button id="btn-copy-persona" class="btn-secondary small" style="display: flex; align-items: center; gap: 6px;" title="Duplicate Persona">

@@ -61,6 +61,37 @@ creatorTabsList.forEach(tab => { creatorState[tab] = { facts: [], text: '' }; })
 let isSkillCreatorMode = false;
 const COGNITIVE_ACTIONS = ['recall_memories', 'save_to_smart_context'];
 
+const SMART_CONTEXT_REMINDER_NOTE = `[SYSTEM NOTE: Exactly 4 messages have passed since you saved the conversation into Smart Context. In addition to answering the user's current request/message naturally, at the end of your response you MUST politely ask the user (in their conversation language) whether they would like you to remember/save the new details and topics discussed since then into Smart Context as well.]`;
+
+function getLastMemorySaveInfo() {
+  if (!Array.isArray(genaiHistory) || genaiHistory.length === 0) return null;
+
+  for (let i = genaiHistory.length - 1; i >= 0; i--) {
+    const entry = genaiHistory[i];
+    if (entry && entry.role === 'assistant') {
+      const hasSaveAction = (Array.isArray(entry.tools) && entry.tools.some(t => {
+        const act = t.action?.genai_action;
+        return act === 'save_to_smart_context' || act === 'add_memory';
+      })) || (typeof entry.content === 'string' && (
+        entry.content.includes('"genai_action":"save_to_smart_context"') ||
+        entry.content.includes('"genai_action": "save_to_smart_context"') ||
+        entry.content.includes('"genai_action":"add_memory"') ||
+        entry.content.includes('"genai_action": "add_memory"')
+      ));
+
+      if (hasSaveAction) {
+        const msgsAfter = genaiHistory.slice(i + 1).filter(m => m && !m.isHidden && m.role !== 'system');
+        return {
+          saveIndex: i,
+          countAfter: msgsAfter.length,
+          msgsAfter
+        };
+      }
+    }
+  }
+  return null;
+}
+
 // ─── DOM refs ───────────────────────────────────────────────────────
 let messagesEl, inputEl, sendBtn, stopBtn, clearBtn, closeBtn, fullscreenBtn, brushBtn;
 let activeReplyQuote = null;
@@ -1463,7 +1494,8 @@ ${ANIMA_BETTER_PROMPT_TEXT}`;
   const isRealUserMsg = (msg) => {
     if (!msg || msg.role !== 'user') return false;
     if (typeof msg.content === 'string') {
-      if (msg.content.startsWith('[SYSTEM NOTE:') ||
+      if (msg.content.startsWith('[SYSTEM NOTE: The tool command') ||
+          msg.content.startsWith('[SYSTEM NOTE: You requested to view') ||
           msg.content.startsWith('[Auto Web Fetch Result') ||
           msg.content.startsWith('[TOOL RESULT]') ||
           msg.content.startsWith('[VIBE CHECK]')) {
@@ -2756,23 +2788,28 @@ async function executeTool(action, onStatus = null, onPreview = null, onComplete
     }
 
     try {
+      session.smart_context_disabled = false;
       saveHistory(); // Ensure session.messages is up to date
 
-      const { updateSessionSummaryIfNeeded } = await import('./genai-smart-context-mgr.js');
+      const { updateSessionSummaryIfNeeded, renderSmartContextChats } = await import('./genai-smart-context-mgr.js');
       await updateSessionSummaryIfNeeded(session, true);
 
-      if (window.renderSmartContextChats) {
-        window.renderSmartContextChats();
-      }
+      renderSmartContextChats();
       if (window.renderRecentChatsList) {
         window.renderRecentChatsList();
+      }
+
+      if (!session.summary || !session.summary.trim()) {
+        return {
+          error: 'Failed to generate summary for Smart Context.'
+        };
       }
 
       return {
         success: true,
         session_id: session.id,
         title: session.title || 'Current Chat',
-        summary: session.summary || 'Summary generated and saved successfully.'
+        summary: session.summary
       };
     } catch (err) {
       console.error('save_to_smart_context failed:', err);
@@ -3813,9 +3850,15 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
 
           // 1. Create a user entry with pending flight flag
           messagesEl.querySelector('.genai-empty-state')?.remove();
+          let suggestMsg = msg;
+          const saveInfo = getLastMemorySaveInfo();
+          if (saveInfo && saveInfo.countAfter === 4) {
+            suggestMsg = `${SMART_CONTEXT_REMINDER_NOTE}\n\n${suggestMsg}`;
+          }
+
           const userEntry = { 
             role: 'user', 
-            content: msg, 
+            content: suggestMsg, 
             timestamp: new Date().toISOString(), 
             isPendingFlight: true 
           };
@@ -3932,6 +3975,165 @@ function renderMessages() {
   scrollToBottom(true);
 }
 
+// ─── GenAI Branching & Message Actions ───────────────────────────────
+
+function deleteGenaiMessage(entry, el) {
+  const idx = genaiHistory.indexOf(entry);
+  if (idx === -1) return;
+
+  if (el) {
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(-8px)';
+    el.style.transition = 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)';
+    setTimeout(() => {
+      const curIdx = genaiHistory.indexOf(entry);
+      if (curIdx !== -1) {
+        genaiHistory.splice(curIdx, 1);
+        saveHistory();
+        renderMessages();
+      }
+    }, 200);
+  } else {
+    genaiHistory.splice(idx, 1);
+    saveHistory();
+    renderMessages();
+  }
+  if (window.showToast) {
+    window.showToast('Message deleted', 'info');
+  }
+}
+
+function branchGenAIChat(entry) {
+  if (isGenerating) {
+    if (window.showToast) window.showToast('Please wait for generation to finish before branching', 'warning');
+    return;
+  }
+
+  const originalSession = genaiSessions.find(s => String(s.id) === String(currentGenaiSessionId));
+  if (!originalSession) return;
+
+  const msgIndex = genaiHistory.indexOf(entry);
+  if (msgIndex === -1) return;
+
+  // Copy messages strictly up to and including the chosen message
+  const clonedMessages = JSON.parse(JSON.stringify(genaiHistory.slice(0, msgIndex + 1)));
+
+  // Remove existing branches & branch origins on cloned messages so new branch starts clean
+  clonedMessages.forEach(m => {
+    delete m.branches;
+    delete m.branched_from;
+  });
+
+  const newSessionId = Date.now().toString();
+
+  // Mark the last message in the cloned copy as branched from original session
+  if (clonedMessages.length > 0) {
+    clonedMessages[clonedMessages.length - 1].branched_from = {
+      sessionId: originalSession.id,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  // In the original chat, record that this message was branched to newSessionId
+  if (!entry.branches) entry.branches = [];
+  entry.branches.push({
+    sessionId: newSessionId,
+    timestamp: new Date().toISOString()
+  });
+
+  const originalTitle = originalSession.title || 'New Chat';
+  const newTitle = `Branched • ${originalTitle}`;
+
+  const newSession = {
+    id: newSessionId,
+    updated_at: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+    messages: clonedMessages,
+    pinned: false,
+    title: newTitle,
+    is_branched: true,
+    branched_from: {
+      sessionId: originalSession.id,
+      timestamp: new Date().toISOString()
+    },
+    isCharacterCreationMode: !!originalSession.isCharacterCreationMode,
+    creatorPanelClosedByUser: !!originalSession.creatorPanelClosedByUser,
+    currentCreatorTab: originalSession.currentCreatorTab || 'Name',
+    creatorState: originalSession.creatorState ? JSON.parse(JSON.stringify(originalSession.creatorState)) : {},
+    isSkillCreatorMode: !!originalSession.isSkillCreatorMode,
+    skillCreatorState: originalSession.skillCreatorState ? JSON.parse(JSON.stringify(originalSession.skillCreatorState)) : null
+  };
+
+  saveHistory();
+
+  // Insert newSession right above first unpinned session (or at beginning)
+  const firstUnpinned = genaiSessions.findIndex(s => !s.pinned);
+  if (firstUnpinned === -1) {
+    genaiSessions.push(newSession);
+  } else {
+    genaiSessions.splice(firstUnpinned, 0, newSession);
+  }
+
+  switchGenaiChat(newSessionId);
+
+  if (window.showToast) {
+    window.showToast(`Branched to "${newTitle}"`, 'success');
+  }
+}
+
+function createBranchMarkerEl(type, targetSessionId) {
+  const targetSession = genaiSessions.find(s => String(s.id) === String(targetSessionId));
+  if (!targetSession && type === 'to') {
+    return null; // Target branch chat was deleted
+  }
+  const targetTitle = targetSession ? targetSession.title : (type === 'from' ? 'Original Chat' : 'Branched Chat');
+
+  const marker = document.createElement('div');
+  marker.className = `genai-branch-marker genai-branch-${type}`;
+  marker.dataset.targetSessionId = targetSessionId;
+
+  const labelText = type === 'from' ? 'Branched from' : 'Branched to';
+
+  marker.innerHTML = `
+    <div class="genai-branch-content">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="genai-branch-icon">
+        <line x1="6" y1="3" x2="6" y2="15"/>
+        <circle cx="18" cy="6" r="3"/>
+        <circle cx="6" cy="18" r="3"/>
+        <path d="M18 9a9 9 0 0 1-9 9"/>
+      </svg>
+      <span class="genai-branch-label">${labelText}</span>
+      <button class="genai-branch-link ${!targetSession ? 'disabled' : ''}" data-session-id="${escapeHtml(targetSessionId)}" title="${targetSession ? 'Switch to ' + escapeHtml(targetTitle) : 'Chat not found'}" type="button">
+        <span class="genai-branch-link-title">${escapeHtml(targetTitle)}</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="genai-branch-link-arrow"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+    </div>
+  `;
+
+  if (targetSession) {
+    const linkBtn = marker.querySelector('.genai-branch-link');
+    linkBtn?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      switchGenaiChat(targetSessionId);
+    });
+  }
+
+  return marker;
+}
+
+function updateBranchLinksTitles() {
+  if (!messagesEl) return;
+  messagesEl.querySelectorAll('.genai-branch-marker').forEach(marker => {
+    const targetSessionId = marker.dataset.targetSessionId;
+    if (!targetSessionId) return;
+    const sess = genaiSessions.find(s => String(s.id) === String(targetSessionId));
+    const titleSpan = marker.querySelector('.genai-branch-link-title');
+    if (sess && titleSpan && sess.title) {
+      titleSpan.textContent = sess.title;
+    }
+  });
+}
+
 function appendMsgEl(entry) {
   if (entry.role === 'system') return;
   if (entry.isHidden) return;
@@ -3947,12 +4149,110 @@ function appendMsgEl(entry) {
     ? `<div class="genai-msg-avatar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 1 0-16 0"/></svg></div>`
     : `<div class="genai-msg-avatar">✨</div>`;
 
+  const rewriteHtml = !isUser ? `
+    <div class="genai-rewrite-wrapper">
+      <button class="genai-action-btn genai-btn-rewrite" title="Rewrite" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="genai-action-icon"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        <span class="genai-btn-label">Rewrite</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="genai-chevron-icon"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div class="genai-rewrite-dropdown hidden">
+        <button class="genai-dropdown-item" data-action="retry" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+          <span>Retry</span>
+        </button>
+        <button class="genai-dropdown-item" data-action="shorter" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+          <span>Shorter</span>
+        </button>
+        <button class="genai-dropdown-item" data-action="longer" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+          <span>Longer</span>
+        </button>
+        <button class="genai-dropdown-item disabled" data-action="expand" type="button" disabled title="Coming soon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="4" x2="12" y2="20"/><polyline points="18 14 12 20 6 14"/></svg>
+          <span>Expand</span>
+        </button>
+      </div>
+    </div>` : '';
+
   el.innerHTML = `
     ${avatarHtml}
     <div class="genai-msg-body">
       <div class="genai-msg-bubble"></div>
-      <span class="genai-msg-time" data-timestamp="${entry.timestamp || new Date().toISOString()}" data-custom-tooltip="${formatExactTime(entry.timestamp || new Date().toISOString())}">${formatTime(entry.timestamp || new Date().toISOString())}</span>
+      <div class="genai-msg-footer">
+        <span class="genai-msg-time" data-timestamp="${entry.timestamp || new Date().toISOString()}" data-custom-tooltip="${formatExactTime(entry.timestamp || new Date().toISOString())}">${formatTime(entry.timestamp || new Date().toISOString())}</span>
+        <div class="genai-msg-actions-cloud">
+          <button class="genai-action-btn genai-btn-delete" title="Delete message" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="genai-action-icon"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            <span class="genai-btn-label">Delete</span>
+          </button>
+          <span class="genai-cloud-morph-arrow" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </span>
+          ${rewriteHtml}
+          <button class="genai-action-btn genai-btn-branch" title="Branch from this message" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="genai-action-icon"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+            <span class="genai-btn-label">Branch</span>
+          </button>
+        </div>
+      </div>
     </div>`;
+
+  // Cloud actions wiring
+  const deleteBtn = el.querySelector('.genai-btn-delete');
+  deleteBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    deleteGenaiMessage(entry, el);
+  });
+
+  const rewriteBtn = el.querySelector('.genai-btn-rewrite');
+  const rewriteWrapper = el.querySelector('.genai-rewrite-wrapper');
+  const rewriteDropdown = el.querySelector('.genai-rewrite-dropdown');
+  const actionsCloud = el.querySelector('.genai-msg-actions-cloud');
+
+  if (rewriteBtn && rewriteDropdown) {
+    rewriteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      const isCurrentlyOpen = !rewriteDropdown.classList.contains('hidden');
+      document.querySelectorAll('.genai-rewrite-dropdown:not(.hidden)').forEach(d => {
+        d.classList.add('hidden');
+        d.closest('.genai-rewrite-wrapper')?.classList.remove('is-open');
+        d.closest('.genai-msg-actions-cloud')?.classList.remove('is-open');
+      });
+
+      if (!isCurrentlyOpen) {
+        rewriteDropdown.classList.remove('hidden');
+        rewriteWrapper?.classList.add('is-open');
+        actionsCloud?.classList.add('is-open');
+      }
+    });
+
+    rewriteDropdown.querySelectorAll('.genai-dropdown-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        if (item.disabled || item.classList.contains('disabled')) return;
+        rewriteDropdown.classList.add('hidden');
+        rewriteWrapper?.classList.remove('is-open');
+        actionsCloud?.classList.remove('is-open');
+        const action = item.dataset.action;
+        const actionLabel = action ? (action.charAt(0).toUpperCase() + action.slice(1)) : 'Rewrite';
+        if (window.showToast) {
+          window.showToast(`${actionLabel} coming soon!`, 'info');
+        }
+      });
+    });
+  }
+
+  const branchBtn = el.querySelector('.genai-btn-branch');
+  branchBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    branchGenAIChat(entry);
+  });
 
   if (isGenerating && !isUser) {
     el.classList.add('generating');
@@ -3969,6 +4269,10 @@ function appendMsgEl(entry) {
       htmlContent += `</div>`;
     }
     let textToRender = entry.content || '';
+    
+    // Strip smart context reminder system note from display
+    const reminderNoteRegex = /^\[SYSTEM NOTE:\s*Exactly 4 messages[\s\S]*?\](?:\r?\n\r?\n)?/i;
+    textToRender = textToRender.replace(reminderNoteRegex, '');
     
     // Check if entry starts with [System note: The user highlighted the following from the AI's response: "..."]
     const systemNoteRegex = /^\[System note: The user highlighted the following from the AI's response: "([\s\S]*?)"\](?:\r?\n\r?\n)?/;
@@ -4024,6 +4328,21 @@ function appendMsgEl(entry) {
   }
 
   messagesEl.appendChild(el);
+
+  // If this message was branched from another session, render the branch marker
+  if (entry.branched_from) {
+    const marker = createBranchMarkerEl('from', entry.branched_from.sessionId);
+    if (marker) messagesEl.appendChild(marker);
+  }
+
+  // If this message was branched to other sessions, render the branch markers
+  if (Array.isArray(entry.branches) && entry.branches.length > 0) {
+    for (const b of entry.branches) {
+      const marker = createBranchMarkerEl('to', b.sessionId);
+      if (marker) messagesEl.appendChild(marker);
+    }
+  }
+
   return el;
 }
 
@@ -6438,6 +6757,8 @@ function updateGenAIHeaderTitle() {
     if (dot) dot.classList.add('hidden');
     container.removeAttribute('data-custom-tooltip');
   }
+
+  updateBranchLinksTitles();
 }
 
 async function loadHistory() {
@@ -6674,6 +6995,8 @@ function deleteGenaiChat(id, e) {
     } else {
       saveHistory();
       renderRecentChatsList();
+      renderMessages();
+      updateBranchLinksTitles();
 
       const chatMenuRecent = document.getElementById('genai-chat-menu-recent');
       const chatMenuPopover = document.getElementById('genai-chat-menu-popover');
@@ -6779,13 +7102,16 @@ function renderChatRow(s) {
   const isActive = String(s.id) === String(currentGenaiSessionId);
   const isPinned = s.pinned;
   const hasSummary = s.summary && s.summary.trim().length > 0 && !s.smart_context_disabled;
-  const d = new Date(s.updated_at);
-  const timeStr = d.toLocaleDateString() === new Date().toLocaleDateString() ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString();
+  const isBranched = !!(s.is_branched || s.branched_from || (s.title && s.title.startsWith('Branched • ')));
+  const timeStr = formatTime(s.updated_at) || 'just now';
   return `
     <div class="genai-chat-item ${isActive ? 'active-chat' : ''}" data-id="${s.id}">
       <div style="display: flex; flex-direction: column; overflow: hidden; flex: 1; padding-right: 8px;">
         <div class="genai-chat-item-title" data-custom-tooltip="${escapeHtml(s.title)}">${escapeHtml(s.title)}</div>
-        <div class="genai-chat-item-date" data-timestamp="${s.updated_at || ''}" data-custom-tooltip="${formatExactTime(s.updated_at)}">${timeStr}</div>
+        <div class="genai-chat-item-date">
+          <span class="genai-chat-item-time" data-timestamp="${s.updated_at || ''}" data-custom-tooltip="${formatExactTime(s.updated_at)}">${timeStr}</span>
+          ${isBranched ? `<span class="genai-chat-item-branched"> • Branched</span>` : ''}
+        </div>
       </div>
       <div style="display: flex; align-items: center; gap: 2px;">
         <button class="btn-toggle-sc ${hasSummary ? 'active' : ''}" data-id="${s.id}" title="${hasSummary ? 'Remove from Smart Context' : 'Add to Smart Context'}">
@@ -6980,6 +7306,11 @@ async function sendUserMessage() {
     clearGenAIReplyQuote();
   }
 
+  const saveInfo = getLastMemorySaveInfo();
+  if (saveInfo && saveInfo.countAfter === 4) {
+    text = `${SMART_CONTEXT_REMINDER_NOTE}\n\n${text}`;
+  }
+
   inputEl.value = '';
   autoResizeTextarea(inputEl);
 
@@ -7041,8 +7372,14 @@ async function sendProgrammaticUserMessage(text) {
   // Remove empty state
   messagesEl.querySelector('.genai-empty-state')?.remove();
 
+  let finalText = text;
+  const saveInfo = getLastMemorySaveInfo();
+  if (saveInfo && saveInfo.countAfter === 4) {
+    finalText = `${SMART_CONTEXT_REMINDER_NOTE}\n\n${finalText}`;
+  }
+
   // Add user entry
-  const userEntry = { role: 'user', content: text, timestamp: new Date().toISOString() };
+  const userEntry = { role: 'user', content: finalText, timestamp: new Date().toISOString() };
   genaiHistory.push(userEntry);
   saveHistory(); // Save immediately so it's not lost if user refreshes during AI response
   appendMsgEl(userEntry);
@@ -7649,34 +7986,49 @@ export function initGenAIPanel() {
   btnReverse?.addEventListener('click', () => {
     if (isGenerating || genaiHistory.length === 0) return;
 
-    // Find the last assistant message and the last user message
+    // Find the last assistant message and the last real user message
     let lastAssistantIdx = -1;
     let lastUserIdx = -1;
 
     for (let i = genaiHistory.length - 1; i >= 0; i--) {
       if (lastAssistantIdx === -1 && genaiHistory[i].role === 'assistant') {
         lastAssistantIdx = i;
-      } else if (genaiHistory[i].role === 'user') {
+      } else if (genaiHistory[i].role === 'user' && !genaiHistory[i].isHidden) {
         lastUserIdx = i;
         break; // Found both
       }
     }
 
     if (lastUserIdx !== -1) {
-      const lastUserMsgText = genaiHistory[lastUserIdx].content;
+      const userEntry = genaiHistory[lastUserIdx];
+      let lastUserMsgText = userEntry.content || '';
       
+      // Strip reminder system note if present so input textarea remains clean
+      const reminderNoteRegex = /^\[SYSTEM NOTE:\s*Exactly 4 messages[\s\S]*?\](?:\r?\n\r?\n)?/i;
+      lastUserMsgText = lastUserMsgText.replace(reminderNoteRegex, '');
+
+      // Check if message had a reply quote
+      const systemNoteRegex = /^\[System note: The user highlighted the following from the AI's response: "([\s\S]*?)"\](?:\r?\n\r?\n)?/;
+      const sysNoteMatch = lastUserMsgText.match(systemNoteRegex);
+      if (sysNoteMatch) {
+        const quotedText = sysNoteMatch[1];
+        lastUserMsgText = lastUserMsgText.replace(systemNoteRegex, '');
+        // Restore the quote pill above textarea
+        setGenAIReplyQuote(quotedText);
+      }
+
       // Move user message text back to writing textarea
       inputEl.value = lastUserMsgText;
       autoResizeTextarea(inputEl);
 
-      // Remove the assistant reply that came after, and the user message itself
-      if (lastAssistantIdx !== -1) {
-        genaiHistory.splice(lastAssistantIdx, 1);
-      }
-      // Re-evaluate index in case splice shifted it
-      const newLastUserIdx = genaiHistory.findIndex(m => m.role === 'user' && m.content === lastUserMsgText);
-      if (newLastUserIdx !== -1) {
-        genaiHistory.splice(newLastUserIdx, 1);
+      // Remove the assistant reply that came after, and the user message itself (along with any intermediate hidden messages)
+      if (lastAssistantIdx !== -1 && lastAssistantIdx >= lastUserIdx) {
+        genaiHistory.splice(lastUserIdx, lastAssistantIdx - lastUserIdx + 1);
+      } else {
+        const uIdx = genaiHistory.indexOf(userEntry);
+        if (uIdx !== -1) {
+          genaiHistory.splice(uIdx, 1);
+        }
       }
 
       saveHistory();
@@ -7693,6 +8045,17 @@ export function initGenAIPanel() {
 
     if (session.rename_pending && !session.is_updating_title) {
       await aiRenameGenaiChatNative(session.id);
+    }
+  });
+
+  // Close any open GenAI message rewrite dropdown when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.genai-rewrite-wrapper')) {
+      document.querySelectorAll('.genai-rewrite-dropdown:not(.hidden)').forEach(d => {
+        d.classList.add('hidden');
+        d.closest('.genai-rewrite-wrapper')?.classList.remove('is-open');
+        d.closest('.genai-msg-actions-cloud')?.classList.remove('is-open');
+      });
     }
   });
 

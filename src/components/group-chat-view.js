@@ -318,7 +318,10 @@ function finishGroupGeneration() {
 
 export function buildGroupApiMessages(respondingChar, allCharacters, session) {
   const settings = settingsStore.get();
-  const userName = settings.user_name || 'User';
+  const personaId = settings.active_persona_id || 'default';
+  const activePersona = (settings.personas || []).find(p => p.id === personaId);
+  const isCustomPersona = activePersona && activePersona.id !== 'default';
+  const userName = isCustomPersona ? activePersona.name : (settings.user_name || 'User');
   const messages = [];
   const otherChars = allCharacters.filter(c => c.id !== respondingChar.id);
   

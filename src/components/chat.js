@@ -39,6 +39,29 @@ function notifyGenAI(response, characterName) {
   import('../components/genai-panel.js').then(m => m.notifyGenAIResponse(response, characterName)).catch(() => { });
 }
 
+/**
+ * Resolves active persona and user name for a given chat session.
+ * If a custom persona preset is selected, its name and description take precedence.
+ * If "Name only" ('default') is selected, falls back to session/global user_name.
+ */
+export function resolveChatPersona(session) {
+  const settings = settingsStore.get();
+  const personaId = session?.persona_id || 'default';
+  const personas = settings.personas || [];
+  const activePersona = personas.find(p => p.id === personaId);
+  const isCustomPersona = Boolean(activePersona && activePersona.id !== 'default');
+  return {
+    personaId,
+    activePersona: isCustomPersona ? activePersona : null,
+    isCustomPersona,
+    userName: isCustomPersona ? activePersona.name : (session?.user_name || settings.user_name || 'User')
+  };
+}
+
+export function resolveChatUserName(session) {
+  return resolveChatPersona(session).userName;
+}
+
 const ANIMA_BETTER_PROMPT_TEXT = `[IMAGE GENERATION RULES & GUIDELINES]
 Prompting
 The model is trained on Danbooru-style tags, natural language captions, and combinations of tags and captions.
@@ -192,8 +215,7 @@ export function updateCharMorphCard(character) {
   // Update Author's Notes preview & full
   const rawNotes = (character.creator_notes || character.authors_note || character.author_notes || character.comment || '').trim();
   if (rawNotes) {
-    const settings = settingsStore.get();
-    const userName = appState.currentChat?.user_name || settings.user_name || 'User';
+    const userName = resolveChatUserName(appState.currentChat);
     const notes = replaceCharUserMacros(rawNotes, character.name || 'Assistant', userName);
     const previewNotes = extractPreviewNotes(notes);
     if (charMorphNotesPreview) charMorphNotesPreview.innerHTML = renderMarkdown(previewNotes);
@@ -222,6 +244,7 @@ export function updateCharMorphCard(character) {
     charMorphContainer.style.setProperty('--char-morph-collapsed-width', `${collapsedWidth}px`);
   });
 }
+window.updateCharMorphCard = updateCharMorphCard;
 
 export function openCharMorph() {
   if (!charMorphContainer || !appState.currentCharacter) return;
@@ -731,7 +754,7 @@ export function initChat() {
   // Helper: compute the next chunk window and generate a summary chunk
   async function addSummaryChunk(session, character, silent = false) {
     const settings = settingsStore.get();
-    const userName = session.user_name || settings.user_name || 'User';
+    const userName = resolveChatUserName(session);
     const characterName = character.name;
     const chunkSize = settings.summary_chunk_size || 10;
     const summaryLength = settings.summary_length || 'default';
@@ -1906,6 +1929,8 @@ export function startNewChat(character = null) {
   if (!char) return;
 
   const session = chatStore.createSession(char.id);
+  session.persona_id = 'default';
+  delete session.user_name;
 
   // Only update global appState if this character is active
   if (appState.currentCharacter?.id === char.id) {
@@ -1917,8 +1942,7 @@ export function startNewChat(character = null) {
 
   // Show first message if character has one
   if (char.first_message) {
-    const settings = settingsStore.get();
-    const userName = settings.user_name || 'User';
+    const userName = resolveChatUserName(session);
 
     // Support random first message if multiple are available
     let content = char.first_message;
@@ -1954,6 +1978,9 @@ export function startNewChat(character = null) {
 export function loadChat(session) {
   if (!session) return;
   if (appState.currentCharacter?.id !== session.character_id) return;
+  if (!session.persona_id) {
+    session.persona_id = 'default';
+  }
   if (!session.summaryChunks && session.summary_chunks) {
     session.summaryChunks = session.summary_chunks;
   }
@@ -2286,8 +2313,13 @@ async function sendMessage() {
   let thinkingTime = 0;
   let thinkingActiveInline = false;
 
+  const { isCustomPersona: curIsCustomPersona, activePersona: curActivePersona, userName: curUserName } = resolveChatPersona(session);
+
   // Dynamic options override
-  const apiOptions = {};
+  const apiOptions = {
+    userName: curUserName,
+    persona: (curIsCustomPersona && curActivePersona?.description) ? curActivePersona.description : ''
+  };
 
   // Show Processing... immediately in sleek capsule while waiting for API response
   contentEl.innerHTML = createThinkingBlockHTML('', true, false, 0, settings.reasoning_effort, settings.max_tokens);
@@ -2858,9 +2890,7 @@ export function calculateSummaryNeeds(session, maxContext, fullContextTokens, un
 
 async function computeContextAndTrimHistory(character, session, signal = null) {
   const settings = settingsStore.get();
-  const userName = session.user_name || settings.user_name || 'User';
-  const personaId = session.persona_id || settings.active_persona_id || 'default';
-  const activePersona = (settings.personas || []).find(p => p.id === personaId);
+  const { isCustomPersona, activePersona, userName } = resolveChatPersona(session);
 
   // 1. Get max context length and subtract response generation tokens
   const rawMaxContext = await api.getMaxContextLength();
@@ -2869,13 +2899,13 @@ async function computeContextAndTrimHistory(character, session, signal = null) {
 
   // 2. Count tokens for Character Card (description + personality + scenario)
   const charData = {
-    description: character.description || '',
-    personality: character.personality ? `Personality: ${character.personality}` : '',
-    scenario: character.scenario ? `Scenario: ${character.scenario}` : ''
+    description: replaceCharUserMacros(character.description || '', character.name, userName),
+    personality: character.personality ? `Personality: ${replaceCharUserMacros(character.personality, character.name, userName)}` : '',
+    scenario: character.scenario ? `Scenario: ${replaceCharUserMacros(character.scenario, character.name, userName)}` : ''
   };
   const charText = [charData.description, charData.personality, charData.scenario].filter(Boolean).join('\n\n') || `You are ${character.name}.`;
 
-  const charKey = `char_${character.id}_${charText.length}`;
+  const charKey = `char_${character.id}_${userName}_${charText.length}`;
   let charTokensObj = tokenCountCache.get(charKey);
   if (charTokensObj === undefined) {
     charTokensObj = await api.countTokensDetailed(charText, signal);
@@ -2939,7 +2969,7 @@ async function computeContextAndTrimHistory(character, session, signal = null) {
   systemBasePure = systemBasePure.replace(/\{\{char\}\}/gi, character.name);
 
   let systemContentPure = systemBasePure;
-  if (activePersona && activePersona.description) {
+  if (isCustomPersona && activePersona && activePersona.description) {
     let personaStr = activePersona.description.replace(/\{\{user\}\}/gi, userName).replace(/\{\{char\}\}/gi, character.name);
     systemContentPure += `\n\n[USER PERSONA]\nThe user's persona is as follows. Treat the user as this persona:\n${personaStr}`;
   }
@@ -3264,16 +3294,16 @@ async function buildApiMessages(character, session) {
 
   const result = await computeContextAndTrimHistory(character, session);
   const settings = settingsStore.get();
-  const userName = session.user_name || settings.user_name || 'User';
+  const { isCustomPersona, activePersona, userName } = resolveChatPersona(session);
 
   const messages = [];
 
   // Re-build systemContent with appropriate replacements and memory injection
   let systemContent = '';
   const charData = {
-    description: character.description || '',
-    personality: character.personality ? `Personality: ${character.personality}` : '',
-    scenario: character.scenario ? `Scenario: ${character.scenario}` : ''
+    description: replaceCharUserMacros(character.description || '', character.name, userName),
+    personality: character.personality ? `Personality: ${replaceCharUserMacros(character.personality, character.name, userName)}` : '',
+    scenario: character.scenario ? `Scenario: ${replaceCharUserMacros(character.scenario, character.name, userName)}` : ''
   };
 
   if (character.system_prompt) {
@@ -3349,12 +3379,8 @@ async function buildApiMessages(character, session) {
   // Replace placeholders
   systemContent = replaceCharUserMacros(systemContent, character.name, userName);
 
-  const personaId = session.persona_id || settings.active_persona_id || 'default';
-  const personas = settings.personas || [];
-  const activePersona = personas.find(p => p.id === personaId);
-
   // Inject persona description if active
-  if (activePersona && activePersona.description) {
+  if (isCustomPersona && activePersona && activePersona.description) {
     let personaStr = replaceCharUserMacros(activePersona.description, character.name, userName);
     systemContent += `\n\n[USER PERSONA]\nThe user's persona is as follows. Treat the user as this persona:\n${personaStr}`;
   }
@@ -3819,8 +3845,7 @@ async function swipeGreeting(messageId, direction) {
   appState.currentChat.selected_greeting_index = currentIdx;
 
   const newContent = greetings[currentIdx];
-  const settings = settingsStore.get();
-  const userName = settings.user_name || 'User';
+  const userName = resolveChatUserName(appState.currentChat);
   let processedContent = replaceCharUserMacros(newContent, char.name, userName);
 
   // Update store
@@ -4146,7 +4171,11 @@ async function triggerAssistantGeneration() {
   let thinkingStartTime = Date.now();
   let thinkingTime = 0;
   let thinkingActiveInline2 = false;
-  const apiOptions = {};
+  const { isCustomPersona: curIsCustomPersona2, activePersona: curActivePersona2, userName: curUserName2 } = resolveChatPersona(session);
+  const apiOptions = {
+    userName: curUserName2,
+    persona: (curIsCustomPersona2 && curActivePersona2?.description) ? curActivePersona2.description : ''
+  };
 
   // Show Processing... immediately in sleek capsule while waiting for API response
   contentEl.innerHTML = createThinkingBlockHTML('', true, false, 0, settings.reasoning_effort, settings.max_tokens);
@@ -5107,8 +5136,7 @@ async function triggerIndicatorUpdate(character, session, lastUserMsg, lastAssis
 
   // Build a focused context for the update call
   // We use the character's core info but minimal history to keep it fast and focused
-  const settings = settingsStore.get();
-  const userName = settings.user_name || 'User';
+  const userName = resolveChatUserName(session);
 
   const context = [
     {
@@ -5630,7 +5658,7 @@ async function triggerAutomaticImageGeneration(character, session, assistantRepl
 
   // Build a complete history context up to settings.prompt_token_limit
   const settings = settingsStore.get();
-  const userName = session.user_name || settings.user_name || 'User';
+  const userName = resolveChatUserName(session);
 
   const historyLines = session.messages
     .filter(m => m.role !== 'system' && (m.content || m.original_text))
@@ -6043,14 +6071,12 @@ window.initStatusRotation = function(container) {
 // ─── Update Context Indicator ────────────────────────────────────────
 
 function getContextSignature(character, session, settings) {
-  const userName = session.user_name || settings.user_name || 'User';
-  const personaId = session.persona_id || settings.active_persona_id || 'default';
-  const activePersona = (settings.personas || []).find(p => p.id === personaId);
+  const { isCustomPersona, activePersona, userName } = resolveChatPersona(session);
 
   const charData = {
-    description: character.description || '',
-    personality: character.personality ? `Personality: ${character.personality}` : '',
-    scenario: character.scenario ? `Scenario: ${character.scenario}` : ''
+    description: replaceCharUserMacros(character.description || '', character.name, userName),
+    personality: character.personality ? `Personality: ${replaceCharUserMacros(character.personality, character.name, userName)}` : '',
+    scenario: character.scenario ? `Scenario: ${replaceCharUserMacros(character.scenario, character.name, userName)}` : ''
   };
   const charText = [charData.description, charData.personality, charData.scenario].filter(Boolean).join('\n\n') || `You are ${character.name}.`;
 
@@ -6092,7 +6118,7 @@ function getContextSignature(character, session, settings) {
   systemBasePure = systemBasePure.replace(/\{\{char\}\}/gi, character.name);
 
   let systemContentPure = systemBasePure;
-  if (activePersona && activePersona.description) {
+  if (isCustomPersona && activePersona && activePersona.description) {
     let personaStr = activePersona.description.replace(/\{\{user\}\}/gi, userName).replace(/\{\{char\}\}/gi, character.name);
     systemContentPure += `\n\n[USER PERSONA]\nThe user's persona is as follows. Treat the user as this persona:\n${personaStr}`;
   }

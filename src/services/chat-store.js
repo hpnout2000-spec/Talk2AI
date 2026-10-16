@@ -137,6 +137,7 @@ export const chatStore = {
     const session = {
       id: generateId(),
       character_id: characterId,
+      persona_id: 'default',
       messages: [],
       ai_comments: [],
       indicators: { enabled: false, list: [] },

@@ -693,9 +693,21 @@ body.genai-fullscreen .genai-fullscreen-placeholder {
   font-size: 11px;
   color: var(--text-tertiary);
   margin-top: 2px;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
   width: fit-content;
-  max-width: fit-content;
-  display: inline-block;
+  max-width: 100%;
+}
+
+.genai-chat-item-time {
+  white-space: nowrap;
+}
+
+.genai-chat-item-branched {
+  color: var(--accent-primary, #38bdf8);
+  font-weight: 500;
+  white-space: pre;
 }
 
 .btn-pin-chat, .btn-delete-chat {
@@ -1010,26 +1022,506 @@ body.genai-fullscreen .genai-empty-state {
   margin: 0.6em 0 0.2em;
 }
 
+/* ─── GenAI Message Footer & Actions Cloud ────────────────────────── */
+
+.genai-msg-footer {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: var(--space-2);
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.genai-msg.genai-user .genai-msg-footer {
+  flex-direction: row-reverse;
+}
+
 .genai-msg-time {
   font-size: var(--text-xs);
   color: var(--text-tertiary);
   padding: 0 2px;
-  margin-top: var(--space-2);
   cursor: default;
   user-select: none;
   transition: opacity 0.3s ease, color var(--transition-fast);
-  width: fit-content;
-  max-width: fit-content;
-  display: inline-block;
+  white-space: nowrap;
 }
 
 .genai-msg-time:hover {
   color: var(--text-secondary);
 }
 
-.genai-msg.generating .genai-msg-time {
+.genai-msg.generating .genai-msg-footer {
   opacity: 0;
   pointer-events: none;
+}
+
+/* Actions Cloud capsule */
+.genai-msg-actions-cloud {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  background: rgba(26, 26, 32, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(2px) scale(0.96);
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              padding 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+              background 0.2s ease,
+              border-color 0.2s ease;
+  z-index: 20;
+  position: relative;
+  box-sizing: border-box;
+}
+
+/* Invisible hit area so coming closer triggers the morph smoothly */
+.genai-msg-actions-cloud::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
+  border-radius: 9999px;
+  pointer-events: auto;
+  z-index: -1;
+}
+
+/* Reveal compact pill on message hover */
+.genai-msg:hover .genai-msg-actions-cloud,
+.genai-msg-actions-cloud.is-open {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+  transform: translateY(0) scale(1) !important;
+}
+
+.genai-msg-footer:has(.is-open),
+.genai-msg:has(.is-open) {
+  z-index: 1000 !important;
+  position: relative;
+}
+
+/* Morph arrow (chevron right without tail) */
+.genai-cloud-morph-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary, #94a3b8);
+  max-width: 16px;
+  opacity: 0.85;
+  overflow: hidden;
+  margin: 0 1px;
+  transition: max-width 0.24s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+              transform 0.24s cubic-bezier(0.16, 1, 0.3, 1),
+              margin 0.2s ease;
+  pointer-events: none;
+}
+
+.genai-cloud-morph-arrow svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+/* Buttons inside cloud */
+.genai-action-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 6px;
+  border-radius: 9999px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #cbd5e1);
+  font-size: 11px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+  line-height: 1;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.genai-btn-label {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+/* Delete button text morphing */
+.genai-btn-delete .genai-btn-label {
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  margin-left: 0;
+  transition: max-width 0.24s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              margin 0.2s ease;
+}
+
+.genai-action-icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+  color: var(--text-secondary, #cbd5e1);
+  transition: color 0.15s ease;
+}
+
+/* Gray trash icon by default */
+.genai-btn-delete .genai-action-icon {
+  color: var(--text-tertiary, #94a3b8);
+}
+
+/* Rewrite button wrapper morphing */
+.genai-rewrite-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  max-width: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: max-width 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.genai-rewrite-wrapper .genai-btn-rewrite {
+  max-width: 0;
+  opacity: 0;
+  padding: 0;
+  overflow: hidden;
+  margin: 0;
+  border: none;
+  transition: max-width 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              padding 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.genai-chevron-icon {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  margin-left: 2px;
+}
+
+/* Branch button morphing */
+.genai-btn-branch {
+  max-width: 0;
+  opacity: 0;
+  padding: 0;
+  overflow: hidden;
+  margin: 0;
+  border: none;
+  pointer-events: none;
+  transition: max-width 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+              opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              padding 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.genai-btn-branch .genai-btn-label,
+.genai-btn-rewrite .genai-btn-label {
+  margin-left: 4px;
+}
+
+/* ─── Morph open states (on footer hover, cloud hover, or when opened) ─── */
+
+.genai-msg-footer:hover .genai-msg-actions-cloud,
+.genai-msg-actions-cloud:hover,
+.genai-msg-actions-cloud.is-open {
+  padding: 2px 4px;
+}
+
+.genai-msg-footer:hover .genai-cloud-morph-arrow,
+.genai-msg-actions-cloud:hover .genai-cloud-morph-arrow,
+.genai-msg-actions-cloud.is-open .genai-cloud-morph-arrow {
+  max-width: 0 !important;
+  opacity: 0 !important;
+  transform: translateX(6px) !important;
+  margin: 0 !important;
+}
+
+.genai-msg-footer:hover .genai-btn-delete .genai-btn-label,
+.genai-msg-actions-cloud:hover .genai-btn-delete .genai-btn-label,
+.genai-msg-actions-cloud.is-open .genai-btn-delete .genai-btn-label {
+  max-width: 50px !important;
+  opacity: 1 !important;
+  margin-left: 4px !important;
+}
+
+.genai-msg-footer:hover .genai-rewrite-wrapper,
+.genai-msg-actions-cloud:hover .genai-rewrite-wrapper,
+.genai-msg-actions-cloud.is-open .genai-rewrite-wrapper {
+  max-width: 120px !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+.genai-msg-footer:hover .genai-rewrite-wrapper .genai-btn-rewrite,
+.genai-msg-actions-cloud:hover .genai-rewrite-wrapper .genai-btn-rewrite,
+.genai-msg-actions-cloud.is-open .genai-rewrite-wrapper .genai-btn-rewrite {
+  max-width: 120px !important;
+  opacity: 1 !important;
+  padding: 3px 6px !important;
+  pointer-events: auto !important;
+}
+
+.genai-msg-footer:hover .genai-btn-branch,
+.genai-msg-actions-cloud:hover .genai-btn-branch,
+.genai-msg-actions-cloud.is-open .genai-btn-branch {
+  max-width: 100px !important;
+  opacity: 1 !important;
+  padding: 3px 6px !important;
+  pointer-events: auto !important;
+}
+
+/* Button hover effects */
+.genai-action-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary, #ffffff);
+}
+
+.genai-action-btn:active {
+  transform: scale(0.96);
+}
+
+.genai-btn-delete:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+.genai-btn-delete:hover .genai-action-icon {
+  color: #f87171;
+}
+
+.genai-btn-branch:hover {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+}
+
+.genai-btn-branch:hover .genai-action-icon {
+  color: #38bdf8;
+}
+
+.genai-rewrite-wrapper.is-open .genai-chevron-icon {
+  transform: rotate(180deg);
+}
+
+.genai-rewrite-wrapper.is-open .genai-btn-rewrite {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-primary, #ffffff);
+}
+
+/* ─── Rewrite Dropdown Popover ─── */
+
+.genai-rewrite-dropdown.hidden {
+  display: none !important;
+}
+
+.genai-rewrite-dropdown {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(24, 24, 28, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  padding: 4px;
+  display: flex !important;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 110px;
+  z-index: 99999 !important;
+  animation: fadeIn 0.15s ease forwards;
+  pointer-events: auto;
+}
+
+.genai-dropdown-item {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #cbd5e1);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: background 0.15s ease, color 0.15s ease;
+  user-select: none;
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+
+.genai-dropdown-item svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  color: var(--text-tertiary, #94a3b8);
+}
+
+.genai-dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: var(--text-primary, #ffffff) !important;
+}
+
+.genai-dropdown-item:hover svg {
+  color: var(--accent-primary, #38bdf8) !important;
+}
+
+.genai-dropdown-item.disabled,
+.genai-dropdown-item:disabled {
+  opacity: 0.38 !important;
+  cursor: not-allowed !important;
+}
+
+.genai-dropdown-item.disabled:hover,
+.genai-dropdown-item:disabled:hover {
+  background: transparent !important;
+  color: var(--text-secondary, #cbd5e1) !important;
+}
+
+.genai-dropdown-item.disabled:hover svg,
+.genai-dropdown-item:disabled:hover svg {
+  color: var(--text-tertiary, #94a3b8) !important;
+}
+
+/* ─── GenAI Branch Marker Indicator ────────────────────────────────── */
+
+.genai-branch-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  margin: 16px 0;
+  padding: 0 var(--space-2);
+  position: relative;
+  animation: fadeIn 0.25s ease forwards;
+  box-sizing: border-box;
+}
+
+.genai-branch-marker::before,
+.genai-branch-marker::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border-light, rgba(255, 255, 255, 0.12));
+  min-width: 16px;
+}
+
+.genai-branch-content {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0 4px;
+  flex-shrink: 0;
+  max-width: 100%;
+}
+
+.genai-branch-from .genai-branch-content {
+  background: transparent;
+}
+
+.genai-branch-icon {
+  width: 13px;
+  height: 13px;
+  color: var(--accent-primary, #38bdf8);
+  flex-shrink: 0;
+}
+
+.genai-branch-from .genai-branch-icon {
+  color: #a855f7;
+}
+
+.genai-branch-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-tertiary, #94a3b8);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.genai-branch-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 2px 7px;
+  color: var(--text-primary, #f1f5f9);
+  font-size: 11px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  max-width: 260px;
+}
+
+.genai-branch-link-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.genai-branch-link-arrow {
+  width: 11px;
+  height: 11px;
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.genai-branch-link:hover {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: rgba(56, 189, 248, 0.3);
+  color: #38bdf8;
+}
+
+.genai-branch-from .genai-branch-link:hover {
+  background: rgba(168, 85, 247, 0.15);
+  border-color: rgba(168, 85, 247, 0.3);
+  color: #c084fc;
+}
+
+.genai-branch-link:hover .genai-branch-link-arrow {
+  transform: translateX(2px);
+  opacity: 1;
+}
+
+.genai-branch-link.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+  border-style: dashed;
+}
+
+/* Fullscreen alignment for branch markers */
+body.genai-fullscreen .genai-branch-marker {
+  max-width: 960px;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: var(--space-4);
+  padding-right: var(--space-4);
 }
 
 /* ─── Action Badges (tool call results) ─────────────────────────────── */
