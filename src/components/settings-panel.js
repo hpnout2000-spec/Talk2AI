@@ -245,11 +245,20 @@ function setupSettingsMorphing(panel) {
       }
       const saveBtn = floatFooter.querySelector('.btn-save-settings');
       if (saveBtn) {
+        // Transform into exact Apple Liquid Glass chat-pod style
+        saveBtn.className = 'chat-pod btn-save-settings';
         saveBtn.innerHTML = `
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;">
+          <div class="cloud-progressive-blur" aria-hidden="true">
+            <span class="c-layer c-layer--1"></span>
+            <span class="c-layer c-layer--2"></span>
+            <span class="c-layer c-layer--3"></span>
+            <span class="c-layer c-layer--4"></span>
+            <span class="c-layer c-layer--5"></span>
+          </div>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px; position: relative; z-index: 1; margin-right: 8px; color: var(--text-accent);">
             <polyline points="20 6 9 17 4 12"/>
           </svg>
-          <span>Save Changes</span>
+          <span style="position: relative; z-index: 1;">Save Changes</span>
         `;
       }
       // Floating footer is placed directly in settingsContent to float over modal bottom
