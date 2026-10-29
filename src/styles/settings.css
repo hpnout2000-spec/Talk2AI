@@ -222,11 +222,10 @@ body.advanced-animations-blur-enabled #settings-panel .settings-menu-modal::afte
 
 /* ─── Apple Liquid Glass Floating Bubbles (Progressive Blur) ───────── */
 
-/* Common glass bubble container styles */
+/* Common glass bubble container styles for header bubbles */
 #settings-panel .settings-back-bubble,
 #settings-panel #btn-close-settings,
-#settings-panel .settings-menu-modal .modal-header h2,
-#settings-panel .settings-float-footer .btn-save-settings {
+#settings-panel .settings-menu-modal .modal-header h2 {
   position: relative;
   overflow: hidden;
   box-sizing: border-box;
@@ -239,8 +238,7 @@ body.advanced-animations-blur-enabled #settings-panel .settings-menu-modal::afte
 /* Elevation of internal icons/text above progressive blur layers */
 #settings-panel .settings-back-bubble > *:not(.cloud-progressive-blur),
 #settings-panel #btn-close-settings > *:not(.cloud-progressive-blur),
-#settings-panel .settings-menu-modal .modal-header h2 > *:not(.cloud-progressive-blur),
-#settings-panel .settings-float-footer .btn-save-settings > *:not(.cloud-progressive-blur) {
+#settings-panel .settings-menu-modal .modal-header h2 > *:not(.cloud-progressive-blur) {
   position: relative;
   z-index: 1;
 }
@@ -403,13 +401,13 @@ body.advanced-animations-blur-enabled #settings-panel .settings-menu-modal::afte
   align-items: center;
   z-index: 25;
   pointer-events: none;
-  transform: translateY(32px);
+  transform: translateY(20px) scale(0.96);
   opacity: 0;
-  transition: transform 0.38s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s ease;
+  transition: transform 0.36s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.28s ease;
 }
 
 #settings-panel .settings-menu-modal.is-subview-connection .settings-float-footer {
-  transform: translateY(0);
+  transform: translateY(0) scale(1);
   opacity: 1;
   pointer-events: auto;
 }
@@ -427,27 +425,29 @@ body.advanced-animations-blur-enabled #settings-panel .settings-menu-modal::afte
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 8px;
   font-size: var(--text-sm);
   font-weight: 600;
   color: #ffffff !important;
-  background: rgba(255, 255, 255, 0.06) !important;
+  background: rgba(32, 32, 36, 0.9) !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
   border: 1.5px solid rgba(255, 255, 255, 0.2) !important;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 0 0 1px rgba(255, 255, 255, 0.06) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25) !important;
   cursor: pointer;
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 #settings-panel .settings-float-footer .btn-save-settings:hover {
   transform: translateY(-1px) scale(1.03);
-  background: rgba(255, 255, 255, 0.1) !important;
+  background: rgba(44, 44, 50, 0.96) !important;
   border-color: rgba(255, 255, 255, 0.35) !important;
-  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.35) !important;
 }
 
 #settings-panel .settings-float-footer .btn-save-settings:active {
   transform: translateY(0) scale(0.97);
-  background: rgba(255, 255, 255, 0.04) !important;
+  background: rgba(26, 26, 30, 0.95) !important;
 }
 
 .settings-menu-modal .modal-body {

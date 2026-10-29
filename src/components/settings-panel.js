@@ -246,14 +246,13 @@ function setupSettingsMorphing(panel) {
       const saveBtn = floatFooter.querySelector('.btn-save-settings');
       if (saveBtn) {
         saveBtn.innerHTML = `
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px; position: relative; z-index: 1;">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px;">
             <polyline points="20 6 9 17 4 12"/>
           </svg>
-          <span style="position: relative; z-index: 1;">Save Changes</span>
+          <span>Save Changes</span>
         `;
-        saveBtn.prepend(createCloudBlur());
       }
-      // CRITICAL: Attach floatFooter directly to settingsContent so it floats at modal bottom
+      // Floating footer is placed directly in settingsContent to float over modal bottom
       settingsContent.appendChild(floatFooter);
     }
   }
