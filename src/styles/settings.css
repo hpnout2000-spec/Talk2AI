@@ -411,14 +411,16 @@ body.advanced-animations-blur-enabled #settings-panel .settings-menu-modal::afte
   align-items: center;
   z-index: 25;
   pointer-events: none;
-  transform: translate3d(0, 14px, 0);
+  transform: translate3d(0, 18px, 0) scale(0.65);
   opacity: 0;
   visibility: hidden;
-  transition: transform 0.38s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s ease, visibility 0.38s;
+  transition: transform 0.38s cubic-bezier(0.22, 1, 0.36, 1),
+              opacity 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+              visibility 0.38s;
 }
 
 #settings-panel .settings-menu-modal.is-subview-connection .settings-float-footer {
-  transform: translate3d(0, 0, 0);
+  transform: translate3d(0, 0, 0) scale(1);
   opacity: 1;
   visibility: visible;
   pointer-events: auto;
@@ -441,6 +443,7 @@ body.advanced-animations-blur-enabled #settings-panel .settings-menu-modal::afte
   font-weight: 600;
   color: var(--text-primary) !important;
   background: rgba(255, 255, 255, 0.04) !important;
+  background-image: none !important;
   border: 1.5px solid rgba(255, 255, 255, 0.18) !important;
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.3),
               inset 0 1px 0 rgba(255, 255, 255, 0.3),
@@ -464,17 +467,33 @@ body.advanced-animations-blur-enabled #settings-panel .settings-menu-modal::afte
               inset 0 1px 0 rgba(255, 255, 255, 0.4),
               inset 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
   background: rgba(255, 255, 255, 0.08) !important;
-  transform: translate3d(0, -1px, 0);
+  transform: translate3d(0, -1px, 0) scale(1.02);
 }
 
 #settings-panel .settings-float-footer .btn-save-settings:active {
-  transform: translate3d(0, 0, 0);
+  transform: translate3d(0, 0, 0) scale(0.98);
   background: rgba(255, 255, 255, 0.03) !important;
 }
 
 #settings-panel .settings-float-footer .btn-save-settings > *:not(.cloud-progressive-blur) {
   position: relative;
   z-index: 1;
+}
+
+/* Glass blur for Save button: single clean 20px blur layer, completely eliminating radial mask center hotspot */
+#settings-panel .settings-float-footer .btn-save-settings .cloud-progressive-blur .c-layer--1 {
+  --c-blur: 20px !important;
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  mask-image: none !important;
+  -webkit-mask-image: none !important;
+}
+
+#settings-panel .settings-float-footer .btn-save-settings .cloud-progressive-blur .c-layer--2,
+#settings-panel .settings-float-footer .btn-save-settings .cloud-progressive-blur .c-layer--3,
+#settings-panel .settings-float-footer .btn-save-settings .cloud-progressive-blur .c-layer--4,
+#settings-panel .settings-float-footer .btn-save-settings .cloud-progressive-blur .c-layer--5 {
+  display: none !important;
 }
 
 .settings-menu-modal .modal-body {
