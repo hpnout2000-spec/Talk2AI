@@ -254,6 +254,11 @@ body.advanced-animations-blur-enabled #settings-panel .settings-menu-modal::afte
   align-items: center;
   font-size: 1rem;
   font-weight: 600;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transform: translateZ(0);
+  backface-visibility: hidden;
   transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.2s ease, width 0.35s cubic-bezier(0.22, 1, 0.36, 1);
   white-space: nowrap;
 }
@@ -270,6 +275,11 @@ body.advanced-animations-blur-enabled #settings-panel .settings-menu-modal::afte
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transform: translateZ(0);
+  backface-visibility: hidden;
   transition: opacity 0.3s cubic-bezier(0.22, 1, 0.36, 1), transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
   white-space: nowrap;
 }
@@ -394,20 +404,22 @@ body.advanced-animations-blur-enabled #settings-panel .settings-menu-modal::afte
 #settings-panel .settings-float-footer {
   position: absolute;
   bottom: 18px;
-  left: 20px;
-  right: 20px;
+  left: 0;
+  right: 0;
   display: flex;
   justify-content: center;
   align-items: center;
   z-index: 25;
   pointer-events: none;
-  transform: translateY(75px);
+  transform: translate3d(0, 14px, 0);
+  opacity: 0;
   visibility: hidden;
-  transition: transform 0.38s cubic-bezier(0.22, 1, 0.36, 1), visibility 0.38s;
+  transition: transform 0.38s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.3s ease, visibility 0.38s;
 }
 
 #settings-panel .settings-menu-modal.is-subview-connection .settings-float-footer {
-  transform: translateY(0);
+  transform: translate3d(0, 0, 0);
+  opacity: 1;
   visibility: visible;
   pointer-events: auto;
 }
@@ -435,6 +447,11 @@ body.advanced-animations-blur-enabled #settings-panel .settings-menu-modal::afte
               inset 0 0 0 1px rgba(255, 255, 255, 0.06) !important;
   cursor: pointer;
   user-select: none;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transform: translateZ(0);
+  backface-visibility: hidden;
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
               border-color 0.2s ease,
               box-shadow 0.2s ease,
@@ -447,11 +464,11 @@ body.advanced-animations-blur-enabled #settings-panel .settings-menu-modal::afte
               inset 0 1px 0 rgba(255, 255, 255, 0.4),
               inset 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
   background: rgba(255, 255, 255, 0.08) !important;
-  transform: translateY(-1px);
+  transform: translate3d(0, -1px, 0);
 }
 
 #settings-panel .settings-float-footer .btn-save-settings:active {
-  transform: translateY(0) scale(0.97);
+  transform: translate3d(0, 0, 0);
   background: rgba(255, 255, 255, 0.03) !important;
 }
 
