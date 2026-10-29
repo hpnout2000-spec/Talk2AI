@@ -19,9 +19,8 @@ export function initSettingsPanel() {
   const btnClose = document.getElementById('btn-close-settings');
   const btnTestConnection = document.getElementById('btn-test-connection');
 
-  // Sub-modal mapping
+  // Sub-modal mapping (card-connection is handled via morphing inside setupSettingsMorphing)
   const categories = [
-    { id: 'card-connection', modalId: 'modal-settings-connection' },
     { id: 'card-features', modalId: 'modal-settings-features' },
     { id: 'card-language', modalId: 'modal-settings-language' },
     { id: 'card-interface', modalId: 'modal-settings-interface' },
@@ -121,12 +120,220 @@ export function initSettingsPanel() {
   initVibeDropdowns();
   initImageGenSettings();
   initLocalNetworkSection();
+  setupSettingsMorphing(panel);
 
   // Listen for global settings updates
   window.addEventListener('settings-updated', () => {
     loadSettingsToUI();
     applyGlobalSettingsStyles();
   });
+}
+
+function setupSettingsMorphing(panel) {
+  if (!panel) return;
+  const settingsContent = panel.querySelector('.settings-menu-modal');
+  if (!settingsContent) return;
+
+  const modalHeader = settingsContent.querySelector('.modal-header');
+  const modalBody = settingsContent.querySelector('.modal-body');
+  const h2 = modalHeader?.querySelector('h2');
+  const btnClose = settingsContent.querySelector('#btn-close-settings');
+  const rootCardsGrid = modalBody?.querySelector('.settings-cards-grid');
+
+  if (!modalHeader || !modalBody || !h2 || !rootCardsGrid) return;
+
+  // 1. Back button & header structure
+  const backBtn = document.createElement('button');
+  backBtn.id = 'btn-settings-back';
+  backBtn.className = 'settings-back-bubble';
+  backBtn.type = 'button';
+  backBtn.setAttribute('aria-label', 'Back');
+  backBtn.innerHTML = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width: 20px; height: 20px;">
+      <polyline points="15 18 9 12 15 6"></polyline>
+    </svg>
+  `;
+
+  const headerLeft = document.createElement('div');
+  headerLeft.className = 'settings-header-left';
+  modalHeader.insertBefore(headerLeft, h2);
+  headerLeft.appendChild(backBtn);
+  headerLeft.appendChild(h2);
+
+  const rootHeaderHtml = h2.innerHTML;
+  const connHeaderHtml = `
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 20px; height: 20px; color: var(--text-accent);">
+      <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
+      <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
+      <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+      <line x1="12" y1="20" x2="12.01" y2="20"/>
+    </svg>
+    Connections
+  `;
+
+  // 2. Wrap root cards grid in morph view
+  const rootView = document.createElement('div');
+  rootView.className = 'settings-morph-view active';
+  rootView.setAttribute('data-view', 'root');
+  modalBody.insertBefore(rootView, rootCardsGrid);
+  rootView.appendChild(rootCardsGrid);
+
+  // 3. Create connection morph view and transfer child nodes from #modal-settings-connection
+  const connView = document.createElement('div');
+  connView.className = 'settings-morph-view';
+  connView.setAttribute('data-view', 'connection');
+
+  const connModal = document.getElementById('modal-settings-connection');
+  if (connModal) {
+    const connBody = connModal.querySelector('.modal-body');
+    const connFooter = connModal.querySelector('.modal-footer');
+
+    if (connBody) {
+      while (connBody.firstChild) {
+        connView.appendChild(connBody.firstChild);
+      }
+    }
+
+    if (connFooter) {
+      const floatFooter = document.createElement('div');
+      floatFooter.className = 'settings-float-footer';
+      while (connFooter.firstChild) {
+        floatFooter.appendChild(connFooter.firstChild);
+      }
+      connView.appendChild(floatFooter);
+    }
+  }
+
+  modalBody.appendChild(connView);
+
+  // 4. View switcher with smooth morphing
+  let currentView = 'root';
+  let isMorphing = false;
+
+  function switchSettingsView(targetView, instant = false) {
+    if (currentView === targetView && !instant) return;
+
+    if (instant) {
+      currentView = targetView;
+      settingsContent.style.transition = 'none';
+      settingsContent.style.height = '';
+      if (targetView === 'connection') {
+        settingsContent.classList.add('is-subview-connection');
+        rootView.classList.remove('active');
+        connView.classList.add('active');
+        h2.innerHTML = connHeaderHtml;
+        settingsContent.style.maxWidth = '540px';
+      } else {
+        settingsContent.classList.remove('is-subview-connection');
+        connView.classList.remove('active');
+        rootView.classList.add('active');
+        h2.innerHTML = rootHeaderHtml;
+        settingsContent.style.maxWidth = '680px';
+      }
+      return;
+    }
+
+    if (isMorphing) return;
+    isMorphing = true;
+
+    const startHeight = settingsContent.offsetHeight;
+    settingsContent.style.height = `${startHeight}px`;
+    settingsContent.style.transition = 'none';
+    void settingsContent.offsetHeight; // force reflow
+
+    currentView = targetView;
+
+    if (targetView === 'connection') {
+      settingsContent.classList.add('is-subview-connection');
+      rootView.classList.remove('active');
+      connView.classList.add('active');
+      h2.innerHTML = connHeaderHtml;
+      settingsContent.style.maxWidth = '540px';
+    } else {
+      settingsContent.classList.remove('is-subview-connection');
+      connView.classList.remove('active');
+      rootView.classList.add('active');
+      h2.innerHTML = rootHeaderHtml;
+      settingsContent.style.maxWidth = '680px';
+    }
+
+    // Measure target natural height
+    settingsContent.style.height = 'auto';
+    const naturalHeight = settingsContent.offsetHeight;
+    const maxHeight = Math.floor(window.innerHeight * 0.85);
+    const targetHeight = Math.min(naturalHeight, maxHeight);
+
+    settingsContent.style.height = `${startHeight}px`;
+    void settingsContent.offsetHeight; // force reflow
+
+    settingsContent.style.transition = 'height 0.38s cubic-bezier(0.22, 1, 0.36, 1), max-width 0.38s cubic-bezier(0.22, 1, 0.36, 1)';
+    requestAnimationFrame(() => {
+      settingsContent.style.height = `${targetHeight}px`;
+    });
+
+    const cleanup = () => {
+      settingsContent.removeEventListener('transitionend', onEnd);
+      settingsContent.style.height = '';
+      settingsContent.style.transition = '';
+      isMorphing = false;
+    };
+
+    const onEnd = (e) => {
+      if (e.target !== settingsContent) return;
+      if (e.propertyName !== 'height') return;
+      cleanup();
+    };
+
+    settingsContent.addEventListener('transitionend', onEnd);
+    setTimeout(cleanup, 450);
+  }
+
+  // 5. Connect events
+  const cardConnection = document.getElementById('card-connection');
+  if (cardConnection) {
+    cardConnection.addEventListener('click', () => {
+      loadSettingsToUI();
+      switchSettingsView('connection');
+    });
+  }
+
+  backBtn.addEventListener('click', () => {
+    switchSettingsView('root');
+  });
+
+  // Connection save button: saves and morphs back to root
+  const connSaveBtn = connView.querySelector('.btn-save-settings');
+  if (connSaveBtn) {
+    connSaveBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      await saveSettings();
+      switchSettingsView('root');
+    }, true);
+  }
+
+  // Reset to root on closing or reopening
+  const resetToRoot = () => {
+    setTimeout(() => {
+      switchSettingsView('root', true);
+    }, 250);
+  };
+
+  if (btnClose) {
+    btnClose.addEventListener('click', resetToRoot);
+  }
+
+  const modalBackdrop = panel.querySelector('.modal-backdrop');
+  if (modalBackdrop) {
+    modalBackdrop.addEventListener('click', resetToRoot);
+  }
+
+  const btnOpen = document.getElementById('btn-settings');
+  if (btnOpen) {
+    btnOpen.addEventListener('click', () => {
+      switchSettingsView('root', true);
+    });
+  }
 }
 
 function setupRangeInput(inputId, valueId, formatter) {
