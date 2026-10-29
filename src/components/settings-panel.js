@@ -142,48 +142,91 @@ function setupSettingsMorphing(panel) {
 
   if (!modalHeader || !modalBody || !h2 || !rootCardsGrid) return;
 
-  // 1. Back button & header structure
+  // Cloud progressive blur helper (Apple Liquid Glass multi-step blur)
+  function createCloudBlur() {
+    const cloud = document.createElement('div');
+    cloud.className = 'cloud-progressive-blur';
+    cloud.setAttribute('aria-hidden', 'true');
+    cloud.innerHTML = `
+      <span class="c-layer c-layer--1"></span>
+      <span class="c-layer c-layer--2"></span>
+      <span class="c-layer c-layer--3"></span>
+      <span class="c-layer c-layer--4"></span>
+      <span class="c-layer c-layer--5"></span>
+    `;
+    return cloud;
+  }
+
+  // 1. Back button with progressive blur
   const backBtn = document.createElement('button');
   backBtn.id = 'btn-settings-back';
   backBtn.className = 'settings-back-bubble';
   backBtn.type = 'button';
   backBtn.setAttribute('aria-label', 'Back');
-  backBtn.innerHTML = `
+  backBtn.appendChild(createCloudBlur());
+
+  const backIcon = document.createElement('span');
+  backIcon.style.cssText = 'position: relative; z-index: 1; display: flex; align-items: center; justify-content: center;';
+  backIcon.innerHTML = `
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width: 20px; height: 20px;">
       <polyline points="15 18 9 12 15 6"></polyline>
     </svg>
   `;
+  backBtn.appendChild(backIcon);
 
+  // Progressive blur on close button
+  if (btnClose && !btnClose.querySelector('.cloud-progressive-blur')) {
+    btnClose.prepend(createCloudBlur());
+  }
+
+  // Header Left container
   const headerLeft = document.createElement('div');
   headerLeft.className = 'settings-header-left';
   modalHeader.insertBefore(headerLeft, h2);
   headerLeft.appendChild(backBtn);
   headerLeft.appendChild(h2);
 
-  const rootHeaderHtml = h2.innerHTML;
-  const connHeaderHtml = `
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 20px; height: 20px; color: var(--text-accent);">
-      <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
-      <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
-      <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
-      <line x1="12" y1="20" x2="12.01" y2="20"/>
-    </svg>
-    Connections
-  `;
+  // 2. Setup h2 title with cloud blur and smooth crossfading title states
+  h2.innerHTML = '';
+  h2.appendChild(createCloudBlur());
 
-  // 2. Wrap root cards grid in morph view
+  const titleContainer = document.createElement('div');
+  titleContainer.className = 'settings-title-container';
+  titleContainer.innerHTML = `
+    <div class="settings-title-item title-root active">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width: 20px; height: 20px; color: var(--text-accent);">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+      <span>Settings</span>
+    </div>
+    <div class="settings-title-item title-connection">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="width: 20px; height: 20px; color: var(--text-accent);">
+        <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
+        <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
+        <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+        <line x1="12" y1="20" x2="12.01" y2="20"/>
+      </svg>
+      <span>Connections</span>
+    </div>
+  `;
+  h2.appendChild(titleContainer);
+
+  // 3. Wrap root cards grid in morph view
   const rootView = document.createElement('div');
   rootView.className = 'settings-morph-view active';
   rootView.setAttribute('data-view', 'root');
   modalBody.insertBefore(rootView, rootCardsGrid);
   rootView.appendChild(rootCardsGrid);
 
-  // 3. Create connection morph view and transfer child nodes from #modal-settings-connection
+  // 4. Create connection morph view and transfer child nodes from #modal-settings-connection
   const connView = document.createElement('div');
   connView.className = 'settings-morph-view';
   connView.setAttribute('data-view', 'connection');
 
   const connModal = document.getElementById('modal-settings-connection');
+  let floatFooter = null;
+
   if (connModal) {
     const connBody = connModal.querySelector('.modal-body');
     const connFooter = connModal.querySelector('.modal-footer');
@@ -195,40 +238,55 @@ function setupSettingsMorphing(panel) {
     }
 
     if (connFooter) {
-      const floatFooter = document.createElement('div');
+      floatFooter = document.createElement('div');
       floatFooter.className = 'settings-float-footer';
       while (connFooter.firstChild) {
         floatFooter.appendChild(connFooter.firstChild);
       }
-      connView.appendChild(floatFooter);
+      const saveBtn = floatFooter.querySelector('.btn-save-settings');
+      if (saveBtn) {
+        saveBtn.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px; position: relative; z-index: 1;">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          <span style="position: relative; z-index: 1;">Save Changes</span>
+        `;
+        saveBtn.prepend(createCloudBlur());
+      }
+      // CRITICAL: Attach floatFooter directly to settingsContent so it floats at modal bottom
+      settingsContent.appendChild(floatFooter);
     }
   }
 
   modalBody.appendChild(connView);
 
-  // 4. View switcher with smooth morphing
+  // 5. View switcher with fully synchronized width & height morphing
   let currentView = 'root';
   let isMorphing = false;
 
   function switchSettingsView(targetView, instant = false) {
     if (currentView === targetView && !instant) return;
 
+    const titleRoot = titleContainer.querySelector('.title-root');
+    const titleConn = titleContainer.querySelector('.title-connection');
+
     if (instant) {
       currentView = targetView;
       settingsContent.style.transition = 'none';
       settingsContent.style.height = '';
+      settingsContent.style.maxWidth = targetView === 'connection' ? '540px' : '680px';
       if (targetView === 'connection') {
         settingsContent.classList.add('is-subview-connection');
         rootView.classList.remove('active');
         connView.classList.add('active');
-        h2.innerHTML = connHeaderHtml;
-        settingsContent.style.maxWidth = '540px';
+        titleRoot?.classList.remove('active');
+        titleConn?.classList.add('active');
       } else {
         settingsContent.classList.remove('is-subview-connection');
         connView.classList.remove('active');
         rootView.classList.add('active');
-        h2.innerHTML = rootHeaderHtml;
-        settingsContent.style.maxWidth = '680px';
+        titleConn?.classList.remove('active');
+        titleRoot?.classList.add('active');
       }
       return;
     }
@@ -236,39 +294,50 @@ function setupSettingsMorphing(panel) {
     if (isMorphing) return;
     isMorphing = true;
 
+    // Record starting dimensions
     const startHeight = settingsContent.offsetHeight;
-    settingsContent.style.height = `${startHeight}px`;
+    const startMaxWidth = currentView === 'connection' ? 540 : 680;
+    const targetMaxWidth = targetView === 'connection' ? 540 : 680;
+
+    // Lock starting dimensions before switching views
     settingsContent.style.transition = 'none';
+    settingsContent.style.height = `${startHeight}px`;
+    settingsContent.style.maxWidth = `${startMaxWidth}px`;
     void settingsContent.offsetHeight; // force reflow
 
+    // Switch active view in DOM and crossfade titles
     currentView = targetView;
-
     if (targetView === 'connection') {
       settingsContent.classList.add('is-subview-connection');
       rootView.classList.remove('active');
       connView.classList.add('active');
-      h2.innerHTML = connHeaderHtml;
-      settingsContent.style.maxWidth = '540px';
+      titleRoot?.classList.remove('active');
+      titleConn?.classList.add('active');
     } else {
       settingsContent.classList.remove('is-subview-connection');
       connView.classList.remove('active');
       rootView.classList.add('active');
-      h2.innerHTML = rootHeaderHtml;
-      settingsContent.style.maxWidth = '680px';
+      titleConn?.classList.remove('active');
+      titleRoot?.classList.add('active');
     }
 
-    // Measure target natural height
+    // Measure natural target height at targetMaxWidth
+    settingsContent.style.maxWidth = `${targetMaxWidth}px`;
     settingsContent.style.height = 'auto';
     const naturalHeight = settingsContent.offsetHeight;
     const maxHeight = Math.floor(window.innerHeight * 0.85);
     const targetHeight = Math.min(naturalHeight, maxHeight);
 
+    // Reset back to starting dimensions immediately before transition starts
     settingsContent.style.height = `${startHeight}px`;
+    settingsContent.style.maxWidth = `${startMaxWidth}px`;
     void settingsContent.offsetHeight; // force reflow
 
-    settingsContent.style.transition = 'height 0.38s cubic-bezier(0.22, 1, 0.36, 1), max-width 0.38s cubic-bezier(0.22, 1, 0.36, 1)';
+    // Animate BOTH height and maxWidth smoothly together
+    settingsContent.style.transition = 'height 0.4s cubic-bezier(0.22, 1, 0.36, 1), max-width 0.4s cubic-bezier(0.22, 1, 0.36, 1)';
     requestAnimationFrame(() => {
       settingsContent.style.height = `${targetHeight}px`;
+      settingsContent.style.maxWidth = `${targetMaxWidth}px`;
     });
 
     const cleanup = () => {
@@ -285,10 +354,10 @@ function setupSettingsMorphing(panel) {
     };
 
     settingsContent.addEventListener('transitionend', onEnd);
-    setTimeout(cleanup, 450);
+    setTimeout(cleanup, 480);
   }
 
-  // 5. Connect events
+  // 6. Connect events
   const cardConnection = document.getElementById('card-connection');
   if (cardConnection) {
     cardConnection.addEventListener('click', () => {
@@ -302,7 +371,7 @@ function setupSettingsMorphing(panel) {
   });
 
   // Connection save button: saves and morphs back to root
-  const connSaveBtn = connView.querySelector('.btn-save-settings');
+  const connSaveBtn = floatFooter?.querySelector('.btn-save-settings') || connView.querySelector('.btn-save-settings');
   if (connSaveBtn) {
     connSaveBtn.addEventListener('click', async (e) => {
       e.stopPropagation();

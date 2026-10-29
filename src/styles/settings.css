@@ -146,11 +146,11 @@ body.advanced-animations-blur-enabled #settings-panel .settings-menu-modal {
   border-radius: 28px;
   width: 90%;
   max-width: 680px;
-  background: rgba(24, 24, 24, 0.92) !important;
+  background: rgba(20, 20, 20, 0.9) !important;
   backdrop-filter: blur(28px) !important;
   -webkit-backdrop-filter: blur(28px) !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.14) !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
   will-change: height, max-width;
 }
 
@@ -168,7 +168,7 @@ body.advanced-animations-blur-enabled #settings-panel .settings-menu-modal::befo
   right: 0 !important;
   bottom: auto !important;
   height: 80px !important;
-  background: linear-gradient(to bottom, rgba(24, 24, 24, 0.96) 0%, rgba(24, 24, 24, 0) 100%) !important;
+  background: linear-gradient(to bottom, rgba(20, 20, 20, 0.96) 0%, rgba(20, 20, 20, 0) 100%) !important;
   pointer-events: none !important;
   z-index: 10 !important;
   mask-image: none !important;
@@ -185,8 +185,8 @@ body.advanced-animations-blur-enabled #settings-panel .settings-menu-modal::afte
   left: 0 !important;
   right: 0 !important;
   top: auto !important;
-  height: 60px !important;
-  background: linear-gradient(to top, rgba(24, 24, 24, 0.96) 0%, rgba(24, 24, 24, 0) 100%) !important;
+  height: 65px !important;
+  background: linear-gradient(to top, rgba(20, 20, 20, 0.96) 0%, rgba(20, 20, 20, 0) 100%) !important;
   pointer-events: none !important;
   z-index: 10 !important;
   mask-image: none !important;
@@ -220,6 +220,31 @@ body.advanced-animations-blur-enabled #settings-panel .settings-menu-modal::afte
   pointer-events: none;
 }
 
+/* ─── Apple Liquid Glass Floating Bubbles (Progressive Blur) ───────── */
+
+/* Common glass bubble container styles */
+#settings-panel .settings-back-bubble,
+#settings-panel #btn-close-settings,
+#settings-panel .settings-menu-modal .modal-header h2,
+#settings-panel .settings-float-footer .btn-save-settings {
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.18) !important;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 0 0 1px rgba(255, 255, 255, 0.06) !important;
+  color: var(--text-primary);
+}
+
+/* Elevation of internal icons/text above progressive blur layers */
+#settings-panel .settings-back-bubble > *:not(.cloud-progressive-blur),
+#settings-panel #btn-close-settings > *:not(.cloud-progressive-blur),
+#settings-panel .settings-menu-modal .modal-header h2 > *:not(.cloud-progressive-blur),
+#settings-panel .settings-float-footer .btn-save-settings > *:not(.cloud-progressive-blur) {
+  position: relative;
+  z-index: 1;
+}
+
 /* Title capsule bubble */
 #settings-panel .settings-menu-modal .modal-header h2 {
   pointer-events: auto;
@@ -229,17 +254,40 @@ body.advanced-animations-blur-enabled #settings-panel .settings-menu-modal::afte
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
   font-size: 1rem;
   font-weight: 600;
-  color: var(--text-primary);
-  background: rgba(36, 36, 36, 0.9) !important;
-  backdrop-filter: blur(20px) !important;
-  -webkit-backdrop-filter: blur(20px) !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
-  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.2s ease, border-color 0.2s ease;
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.2s ease, width 0.35s cubic-bezier(0.22, 1, 0.36, 1);
   white-space: nowrap;
+}
+
+/* Title crossfade container */
+#settings-panel .settings-title-container {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+}
+
+#settings-panel .settings-title-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  transition: opacity 0.3s cubic-bezier(0.22, 1, 0.36, 1), transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  white-space: nowrap;
+}
+
+#settings-panel .settings-title-item:not(.active) {
+  opacity: 0;
+  transform: translateY(8px) scale(0.92);
+  pointer-events: none;
+  position: absolute;
+  left: 0;
+}
+
+#settings-panel .settings-title-item.active {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  position: relative;
 }
 
 /* Back button bubble (<) */
@@ -256,20 +304,16 @@ body.advanced-animations-blur-enabled #settings-panel .settings-menu-modal::afte
   align-items: center;
   justify-content: center;
   padding: 0;
-  background: rgba(36, 36, 36, 0.9) !important;
-  backdrop-filter: blur(20px) !important;
-  -webkit-backdrop-filter: blur(20px) !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
   transition: width 0.35s cubic-bezier(0.22, 1, 0.36, 1),
               height 0.35s cubic-bezier(0.22, 1, 0.36, 1),
               opacity 0.25s ease,
               transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
               margin-right 0.35s cubic-bezier(0.22, 1, 0.36, 1),
-              background-color 0.2s ease,
-              border-color 0.2s ease;
+              background 0.2s ease,
+              border-color 0.2s ease,
+              box-shadow 0.2s ease;
   cursor: pointer;
-  color: var(--text-primary);
+  color: var(--text-secondary);
   flex-shrink: 0;
 }
 
@@ -283,13 +327,16 @@ body.advanced-animations-blur-enabled #settings-panel .settings-menu-modal::afte
 }
 
 #settings-panel .settings-back-bubble:hover {
-  transform: scale(1.06);
-  background: rgba(48, 48, 48, 0.96) !important;
-  border-color: rgba(255, 255, 255, 0.22) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.32) !important;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
+  transform: translateY(-1px) scale(1.05);
 }
 
 #settings-panel .settings-back-bubble:active {
-  transform: scale(0.96);
+  transform: translateY(0) scale(0.96);
+  background: rgba(255, 255, 255, 0.03) !important;
 }
 
 /* Close button bubble (×) */
@@ -302,25 +349,23 @@ body.advanced-animations-blur-enabled #settings-panel .settings-menu-modal::afte
   align-items: center;
   justify-content: center;
   padding: 0;
-  background: rgba(36, 36, 36, 0.9) !important;
-  backdrop-filter: blur(20px) !important;
-  -webkit-backdrop-filter: blur(20px) !important;
-  border: 1px solid rgba(255, 255, 255, 0.12) !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
-  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.2s ease, border-color 0.2s ease;
   cursor: pointer;
-  color: var(--text-primary);
+  color: var(--text-secondary);
   flex-shrink: 0;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 #settings-panel #btn-close-settings:hover {
-  transform: scale(1.06);
-  background: rgba(48, 48, 48, 0.96) !important;
-  border-color: rgba(255, 255, 255, 0.22) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.32) !important;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
+  transform: translateY(-1px) scale(1.05);
 }
 
 #settings-panel #btn-close-settings:active {
-  transform: scale(0.96);
+  transform: translateY(0) scale(0.96);
+  background: rgba(255, 255, 255, 0.03) !important;
 }
 
 /* Modal body padding */
@@ -344,7 +389,7 @@ body.advanced-animations-blur-enabled #settings-panel .settings-menu-modal::afte
 }
 
 #settings-panel .settings-morph-view[data-view="connection"] {
-  padding-bottom: 76px;
+  padding-bottom: 84px;
 }
 
 /* Floating bottom action bubble */
@@ -371,6 +416,9 @@ body.advanced-animations-blur-enabled #settings-panel .settings-menu-modal::afte
 
 #settings-panel .settings-float-footer .btn-save-settings {
   pointer-events: auto;
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
   width: auto !important;
   min-width: 170px;
   height: 44px;
@@ -379,24 +427,27 @@ body.advanced-animations-blur-enabled #settings-panel .settings-menu-modal::afte
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   font-size: var(--text-sm);
   font-weight: 600;
-  background: var(--accent-primary, #6366f1);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.2) !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 0 0 1px rgba(255, 255, 255, 0.06) !important;
   cursor: pointer;
-  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s ease, filter 0.2s ease;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 #settings-panel .settings-float-footer .btn-save-settings:hover {
-  transform: scale(1.04);
-  filter: brightness(1.1);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  transform: translateY(-1px) scale(1.03);
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.35) !important;
+  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
 }
 
 #settings-panel .settings-float-footer .btn-save-settings:active {
-  transform: scale(0.97);
+  transform: translateY(0) scale(0.97);
+  background: rgba(255, 255, 255, 0.04) !important;
 }
 
 .settings-menu-modal .modal-body {
