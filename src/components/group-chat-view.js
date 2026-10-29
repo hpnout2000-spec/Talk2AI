@@ -363,12 +363,20 @@ export function buildGroupApiMessages(respondingChar, allCharacters, session) {
     } else if (m.role === 'assistant' && m.content) {
       const char = allCharacters.find(x => x.id === m.character_id);
       const name = char?.name || 'AI';
+      let assistantContent = m.content;
+      if (m.thinking && (settings.preserve_thinking || settings.genai_preserve_thinking)) {
+        const openTag = (settings.reasoning_tag_open || '<think>').trim();
+        const closeTag = (settings.reasoning_tag_close || '</think>').trim();
+        if (typeof assistantContent === 'string' && !assistantContent.includes(openTag)) {
+          assistantContent = `${openTag}\n${m.thinking.trim()}\n${closeTag}\n\n${assistantContent}`.trim();
+        }
+      }
       
       if (m.character_id === respondingChar.id) {
-        messages.push({ role: 'assistant', content: `${name}: ${m.content}` });
+        messages.push({ role: 'assistant', content: `${name}: ${assistantContent}` });
       } else {
         // Use 'user' role for other AI characters so the model sees them as external participants
-        messages.push({ role: 'user', content: `${name}: ${m.content}` });
+        messages.push({ role: 'user', content: `${name}: ${assistantContent}` });
       }
     }
   }

@@ -1,6 +1,6 @@
-/* ════════════════════════════════════════════════════════════════════
-   Settings Panel — Configuration UI
-   ════════════════════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   Settings Panel â€” Configuration UI
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
 import { settingsStore } from '../services/settings-store.js';
 import { showToast, checkConnection, applyGlobalSettingsStyles, openWindow, closeWindow } from '../main.js';
@@ -225,6 +225,7 @@ function loadSettingsToUI() {
   checkField('setting-qwen35-thinking-support', settings.qwen35_thinking_support);
   checkField('setting-legacy-jinja-support', settings.legacy_jinja_support);
   checkField('setting-jinja-adaptive-thinking', settings.jinja_adaptive_thinking);
+  checkField('setting-preserve-thinking', settings.preserve_thinking);
   checkField('setting-auto-translate', settings.auto_translate);
   checkField('setting-translate-user', settings.translate_user_messages);
   checkField('setting-italic-asterisks', settings.italic_asterisks);
@@ -349,6 +350,8 @@ async function saveSettings() {
     qwen35_thinking_support: getChecked('setting-qwen35-thinking-support'),
     legacy_jinja_support: getChecked('setting-legacy-jinja-support'),
     jinja_adaptive_thinking: getChecked('setting-jinja-adaptive-thinking'),
+    preserve_thinking: getChecked('setting-preserve-thinking'),
+    genai_preserve_thinking: getChecked('setting-preserve-thinking'),
     auto_translate: getChecked('setting-auto-translate'),
     translate_user_messages: getChecked('setting-translate-user'),
     italic_asterisks: getChecked('setting-italic-asterisks'),
@@ -438,14 +441,14 @@ async function testConnection() {
     if (connected) {
       const model = await api.getModel();
       resultEl.className = 'connection-result success';
-      resultEl.textContent = `✓ Connected${model ? ` — Model: ${model}` : ''}`;
+      resultEl.textContent = `âœ“ Connected${model ? ` â€” Model: ${model}` : ''}`;
     } else {
       resultEl.className = 'connection-result error';
-      resultEl.textContent = '✗ Could not connect to server';
+      resultEl.textContent = 'âœ— Could not connect to server';
     }
   } catch (err) {
     resultEl.className = 'connection-result error';
-    resultEl.textContent = `✗ Error: ${err.message}`;
+    resultEl.textContent = `âœ— Error: ${err.message}`;
   }
 
   settingsStore.update('api_url', origSettings.api_url);
@@ -455,7 +458,7 @@ async function testConnection() {
   btn.parentElement.appendChild(resultEl);
 }
 
-/* ─── Custom Vibe Dropdown Logic ────────────────────────────────── */
+/* â”€â”€â”€ Custom Vibe Dropdown Logic â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 function initVibeDropdowns() {
   const dropdowns = document.querySelectorAll('.vibe-dropdown');
@@ -709,14 +712,14 @@ function initImageGenSettings() {
           if (connectionResult) {
             connectionResult.className = 'connection-result success';
             connectionResult.style.color = 'var(--success)';
-            connectionResult.textContent = '✓ Connected successfully to ComfyUI!';
+            connectionResult.textContent = 'âœ“ Connected successfully to ComfyUI!';
           }
           showToast('ComfyUI connected!');
         } else {
           if (connectionResult) {
             connectionResult.className = 'connection-result error';
             connectionResult.style.color = 'var(--error)';
-            connectionResult.innerHTML = '✗ Connection failed. Is ComfyUI running?<br><span style="font-size:11px;opacity:0.8;display:block;margin-top:4px;">Note: You must start ComfyUI with CORS allowed. Add <strong>--enable-cors-header "*"</strong> to your startup command/bat file.</span>';
+            connectionResult.innerHTML = 'âœ— Connection failed. Is ComfyUI running?<br><span style="font-size:11px;opacity:0.8;display:block;margin-top:4px;">Note: You must start ComfyUI with CORS allowed. Add <strong>--enable-cors-header "*"</strong> to your startup command/bat file.</span>';
           }
           showToast('ComfyUI connection failed', 'error');
         }
@@ -724,7 +727,7 @@ function initImageGenSettings() {
         if (connectionResult) {
           connectionResult.className = 'connection-result error';
           connectionResult.style.color = 'var(--error)';
-          connectionResult.textContent = `✗ Error: ${err.message}`;
+          connectionResult.textContent = `âœ— Error: ${err.message}`;
         }
         showToast('Error testing connection', 'error');
       } finally {
@@ -734,7 +737,7 @@ function initImageGenSettings() {
     });
   }
 
-  // ComfyUI Nodes Install handler — WAS Node Suite (Revised) by ltdrdata
+  // ComfyUI Nodes Install handler â€” WAS Node Suite (Revised) by ltdrdata
   const btnInstallNodes = document.getElementById('btn-install-comfyui-nodes');
   const installResult = document.getElementById('comfyui-install-result');
 
@@ -752,7 +755,7 @@ function initImageGenSettings() {
         installResult.textContent = 'Sending install request to ComfyUI Manager...';
       }
 
-      // WAS Node Suite (Revised) — maintained fork by ltdrdata
+      // WAS Node Suite (Revised) â€” maintained fork by ltdrdata
       const WAS_REVISED_URL = 'https://github.com/ltdrdata/was-node-suite-comfyui';
 
       try {
@@ -773,7 +776,7 @@ function initImageGenSettings() {
         if (response && response.ok) {
           if (installResult) {
             installResult.style.color = 'var(--success)';
-            installResult.innerHTML = '✓ Install command sent! Check your ComfyUI console. <b>Restart ComfyUI</b> when finished.';
+            installResult.innerHTML = 'âœ“ Install command sent! Check your ComfyUI console. <b>Restart ComfyUI</b> when finished.';
           }
           showToast('WAS Node Suite (Revised) install sent!');
         } else {
@@ -783,7 +786,7 @@ function initImageGenSettings() {
         console.error(err);
         if (installResult) {
           installResult.style.color = 'var(--error)';
-          installResult.innerHTML = `✗ Automatic install failed. Install <b>WAS Node Suite (Revised)</b> manually via ComfyUI Manager (<a href="https://github.com/ltdrdata/was-node-suite-comfyui" target="_blank" style="color:var(--accent-primary)">ltdrdata/was-node-suite-comfyui</a>).`;
+          installResult.innerHTML = `âœ— Automatic install failed. Install <b>WAS Node Suite (Revised)</b> manually via ComfyUI Manager (<a href="https://github.com/ltdrdata/was-node-suite-comfyui" target="_blank" style="color:var(--accent-primary)">ltdrdata/was-node-suite-comfyui</a>).`;
         }
       } finally {
         btnInstallNodes.textContent = 'Install Nodes';
@@ -872,7 +875,7 @@ export function renderLorasList() {
     const item = document.createElement('div');
     item.className = `lora-item ${lora.enabled ? 'enabled' : ''}`;
     
-    // ── Header ──
+    // â”€â”€ Header â”€â”€
     const header = document.createElement('div');
     header.className = 'lora-item-header';
     
@@ -938,7 +941,7 @@ export function renderLorasList() {
     header.appendChild(rightHeader);
     item.appendChild(header);
     
-    // ── Collapsible Details ──
+    // â”€â”€ Collapsible Details â”€â”€
     const details = document.createElement('div');
     details.className = 'lora-item-details hidden';
     
@@ -1006,7 +1009,7 @@ export function renderLorasList() {
     
     // Comment textarea
     const commentArea = document.createElement('textarea');
-    commentArea.placeholder = 'Comment for AI — describe what this Lora does (e.g. "makes images look like watercolor paintings")';
+    commentArea.placeholder = 'Comment for AI â€” describe what this Lora does (e.g. "makes images look like watercolor paintings")';
     commentArea.value = lora.comment || '';
     commentArea.rows = 2;
     commentArea.style.cssText = 'width:100%;padding:8px 10px;background:var(--bg-secondary);border:1px solid var(--border-light);border-radius:6px;color:var(--text-primary);font-size:13px;resize:vertical;font-family:inherit;';
@@ -1036,13 +1039,13 @@ function _updateResolutionButtons(w, h) {
   });
 }
 
-/* ── Local Network Sync UI ──────────────────────────────────────────── */
+/* â”€â”€ Local Network Sync UI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 function initLocalNetworkSection() {
   const invoke = window.__TAURI_INTERNALS__?.invoke;
   if (!invoke) return; // Only in Tauri
 
-  // ── Elements ────────────────────────────────────────────────────────
+  // â”€â”€ Elements â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const hostIpEl        = document.getElementById('local-net-host-ip');
   const keySection      = document.getElementById('local-net-key-section');
   const keyDisplay      = document.getElementById('local-net-key-display');
@@ -1070,7 +1073,7 @@ function initLocalNetworkSection() {
 
   if (!btnStartHosting) return; // HTML not present
 
-  // ── Helpers ─────────────────────────────────────────────────────────
+  // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   function setSyncStatus(msg, cls = '') {
     if (!syncStatus) return;
@@ -1096,14 +1099,14 @@ function initLocalNetworkSection() {
           item.innerHTML = `
             <div class="device-info">
               <span class="device-name" title="${escapeHtml(d.name)}">${escapeHtml(d.name)}</span>
-              <span class="device-meta">IP: ${d.ip || '—'} · Last seen: ${lastSeenStr}</span>
+              <span class="device-meta">IP: ${d.ip || 'â€”'} Â· Last seen: ${lastSeenStr}</span>
             </div>
             <div class="device-actions">
               <label class="device-toggle-label">
                 <input type="checkbox" class="device-allow-checkbox" ${d.allowed_without_key ? 'checked' : ''} />
                 <span>Allow without key</span>
               </label>
-              <button class="btn-device-remove" title="Remove device">🗑️</button>
+              <button class="btn-device-remove" title="Remove device">ðŸ—‘ï¸</button>
             </div>
           `;
           
@@ -1157,7 +1160,7 @@ function initLocalNetworkSection() {
       }
       if (hostStatusText) {
         const n = status.client_count || 0;
-        hostStatusText.textContent = `Hosting · ${n} client${n !== 1 ? 's' : ''} connected`;
+        hostStatusText.textContent = `Hosting Â· ${n} client${n !== 1 ? 's' : ''} connected`;
       }
       if (btnStartHosting) btnStartHosting.style.display = 'none';
       if (btnStopHosting)  btnStopHosting.style.display = '';
@@ -1196,7 +1199,7 @@ function initLocalNetworkSection() {
     }
   }
 
-  // ── Restore persisted connection state ──────────────────────────────
+  // â”€â”€ Restore persisted connection state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const persisted = localSyncService.loadPersisted();
   if (persisted.ip && persisted.key) {
     if (hostAddrInput) hostAddrInput.value = `${persisted.ip}:${persisted.port}`;
@@ -1204,7 +1207,7 @@ function initLocalNetworkSection() {
   }
   if (localSyncService.isClientMode) updateClientUI();
 
-  // ── Start status polling ─────────────────────────────────────────────
+  // â”€â”€ Start status polling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   localSyncService.startStatusPolling((status) => {
     updateHostUI(status);
   });
@@ -1215,25 +1218,25 @@ function initLocalNetworkSection() {
     updateHostUI(s);
   }).catch(() => {});
 
-  // ── HOST: Start Hosting ──────────────────────────────────────────────
+  // â”€â”€ HOST: Start Hosting â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (btnStartHosting) {
     btnStartHosting.addEventListener('click', async () => {
       btnStartHosting.disabled = true;
-      btnStartHosting.textContent = '⏳ Starting…';
+      btnStartHosting.textContent = 'â³ Startingâ€¦';
       try {
         const result = await invoke('start_host_server');
         updateHostUI({ running: true, ...result, client_count: 0 });
-        showToast('🌐 Hosting started! Share the key with other devices.');
+        showToast('ðŸŒ Hosting started! Share the key with other devices.');
       } catch (err) {
-        showToast(`❌ Failed to start server: ${err}`, 'error');
+        showToast(`âŒ Failed to start server: ${err}`, 'error');
       } finally {
         btnStartHosting.disabled = false;
-        btnStartHosting.textContent = '▶ Start Hosting';
+        btnStartHosting.textContent = 'â–¶ Start Hosting';
       }
     });
   }
 
-  // ── HOST: Stop Hosting ───────────────────────────────────────────────
+  // â”€â”€ HOST: Stop Hosting â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (btnStopHosting) {
     btnStopHosting.addEventListener('click', async () => {
       try {
@@ -1244,7 +1247,7 @@ function initLocalNetworkSection() {
     });
   }
 
-  // ── HOST: Copy Key ───────────────────────────────────────────────────
+  // â”€â”€ HOST: Copy Key â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (btnCopyKey) {
     btnCopyKey.addEventListener('click', async () => {
       const status = await invoke('get_host_server_status').catch(() => null);
@@ -1253,18 +1256,18 @@ function initLocalNetworkSection() {
           await navigator.clipboard.writeText(status.key);
           showToast('Key copied to clipboard!');
         } catch {
-          showToast('Copy failed — select and copy manually.');
+          showToast('Copy failed â€” select and copy manually.');
         }
       }
     });
   }
 
-  // ── CLIENT: Auto-Discover ────────────────────────────────────────────
+  // â”€â”€ CLIENT: Auto-Discover â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (btnDiscover) {
     btnDiscover.addEventListener('click', async () => {
       btnDiscover.disabled = true;
-      btnDiscover.textContent = '⏳ Scanning…';
-      setSyncStatus('Scanning local network (4s)…', 'loading');
+      btnDiscover.textContent = 'â³ Scanningâ€¦';
+      setSyncStatus('Scanning local network (4s)â€¦', 'loading');
       discoveryArea.style.display = 'none';
       discoveryChips.innerHTML = '';
 
@@ -1281,7 +1284,7 @@ function initLocalNetworkSection() {
             });
             discoveryChips.appendChild(chip);
           });
-          setSyncStatus(`Found ${hosts.length} host${hosts.length > 1 ? 's' : ''} — click to auto-fill`, 'success');
+          setSyncStatus(`Found ${hosts.length} host${hosts.length > 1 ? 's' : ''} â€” click to auto-fill`, 'success');
         } else {
           setSyncStatus('No hosts found. Make sure the host PC is running the app with Hosting active.', 'error');
         }
@@ -1289,12 +1292,12 @@ function initLocalNetworkSection() {
         setSyncStatus(`Discovery error: ${err}`, 'error');
       } finally {
         btnDiscover.disabled = false;
-        btnDiscover.textContent = '🔍 Discover';
+        btnDiscover.textContent = 'ðŸ” Discover';
       }
     });
   }
 
-  // ── CLIENT: Connect ──────────────────────────────────────────────────
+  // â”€â”€ CLIENT: Connect â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (btnConnect) {
     btnConnect.addEventListener('click', async () => {
       const addrRaw = (hostAddrInput?.value || '').trim();
@@ -1310,55 +1313,55 @@ function initLocalNetworkSection() {
       const port = parseInt(parts[1] || '8765', 10);
 
       btnConnect.disabled = true;
-      btnConnect.textContent = '⏳ Connecting…';
-      setSyncStatus('Connecting…', 'loading');
+      btnConnect.textContent = 'â³ Connectingâ€¦';
+      setSyncStatus('Connectingâ€¦', 'loading');
 
       const result = await localSyncService.connectToHost(ip, port, key);
       if (result.ok) {
-        setSyncStatus('✓ Connected! Click "Sync Now" to import host data.', 'success');
+        setSyncStatus('âœ“ Connected! Click "Sync Now" to import host data.', 'success');
         updateClientUI();
-        showToast('🔗 Connected to host via local network!');
+        showToast('ðŸ”— Connected to host via local network!');
       } else if (result.status === 'pending') {
-        setSyncStatus('⏳ Approval required. Please authorize this device under "Paired / Pending Devices" on the Host PC settings.', 'loading');
+        setSyncStatus('â³ Approval required. Please authorize this device under "Paired / Pending Devices" on the Host PC settings.', 'loading');
       } else {
-        setSyncStatus(`✗ ${result.error}`, 'error');
+        setSyncStatus(`âœ— ${result.error}`, 'error');
       }
 
       btnConnect.disabled = false;
-      btnConnect.textContent = '🔗 Connect';
+      btnConnect.textContent = 'ðŸ”— Connect';
     });
   }
 
-  // ── CLIENT: Sync Now ─────────────────────────────────────────────────
+  // â”€â”€ CLIENT: Sync Now â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (btnSyncNow) {
     btnSyncNow.addEventListener('click', async () => {
       btnSyncNow.disabled = true;
-      btnSyncNow.textContent = '⏳ Syncing…';
-      setSyncStatus('Fetching data from host…', 'loading');
+      btnSyncNow.textContent = 'â³ Syncingâ€¦';
+      setSyncStatus('Fetching data from hostâ€¦', 'loading');
 
       const result = await localSyncService.syncFromHost();
       if (result.ok) {
-        setSyncStatus('✓ Sync complete! Refresh app to see all data.', 'success');
-        showToast('↻ Sync complete!');
+        setSyncStatus('âœ“ Sync complete! Refresh app to see all data.', 'success');
+        showToast('â†» Sync complete!');
         // Trigger app refresh
         window.dispatchEvent(new CustomEvent('local-sync-applied'));
       } else {
-        setSyncStatus(`✗ Sync failed: ${result.error}`, 'error');
+        setSyncStatus(`âœ— Sync failed: ${result.error}`, 'error');
       }
 
       btnSyncNow.disabled = false;
-      btnSyncNow.textContent = '↻ Sync Now';
+      btnSyncNow.textContent = 'â†» Sync Now';
     });
   }
 
-  // ── CLIENT: Disconnect ───────────────────────────────────────────────
+  // â”€â”€ CLIENT: Disconnect â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (btnDisconnect) {
     btnDisconnect.addEventListener('click', () => {
       localSyncService.disconnectFromHost();
       localSyncService.clearPersisted();
       updateClientUI();
       setSyncStatus('Disconnected. Using direct LLM connection.', '');
-      showToast('🔌 Disconnected from host.');
+      showToast('ðŸ”Œ Disconnected from host.');
       if (hostAddrInput) hostAddrInput.value = '';
       if (clientKeyInput) clientKeyInput.value = '';
     });

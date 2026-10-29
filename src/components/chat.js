@@ -1300,6 +1300,11 @@ export function initChat() {
 
     function refreshThinkingEffortUI() {
       const settings = settingsStore.get();
+      const isPreserve = !!(settings.preserve_thinking ?? settings.genai_preserve_thinking);
+      const preserveCheck = document.getElementById('chat-preserve-thinking-toggle-check');
+      if (preserveCheck) {
+        preserveCheck.checked = isPreserve;
+      }
       let effort = settings.reasoning_effort || 'none';
       const qwenEnabled = !!settings.qwen35_thinking_support;
       const gemmaStyleEnabled = !!(settings.gemma4_support && settings.change_gemma4_thinking_style);
@@ -1349,6 +1354,21 @@ export function initChat() {
           opt.style.display = '';
         }
         opt.classList.toggle('selected', val === effort);
+      });
+    }
+
+    const preserveThinkingToggleRow = document.getElementById('chat-preserve-thinking-toggle-row');
+    if (preserveThinkingToggleRow) {
+      preserveThinkingToggleRow.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const current = !!(settingsStore.get().preserve_thinking ?? settingsStore.get().genai_preserve_thinking);
+        settingsStore.save({
+          ...settingsStore.get(),
+          preserve_thinking: !current,
+          genai_preserve_thinking: !current
+        });
+        refreshThinkingEffortUI();
+        if (window.refreshGenAIThinkingEffortUI) window.refreshGenAIThinkingEffortUI();
       });
     }
 
@@ -3476,7 +3496,14 @@ Before answering, you must use your internal monologue channel.
 
   // Inject pinned first 3 messages (always present, before summaries)
   for (const msg of result.pinnedMessages) {
-    const content = msg.role === 'user' ? (msg.translated_content || msg.content) : (msg.original_text || msg.content);
+    let content = msg.role === 'user' ? (msg.translated_content || msg.content) : (msg.original_text || msg.content);
+    if (msg.role === 'assistant' && (settings.preserve_thinking || settings.genai_preserve_thinking)) {
+      const openTag = (settings.reasoning_tag_open || '<think>').trim();
+      const closeTag = (settings.reasoning_tag_close || '</think>').trim();
+      if (msg.thinking && typeof content === 'string' && !content.includes(openTag)) {
+        content = `${openTag}\n${msg.thinking.trim()}\n${closeTag}\n\n${content}`.trim();
+      }
+    }
     messages.push({ role: msg.role, content: content });
   }
 
@@ -3490,7 +3517,14 @@ Before answering, you must use your internal monologue channel.
 
   // Append trimmed messages (sliding window after last chunk)
   for (const msg of result.trimmedMessages) {
-    const content = msg.role === 'user' ? (msg.translated_content || msg.content) : (msg.original_text || msg.content);
+    let content = msg.role === 'user' ? (msg.translated_content || msg.content) : (msg.original_text || msg.content);
+    if (msg.role === 'assistant' && (settings.preserve_thinking || settings.genai_preserve_thinking)) {
+      const openTag = (settings.reasoning_tag_open || '<think>').trim();
+      const closeTag = (settings.reasoning_tag_close || '</think>').trim();
+      if (msg.thinking && typeof content === 'string' && !content.includes(openTag)) {
+        content = `${openTag}\n${msg.thinking.trim()}\n${closeTag}\n\n${content}`.trim();
+      }
+    }
     messages.push({ role: msg.role, content: content });
   }
 

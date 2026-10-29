@@ -360,9 +360,17 @@
 }
 
 /* Modal backdrop dimming when stacked */
+/* When a modal is stacked in the background behind another modal, hide it cleanly */
+.modal.ui-stacked {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  transition: opacity 0.2s ease, visibility 0.2s ease !important;
+}
+
 .modal.ui-stacked .modal-backdrop {
-  opacity: 0.45;
-  transition: opacity 0.35s ease;
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
 /* ─── Utility Classes ────────────────────────────────────────────── */

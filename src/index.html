@@ -649,6 +649,14 @@
                       <div class="effort-option" data-value="low">Low</div>
                       <div class="effort-option" data-value="medium">Medium</div>
                       <div class="effort-option" data-value="high">High</div>
+                      <div style="height: 1px; background: var(--border-light); margin: 4px 0;"></div>
+                      <div id="chat-preserve-thinking-toggle-row" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; cursor: pointer;" class="hover-bg-light">
+                        <span style="font-size: var(--text-sm); font-weight: 500;">Preserve thinking</span>
+                        <label class="toggle-switch small" style="pointer-events: none; flex-shrink: 0;">
+                          <input type="checkbox" id="chat-preserve-thinking-toggle-check" />
+                          <span class="toggle-slider"></span>
+                        </label>
+                      </div>
                     </div>
                   </div>
 
@@ -1604,6 +1612,13 @@
                       <div class="effort-option" data-value="auto" id="genai-auto-switch-option">
                         Auto switch
                       </div>
+                      <div id="genai-preserve-thinking-toggle-row" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; cursor: pointer;" class="hover-bg-light">
+                        <span style="font-size: var(--text-sm); font-weight: 500;">Preserve thinking</span>
+                        <label class="toggle-switch small" style="pointer-events: none; flex-shrink: 0;">
+                          <input type="checkbox" id="genai-preserve-thinking-toggle-check" />
+                          <span class="toggle-slider"></span>
+                        </label>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2544,6 +2559,13 @@
                 <span class="toggle-slider"></span>
               </label>
             </div>
+            <div class="form-group-row">
+              <label>Preserve thinking in prompt</label>
+              <label class="toggle-switch small">
+                <input type="checkbox" id="setting-preserve-thinking" />
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
             <button id="btn-test-connection" class="btn-secondary btn-full">Test Connection</button>
 
             <div class="form-group">
@@ -2838,10 +2860,12 @@
                 <div class="vibe-dropdown-menu">
                   <div class="vibe-dropdown-item" data-value="default">Default</div>
                   <div class="vibe-dropdown-item" data-value="official">Official</div>
+                  <div class="vibe-dropdown-item" data-value="2026_q3">2026 Q3</div>
                 </div>
                 <select id="setting-genai-speech-style" class="hidden">
                   <option value="default">Default</option>
                   <option value="official">Official</option>
+                  <option value="2026_q3">2026 Q3</option>
                 </select>
               </div>
             </div>
