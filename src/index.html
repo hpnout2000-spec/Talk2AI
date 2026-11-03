@@ -2510,69 +2510,116 @@
               <label for="setting-prompt-token-limit">Prompt Token Limit</label>
               <input type="number" id="setting-prompt-token-limit" placeholder="4096" />
             </div>
-            <div class="form-group-row">
-              <label>Gemma 4 Support</label>
-              <label class="toggle-switch small">
-                <input type="checkbox" id="setting-gemma4-support" />
-                <span class="toggle-slider"></span>
-              </label>
+
+            <!-- Model Selector Button & Dropdown -->
+            <div class="choose-model-wrapper" id="choose-model-wrapper">
+              <button id="btn-choose-model" type="button" class="btn-secondary btn-full">
+                <span>Choose model</span>
+                <div class="choose-model-btn-right">
+                  <span id="chosen-model-label">GLM 5.3 (flash)</span>
+                  <svg class="choose-model-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </div>
+              </button>
+              <div id="choose-model-menu" class="choose-model-menu hidden">
+                <button type="button" class="choose-model-option" data-model="gemma4">
+                  <div class="choose-model-option-left">
+                    <span class="choose-model-title">Gemma 4</span>
+                  </div>
+                  <svg class="choose-model-check hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                </button>
+                <button type="button" class="choose-model-option active" data-model="glm53">
+                  <div class="choose-model-option-left">
+                    <span class="choose-model-title">GLM 5.3 (flash)</span>
+                    <span class="model-rec-star" data-tooltip="Reccomended model" title="Reccomended model">⭐</span>
+                  </div>
+                  <svg class="choose-model-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                </button>
+              </div>
             </div>
-            <div class="form-group-row nested-setting">
-              <label>Advanced thinking</label>
-              <label class="toggle-switch small">
-                <input type="checkbox" id="setting-change-gemma4-thinking-style" />
-                <span class="toggle-slider"></span>
-              </label>
+
+            <!-- Model-specific options: Gemma 4 -->
+            <div id="model-options-gemma4" class="model-specific-options" style="display: none; flex-direction: column; gap: var(--space-2); margin-bottom: 12px;">
+              <div class="form-group-row">
+                <label>Gemma 4 Support</label>
+                <label class="toggle-switch small">
+                  <input type="checkbox" id="setting-gemma4-support" />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="form-group-row nested-setting">
+                <label>Advanced thinking</label>
+                <label class="toggle-switch small">
+                  <input type="checkbox" id="setting-change-gemma4-thinking-style" />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <div class="form-group-row nested-setting">
+                <label>Google's thinking preset</label>
+                <label class="toggle-switch small">
+                  <input type="checkbox" id="setting-gemma4-google-thinking-preset" />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
             </div>
-            <div class="form-group-row nested-setting">
-              <label>Google's thinking preset</label>
-              <label class="toggle-switch small">
-                <input type="checkbox" id="setting-gemma4-google-thinking-preset" />
-                <span class="toggle-slider"></span>
-              </label>
+
+            <!-- Model-specific options: GLM 5.3 -->
+            <div id="model-options-glm53" class="model-specific-options" style="display: flex; flex-direction: column; gap: var(--space-2); margin-bottom: 12px;">
+              <div class="form-group-row">
+                <label>support for glm 5.3 Thinking</label>
+                <label class="toggle-switch small locked-toggle" title="Always enabled for GLM 5.3">
+                  <input type="checkbox" id="setting-glm53-thinking-support" checked disabled />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+              <button id="btn-set-glm-recommended" class="btn-secondary btn-full" type="button" style="margin-top: 4px;">Set reccomended settings</button>
             </div>
-            <div class="form-group-row">
-              <label>GLM 4.7 & Qwen 3.5 Support</label>
-              <label class="toggle-switch small">
-                <input type="checkbox" id="setting-glm47-support" />
-                <span class="toggle-slider"></span>
-              </label>
+
+            <!-- Collapsible Advanced Section -->
+            <div class="connection-advanced-accordion" id="connection-advanced-accordion">
+              <button type="button" class="connection-advanced-trigger" id="btn-toggle-connection-advanced">
+                <span>Advanced</span>
+                <svg class="connection-advanced-chevron" id="connection-advanced-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </button>
+              <div id="connection-advanced-content" class="connection-advanced-content hidden">
+                <div class="form-group-row">
+                  <label>Legacy jinja support</label>
+                  <label class="toggle-switch small">
+                    <input type="checkbox" id="setting-legacy-jinja-support" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="form-group-row">
+                  <label>Jinja adaptive thinking</label>
+                  <label class="toggle-switch small">
+                    <input type="checkbox" id="setting-jinja-adaptive-thinking" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="form-group-row">
+                  <label>Preserve thinking in prompt</label>
+                  <label class="toggle-switch small">
+                    <input type="checkbox" id="setting-preserve-thinking" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+                <div class="form-group-row">
+                  <label>Fix genai cache hit</label>
+                  <label class="toggle-switch small">
+                    <input type="checkbox" id="setting-fix-genai-cache-hit" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
+              </div>
             </div>
-            <div class="form-group-row">
-              <label>Qwen 3.5 thinking support</label>
-              <label class="toggle-switch small">
-                <input type="checkbox" id="setting-qwen35-thinking-support" />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-            <div class="form-group-row">
-              <label>Legacy jinja support</label>
-              <label class="toggle-switch small">
-                <input type="checkbox" id="setting-legacy-jinja-support" />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-            <div class="form-group-row">
-              <label>Jinja adaptive thinking</label>
-              <label class="toggle-switch small">
-                <input type="checkbox" id="setting-jinja-adaptive-thinking" />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-            <div class="form-group-row">
-              <label>Preserve thinking in prompt</label>
-              <label class="toggle-switch small">
-                <input type="checkbox" id="setting-preserve-thinking" />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
-            <div class="form-group-row">
-              <label>Fix genai cache hit</label>
-              <label class="toggle-switch small">
-                <input type="checkbox" id="setting-fix-genai-cache-hit" />
-                <span class="toggle-slider"></span>
-              </label>
-            </div>
+
             <button id="btn-test-connection" class="btn-secondary btn-full">Test Connection</button>
 
             <div class="form-group">

@@ -83,6 +83,10 @@ To run a fast, private, and unlimited search engine on your local machine:
 
 ## System Requirements
 - **Supported Models:**
-  - **Fully Supported:** Qwen 3.5 35B MoE (performs better than GLM 4.7 and Gemma), Gemma 4 31B (RP fine-tune recommended), Gemma 4 26B
-  - **Partially Supported:** GLM 4.7 flash
-- **Performance:** Generation speed of at least **20 tokens per second**.
+  - **Recommended Standard:** **GLM 5.3 (Flash)** — Recommended standard for the application; effortlessly handles all tasks and excels creatively.
+  - **Minimum Threshold:** **Gemma 4** (e.g., Gemma 4 31B, Gemma 4 26B) — Minimum baseline threshold for the application.
+  - **Deprecated & Not Recommended:** **Qwen** (e.g., Qwen 3.5 35B MoE) and **GLM 4.7 Flash** — Outdated and legacy; no longer recommended.
+  - **Pure Roleplay (Text Completion):** If you don't use the smart GenAI assistant and only need pure RP, you can use **any model** and fine-tune every parameter individually for text completion (instruct/context templates, samplers, etc.).
+- **Performance:**
+  - **Prompt Processing:** ~1000 tokens per second
+  - **Inference:** 10 tokens per second and higher

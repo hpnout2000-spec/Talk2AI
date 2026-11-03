@@ -78,6 +78,9 @@ export function initSettingsPanel() {
     gemmaSupportEl.addEventListener('change', updateGemmaSubsettingsState);
   }
 
+  initConnectionModelSelector();
+  initConnectionAdvancedAccordion();
+
   // Range inputs: show values in real-time
   setupRangeInput('setting-font-size', 'font-size-value', v => v);
   setupRangeInput('adv-setting-max-tokens', 'adv-max-tokens-value', v => v);
@@ -431,6 +434,154 @@ function setupRangeInput(inputId, valueId, formatter) {
   updateValue();
 }
 
+let currentSelectedModelType = 'glm53';
+
+function applyModelSelection(modelType) {
+  currentSelectedModelType = modelType;
+  const labelEl = document.getElementById('chosen-model-label');
+  const gemmaOptions = document.getElementById('model-options-gemma4');
+  const glmOptions = document.getElementById('model-options-glm53');
+  const options = document.querySelectorAll('.choose-model-option');
+
+  if (labelEl) {
+    labelEl.textContent = modelType === 'glm53' ? 'GLM 5.3 (flash)' : 'Gemma 4';
+  }
+
+  if (gemmaOptions && glmOptions) {
+    if (modelType === 'glm53') {
+      glmOptions.style.display = 'flex';
+      gemmaOptions.style.display = 'none';
+    } else {
+      gemmaOptions.style.display = 'flex';
+      glmOptions.style.display = 'none';
+    }
+  }
+
+  options.forEach(opt => {
+    const isMatch = opt.dataset.model === modelType;
+    opt.classList.toggle('active', isMatch);
+    const check = opt.querySelector('.choose-model-check');
+    if (check) {
+      check.classList.toggle('hidden', !isMatch);
+    }
+  });
+}
+
+function initConnectionModelSelector() {
+  const btnChooseModel = document.getElementById('btn-choose-model');
+  const chooseModelMenu = document.getElementById('choose-model-menu');
+  const wrapper = document.getElementById('choose-model-wrapper');
+  const options = document.querySelectorAll('.choose-model-option');
+  const btnSetRecommended = document.getElementById('btn-set-glm-recommended');
+
+  if (btnChooseModel && chooseModelMenu) {
+    btnChooseModel.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isClosed = chooseModelMenu.classList.contains('hidden');
+      chooseModelMenu.classList.toggle('hidden', !isClosed);
+      wrapper?.classList.toggle('open', isClosed);
+    });
+
+    document.addEventListener('click', (e) => {
+      if (wrapper && !wrapper.contains(e.target)) {
+        chooseModelMenu.classList.add('hidden');
+        wrapper.classList.remove('open');
+      }
+    });
+  }
+
+  options.forEach(opt => {
+    opt.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const model = opt.dataset.model;
+      if (model) {
+        applyModelSelection(model);
+        chooseModelMenu?.classList.add('hidden');
+        wrapper?.classList.remove('open');
+        settingsStore.update('selected_model_type', model);
+      }
+    });
+  });
+
+  if (btnSetRecommended) {
+    btnSetRecommended.addEventListener('click', async () => {
+      const cur = settingsStore.get();
+      const updated = {
+        ...cur,
+        active_generation_preset_id: 'glm53',
+        temperature: 1.0,
+        top_p: 0.95,
+        min_p_enabled: false,
+        adaptive_target_enabled: false,
+        adaptive_decay_enabled: false,
+        dynatemp_enabled: false,
+        dry_multiplier_enabled: false,
+        rep_penalty: 1.0,
+        presence_penalty: 0.0,
+        frequency_penalty_enabled: false,
+        top_a_enabled: false,
+        tfs_enabled: false,
+        mirostat_enabled: false,
+        smoothing_factor: 0,
+        reasoning_effort: (cur.reasoning_effort && cur.reasoning_effort !== 'none') ? cur.reasoning_effort : 'low'
+      };
+
+      if (Array.isArray(updated.generation_presets)) {
+        const pIndex = updated.generation_presets.findIndex(p => p.id === 'glm53');
+        const glmPresetData = {
+          id: 'glm53',
+          name: 'GLM 5.3 (Flash)',
+          completion_mode: 'chat_completion',
+          active_instruct_template_id: 'gemma2',
+          active_context_template_id: 'gemma2',
+          max_tokens: 4096,
+          temperature: 1.0,
+          top_p: 0.95,
+          top_k: 40,
+          rep_penalty: 1.0,
+          smoothing_factor: 0,
+          min_p: 0.05,
+          min_p_enabled: false,
+          adaptive_target: 0.8,
+          adaptive_target_enabled: false,
+          adaptive_decay: 0.9,
+          adaptive_decay_enabled: false,
+          presence_penalty: 0.0,
+          force_reasoning: false,
+          reasoning_tag_open: '<think>',
+          reasoning_tag_close: '</think>',
+          dry_multiplier_enabled: false
+        };
+        if (pIndex >= 0) {
+          updated.generation_presets[pIndex] = { ...updated.generation_presets[pIndex], ...glmPresetData };
+        } else {
+          updated.generation_presets.unshift(glmPresetData);
+        }
+      }
+
+      await settingsStore.save(updated);
+      loadSettingsToUI();
+      if (window.refreshThinkingEffortUI) window.refreshThinkingEffortUI();
+      if (window.updateReasoningUI) window.updateReasoningUI();
+      showToast('Set reccomended settings applied (Temp 1.0, Top P 0.95)');
+    });
+  }
+}
+
+function initConnectionAdvancedAccordion() {
+  const trigger = document.getElementById('btn-toggle-connection-advanced');
+  const accordion = document.getElementById('connection-advanced-accordion');
+  const content = document.getElementById('connection-advanced-content');
+
+  if (trigger && accordion && content) {
+    trigger.addEventListener('click', () => {
+      const isCurrentlyOpen = accordion.classList.contains('open');
+      accordion.classList.toggle('open', !isCurrentlyOpen);
+      content.classList.toggle('hidden', isCurrentlyOpen);
+    });
+  }
+}
+
 function updateGemmaSubsettingsState() {
   const gemmaSupportEl = document.getElementById('setting-gemma4-support');
   const subsettings = [
@@ -505,12 +656,12 @@ function loadSettingsToUI() {
   checkField('setting-gemma4-support', settings.gemma4_support);
   checkField('setting-change-gemma4-thinking-style', settings.change_gemma4_thinking_style);
   checkField('setting-gemma4-google-thinking-preset', settings.gemma4_google_thinking_preset !== false);
-  checkField('setting-glm47-support', settings.glm47_support);
-  checkField('setting-qwen35-thinking-support', settings.qwen35_thinking_support);
+  applyModelSelection(settings.selected_model_type || 'glm53');
+  checkField('setting-glm53-thinking-support', true);
   checkField('setting-legacy-jinja-support', settings.legacy_jinja_support);
-  checkField('setting-jinja-adaptive-thinking', settings.jinja_adaptive_thinking);
+  checkField('setting-jinja-adaptive-thinking', settings.jinja_adaptive_thinking !== false);
   checkField('setting-preserve-thinking', settings.preserve_thinking);
-  checkField('setting-fix-genai-cache-hit', settings.fix_genai_cache_hit);
+  checkField('setting-fix-genai-cache-hit', settings.fix_genai_cache_hit !== false);
   checkField('setting-auto-translate', settings.auto_translate);
   checkField('setting-translate-user', settings.translate_user_messages);
   checkField('setting-italic-asterisks', settings.italic_asterisks);
@@ -631,8 +782,8 @@ async function saveSettings() {
     gemma4_support: getChecked('setting-gemma4-support'),
     change_gemma4_thinking_style: getChecked('setting-change-gemma4-thinking-style'),
     gemma4_google_thinking_preset: getChecked('setting-gemma4-google-thinking-preset'),
-    glm47_support: getChecked('setting-glm47-support'),
-    qwen35_thinking_support: getChecked('setting-qwen35-thinking-support'),
+    selected_model_type: currentSelectedModelType,
+    glm53_thinking_support: true,
     legacy_jinja_support: getChecked('setting-legacy-jinja-support'),
     jinja_adaptive_thinking: getChecked('setting-jinja-adaptive-thinking'),
     preserve_thinking: getChecked('setting-preserve-thinking'),

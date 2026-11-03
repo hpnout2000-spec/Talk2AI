@@ -404,6 +404,9 @@ export const api = {
       if (settings.gemma4_support && options.reasoning_effort === undefined && (!effort || effort === 'none')) {
         effort = 'minimal';
       }
+      if ((settings.selected_model_type === 'glm53' || settings.glm53_thinking_support) && (!effort || effort === 'none')) {
+        effort = 'low';
+      }
       const isGenAI = options.isGenAI || false;
       const activePresetId = isGenAI ? (settings.active_genai_generation_preset_id || 'default') : (settings.active_generation_preset_id || 'default');
       const activePreset = (settings.generation_presets || []).find(p => p.id === activePresetId);
