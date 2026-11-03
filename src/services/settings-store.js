@@ -385,6 +385,7 @@ const DEFAULTS = {
   extended_thinking: false,
   preserve_thinking: false,
   genai_preserve_thinking: false,
+  fix_genai_cache_hit: false,
   memory_enabled: true,
   auto_naming_enabled: false,
   continuous_auto_naming_enabled: false,

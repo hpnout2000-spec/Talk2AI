@@ -510,6 +510,7 @@ function loadSettingsToUI() {
   checkField('setting-legacy-jinja-support', settings.legacy_jinja_support);
   checkField('setting-jinja-adaptive-thinking', settings.jinja_adaptive_thinking);
   checkField('setting-preserve-thinking', settings.preserve_thinking);
+  checkField('setting-fix-genai-cache-hit', settings.fix_genai_cache_hit);
   checkField('setting-auto-translate', settings.auto_translate);
   checkField('setting-translate-user', settings.translate_user_messages);
   checkField('setting-italic-asterisks', settings.italic_asterisks);
@@ -636,6 +637,7 @@ async function saveSettings() {
     jinja_adaptive_thinking: getChecked('setting-jinja-adaptive-thinking'),
     preserve_thinking: getChecked('setting-preserve-thinking'),
     genai_preserve_thinking: getChecked('setting-preserve-thinking'),
+    fix_genai_cache_hit: getChecked('setting-fix-genai-cache-hit'),
     auto_translate: getChecked('setting-auto-translate'),
     translate_user_messages: getChecked('setting-translate-user'),
     italic_asterisks: getChecked('setting-italic-asterisks'),
@@ -725,14 +727,14 @@ async function testConnection() {
     if (connected) {
       const model = await api.getModel();
       resultEl.className = 'connection-result success';
-      resultEl.textContent = `âœ“ Connected${model ? ` â€” Model: ${model}` : ''}`;
+      resultEl.textContent = `✓ Connected${model ? ` — Model: ${model}` : ''}`;
     } else {
       resultEl.className = 'connection-result error';
-      resultEl.textContent = 'âœ— Could not connect to server';
+      resultEl.textContent = '✗ Could not connect to server';
     }
   } catch (err) {
     resultEl.className = 'connection-result error';
-    resultEl.textContent = `âœ— Error: ${err.message}`;
+    resultEl.textContent = `✗ Error: ${err.message}`;
   }
 
   settingsStore.update('api_url', origSettings.api_url);

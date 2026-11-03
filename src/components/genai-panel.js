@@ -511,6 +511,7 @@ function buildStaticContext() {
   parts.push('## Recent Characters (Top 3 active):');
   parts.push('NOTE: Only the 3 most recently active characters are listed below to save context space. If you need to find or interact with other characters in the application that are not in this list, you MUST call get_all_characters first to locate their ID.');
   const sortedChars = [...characters].sort((a, b) => {
+    if (settings.fix_genai_cache_hit) return String(a.id || '').localeCompare(String(b.id || ''));
     const tA = a.last_chat_at ? new Date(a.last_chat_at).getTime() : 0;
     const tB = b.last_chat_at ? new Date(b.last_chat_at).getTime() : 0;
     return tB - tA;
@@ -1067,13 +1068,17 @@ async function buildApiMessages(extraUserInstruction = null, skipSmartContextOve
   }
 
   if (finalBasePrompt.includes('{{TODAY_DATE_TIME}}')) {
+    if (settings.fix_genai_cache_hit) {
+      finalBasePrompt = finalBasePrompt.replace('{{TODAY_DATE_TIME}}', '2026');
+    } else {
     const now = new Date();
     const year = now.getFullYear();
     const day = String(now.getDate()).padStart(2, '0');
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const hour = String(now.getHours()).padStart(2, '0');
     const todayStr = `${year}, ${day}/${month} ${hour}:00`;
-    finalBasePrompt = finalBasePrompt.replace('{{TODAY_DATE_TIME}}', todayStr);
+      finalBasePrompt = finalBasePrompt.replace('{{TODAY_DATE_TIME}}', todayStr);
+    }
   }
 
   if (settings.genai_viewimage_enabled) {
@@ -1688,7 +1693,9 @@ ${ANIMA_BETTER_PROMPT_TEXT}`;
 
   // Initial state: maximum context
   let activeChatMsgCount = 2;
-  let dynamicContext = buildDynamicContext(activeChatMsgCount);
+  let dynamicContext = settings.fix_genai_cache_hit
+    ? '[APP CONTEXT - DYNAMIC SESSION DATA]\n## Active View: none'
+    : buildDynamicContext(activeChatMsgCount);
   let systemContent = staticBase + memoryInjection + '\n\n' + staticContext + '\n\n' + dynamicContext + disabledSkillsNotice + skillsInjection;
 
   const getExactPromptTokens = async (sysContent, histMsgs) => {
@@ -1709,7 +1716,7 @@ ${ANIMA_BETTER_PROMPT_TEXT}`;
 
   // Pruning Stage A: Progressively reduce dynamic character chat context FIRST
   if (totalTokens > targetLimit) {
-    const msgCounts = [1, 0];
+    const msgCounts = settings.fix_genai_cache_hit ? [] : [1, 0];
     for (const count of msgCounts) {
       activeChatMsgCount = count;
       dynamicContext = buildDynamicContext(activeChatMsgCount);
