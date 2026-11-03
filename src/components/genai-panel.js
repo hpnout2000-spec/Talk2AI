@@ -552,11 +552,11 @@ You MUST use the following JSON function calls to interact with the application 
   }
 
   parts.push(`
-1. get_character: Retrieve a character's detailed card (description, personality, scenario, first message, alternate greetings count) by their ID.
-   - When to use: When the user mentions a character or asks details about a character's traits/scenario/prompts.
+1. get_character / get_character_card: Retrieve a character's detailed card (description, personality, scenario, first message, all alternate greetings, prompts) by ID or for the active character.
+   - When to use: When the user mentions a character, asks about a character's lore/details, or when interacting with the active open chat.
    - Parameters:
-     - "id": string (required) - the unique ID of the character.
-   - Example: {"genai_action":"get_character","id":"char_12"}
+     - "id": string (optional - defaults to current active character if omitted)
+   - Example: {"genai_action":"get_character_card"}
 
 2. get_chat_history: Fetch the list of chat sessions for a character, or get the actual message history of a specific session.
    - When to use: When the user asks about past conversations, asks to recall chat messages, or wants to check details of an open chat.
@@ -1797,7 +1797,7 @@ function clearOldHistoryTools() {
       msg.tools.forEach(t => {
         if (t.state === 'done' && t.result) {
           const n = t.action?.genai_action;
-          if (n === 'gethistory' || n === 'get_chat_history' || n === 'get_group_chat_history') {
+          if (n === 'gethistory' || n === 'get_chat_history' || n === 'get_group_chat_history' || n === 'get_chat_context') {
             if (t.result.history !== undefined && t.result.history !== "[user deleted the context for token saving purposes.]") {
               t.result.history = "[user deleted the context for token saving purposes.]";
               delete t.result.summary;
@@ -1824,18 +1824,22 @@ async function executeTool(action, onStatus = null, onPreview = null, onComplete
     return { error: 'Action is missing the action name.' };
   }
 
-  if (name === 'get_character') {
-    const char = characterStore.getById(action.id);
-    if (!char) return { error: `Character with id "${action.id}" not found.` };
+  if (name === 'get_character' || name === 'get_character_card' || name === 'get_character_info') {
+    const charId = action.id || action.character_id || appState.currentCharacter?.id;
+    const char = charId ? characterStore.getById(charId) : appState.currentCharacter;
+    if (!char) return { error: `Character with id "${charId || ''}" not found or no active character open.` };
     return {
+      id: char.id,
       name: char.name,
-      description: char.description,
-      personality: char.personality,
-      scenario: char.scenario,
-      system_prompt: char.system_prompt,
-      first_message: char.first_message,
+      description: char.description || '',
+      personality: char.personality || '',
+      scenario: char.scenario || '',
+      system_prompt: char.system_prompt || '',
+      post_history_instructions: char.post_history_instructions || '',
+      first_message: char.first_message || '',
       alternate_greetings: char.alternate_greetings || [],
       message_examples: char.message_examples || '',
+      creator_notes: char.creator_notes || '',
       image_tags: char.image_tags || ''
     };
   }
@@ -1878,7 +1882,7 @@ async function executeTool(action, onStatus = null, onPreview = null, onComplete
     }
   }
 
-  if (name === 'gethistory') {
+  if (name === 'gethistory' || name === 'get_chat_context') {
     clearOldHistoryTools();
     let session = appState.currentChat || chatStore.getCurrentSession();
     if (!session && appState.currentCharacter) {
@@ -2977,7 +2981,7 @@ function resultBadgeForAction(action, result) {
   }
   if (name === 'get_skills') return actionBadgeHtml('result-data', '', `Skills · Loaded ${result.count} skills`);
   if (name === 'read_skill') return actionBadgeHtml('result-data', '', `Skill · Read ${action.filename}`);
-  if (name === 'get_character') return actionBadgeHtml('result-data', '', `Character · Loaded ${result.name || action.id}`);
+  if (name === 'get_character' || name === 'get_character_card' || name === 'get_character_info') return actionBadgeHtml('result-data', '', `Character · Loaded ${result.name || action.id || 'card'}`);
   if (name === 'get_all_characters') return actionBadgeHtml('result-data', '', `Characters · Loaded ${result.count} characters`);
   if (name === 'get_chat_history') {
     if (result.mode === 'list') return actionBadgeHtml('result-data', '', `History · Found ${result.sessions.length} chats`);
@@ -3571,7 +3575,7 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
 
         let badgeHtml = '';
         const isWebTool = tool.action && (tool.action.genai_action === 'web_search' || tool.action.genai_action === 'web_fetch');
-        const isContextTool = tool.action && tool.action.genai_action === 'gethistory';
+        const isContextTool = tool.action && (tool.action.genai_action === 'gethistory' || tool.action.genai_action === 'get_chat_context');
 
         if (isContextTool) {
           const onceSweepStyle = 'background: none; -webkit-background-clip: initial; background-clip: initial; color: var(--text-tertiary); -webkit-text-fill-color: var(--text-tertiary); font-style: italic; font-size: var(--text-xs); margin: 0; padding: 0;';
@@ -5007,10 +5011,63 @@ async function decideAutoThinking(signal) {
   return 'thinkingskip';
 }
 
+// ─── Active Character Chat Notice Injection ────────────────────────
+function injectActiveChatSystemNoticeIfNeeded() {
+  if (document.body.classList.contains('genai-fullscreen')) {
+    return;
+  }
+
+  const groupViewEl = document.getElementById('group-chat-view-container');
+  const isGroupViewOpen = groupViewEl && !groupViewEl.classList.contains('hidden') && groupViewEl.style.display !== 'none';
+
+  const gameViewEl = document.getElementById('game-view-container');
+  const isGameViewOpen = gameViewEl && !gameViewEl.classList.contains('hidden') && gameViewEl.style.display !== 'none';
+
+  const bookViewEl = document.getElementById('book-view-container');
+  const isBookViewOpen = bookViewEl && !bookViewEl.classList.contains('hidden') && bookViewEl.style.display !== 'none';
+
+  const isCharChatOpen = !isGroupViewOpen && !isGameViewOpen && !isBookViewOpen && !!appState.currentCharacter;
+  if (!isCharChatOpen) {
+    return;
+  }
+
+  const currentChar = appState.currentCharacter;
+  if (!currentChar || !currentChar.name) {
+    return;
+  }
+
+  const pastNotices = genaiHistory.filter(m => m && m.role === 'system' && m.chat_character_id);
+  const lastNotice = pastNotices.length > 0 ? pastNotices[pastNotices.length - 1] : null;
+
+  if (!lastNotice) {
+    const noticeContent = `User has an open chat with character ${currentChar.name}.\n\nCommands to interact with this chat/character:\n- To get active chat context/history: {"genai_action":"gethistory"}\n- To get full character card details: {"genai_action":"get_character_card"}`;
+    genaiHistory.push({
+      role: 'system',
+      content: noticeContent,
+      chat_character_id: currentChar.id,
+      timestamp: new Date().toISOString()
+    });
+    saveHistory();
+  } else if (lastNotice.chat_character_id !== currentChar.id) {
+    const noticeContent = `User changed chat to ${currentChar.name}.`;
+    genaiHistory.push({
+      role: 'system',
+      content: noticeContent,
+      chat_character_id: currentChar.id,
+      timestamp: new Date().toISOString()
+    });
+    saveHistory();
+  }
+}
+
 async function streamGenAI(extraUserInstruction = null, _continuationEntry = null, _continuationBubble = null) {
   if (isGenerating && !extraUserInstruction) return;
   isGenerating = true;
   setGenAIActionState('stop');
+
+  if (!_continuationEntry) {
+    injectActiveChatSystemNoticeIfNeeded();
+  }
 
   abortController = new AbortController();
 
