@@ -532,13 +532,10 @@ function initConnectionModelSelector() {
       const cur = settingsStore.get();
       await settingsStore.save({
         ...cur,
-        reasoning_effort: level,
-        genai_reasoning_effort: level
+        global_tools_reasoning_effort: level
       });
       effortPills.forEach(p => p.classList.toggle('active', p.dataset.level === level));
-      if (window.refreshThinkingEffortUI) window.refreshThinkingEffortUI();
-      if (window.refreshGenAIThinkingEffortUI) window.refreshGenAIThinkingEffortUI();
-      showToast(`GLM 5.3 Thinking set to ${level.toUpperCase()}`);
+      showToast(`Global thinking level set to ${level.toUpperCase()}`);
     });
   });
 
@@ -728,7 +725,7 @@ function loadSettingsToUI() {
   checkField('setting-gemma4-google-thinking-preset', settings.gemma4_google_thinking_preset !== false);
   applyModelSelection(settings.selected_model_type || 'glm53');
   checkField('setting-glm53-thinking-support', true);
-  const glmEffortLevel = ['low', 'high', 'max'].includes(settings.reasoning_effort) ? settings.reasoning_effort : 'max';
+  const glmEffortLevel = ['low', 'high', 'max'].includes(settings.global_tools_reasoning_effort) ? settings.global_tools_reasoning_effort : 'max';
   document.querySelectorAll('.glm-effort-pill').forEach(pill => {
     pill.classList.toggle('active', pill.dataset.level === glmEffortLevel);
   });
@@ -863,6 +860,7 @@ async function saveSettings() {
     gemma4_google_thinking_preset: getChecked('setting-gemma4-google-thinking-preset'),
     selected_model_type: currentSelectedModelType,
     glm53_thinking_support: true,
+    global_tools_reasoning_effort: document.querySelector('.glm-effort-pill.active')?.dataset.level || current.global_tools_reasoning_effort || 'max',
     legacy_jinja_support: getChecked('setting-legacy-jinja-support'),
     jinja_adaptive_thinking: getChecked('setting-jinja-adaptive-thinking'),
     preserve_thinking: currentSelectedModelType === 'glm53' ? true : getChecked('setting-preserve-thinking'),

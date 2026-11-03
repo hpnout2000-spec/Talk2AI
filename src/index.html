@@ -2583,7 +2583,16 @@
                 </label>
               </div>
               <div class="form-group-row nested-setting glm-effort-selector-row" style="margin-left: var(--space-4); border-left: 2px solid var(--border-light); padding-left: var(--space-3); margin-bottom: 4px;">
-                <label style="font-size: var(--text-sm); font-weight: 500; color: var(--text-secondary);">Thinking Level</label>
+                <label style="font-size: var(--text-sm); font-weight: 500; color: var(--text-secondary); display: flex; align-items: center; gap: 6px;">
+                  <span>Global thinking level</span>
+                  <span class="setting-info-icon" data-tooltip="This value only affects the application's tools: summaries, character card generation, AI comments, and similar. Thinking for chat can be selected separately." title="This value only affects the application's tools: summaries, character card generation, AI comments, and similar. Thinking for chat can be selected separately.">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="12" y1="16" x2="12" y2="12"></line>
+                      <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                    </svg>
+                  </span>
+                </label>
                 <div class="glm-effort-pills" id="glm-effort-pills">
                   <button type="button" class="glm-effort-pill" data-level="low">Low</button>
                   <button type="button" class="glm-effort-pill" data-level="high">High</button>

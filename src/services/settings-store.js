@@ -381,6 +381,7 @@ const DEFAULTS = {
   gemma4_google_thinking_preset: true,
   selected_model_type: 'glm53',
   glm53_thinking_support: true,
+  global_tools_reasoning_effort: 'max',
 
   legacy_jinja_support: false,
   jinja_adaptive_thinking: true,
@@ -643,6 +644,9 @@ export const settingsStore = {
             ];
           }
           settings = { ...DEFAULTS, ...parsed };
+          if (!['low', 'high', 'max'].includes(settings.global_tools_reasoning_effort)) {
+            settings.global_tools_reasoning_effort = 'max';
+          }
           const isGlm53 = settings.selected_model_type === 'glm53' || !!settings.glm53_thinking_support;
           if (isGlm53) {
             settings.preserve_thinking = true;

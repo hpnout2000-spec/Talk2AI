@@ -1614,11 +1614,61 @@ body.advanced-animations-blur-enabled #settings-panel .settings-menu-modal::afte
   margin-top: 26px !important;
 }
 
+/* Setting Info Icon with hover tooltip */
+.setting-info-icon {
+  position: relative;
+  cursor: help;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  transition: color var(--transition-fast);
+}
+
+.setting-info-icon:hover {
+  color: var(--text-primary);
+}
+
+.setting-info-icon:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(18, 19, 26, 0.96);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  white-space: normal;
+  width: 230px;
+  text-align: left;
+  line-height: 1.4;
+  pointer-events: none;
+  border: 1px solid var(--border-light);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  z-index: 1000;
+}
+
+.setting-info-icon:hover::before {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 5px 5px 0 5px;
+  border-style: solid;
+  border-color: rgba(18, 19, 26, 0.96) transparent transparent transparent;
+  pointer-events: none;
+  z-index: 1000;
+}
+
 /* GLM Effort Pills in Connections */
 .glm-effort-pills {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   background: var(--bg-tertiary);
   padding: 3px;
   border-radius: var(--radius-md);
@@ -1635,6 +1685,7 @@ body.advanced-animations-blur-enabled #settings-panel .settings-menu-modal::afte
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all var(--transition-fast);
+  user-select: none;
 }
 
 .glm-effort-pill:hover {
@@ -1643,9 +1694,9 @@ body.advanced-animations-blur-enabled #settings-panel .settings-menu-modal::afte
 }
 
 .glm-effort-pill.active {
-  background: var(--accent-primary);
-  color: #fff;
+  background: #3b82f6;
+  color: #ffffff !important;
   font-weight: 600;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 1px 6px rgba(59, 130, 246, 0.4);
 }
 

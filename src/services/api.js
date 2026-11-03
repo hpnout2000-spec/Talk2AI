@@ -400,14 +400,24 @@ export const api = {
 
       let finalMessages = preprocessMessages(messages, settings);
       let clonedMessages = JSON.parse(JSON.stringify(messages));
+      const isTool = options.isTool || false;
       const isGenAI = options.isGenAI || false;
-      let effort = options.reasoning_effort ?? (isGenAI ? (settings.genai_reasoning_effort ?? settings.reasoning_effort) : settings.reasoning_effort) ?? 'none';
+      let effort = options.reasoning_effort;
+      if (effort === undefined) {
+        if (isTool) {
+          effort = settings.global_tools_reasoning_effort || 'max';
+        } else if (isGenAI) {
+          effort = settings.genai_reasoning_effort ?? settings.reasoning_effort ?? 'none';
+        } else {
+          effort = settings.reasoning_effort ?? 'none';
+        }
+      }
       if (settings.gemma4_support && options.reasoning_effort === undefined && (!effort || effort === 'none')) {
         effort = 'minimal';
       }
       if ((settings.selected_model_type === 'glm53' || settings.glm53_thinking_support)) {
         if (!effort || effort === 'none' || effort === 'minimal') {
-          effort = 'max';
+          effort = (isTool ? settings.global_tools_reasoning_effort : null) || 'max';
         } else if (effort === 'medium') {
           effort = 'high';
         }
@@ -1167,8 +1177,18 @@ Keep the summary under 300 words. Write only the summary itself in ${language}, 
       { role: 'user', content: `Generate the adventure summary in ${language}.` }
     ];
 
+    const settings = settingsStore.get();
+    const isGlm53 = settings.selected_model_type === 'glm53' || !!settings.glm53_thinking_support;
+    const reasoningEffort = isGlm53 ? (settings.global_tools_reasoning_effort || 'max') : 'none';
+
     try {
-      const res = await this.chatCompletion(messages, { temperature: 0.5, max_tokens: 1536, stripThinking: true });
+      const res = await this.chatCompletion(messages, {
+        temperature: 0.5,
+        max_tokens: 1536,
+        stripThinking: true,
+        reasoning_effort: reasoningEffort,
+        isTool: true
+      });
       return stripThinkingTags(res);
     } catch (err) {
       console.error('Adventure summarization failed:', err);
@@ -1240,16 +1260,21 @@ Please write the summary of the conversation following all mandatory rules.`;
     ];
 
     const settings = settingsStore.get();
-    const reasoningEffort = enableThinking
-      ? (settings.reasoning_effort && settings.reasoning_effort !== 'none' ? settings.reasoning_effort : 'medium')
-      : 'none';
+    const isGlm53 = settings.selected_model_type === 'glm53' || !!settings.glm53_thinking_support;
+    let reasoningEffort = 'none';
+    if (isGlm53) {
+      reasoningEffort = settings.global_tools_reasoning_effort || 'max';
+    } else if (enableThinking) {
+      reasoningEffort = settings.global_tools_reasoning_effort || (settings.reasoning_effort && settings.reasoning_effort !== 'none' ? settings.reasoning_effort : 'medium');
+    }
 
     try {
       const res = await this.chatCompletion(messages, {
         temperature: 0.5,
         max_tokens: summaryLength === 'long' ? 4096 : 2048,
         reasoning_effort: reasoningEffort,
-        stripThinking: true
+        stripThinking: true,
+        isTool: true
       });
       return stripThinkingTags(res);
     } catch (err) {
@@ -1567,15 +1592,20 @@ CRITICAL RULES:
       return 'New Chat';
     };
 
+    const settings = settingsStore.get();
+    const isGlm53 = settings.selected_model_type === 'glm53' || !!settings.glm53_thinking_support;
+    const toolEffort = isGlm53 ? (settings.global_tools_reasoning_effort || 'max') : 'none';
+
     try {
       const response = await this.chatCompletion([
         { role: 'system', content: sysPrompt },
         { role: 'user', content: userPrompt }
       ], {
         max_tokens: 500,
-        reasoning_effort: 'none',
-        thinking_budget: 0,
-        isGenAI: !isCharacterChat
+        reasoning_effort: toolEffort,
+        thinking_budget: toolEffort === 'none' ? 0 : undefined,
+        isGenAI: !isCharacterChat,
+        isTool: true
       });
       
       let raw = response ? response.trim() : '';

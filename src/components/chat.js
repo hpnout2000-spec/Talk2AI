@@ -4810,12 +4810,14 @@ Example:
 Do not include any Markdown formatting like \`\`\`json or any other text. Return strictly the raw JSON array.`
     });
 
+    const isGlm53 = settings.selected_model_type === 'glm53' || !!settings.glm53_thinking_support;
     const response = await api.chatCompletion(messages, {
       max_tokens: 1024,
       temperature: 0.7,
       signal: signal,
       priority: 'background',
-      reasoning_effort: 'none'
+      reasoning_effort: isGlm53 ? (settings.global_tools_reasoning_effort || 'max') : 'none',
+      isTool: true
     });
 
     // CRITICAL: Check if we were aborted while waiting for the network
@@ -5061,7 +5063,9 @@ async function requestAiComment(msg, character) {
                   btnCopy.textContent = 'Copied!';
                   setTimeout(() => btnCopy.textContent = 'Copy', 2000);
                 };
-              }
+              },
+              null,
+              { isTool: true }
             );
           } catch (err) {
             if (err.name !== 'AbortError') {
@@ -5075,7 +5079,8 @@ async function requestAiComment(msg, character) {
         if (err.name !== 'AbortError') {
           contentEl.innerHTML = `<p style="color: var(--error)">Error: ${escapeHtml(err.message)}</p>`;
         }
-      }
+      },
+      { isTool: true }
     );
   } catch (err) {
     if (err.name !== 'AbortError') {
