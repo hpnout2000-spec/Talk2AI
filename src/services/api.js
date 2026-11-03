@@ -400,14 +400,18 @@ export const api = {
 
       let finalMessages = preprocessMessages(messages, settings);
       let clonedMessages = JSON.parse(JSON.stringify(messages));
-      let effort = options.reasoning_effort ?? settings.reasoning_effort ?? 'none';
+      const isGenAI = options.isGenAI || false;
+      let effort = options.reasoning_effort ?? (isGenAI ? (settings.genai_reasoning_effort ?? settings.reasoning_effort) : settings.reasoning_effort) ?? 'none';
       if (settings.gemma4_support && options.reasoning_effort === undefined && (!effort || effort === 'none')) {
         effort = 'minimal';
       }
-      if ((settings.selected_model_type === 'glm53' || settings.glm53_thinking_support) && (!effort || effort === 'none')) {
-        effort = 'low';
+      if ((settings.selected_model_type === 'glm53' || settings.glm53_thinking_support)) {
+        if (!effort || effort === 'none' || effort === 'minimal') {
+          effort = 'max';
+        } else if (effort === 'medium') {
+          effort = 'high';
+        }
       }
-      const isGenAI = options.isGenAI || false;
       const activePresetId = isGenAI ? (settings.active_genai_generation_preset_id || 'default') : (settings.active_generation_preset_id || 'default');
       const activePreset = (settings.generation_presets || []).find(p => p.id === activePresetId);
 
@@ -692,9 +696,11 @@ export const api = {
         body.thinking_budget = options.thinking_budget;
       }
 
+      const isGlm53 = settings.selected_model_type === 'glm53' || !!settings.glm53_thinking_support;
       if (settings.jinja_adaptive_thinking ?? true) {
         body.chat_template_kwargs = {
-          enable_thinking: !!(effort && effort !== 'none')
+          enable_thinking: isGlm53 ? true : !!(effort && effort !== 'none'),
+          ...(isGlm53 ? { clear_thinking: false } : {})
         };
       }
 

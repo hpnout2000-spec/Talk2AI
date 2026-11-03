@@ -457,6 +457,18 @@ function applyModelSelection(modelType) {
     }
   }
 
+  const preserveCheck = document.getElementById('setting-preserve-thinking');
+  if (preserveCheck) {
+    if (modelType === 'glm53') {
+      preserveCheck.checked = true;
+      preserveCheck.disabled = true;
+      preserveCheck.closest('.form-group-row')?.setAttribute('title', 'Always enabled for GLM 5.3 (Preserved Thinking)');
+    } else {
+      preserveCheck.disabled = false;
+      preserveCheck.closest('.form-group-row')?.removeAttribute('title');
+    }
+  }
+
   options.forEach(opt => {
     const isMatch = opt.dataset.model === modelType;
     opt.classList.toggle('active', isMatch);
@@ -498,32 +510,89 @@ function initConnectionModelSelector() {
         applyModelSelection(model);
         chooseModelMenu?.classList.add('hidden');
         wrapper?.classList.remove('open');
-        settingsStore.update('selected_model_type', model);
+        const updateData = { selected_model_type: model };
+        if (model === 'glm53') {
+          updateData.glm53_thinking_support = true;
+          updateData.preserve_thinking = true;
+          updateData.genai_preserve_thinking = true;
+        }
+        settingsStore.save({ ...settingsStore.get(), ...updateData });
+        if (window.refreshThinkingEffortUI) window.refreshThinkingEffortUI();
+        if (window.refreshGenAIThinkingEffortUI) window.refreshGenAIThinkingEffortUI();
       }
+    });
+  });
+
+  const effortPills = document.querySelectorAll('.glm-effort-pill');
+  effortPills.forEach(pill => {
+    pill.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const level = pill.dataset.level;
+      if (!level) return;
+      const cur = settingsStore.get();
+      await settingsStore.save({
+        ...cur,
+        reasoning_effort: level,
+        genai_reasoning_effort: level
+      });
+      effortPills.forEach(p => p.classList.toggle('active', p.dataset.level === level));
+      if (window.refreshThinkingEffortUI) window.refreshThinkingEffortUI();
+      if (window.refreshGenAIThinkingEffortUI) window.refreshGenAIThinkingEffortUI();
+      showToast(`GLM 5.3 Thinking set to ${level.toUpperCase()}`);
     });
   });
 
   if (btnSetRecommended) {
     btnSetRecommended.addEventListener('click', async () => {
       const cur = settingsStore.get();
+      const glmEffort = ['low', 'high', 'max'].includes(cur.reasoning_effort) ? cur.reasoning_effort : 'max';
       const updated = {
         ...cur,
+        // Standard Generation Settings
         active_generation_preset_id: 'glm53',
         temperature: 1.0,
         top_p: 0.95,
+        top_k: 0,
         min_p_enabled: false,
         adaptive_target_enabled: false,
         adaptive_decay_enabled: false,
         dynatemp_enabled: false,
         dry_multiplier_enabled: false,
-        rep_penalty: 1.0,
-        presence_penalty: 0.0,
+        typical_p_enabled: false,
         frequency_penalty_enabled: false,
         top_a_enabled: false,
         tfs_enabled: false,
         mirostat_enabled: false,
+        xtc_enabled: false,
+        top_n_sigma_enabled: false,
+        rep_pen_range_enabled: false,
+        rep_penalty: 1.0,
+        presence_penalty: 0.0,
         smoothing_factor: 0,
-        reasoning_effort: (cur.reasoning_effort && cur.reasoning_effort !== 'none') ? cur.reasoning_effort : 'low'
+        reasoning_effort: glmEffort,
+
+        // GenAI Generation Settings
+        active_genai_generation_preset_id: 'glm53',
+        genai_temperature: 1.0,
+        genai_top_p: 0.95,
+        genai_top_k: 0,
+        genai_min_p_enabled: false,
+        genai_adaptive_target_enabled: false,
+        genai_adaptive_decay_enabled: false,
+        genai_dynatemp_enabled: false,
+        genai_dry_multiplier_enabled: false,
+        genai_typical_p_enabled: false,
+        genai_frequency_penalty_enabled: false,
+        genai_top_a_enabled: false,
+        genai_tfs_enabled: false,
+        genai_mirostat_enabled: false,
+        genai_xtc_enabled: false,
+        genai_top_n_sigma_enabled: false,
+        genai_rep_pen_range_enabled: false,
+        genai_rep_penalty: 1.0,
+        genai_presence_penalty: 0.0,
+        genai_smoothing_factor: 0,
+        genai_reasoning_effort: glmEffort
       };
 
       if (Array.isArray(updated.generation_presets)) {
@@ -537,7 +606,7 @@ function initConnectionModelSelector() {
           max_tokens: 4096,
           temperature: 1.0,
           top_p: 0.95,
-          top_k: 40,
+          top_k: 0,
           rep_penalty: 1.0,
           smoothing_factor: 0,
           min_p: 0.05,
@@ -562,8 +631,9 @@ function initConnectionModelSelector() {
       await settingsStore.save(updated);
       loadSettingsToUI();
       if (window.refreshThinkingEffortUI) window.refreshThinkingEffortUI();
+      if (window.refreshGenAIThinkingEffortUI) window.refreshGenAIThinkingEffortUI();
       if (window.updateReasoningUI) window.updateReasoningUI();
-      showToast('Set reccomended settings applied (Temp 1.0, Top P 0.95)');
+      showToast('Set reccomended settings applied to Generation & GenAI (Temp 1.0, Top P 0.95)');
     });
   }
 }
@@ -658,9 +728,18 @@ function loadSettingsToUI() {
   checkField('setting-gemma4-google-thinking-preset', settings.gemma4_google_thinking_preset !== false);
   applyModelSelection(settings.selected_model_type || 'glm53');
   checkField('setting-glm53-thinking-support', true);
+  const glmEffortLevel = ['low', 'high', 'max'].includes(settings.reasoning_effort) ? settings.reasoning_effort : 'max';
+  document.querySelectorAll('.glm-effort-pill').forEach(pill => {
+    pill.classList.toggle('active', pill.dataset.level === glmEffortLevel);
+  });
   checkField('setting-legacy-jinja-support', settings.legacy_jinja_support);
   checkField('setting-jinja-adaptive-thinking', settings.jinja_adaptive_thinking !== false);
-  checkField('setting-preserve-thinking', settings.preserve_thinking);
+  const isGlm53 = (settings.selected_model_type || 'glm53') === 'glm53' || !!settings.glm53_thinking_support;
+  checkField('setting-preserve-thinking', isGlm53 ? true : settings.preserve_thinking);
+  const preserveInput = document.getElementById('setting-preserve-thinking');
+  if (preserveInput) {
+    preserveInput.disabled = isGlm53;
+  }
   checkField('setting-fix-genai-cache-hit', settings.fix_genai_cache_hit !== false);
   checkField('setting-auto-translate', settings.auto_translate);
   checkField('setting-translate-user', settings.translate_user_messages);
@@ -786,8 +865,8 @@ async function saveSettings() {
     glm53_thinking_support: true,
     legacy_jinja_support: getChecked('setting-legacy-jinja-support'),
     jinja_adaptive_thinking: getChecked('setting-jinja-adaptive-thinking'),
-    preserve_thinking: getChecked('setting-preserve-thinking'),
-    genai_preserve_thinking: getChecked('setting-preserve-thinking'),
+    preserve_thinking: currentSelectedModelType === 'glm53' ? true : getChecked('setting-preserve-thinking'),
+    genai_preserve_thinking: currentSelectedModelType === 'glm53' ? true : getChecked('setting-preserve-thinking'),
     fix_genai_cache_hit: getChecked('setting-fix-genai-cache-hit'),
     auto_translate: getChecked('setting-auto-translate'),
     translate_user_messages: getChecked('setting-translate-user'),
@@ -862,7 +941,8 @@ async function testConnection() {
   
   const url = urlEl.value.trim();
   const btn = document.getElementById('btn-test-connection');
-  const existingResult = btn.parentElement.querySelector('.connection-result');
+  const groupEl = document.getElementById('group-api-url') || btn?.closest('.form-group') || btn?.parentElement;
+  const existingResult = groupEl?.querySelector('.connection-result');
   if (existingResult) existingResult.remove();
 
   btn.textContent = 'Testing...';
@@ -892,7 +972,7 @@ async function testConnection() {
 
   btn.textContent = 'Test Connection';
   btn.disabled = false;
-  btn.parentElement.appendChild(resultEl);
+  if (groupEl) groupEl.appendChild(resultEl);
 }
 
 /* â”€â”€â”€ Custom Vibe Dropdown Logic â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */

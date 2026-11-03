@@ -7811,24 +7811,33 @@ export function initGenAIPanel() {
 
     function refreshGenAIThinkingEffortUI() {
       const currentSettings = settingsStore.get();
-      let effort = currentSettings.genai_reasoning_effort || 'none';
-      const qwenEnabled = !!currentSettings.qwen35_thinking_support;
-      const gemmaStyleEnabled = !!(currentSettings.gemma4_support && currentSettings.change_gemma4_thinking_style);
+      let effort = currentSettings.genai_reasoning_effort || currentSettings.reasoning_effort || 'none';
+      const isGlm53 = currentSettings.selected_model_type === 'glm53' || !!currentSettings.glm53_thinking_support;
+      const qwenEnabled = !isGlm53 && !!currentSettings.qwen35_thinking_support;
+      const gemmaStyleEnabled = !isGlm53 && !!(currentSettings.gemma4_support && currentSettings.change_gemma4_thinking_style);
       const simplifiedEffort = qwenEnabled || gemmaStyleEnabled;
-      if (simplifiedEffort) {
+
+      if (isGlm53) {
+        if (!['low', 'high', 'max'].includes(effort)) {
+          effort = 'max';
+          settingsStore.update('genai_reasoning_effort', 'max');
+        }
+      } else if (simplifiedEffort) {
         if (effort !== 'none' && effort !== 'medium' && effort !== 'high' && effort !== 'auto') {
           effort = 'none';
         }
       }
 
       const levelSpan = btnMain?.querySelector('.effort-level-label');
-      if (effort === 'none') {
+      if (!isGlm53 && effort === 'none') {
         wrapper.classList.remove('active');
         if (levelSpan) levelSpan.textContent = '';
       } else {
         wrapper.classList.add('active');
         if (levelSpan) {
-          if (effort === 'auto') {
+          if (isGlm53) {
+            levelSpan.textContent = effort === 'low' ? 'Low' : (effort === 'high' ? 'High' : 'Max');
+          } else if (effort === 'auto') {
             levelSpan.textContent = 'auto';
           } else if (simplifiedEffort) {
             levelSpan.textContent = effort === 'medium' ? 'Lite' : 'High';
@@ -7840,7 +7849,20 @@ export function initGenAIPanel() {
       dropdown.querySelectorAll('.effort-option').forEach(opt => {
         const val = opt.dataset.value;
         if (!val) return;
-        if (simplifiedEffort) {
+        if (isGlm53) {
+          if (val === 'low') {
+            opt.textContent = 'Low';
+            opt.style.display = '';
+          } else if (val === 'high') {
+            opt.textContent = 'High';
+            opt.style.display = '';
+          } else if (val === 'max') {
+            opt.textContent = 'Max';
+            opt.style.display = '';
+          } else {
+            opt.style.display = 'none';
+          }
+        } else if (simplifiedEffort) {
           if (val === 'none') {
             opt.textContent = 'Off';
             opt.style.display = '';
@@ -7861,6 +7883,7 @@ export function initGenAIPanel() {
           else if (val === 'low') opt.textContent = 'Low';
           else if (val === 'medium') opt.textContent = 'Medium';
           else if (val === 'high') opt.textContent = 'High';
+          else if (val === 'max') opt.textContent = 'Max';
           else if (val === 'auto') opt.style.display = '';
           opt.style.display = '';
         }
@@ -7884,10 +7907,20 @@ export function initGenAIPanel() {
       }
 
       const isRefine = settingsStore.get().genai_refine_thoughts;
-      const isPreserve = !!(settingsStore.get().genai_preserve_thinking ?? settingsStore.get().preserve_thinking);
+      const isPreserve = isGlm53 ? true : !!(settingsStore.get().genai_preserve_thinking ?? settingsStore.get().preserve_thinking);
       const preserveCheck = document.getElementById('genai-preserve-thinking-toggle-check');
+      const preserveRow = document.getElementById('genai-preserve-thinking-toggle-row');
       if (preserveCheck) {
         preserveCheck.checked = isPreserve;
+      }
+      if (preserveRow) {
+        if (isGlm53) {
+          preserveRow.style.cursor = 'default';
+          preserveRow.title = 'Always enabled for GLM 5.3 (Preserved Thinking)';
+        } else {
+          preserveRow.style.cursor = 'pointer';
+          preserveRow.title = '';
+        }
       }
       const refineCheck = document.getElementById('genai-refine-thoughts-toggle-check');
       if (refineCheck) {
@@ -7915,11 +7948,23 @@ export function initGenAIPanel() {
       btnMain.addEventListener('click', (e) => {
         e.stopPropagation();
         const currentSettings = settingsStore.get();
-        const currentEffort = currentSettings.genai_reasoning_effort || 'none';
-        const qwenEnabled = !!currentSettings.qwen35_thinking_support;
-        const gemmaStyleEnabled = !!(currentSettings.gemma4_support && currentSettings.change_gemma4_thinking_style);
+        const currentEffort = currentSettings.genai_reasoning_effort || currentSettings.reasoning_effort || 'none';
+        const isGlm53 = currentSettings.selected_model_type === 'glm53' || !!currentSettings.glm53_thinking_support;
+        const qwenEnabled = !isGlm53 && !!currentSettings.qwen35_thinking_support;
+        const gemmaStyleEnabled = !isGlm53 && !!(currentSettings.gemma4_support && currentSettings.change_gemma4_thinking_style);
         const simplifiedEffort = qwenEnabled || gemmaStyleEnabled;
-        if (currentEffort !== 'none') {
+
+        if (isGlm53) {
+          let nextEffort = 'max';
+          if (currentEffort === 'low') nextEffort = 'high';
+          else if (currentEffort === 'high') nextEffort = 'max';
+          else nextEffort = 'low';
+          settingsStore.save({
+            ...currentSettings,
+            genai_reasoning_effort: nextEffort,
+            reasoning_effort: nextEffort
+          });
+        } else if (currentEffort !== 'none') {
           settingsStore.save({ ...settingsStore.get(), genai_reasoning_effort: 'none', previous_genai_reasoning_effort: currentEffort });
         } else {
           let prev = settingsStore.get().previous_genai_reasoning_effort || 'medium';
@@ -7941,13 +7986,19 @@ export function initGenAIPanel() {
       e.stopPropagation();
       const value = opt.dataset.value;
       if (!value || value === 'extended') return;
+      const cur = settingsStore.get();
+      const isGlm53 = cur.selected_model_type === 'glm53' || !!cur.glm53_thinking_support;
       const updateData = { genai_reasoning_effort: value };
+      if (isGlm53) {
+        updateData.reasoning_effort = value;
+      }
       if (value !== 'none') {
         updateData.previous_genai_reasoning_effort = value;
       }
       settingsStore.save({ ...settingsStore.get(), ...updateData });
       dropdown.classList.add('hidden');
       refreshGenAIThinkingEffortUI();
+      if (window.refreshThinkingEffortUI) window.refreshThinkingEffortUI();
     });
 
     const extendedToggleRow = document.getElementById('genai-extended-thinking-toggle-row');
@@ -7979,9 +8030,12 @@ export function initGenAIPanel() {
     if (preserveThoughtsToggleRow) {
       preserveThoughtsToggleRow.addEventListener('click', (e) => {
         e.stopPropagation();
-        const current = !!(settingsStore.get().genai_preserve_thinking ?? settingsStore.get().preserve_thinking);
+        const curSettings = settingsStore.get();
+        const isGlm53 = curSettings.selected_model_type === 'glm53' || !!curSettings.glm53_thinking_support;
+        if (isGlm53) return; // Cannot disable when GLM 5.3 is active
+        const current = !!(curSettings.genai_preserve_thinking ?? curSettings.preserve_thinking);
         settingsStore.save({
-          ...settingsStore.get(),
+          ...curSettings,
           genai_preserve_thinking: !current,
           preserve_thinking: !current
         });

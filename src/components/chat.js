@@ -1300,29 +1300,48 @@ export function initChat() {
 
     function refreshThinkingEffortUI() {
       const settings = settingsStore.get();
-      const isPreserve = !!(settings.preserve_thinking ?? settings.genai_preserve_thinking);
+      const isGlm53 = settings.selected_model_type === 'glm53' || !!settings.glm53_thinking_support;
+      const isPreserve = isGlm53 ? true : !!(settings.preserve_thinking ?? settings.genai_preserve_thinking);
       const preserveCheck = document.getElementById('chat-preserve-thinking-toggle-check');
+      const preserveRow = document.getElementById('chat-preserve-thinking-toggle-row');
       if (preserveCheck) {
         preserveCheck.checked = isPreserve;
       }
+      if (preserveRow) {
+        if (isGlm53) {
+          preserveRow.style.cursor = 'default';
+          preserveRow.title = 'Always enabled for GLM 5.3 (Preserved Thinking)';
+        } else {
+          preserveRow.style.cursor = 'pointer';
+          preserveRow.title = '';
+        }
+      }
       let effort = settings.reasoning_effort || 'none';
-      const qwenEnabled = !!settings.qwen35_thinking_support;
-      const gemmaStyleEnabled = !!(settings.gemma4_support && settings.change_gemma4_thinking_style);
+      const qwenEnabled = !isGlm53 && !!settings.qwen35_thinking_support;
+      const gemmaStyleEnabled = !isGlm53 && !!(settings.gemma4_support && settings.change_gemma4_thinking_style);
       const simplifiedEffort = qwenEnabled || gemmaStyleEnabled;
-      if (simplifiedEffort) {
+
+      if (isGlm53) {
+        if (!['low', 'high', 'max'].includes(effort)) {
+          effort = 'max';
+          settingsStore.update('reasoning_effort', 'max');
+        }
+      } else if (simplifiedEffort) {
         if (effort !== 'none' && effort !== 'medium' && effort !== 'high') {
           effort = 'none';
         }
       }
 
       const levelSpan = btnMain?.querySelector('.effort-level-label');
-      if (effort === 'none') {
+      if (!isGlm53 && effort === 'none') {
         wrapper.classList.remove('active');
         if (levelSpan) levelSpan.textContent = '';
       } else {
         wrapper.classList.add('active');
         if (levelSpan) {
-          if (simplifiedEffort) {
+          if (isGlm53) {
+            levelSpan.textContent = effort === 'low' ? 'Low' : (effort === 'high' ? 'High' : 'Max');
+          } else if (simplifiedEffort) {
             levelSpan.textContent = effort === 'medium' ? 'Lite' : 'High';
           } else {
             levelSpan.textContent = effort;
@@ -1332,7 +1351,20 @@ export function initChat() {
       // Mark active option
       dropdown.querySelectorAll('.effort-option').forEach(opt => {
         const val = opt.dataset.value;
-        if (simplifiedEffort) {
+        if (isGlm53) {
+          if (val === 'low') {
+            opt.textContent = 'Low';
+            opt.style.display = '';
+          } else if (val === 'high') {
+            opt.textContent = 'High';
+            opt.style.display = '';
+          } else if (val === 'max') {
+            opt.textContent = 'Max';
+            opt.style.display = '';
+          } else {
+            opt.style.display = 'none';
+          }
+        } else if (simplifiedEffort) {
           if (val === 'none') {
             opt.textContent = 'Off';
             opt.style.display = '';
@@ -1351,6 +1383,7 @@ export function initChat() {
           else if (val === 'low') opt.textContent = 'Low';
           else if (val === 'medium') opt.textContent = 'Medium';
           else if (val === 'high') opt.textContent = 'High';
+          else if (val === 'max') opt.textContent = 'Max';
           opt.style.display = '';
         }
         opt.classList.toggle('selected', val === effort);
@@ -1361,9 +1394,12 @@ export function initChat() {
     if (preserveThinkingToggleRow) {
       preserveThinkingToggleRow.addEventListener('click', (e) => {
         e.stopPropagation();
-        const current = !!(settingsStore.get().preserve_thinking ?? settingsStore.get().genai_preserve_thinking);
+        const curSettings = settingsStore.get();
+        const isGlm53 = curSettings.selected_model_type === 'glm53' || !!curSettings.glm53_thinking_support;
+        if (isGlm53) return; // Cannot disable when GLM 5.3 is active
+        const current = !!(curSettings.preserve_thinking ?? curSettings.genai_preserve_thinking);
         settingsStore.save({
-          ...settingsStore.get(),
+          ...curSettings,
           preserve_thinking: !current,
           genai_preserve_thinking: !current
         });
@@ -1388,10 +1424,18 @@ export function initChat() {
         e.stopPropagation();
         const currentSettings = settingsStore.get();
         const currentEffort = currentSettings.reasoning_effort || 'none';
-        const qwenEnabled = !!currentSettings.qwen35_thinking_support;
-        const gemmaStyleEnabled = !!(currentSettings.gemma4_support && currentSettings.change_gemma4_thinking_style);
+        const isGlm53 = currentSettings.selected_model_type === 'glm53' || !!currentSettings.glm53_thinking_support;
+        const qwenEnabled = !isGlm53 && !!currentSettings.qwen35_thinking_support;
+        const gemmaStyleEnabled = !isGlm53 && !!(currentSettings.gemma4_support && currentSettings.change_gemma4_thinking_style);
         const simplifiedEffort = qwenEnabled || gemmaStyleEnabled;
-        if (currentEffort !== 'none') {
+
+        if (isGlm53) {
+          let nextEffort = 'max';
+          if (currentEffort === 'low') nextEffort = 'high';
+          else if (currentEffort === 'high') nextEffort = 'max';
+          else nextEffort = 'low';
+          settingsStore.save({ ...currentSettings, reasoning_effort: nextEffort, genai_reasoning_effort: nextEffort });
+        } else if (currentEffort !== 'none') {
           settingsStore.save({ ...settingsStore.get(), reasoning_effort: 'none', previous_reasoning_effort: currentEffort });
         } else {
           let prev = settingsStore.get().previous_reasoning_effort || 'medium';
@@ -1412,11 +1456,16 @@ export function initChat() {
       e.stopPropagation();
       const value = opt.dataset.value;
       if (!value || value === 'extended') return;
+      const cur = settingsStore.get();
+      const isGlm53 = cur.selected_model_type === 'glm53' || !!cur.glm53_thinking_support;
       const updateData = { reasoning_effort: value };
+      if (isGlm53) {
+        updateData.genai_reasoning_effort = value;
+      }
       if (value !== 'none') {
         updateData.previous_reasoning_effort = value;
       }
-      settingsStore.save({ ...settingsStore.get(), ...updateData });
+      settingsStore.save({ ...cur, ...updateData });
       dropdown.classList.add('hidden');
       refreshThinkingEffortUI();
       if (window.refreshGenAIThinkingEffortUI) window.refreshGenAIThinkingEffortUI();

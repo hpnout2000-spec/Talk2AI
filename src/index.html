@@ -649,6 +649,7 @@
                       <div class="effort-option" data-value="low">Low</div>
                       <div class="effort-option" data-value="medium">Medium</div>
                       <div class="effort-option" data-value="high">High</div>
+                      <div class="effort-option" data-value="max">Max</div>
                       <div style="height: 1px; background: var(--border-light); margin: 4px 0;"></div>
                       <div id="chat-preserve-thinking-toggle-row" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; cursor: pointer;" class="hover-bg-light">
                         <span style="font-size: var(--text-sm); font-weight: 500;">Preserve thinking</span>
@@ -1581,6 +1582,7 @@
                     <div class="effort-option" data-value="low">Low</div>
                     <div class="effort-option" data-value="medium">Medium</div>
                     <div class="effort-option" data-value="high">High</div>
+                    <div class="effort-option" data-value="max">Max</div>
                     <div style="height: 1px; background: var(--border-light); margin: 4px 0;"></div>
                     <div id="genai-extended-thinking-toggle-row" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; cursor: pointer;" class="hover-bg-light">
                       <span style="display: flex; align-items: center; gap: 4px; font-size: var(--text-sm); font-weight: 500;">
@@ -2502,9 +2504,12 @@
             <button class="btn-icon btn-close-submodal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
           </div>
           <div class="modal-body">
-            <div class="form-group">
+            <div class="form-group" id="group-api-url">
               <label for="setting-api-url">KoboldCpp URL</label>
-              <input type="text" id="setting-api-url" placeholder="http://localhost:5001" />
+              <div class="api-url-input-group">
+                <input type="text" id="setting-api-url" placeholder="http://localhost:5001" />
+                <button id="btn-test-connection" type="button" class="btn-secondary btn-test-conn">Test Connection</button>
+              </div>
             </div>
             <div class="form-group">
               <label for="setting-prompt-token-limit">Prompt Token Limit</label>
@@ -2577,6 +2582,14 @@
                   <span class="toggle-slider"></span>
                 </label>
               </div>
+              <div class="form-group-row nested-setting glm-effort-selector-row" style="margin-left: var(--space-4); border-left: 2px solid var(--border-light); padding-left: var(--space-3); margin-bottom: 4px;">
+                <label style="font-size: var(--text-sm); font-weight: 500; color: var(--text-secondary);">Thinking Level</label>
+                <div class="glm-effort-pills" id="glm-effort-pills">
+                  <button type="button" class="glm-effort-pill" data-level="low">Low</button>
+                  <button type="button" class="glm-effort-pill" data-level="high">High</button>
+                  <button type="button" class="glm-effort-pill active" data-level="max">Max</button>
+                </div>
+              </div>
               <button id="btn-set-glm-recommended" class="btn-secondary btn-full" type="button" style="margin-top: 4px;">Set reccomended settings</button>
             </div>
 
@@ -2620,9 +2633,7 @@
               </div>
             </div>
 
-            <button id="btn-test-connection" class="btn-secondary btn-full">Test Connection</button>
-
-            <div class="form-group">
+            <div class="form-group setting-apininjas-group">
               <label for="setting-apininjas-key">API Ninjas API Key</label>
               <input type="password" id="setting-apininjas-key" placeholder="Your API key for random names" />
             </div>

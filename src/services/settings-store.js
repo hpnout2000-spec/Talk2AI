@@ -280,7 +280,7 @@ const STD_SAMPLER_DEFAULTS = {
 };
 
 export const DEFAULT_GENERATION_PRESETS = [
-  { id: 'glm53', name: 'GLM 5.3 (Flash)', completion_mode: 'chat_completion', active_instruct_template_id: 'gemma2', active_context_template_id: 'gemma2', max_tokens: 4096, temperature: 1.0, top_p: 0.95, top_k: 40, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: false, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...STD_SAMPLER_DEFAULTS },
+  { id: 'glm53', name: 'GLM 5.3 (Flash)', completion_mode: 'chat_completion', active_instruct_template_id: 'gemma2', active_context_template_id: 'gemma2', max_tokens: 4096, temperature: 1.0, top_p: 0.95, top_k: 0, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: false, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...STD_SAMPLER_DEFAULTS },
   { id: 'default', name: 'Default', completion_mode: 'chat_completion', active_instruct_template_id: 'gemma2', active_context_template_id: 'gemma2', max_tokens: 2048, temperature: 0.7, top_p: 0.9, top_k: 40, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: true, adaptive_decay: 0.9, adaptive_decay_enabled: true, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...STD_SAMPLER_DEFAULTS },
   { id: 'glm47flash', name: 'GLM 4.7 Flash (Creative)', completion_mode: 'chat_completion', active_instruct_template_id: 'gemma2', active_context_template_id: 'gemma2', max_tokens: 6000, temperature: 1.0, top_p: 0.95, top_k: 40, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: false, adaptive_decay: 0.9, adaptive_decay_enabled: false, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...STD_SAMPLER_DEFAULTS },
   { id: 'glm46', name: 'GLM 4.6 (Unsloth)', completion_mode: 'chat_completion', active_instruct_template_id: 'gemma2', active_context_template_id: 'gemma2', max_tokens: 2048, temperature: 0.8, top_p: 0.6, top_k: 2, rep_penalty: 1.0, smoothing_factor: 0, min_p: 0.05, min_p_enabled: true, adaptive_target: 0.8, adaptive_target_enabled: true, adaptive_decay: 0.9, adaptive_decay_enabled: true, presence_penalty: 0.0, force_reasoning: false, reasoning_tag_open: '<think>', reasoning_tag_close: '</think>', dry_multiplier_enabled: false, dry_multiplier: 0.8, dry_base: 1.75, dry_allowed_length: 2, dry_sequence_breakers: ["\n", ":", "\"", "*"], ...STD_SAMPLER_DEFAULTS },
@@ -385,8 +385,8 @@ const DEFAULTS = {
   legacy_jinja_support: false,
   jinja_adaptive_thinking: true,
   extended_thinking: false,
-  preserve_thinking: false,
-  genai_preserve_thinking: false,
+  preserve_thinking: true,
+  genai_preserve_thinking: true,
   fix_genai_cache_hit: true,
   memory_enabled: true,
   auto_naming_enabled: false,
@@ -643,6 +643,12 @@ export const settingsStore = {
             ];
           }
           settings = { ...DEFAULTS, ...parsed };
+          const isGlm53 = settings.selected_model_type === 'glm53' || !!settings.glm53_thinking_support;
+          if (isGlm53) {
+            settings.preserve_thinking = true;
+            settings.genai_preserve_thinking = true;
+            settings.glm53_thinking_support = true;
+          }
         }
       }
 
@@ -669,6 +675,12 @@ export const settingsStore = {
   },
 
   async save(newSettings) {
+    const isGlm53 = (newSettings.selected_model_type ?? settings.selected_model_type) === 'glm53' || !!(newSettings.glm53_thinking_support ?? settings.glm53_thinking_support);
+    if (isGlm53) {
+      newSettings.preserve_thinking = true;
+      newSettings.genai_preserve_thinking = true;
+      newSettings.glm53_thinking_support = true;
+    }
     settings = { ...settings, ...newSettings };
     try {
       await invokeTauri('save_settings', { data: JSON.stringify(settings) });
@@ -679,6 +691,10 @@ export const settingsStore = {
   },
 
   update(key, value) {
+    const isGlm53 = settings.selected_model_type === 'glm53' || !!settings.glm53_thinking_support;
+    if (isGlm53 && (key === 'preserve_thinking' || key === 'genai_preserve_thinking') && !value) {
+      return;
+    }
     settings[key] = value;
   },
 };
