@@ -582,6 +582,14 @@ export const api = {
         };
       }
 
+      if (options.model) {
+        body.model = options.model;
+      } else if (settings.model_name) {
+        body.model = settings.model_name;
+      } else if (settings.selected_model_type === 'glm53' || !!settings.glm53_thinking_support) {
+        body.model = 'glm-5.3-flash-uncensored';
+      }
+
       const sf = options.smoothing_factor ?? activeSource.smoothing_factor ?? (isGenAI ? settings.genai_smoothing_factor : settings.smoothing_factor) ?? 0;
       if (sf > 0) {
         body.smoothing_factor = sf;
@@ -709,8 +717,8 @@ export const api = {
       const isGlm53 = settings.selected_model_type === 'glm53' || !!settings.glm53_thinking_support;
       if (settings.jinja_adaptive_thinking ?? true) {
         body.chat_template_kwargs = {
-          enable_thinking: isGlm53 ? true : !!(effort && effort !== 'none'),
-          ...(isGlm53 ? { clear_thinking: false } : {})
+          enable_thinking: options.isContinuation ? false : (isGlm53 ? true : !!(effort && effort !== 'none')),
+          ...(isGlm53 ? { clear_thinking: options.isContinuation ? false : (settings.glm53_clear_thinking !== false) } : {})
         };
       }
 
@@ -736,6 +744,7 @@ export const api = {
           let unlisten = null;
           let doneUnlisten = null;
           let buffer = '';
+          let lastFinishReason = null;
 
           if (window.__TAURI__ && window.__TAURI__.event) {
             unlisten = await window.__TAURI__.event.listen(`relay-chunk-${eventId}`, (event) => {
@@ -756,6 +765,9 @@ export const api = {
                 try {
                   const parsed = JSON.parse(data);
                   const choice = parsed.choices?.[0];
+                  if (choice?.finish_reason) {
+                    lastFinishReason = choice.finish_reason;
+                  }
                   const textChunk = choice?.text !== undefined ? choice.text : (choice?.delta?.content !== undefined ? choice.delta.content : null);
                   const reasoningChunk = choice?.delta?.reasoning_content || choice?.reasoning_content;
 
@@ -776,7 +788,7 @@ export const api = {
             doneUnlisten = await window.__TAURI__.event.listen(`relay-done-${eventId}`, () => {
               if (unlisten) unlisten();
               if (doneUnlisten) doneUnlisten();
-              onDone();
+              onDone({ finish_reason: lastFinishReason });
             });
           }
 
@@ -807,7 +819,7 @@ export const api = {
           return;
         }
 
-        const resp = await fetch(effectiveUrl, {
+        let resp = await fetch(effectiveUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
@@ -816,13 +828,41 @@ export const api = {
 
         if (!resp.ok) {
           const errText = await resp.text();
-          onError(new Error(`API error ${resp.status}: ${errText}`));
-          return;
+          const contextMatch = errText.match(/maximum context length is (\d+) tokens;\s*prompt \((\d+) tokens\)/i);
+          if (contextMatch && body.max_tokens) {
+            const serverMaxContext = parseInt(contextMatch[1], 10);
+            const serverPromptTokens = parseInt(contextMatch[2], 10);
+            const safeMaxTokens = Math.max(128, serverMaxContext - serverPromptTokens - 32);
+            if (safeMaxTokens < body.max_tokens) {
+              console.warn(`[API] Retrying with clamped max_tokens (${safeMaxTokens}) due to context limit (${serverMaxContext})`);
+              body.max_tokens = safeMaxTokens;
+              const retryResp = await fetch(effectiveUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body),
+                signal: combinedController.signal,
+              });
+              if (retryResp.ok) {
+                resp = retryResp;
+              } else {
+                const retryErrText = await retryResp.text();
+                onError(new Error(`API error ${retryResp.status}: ${retryErrText}`));
+                return;
+              }
+            } else {
+              onError(new Error(`API error ${resp.status}: ${errText}`));
+              return;
+            }
+          } else {
+            onError(new Error(`API error ${resp.status}: ${errText}`));
+            return;
+          }
         }
 
         const reader = resp.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
+        let lastFinishReason = null;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -838,13 +878,16 @@ export const api = {
 
             const data = trimmed.slice(6);
             if (data === '[DONE]') {
-              onDone();
+              onDone({ finish_reason: lastFinishReason });
               return;
             }
 
             try {
               const parsed = JSON.parse(data);
               const choice = parsed.choices?.[0];
+              if (choice?.finish_reason) {
+                lastFinishReason = choice.finish_reason;
+              }
               const textChunk = choice?.text !== undefined ? choice.text : (choice?.delta?.content !== undefined ? choice.delta.content : null);
               const reasoningChunk = choice?.delta?.reasoning_content || choice?.reasoning_content;
 
@@ -860,7 +903,7 @@ export const api = {
           }
         }
 
-        onDone();
+        onDone({ finish_reason: lastFinishReason });
       } catch (err) {
         if (err.name === 'AbortError' || combinedController.signal.aborted) {
           const abortErr = new Error('Aborted');

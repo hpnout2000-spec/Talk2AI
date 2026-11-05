@@ -1,6 +1,6 @@
-/* ════════════════════════════════════════════════════════════════════
-   LLM Chat — Main Entry Point
-   ════════════════════════════════════════════════════════════════════ */
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+   LLM Chat â€” Main Entry Point
+   â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 
 import { settingsStore } from './services/settings-store.js';
 import { characterStore } from './services/character-store.js';
@@ -35,9 +35,10 @@ import { localSyncService } from './services/local-sync-service.js';
 import { genaiMemoryStore } from './services/genai-memory-store.js';
 import { lorebookStore } from './services/lorebook-store.js';
 import { startRelativeTimeUpdater, updateAllRelativeTimes, escapeHtml } from './utils/helpers.js';
+import { initSelectionToolbar } from './components/selection-toolbar.js';
 import './components/lorebook-ui.js';
 
-// ─── Initialize App ─────────────────────────────────────────────────
+// â”€â”€â”€ Initialize App â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function init() {
   console.log('LLM Chat initializing...');
@@ -368,7 +369,7 @@ async function init() {
     }
   });
 
-  // ─── Left Sidebar Collapse / Expand Logic ─────────────────────────────
+  // â”€â”€â”€ Left Sidebar Collapse / Expand Logic â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
   const savedSidebarCollapsed = localStorage.getItem('sidebar_collapsed') === 'true';
   if (savedSidebarCollapsed) {
@@ -631,6 +632,7 @@ async function init() {
   initBookPanel();
   initBookView();
   initGenAIPanel();
+  initSelectionToolbar();
   initGenAIMemoriesMgr();
   initSmartContextMgr();
   initGenAISkillsMgr();
@@ -685,13 +687,13 @@ async function init() {
   console.log('LLM Chat ready!');
 }
 
-// ─── Tauri Window Controls ──────────────────────────────────────────
+// â”€â”€â”€ Tauri Window Controls â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 async function initWindowControls() {
   // Logic removed: using native window decorations instead of custom frameless controls
 }
 
-// ─── Check Connection ───────────────────────────────────────────────
+// â”€â”€â”€ Check Connection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function checkConnection() {
   const statusEl = document.querySelector('.connection-status');
@@ -735,7 +737,7 @@ export function updateGenAIToggleUI() {
   }
 }
 
-// ─── Global Styles Application ─────────────────────────────────────
+// â”€â”€â”€ Global Styles Application â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function applyGlobalSettingsStyles() {
   const settings = settingsStore.get();
@@ -744,7 +746,7 @@ export function applyGlobalSettingsStyles() {
   document.body.classList.toggle('advanced-animations-blur-enabled', !!settings.advanced_animations_blur);
 }
 
-// ─── Toast Notification ─────────────────────────────────────────────
+// â”€â”€â”€ Toast Notification â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export function showToast(message, type = 'success') {
   const existing = document.querySelector('.toast');
@@ -763,7 +765,7 @@ export function showToast(message, type = 'success') {
   }, 2500);
 }
 
-// ─── Custom Dialogs ────────────────────────────────────────────────
+// â”€â”€â”€ Custom Dialogs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /**
  * Custom alternative to window.confirm
@@ -915,7 +917,7 @@ export function showPrompt(title, message, defaultValue = '') {
   });
 }
 
-// ─── Start App ──────────────────────────────────────────────────────
+// â”€â”€â”€ Start App â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // Expose helpers globally to prevent circular dependencies in components
 window.showToast = showToast;

@@ -169,7 +169,7 @@ export const chatStore = {
     return message;
   },
 
-  updateLastAssistantMessage(content, thinking = null, session = null, translatedContent = null, thinkingTime = null) {
+  updateLastAssistantMessage(content, thinking = null, session = null, translatedContent = null, thinkingTime = null, finishReason = null) {
     const targetSession = session || currentSession;
     if (!targetSession) return;
     const msgs = targetSession.messages;
@@ -181,6 +181,9 @@ export const chatStore = {
         if (translatedContent !== null) {
           msgs[i].translated_content = translatedContent;
           msgs[i].show_original = false;
+        }
+        if (finishReason !== null) {
+          msgs[i].finish_reason = finishReason;
         }
         break;
       }

@@ -1437,11 +1437,6 @@
           </div>
         </div>
         <div id="genai-messages" class="sidebar-section"></div>
-        <!-- GenAI Floating Selection Reply Tooltip -->
-        <div id="genai-selection-reply-btn" class="genai-selection-reply-tooltip hidden">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 13px; height: 13px; flex-shrink: 0;"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
-          <span>Reply</span>
-        </div>
         <div class="genai-input-area">
           <!-- Hidden File Input for Image Upload -->
           <input type="file" id="genai-image-upload-input" accept="image/*" style="display: none;">
@@ -2599,6 +2594,13 @@
                   <button type="button" class="glm-effort-pill active" data-level="max">Max</button>
                 </div>
               </div>
+              <div class="form-group-row">
+                <label>Clear thinking</label>
+                <label class="toggle-switch small">
+                  <input type="checkbox" id="setting-glm53-clear-thinking" checked />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
               <button id="btn-set-glm-recommended" class="btn-secondary btn-full" type="button" style="margin-top: 4px;">Set reccomended settings</button>
             </div>
 
@@ -2849,6 +2851,65 @@
               <label for="setting-summary-chunk-size">Summary Chunk Size (messages per chunk)</label>
               <input type="number" id="setting-summary-chunk-size" placeholder="10" min="2" max="100" style="width: 100%;" />
               <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 4px;">How many messages to include in each Auto Summary chunk. First 3 messages of the chat are always kept as-is. Last 6 messages are never summarized.</div>
+            </div>
+
+            <!-- Offline Translation Model Item -->
+            <div style="background: var(--bg-tertiary); border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 14px; margin-top: 14px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <div>
+                  <div style="font-weight: 600; font-size: var(--text-sm); color: var(--text-primary);">Offline Translation Model</div>
+                  <div style="font-size: var(--text-xs); color: var(--text-secondary);">opus-mt-en-ru (~45 MB) • Instant CPU</div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <button id="btn-translation-model-install" class="btn-secondary" type="button" style="padding: 6px 14px; font-size: var(--text-xs); font-weight: 600; border-radius: var(--radius-md); display: flex; align-items: center; gap: 6px; cursor: pointer; background: var(--bg-primary); border: 1px solid var(--border-light); color: var(--text-primary);">
+                    <span id="label-translation-model-status">Install</span>
+                  </button>
+                  <div class="translation-manual-wrap">
+                    <button id="btn-translation-model-manual" class="btn-secondary" type="button" style="padding: 6px 10px; font-size: var(--text-xs); font-weight: 500; border-radius: var(--radius-md); display: flex; align-items: center; gap: 5px; cursor: pointer; background: var(--bg-primary); border: 1px solid var(--border-light); color: var(--text-secondary); transition: all var(--transition-fast);">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px; flex-shrink: 0;">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="16" x2="12" y2="12"></line>
+                        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                      </svg>
+                      <span>Manual</span>
+                    </button>
+                    <div id="tooltip-translation-model-manual" class="translation-manual-tooltip">
+                      <div class="t-tooltip-header">
+                        <span class="t-tooltip-title">Manual Model Installation</span>
+                        <span class="t-tooltip-badge">Click opens Hugging Face</span>
+                      </div>
+                      <div class="t-tooltip-section">
+                        <span class="t-tooltip-label">📁 Where to place files:</span>
+                        <div style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 2px;">• Compiled App (.exe / Windows):</div>
+                        <div class="t-tooltip-path" style="margin-bottom: 4px;">%LOCALAPPDATA%\LLMChat\models\Xenova\opus-mt-en-ru\</div>
+                        <div style="font-size: 10px; color: var(--text-tertiary); margin-bottom: 2px;">• Source repository / Dev:</div>
+                        <div class="t-tooltip-path">src/models/Xenova/opus-mt-en-ru/</div>
+                        <button id="btn-open-translation-folder" type="button" class="btn-secondary" style="margin-top: 6px; width: 100%; padding: 5px 8px; font-size: 10.5px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; gap: 5px; cursor: pointer; background: var(--bg-primary); border: 1px solid var(--border-light); color: var(--text-primary);">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                          <span>Open Target Folder in Explorer</span>
+                        </button>
+                      </div>
+                      <div class="t-tooltip-section">
+                        <span class="t-tooltip-label">📦 Files to download (click Manual to open site):</span>
+                        <ul class="t-tooltip-list">
+                          <li><code>config.json</code>, <code>generation_config.json</code></li>
+                          <li><code>tokenizer.json</code>, <code>tokenizer_config.json</code></li>
+                          <li>Inside <code>onnx/</code> subfolder:
+                            <br>• <code>encoder_model_quantized.onnx</code>
+                            <br>• <code>decoder_model_merged_quantized.onnx</code>
+                          </li>
+                        </ul>
+                      </div>
+                      <div class="t-tooltip-footer">
+                        🔄 After copying files, restart the application — the model will be automatically verified and the status will update to "Ready".
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div style="font-size: 11px; color: var(--text-tertiary); margin-top: 8px; line-height: 1.4;">
+                Lightweight CPU neural translation for selected text without reloading or offloading the main LLM.
+              </div>
             </div>
           </div>
           <div class="modal-footer">
@@ -6080,5 +6141,40 @@
         </filter>
       </defs>
     </svg>
+
+    <!-- Global Floating Text Selection Toolbar (Character Chat & GenAI) -->
+    <div id="floating-selection-toolbar" class="floating-selection-toolbar hidden">
+      <!-- Buttons Row -->
+      <div class="toolbar-actions-row">
+        <button type="button" id="btn-selection-reply" class="toolbar-btn btn-reply hidden" title="Quote reply">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 13px; height: 13px; flex-shrink: 0;"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+          <span>Reply</span>
+        </button>
+        <button type="button" id="btn-selection-translate" class="toolbar-btn btn-translate">
+          <span class="btn-translate-text">Translate</span>
+          <span class="morph-loading-dots hidden">
+            <span class="dot"></span>
+            <span class="dot"></span>
+            <span class="dot"></span>
+          </span>
+        </button>
+      </div>
+
+      <!-- Result Card (Expands with morphing) -->
+      <div id="selection-translation-result" class="selection-translation-result hidden">
+        <div class="translation-card-header">
+          <span id="translation-card-badge" class="translation-badge">EN → RU</span>
+          <div class="translation-card-actions">
+            <button type="button" id="btn-copy-translation" class="btn-card-action" title="Copy translation">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+            <button type="button" id="btn-close-translation" class="btn-card-action" title="Close">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 12px; height: 12px;"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
+        <div id="translation-card-content" class="translation-card-content"></div>
+      </div>
+    </div>
   </body>
 </html>

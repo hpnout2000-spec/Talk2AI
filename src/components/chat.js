@@ -515,6 +515,8 @@ export function initChat() {
         console.warn('Failed to reload character memories:', err);
       }
       updateChatHistory();
+  updateRegenerateVisibility();
+  updateContinueVisibility();
       if (appState.currentChat) {
         const updatedSession = chatStore.getSessions(appState.currentCharacter.id)
           .find(s => s.id === appState.currentChat.id);
@@ -1732,6 +1734,8 @@ export function initChat() {
     }
     if (appState.currentCharacter?.id === charId) {
       updateChatHistory();
+  updateRegenerateVisibility();
+  updateContinueVisibility();
     }
   });
 
@@ -2034,6 +2038,8 @@ export function startNewChat(character = null) {
   chatStore.saveSession(session);
   if (appState.currentCharacter?.id === char.id) {
     updateChatHistory();
+  updateRegenerateVisibility();
+  updateContinueVisibility();
     updateContextIndicator();
     if (window.updateUserNameDisplay) {
       window.updateUserNameDisplay();
@@ -2085,6 +2091,8 @@ export function loadChat(session) {
   updateContextIndicator();
   scrollToBottom(true);
   updateChatHistory();
+  updateRegenerateVisibility();
+  updateContinueVisibility();
   window.dispatchEvent(new CustomEvent('genai-active-skills-changed'));
   if (window.syncLorebookIndicators) window.syncLorebookIndicators();
 }
@@ -2619,7 +2627,8 @@ async function sendMessage() {
         scheduleUpdate();
       },
       // onDone
-      async () => {
+      async (meta = {}) => {
+        const finishReason = meta?.finish_reason;
         isStreaming = false;
         if (thinkingActive) {
           thinkingActive = false;
@@ -2686,11 +2695,13 @@ async function sendMessage() {
               translatedContent = await performStreamingTranslation(contentEl, originalContent, settings.target_language);
             }
 
-            chatStore.updateLastAssistantMessage(originalContent, parsedThinking, session, translatedContent, thinkingTime);
+            chatStore.updateLastAssistantMessage(originalContent, parsedThinking, session, translatedContent, thinkingTime, finishReason);
             await chatStore.saveSession(session);
             updateContextIndicator();
 
-            if (originalContent) {
+            if (finishReason === 'length') {
+              showLengthLimitNotice(assistantMsg, msgElement);
+            } else if (originalContent) {
               // Strict sequential execution IIFE to respect single-concurrency LLM limits
               (async () => {
                 try {
@@ -2743,6 +2754,8 @@ async function sendMessage() {
                         session.last_auto_named_count = msgCount;
                         await chatStore.renameSession(session.id, newName, session.character_id);
                         updateChatHistory();
+  updateRegenerateVisibility();
+  updateContinueVisibility();
                       } else {
                         session.last_auto_named_count = msgCount;
                       }
@@ -2753,6 +2766,8 @@ async function sendMessage() {
                           session.last_auto_named_count = msgCount;
                           await chatStore.renameSession(session.id, newName, session.character_id);
                           updateChatHistory();
+  updateRegenerateVisibility();
+  updateContinueVisibility();
                         } else {
                           session.last_auto_named_count = msgCount;
                         }
@@ -2778,6 +2793,7 @@ async function sendMessage() {
             }
             updateChatHistory();
             updateRegenerateVisibility();
+            updateContinueVisibility();
             smoothScrollChatToBottom(350);
           }
         };
@@ -3358,7 +3374,7 @@ async function computeContextAndTrimHistory(character, session, signal = null) {
 
 // ─── Build API Messages ─────────────────────────────────────────────
 
-async function buildApiMessages(character, session) {
+async function buildApiMessages(character, session, options = {}) {
   if (!character || !session) return [];
 
   const result = await computeContextAndTrimHistory(character, session);
@@ -3565,7 +3581,21 @@ Before answering, you must use your internal monologue channel.
   }
 
   // Append trimmed messages (sliding window after last chunk)
-  for (const msg of result.trimmedMessages) {
+  for (let i = 0; i < result.trimmedMessages.length; i++) {
+    const msg = result.trimmedMessages[i];
+    const isLast = (i === result.trimmedMessages.length - 1);
+    if (isLast && options.isContinuation && msg.role === 'assistant') {
+      const assistantMsg = {
+        role: 'assistant',
+        content: msg.original_text || msg.content || ''
+      };
+      if (msg.thinking) {
+        assistantMsg.reasoning_content = msg.thinking;
+      }
+      messages.push(assistantMsg);
+      continue;
+    }
+
     let content = msg.role === 'user' ? (msg.translated_content || msg.content) : (msg.original_text || msg.content);
     if (msg.role === 'assistant' && (settings.preserve_thinking || settings.genai_preserve_thinking)) {
       const openTag = (settings.reasoning_tag_open || '<think>').trim();
@@ -3575,6 +3605,24 @@ Before answering, you must use your internal monologue channel.
       }
     }
     messages.push({ role: msg.role, content: content });
+  }
+
+  // Ensure that in continuation mode, the target assistant message is at the end of messages
+  if (options.isContinuation) {
+    const lastMsg = messages[messages.length - 1];
+    if (!lastMsg || lastMsg.role !== 'assistant') {
+      const targetMsg = options.targetAssistantMsg || session.messages.slice().reverse().find(m => m.role === 'assistant');
+      if (targetMsg) {
+        const assistantMsg = {
+          role: 'assistant',
+          content: targetMsg.original_text || targetMsg.content || ''
+        };
+        if (targetMsg.thinking) {
+          assistantMsg.reasoning_content = targetMsg.thinking;
+        }
+        messages.push(assistantMsg);
+      }
+    }
   }
 
   // Inject character memory context into the latest user message
@@ -3620,16 +3668,18 @@ Before answering, you must use your internal monologue channel.
   }
 
   // FORCE REASONING PREFILL
-  if (settings.force_reasoning && settings.reasoning_tag_open) {
-    messages.push({ role: 'assistant', content: unescapeString(settings.reasoning_tag_open) });
-  } else if (settings.gemma4_support && (!settings.reasoning_effort || settings.reasoning_effort === 'none')) {
-    let openTag = settings.reasoning_tag_open || '<|think|>';
-    let closeTag = settings.reasoning_tag_close || '</|think|>';
-    if (settings.change_gemma4_thinking_style) {
-      openTag = '<|channel|>thought';
-      closeTag = '<channel|>';
+  if (!options.isContinuation) {
+    if (settings.force_reasoning && settings.reasoning_tag_open) {
+      messages.push({ role: 'assistant', content: unescapeString(settings.reasoning_tag_open) });
+    } else if (settings.gemma4_support && (!settings.reasoning_effort || settings.reasoning_effort === 'none')) {
+      let openTag = settings.reasoning_tag_open || '<|think|>';
+      let closeTag = settings.reasoning_tag_close || '</|think|>';
+      if (settings.change_gemma4_thinking_style) {
+        openTag = '<|channel|>thought';
+        closeTag = '<channel|>';
+      }
+      messages.push({ role: 'assistant', content: `${openTag}\n${closeTag}` });
     }
-    messages.push({ role: 'assistant', content: `${openTag}\n${closeTag}` });
   }
 
   return messages;
@@ -3740,6 +3790,14 @@ function appendMessage(msg, isStreaming = false, character = null) {
               <path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
             </svg>
           </button>
+          ${isUser ? '' : `
+          <button class="btn-continue-msg hidden ${msg.finish_reason === 'length' ? 'highlight' : ''}" title="Continue generation">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="5 3 19 12 5 21 5 3"/>
+              <line x1="19" y1="5" x2="19" y2="19"/>
+            </svg>
+          </button>
+          `}
           <button class="btn-edit-msg" title="Edit">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
@@ -3847,6 +3905,7 @@ function appendMessage(msg, isStreaming = false, character = null) {
     setTimeout(() => el.remove(), 300);
     chatStore.saveCurrentSession();
     updateRegenerateVisibility();
+    updateContinueVisibility();
     updateContextIndicator();
 
     // Abort suggestions generation if any
@@ -3903,12 +3962,27 @@ function appendMessage(msg, isStreaming = false, character = null) {
     regenerateResponse(msg, el);
   });
 
+  // Continue button
+  const btnContinue = el.querySelector('.btn-continue-msg');
+  btnContinue?.addEventListener('click', () => {
+    continueAssistantMessage(msg, el);
+  });
+
   messagesContainer.appendChild(el);
   updateRegenerateVisibility();
+  updateContinueVisibility();
   scrollToBottom(true);
 
+  // Render length limit notice if stopped by length and is latest
+  if (!isUser && msg.finish_reason === 'length') {
+    const isLastMsg = appState.currentChat?.messages?.[appState.currentChat.messages.length - 1]?.id === msg.id;
+    if (isLastMsg) {
+      showLengthLimitNotice(msg, el);
+    }
+  }
+
   // Render continuation options if they exist
-  if (msg.options && msg.options.length > 0) {
+  if (msg.options && msg.options.length > 0 && msg.finish_reason !== 'length') {
     renderContinuationOptions(el, msg.options);
   }
 
@@ -4129,6 +4203,416 @@ function updateRegenerateVisibility() {
   const lastMsg = allMessages[allMessages.length - 1];
   if (lastMsg && lastMsg.classList.contains('assistant') && !appState.isGenerating) {
     lastMsg.querySelector('.btn-regenerate')?.classList.remove('hidden');
+  }
+}
+
+export function updateContinueVisibility() {
+  const allMessages = messagesContainer.querySelectorAll('.message');
+  allMessages.forEach(m => m.querySelector('.btn-continue-msg')?.classList.add('hidden'));
+
+  const lastMsg = allMessages[allMessages.length - 1];
+  if (lastMsg && lastMsg.classList.contains('assistant') && !appState.isGenerating) {
+    lastMsg.querySelector('.btn-continue-msg')?.classList.remove('hidden');
+  }
+}
+
+export function showLengthLimitNotice(msg, msgElement) {
+  if (!msgElement || !msgElement.isConnected) return;
+  if (msgElement.querySelector('.length-limit-notice')) return;
+
+  const notice = document.createElement('div');
+  notice.className = 'length-limit-notice';
+  notice.dataset.forMsgId = msg.id;
+  notice.innerHTML = `
+    <div class="length-limit-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="12" y1="8" x2="12" y2="12"/>
+        <line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+    </div>
+    <span class="length-limit-text">Generation was stopped by length limit. Continue?</span>
+    <button class="btn-continue-generation" type="button">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; margin-right: 4px;">
+        <polygon points="5 3 19 12 5 21 5 3"/>
+      </svg>
+      Continue
+    </button>
+  `;
+
+  notice.querySelector('.btn-continue-generation')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    notice.remove();
+    continueAssistantMessage(msg, msgElement);
+  });
+
+  const bodyEl = msgElement.querySelector('.message-body');
+  if (bodyEl) {
+    const metaEl = bodyEl.querySelector('.message-meta');
+    if (metaEl) {
+      bodyEl.insertBefore(notice, metaEl);
+    } else {
+      bodyEl.appendChild(notice);
+    }
+  }
+}
+
+export async function continueAssistantMessage(msg, msgElement) {
+  if (appState.isGenerating) {
+    if (!appState.abortController) {
+      console.warn('[Chat] Recovered from stale isGenerating state');
+      appState.isGenerating = false;
+    } else {
+      return;
+    }
+  }
+
+  const character = appState.currentCharacter;
+  const session = appState.currentChat;
+  if (!character || !session || !msg) return;
+
+  // Remove existing notices or options from this message element
+  msgElement.querySelectorAll('.length-limit-notice').forEach(n => n.remove());
+  msgElement.querySelectorAll('.continuation-options').forEach(o => o.remove());
+
+  // Abort any pending background tasks
+  if (appState.suggestionsAbortController) {
+    appState.suggestionsAbortController.abort();
+    appState.suggestionsAbortController = null;
+  }
+  if (activeContextCalculationController) {
+    activeContextCalculationController.abort();
+    activeContextCalculationController = null;
+  }
+
+  const settings = settingsStore.get();
+  appState.isGenerating = true;
+  appState.abortController = new AbortController();
+
+  characterStore.updateLastChat(character.id);
+  window.dispatchEvent(new CustomEvent('character-list-updated'));
+  setChatActionState('stop');
+
+  // Build messages array for API with continuation flag
+  const apiMessages = await buildApiMessages(character, session, {
+    isContinuation: true,
+    targetAssistantMsg: msg
+  });
+
+  const contentEl = msgElement.querySelector('.message-text');
+  const bubbleEl = msgElement.querySelector('.message-content');
+  if (bubbleEl) {
+    bubbleEl.classList.remove('thinking-only');
+  }
+
+  const initialContent = (msg.original_text || msg.content || '').replace(/\n\n\*\*(?:Continuation error|Error):[\s\S]*$/i, '').trim();
+  const initialThinking = msg.thinking || '';
+  const initialThinkingTime = msg.thinking_time || 0;
+
+  let continuedContent = initialContent;
+  let isStreaming = true;
+  let hasReceivedFirstChunk = false;
+
+  const { isCustomPersona, activePersona, userName } = resolveChatPersona(session);
+  const isGlm53 = settings.selected_model_type === 'glm53' || !!settings.glm53_thinking_support;
+
+  // Elevate max_tokens for continuation and clamp to available context window
+  const promptTokens = await api.countMessagesTokens(apiMessages);
+  const maxContext = Math.max(await api.getMaxContextLength(), settings.context_size || settings.prompt_token_limit || 20480);
+  const availableTokens = Math.max(256, maxContext - promptTokens - 32);
+  const desiredMaxTokens = Math.max(6000, Math.min(16384, (settings.max_tokens || 4000) + 4000));
+  const continueMaxTokens = Math.min(desiredMaxTokens, availableTokens);
+
+  const apiOptions = {
+    userName,
+    persona: (isCustomPersona && activePersona?.description) ? activePersona.description : '',
+    isContinuation: true,
+    max_tokens: continueMaxTokens,
+    model: isGlm53 ? 'glm-5.3-flash-uncensored' : (settings.model_name || undefined)
+  };
+
+  const morphOptions = {
+    childrenOnly: true,
+    getNodeKey: (node) => node.dataset?.wordIndex || node.id || null,
+    onBeforeElUpdated: (from, to) => {
+      if (from.nodeName === 'THINKING-SNIPPETS' && to.nodeName === 'THINKING-SNIPPETS') {
+        if (to.hasAttribute('thoughts')) from.setAttribute('thoughts', to.getAttribute('thoughts'));
+        if (to.hasAttribute('effort')) from.setAttribute('effort', to.getAttribute('effort'));
+        if (to.hasAttribute('max-tokens')) from.setAttribute('max-tokens', to.getAttribute('max-tokens'));
+        return false;
+      }
+      if (from.style && from.style.display === 'none' && to.style.display !== 'none') {
+        from.style.display = '';
+      }
+      if (from.nodeName === 'TABLE') {
+        if (from.innerHTML !== to.innerHTML) from.innerHTML = to.innerHTML;
+        return false;
+      }
+      return true;
+    }
+  };
+
+  function scheduleUpdate() {
+    if (appState.updateScheduled) return;
+    appState.updateScheduled = true;
+    requestAnimationFrame(() => {
+      appState.updateScheduled = false;
+      if (!isStreaming) return;
+
+      try {
+        const isInlineThought = /<(?:think|thought|reasoning|\|?channel\|?>?thought)|\[(?:think(?:ing)?|reasoning)\]/i.test(continuedContent);
+        const useGLM = settings.glm47_support && !isInlineThought;
+
+        let displayContent = continuedContent;
+        let thinkingToDisplay = initialThinking;
+
+        if (!thinkingToDisplay && isInlineThought) {
+          const parsed = useGLM ? parseGLMThinking(continuedContent) : parseStreamThinking(continuedContent, settings.reasoning_tag_open, settings.reasoning_tag_close);
+          thinkingToDisplay = parsed.thinking;
+          displayContent = parsed.content;
+        }
+
+        const isNewAnimation = settings.new_streaming_animation;
+        const streamingSpeed = settings.streaming_speed || 45;
+
+        const renderChatContent = (dc, thinking, revealProgress) => {
+          let html = '';
+          if (thinking) {
+            html += createThinkingBlockHTML(thinking, false, useGLM, initialThinkingTime, settings.reasoning_effort, settings.max_tokens);
+          }
+          const cleaned = stripJsonBlocks(dc, true);
+          let formatted = renderMarkdown(cleaned);
+          formatted = processCharacterMentions(formatted);
+
+          if (isNewAnimation) {
+            html += wrapWordsInSpans(formatted, true, revealProgress, streamingSpeed);
+            contentEl._rawCharCount = wrapWordsInSpans.lastTotalChars || 0;
+          } else {
+            html += wrapWordsInSpans(formatted);
+          }
+
+          const temp = document.createElement('div');
+          temp.className = contentEl.className;
+          temp.innerHTML = html;
+
+          smoothResize(bubbleEl, () => {
+            if (bubbleEl) bubbleEl.classList.remove('thinking-only');
+            morphdom(contentEl, temp, morphOptions);
+
+            getOrCreateChatCursor();
+            repositionChatCursor(contentEl);
+          });
+
+          scrollToBottom(false);
+        };
+
+        if (isNewAnimation) {
+          contentEl._latestState = { displayContent, thinkingToDisplay };
+          if (!contentEl._revealInterval) {
+            contentEl._revealProgress = contentEl._revealProgress || initialContent.length;
+            contentEl._lastRevealTime = performance.now();
+            contentEl.classList.remove('stream-finished');
+
+            const animateReveal = () => {
+              if (!contentEl || !contentEl.isConnected) {
+                contentEl._revealInterval = null;
+                return;
+              }
+              const rawLimit = contentEl._rawCharCount || 0;
+              const isCurrentlyStreaming = isStreaming;
+              const now = performance.now();
+              const deltaMs = now - contentEl._lastRevealTime;
+              contentEl._lastRevealTime = now;
+
+              let spd = settings.streaming_speed || 45;
+              if (contentEl._isFastForwarding) {
+                const remaining = Math.max(1, rawLimit - contentEl._revealProgress);
+                spd = Math.max(1500, remaining / 0.22);
+              }
+              const charsToAdd = deltaMs * (spd / 1000);
+              const oldProgress = contentEl._revealProgress;
+              contentEl._revealProgress = Math.min(rawLimit, contentEl._revealProgress + charsToAdd);
+              contentEl.style.setProperty('--reveal-progress', contentEl._revealProgress + 'ch');
+
+              if (Math.floor(contentEl._revealProgress) > Math.floor(oldProgress)) {
+                const state = contentEl._latestState;
+                if (state) {
+                  renderChatContent(state.displayContent, state.thinkingToDisplay, contentEl._revealProgress);
+                }
+              }
+
+              if (isCurrentlyStreaming || contentEl._revealProgress < rawLimit) {
+                contentEl._revealInterval = requestAnimationFrame(animateReveal);
+              } else {
+                contentEl.style.setProperty('--reveal-progress', (rawLimit + 20) + 'ch');
+                contentEl.classList.add('stream-finished');
+                const revealSpans = contentEl.querySelectorAll('.word-reveal');
+                revealSpans.forEach(span => span.classList.add('revealed'));
+                contentEl._revealInterval = null;
+                if (contentEl._onRevealFinish) {
+                  contentEl._onRevealFinish();
+                  contentEl._onRevealFinish = null;
+                }
+              }
+            };
+            contentEl._revealInterval = requestAnimationFrame(animateReveal);
+          }
+          renderChatContent(displayContent, thinkingToDisplay, contentEl._revealProgress || 0);
+        } else {
+          renderChatContent(displayContent, thinkingToDisplay, 0);
+        }
+      } catch (e) {
+        console.error("Continuation schedule update error:", e);
+      }
+    });
+  }
+
+  try {
+    await api.streamChat(
+      apiMessages,
+      appState.abortController.signal,
+      (chunk) => {
+        continuedContent += chunk;
+        hasReceivedFirstChunk = true;
+        scheduleUpdate();
+      },
+      async (meta = {}) => {
+        isStreaming = false;
+        const finishReason = meta?.finish_reason;
+
+        const finalizeContinuationUI = async () => {
+          try {
+            const isInlineThought = /<(?:think|thought|reasoning|\|?channel\|?>?thought)|\[(?:think(?:ing)?|reasoning)\]/i.test(continuedContent);
+            const useGLM = settings.glm47_support && !isInlineThought;
+            let parsedThinking = initialThinking;
+            let parsedContent = continuedContent;
+
+            if (!parsedThinking && isInlineThought) {
+              const parsed = useGLM ? parseGLMThinking(continuedContent) : parseThinking(continuedContent, settings.reasoning_tag_open, settings.reasoning_tag_close);
+              parsedThinking = parsed.thinking;
+              parsedContent = parsed.content;
+            }
+
+            removeChatCursor();
+            let finalHtml = '';
+            if (parsedThinking) {
+              finalHtml += createThinkingBlockHTML(parsedThinking, false, useGLM, initialThinkingTime, settings.reasoning_effort, settings.max_tokens);
+            }
+            const cleaned = stripJsonBlocks(parsedContent, false);
+            let formatted = renderMarkdown(cleaned);
+            formatted = processCharacterMentions(formatted);
+
+            const isNewAnimation = settings.new_streaming_animation;
+            if (isNewAnimation) {
+              finalHtml += wrapWordsInSpans(formatted, true, Infinity, settings.streaming_speed || 45);
+            } else {
+              finalHtml += wrapWordsInSpans(formatted);
+            }
+
+            const tempFinal = document.createElement('div');
+            tempFinal.className = contentEl.className;
+            tempFinal.innerHTML = finalHtml;
+            morphdom(contentEl, tempFinal, morphOptions);
+
+            let originalContent = parsedContent;
+            let translatedContent = null;
+
+            if (settings.auto_translate && originalContent) {
+              translatedContent = await performStreamingTranslation(contentEl, originalContent, settings.target_language);
+            }
+
+            chatStore.updateMessage(msg.id, {
+              content: originalContent,
+              thinking: parsedThinking,
+              finish_reason: finishReason || 'stop',
+              translated_content: translatedContent,
+              show_original: false
+            });
+            await chatStore.saveSession(session);
+            updateContextIndicator();
+
+            if (finishReason === 'length') {
+              showLengthLimitNotice(msg, msgElement);
+            } else if (originalContent) {
+              (async () => {
+                try {
+                  await generateContinuationOptions(character, session, msgElement);
+                } catch (e) {
+                  console.warn('Failed to generate suggestions:', e);
+                }
+              })();
+            }
+
+            window.dispatchEvent(new CustomEvent('genai-chat-response-finished'));
+            checkConnection();
+          } catch (err) {
+            console.error("ON DONE CONTINUATION ERROR:", err);
+          } finally {
+            appState.isGenerating = false;
+            appState.abortController = null;
+            setChatActionState('send');
+            if (headerCharStatus) resetCharStatus();
+            updateChatHistory();
+            updateRegenerateVisibility();
+            updateContinueVisibility();
+            smoothScrollChatToBottom(350);
+          }
+        };
+
+        if (settings.new_streaming_animation && contentEl._revealInterval && (contentEl._revealProgress < (contentEl._rawCharCount || 0))) {
+          setChatActionState('skip');
+          let finalized = false;
+          const runFinalize = async () => {
+            if (finalized) return;
+            finalized = true;
+            await finalizeContinuationUI();
+          };
+          contentEl._onRevealFinish = runFinalize;
+          const remaining = (contentEl._rawCharCount || 0) - (contentEl._revealProgress || 0);
+          const maxWaitMs = Math.max(1500, (remaining / (settings.streaming_speed || 45)) * 1000 + 1000);
+          setTimeout(runFinalize, maxWaitMs);
+        } else {
+          await finalizeContinuationUI();
+        }
+      },
+      (err) => {
+        isStreaming = false;
+        if (contentEl._revealInterval) {
+          cancelAnimationFrame(contentEl._revealInterval);
+          contentEl._revealInterval = null;
+        }
+        removeChatCursor();
+
+        const isAborted = err?.name === 'AbortError' || err?.message?.includes('abort') || err?.message?.includes('Aborted');
+
+        if (isAborted) {
+          chatStore.updateMessage(msg.id, { content: continuedContent });
+          chatStore.saveSession(session);
+        } else {
+          console.error('Continuation stream error:', err);
+          showToast(`Continuation error: ${err.message}`, 'error');
+        }
+
+        appState.isGenerating = false;
+        appState.abortController = null;
+        setChatActionState('send');
+        resetCharStatus();
+        updateContextIndicator();
+        updateRegenerateVisibility();
+        updateContinueVisibility();
+        window.dispatchEvent(new CustomEvent('genai-chat-response-finished', { detail: { error: err?.message } }));
+      },
+      apiOptions
+    );
+  } catch (err) {
+    console.error('Continuation request error:', err);
+    showToast('Failed to continue generation', 'error');
+    appState.isGenerating = false;
+    appState.abortController = null;
+    setChatActionState('send');
+    updateContextIndicator();
+    updateRegenerateVisibility();
+    updateContinueVisibility();
   }
 }
 
@@ -4457,7 +4941,8 @@ async function triggerAssistantGeneration() {
         }
         scheduleUpdate2();
       },
-      async () => {
+      async (meta = {}) => {
+        const finishReason = meta?.finish_reason;
         isStreaming2 = false;
         if (thinkingActive2) {
           thinkingActive2 = false;
@@ -4522,10 +5007,12 @@ async function triggerAssistantGeneration() {
               translatedContent = await performStreamingTranslation(contentEl, originalContent, settings.target_language);
             }
 
-            chatStore.updateLastAssistantMessage(originalContent, parsedThinking2, session, translatedContent, thinkingTime);
+            chatStore.updateLastAssistantMessage(originalContent, parsedThinking2, session, translatedContent, thinkingTime, finishReason);
             await chatStore.saveSession(session);
 
-            if (originalContent) {
+            if (finishReason === 'length') {
+              showLengthLimitNotice(assistantMsg, msgElement);
+            } else if (originalContent) {
               // Strict sequential execution IIFE to respect single-concurrency LLM limits
               (async () => {
                 try {
@@ -4578,6 +5065,8 @@ async function triggerAssistantGeneration() {
                         session.last_auto_named_count = msgCount;
                         await chatStore.renameSession(session.id, newName, session.character_id);
                         updateChatHistory();
+  updateRegenerateVisibility();
+  updateContinueVisibility();
                       } else {
                         session.last_auto_named_count = msgCount;
                       }
@@ -4588,6 +5077,8 @@ async function triggerAssistantGeneration() {
                           session.last_auto_named_count = msgCount;
                           await chatStore.renameSession(session.id, newName, session.character_id);
                           updateChatHistory();
+  updateRegenerateVisibility();
+  updateContinueVisibility();
                         } else {
                           session.last_auto_named_count = msgCount;
                         }
@@ -4610,6 +5101,7 @@ async function triggerAssistantGeneration() {
             }
             updateChatHistory();
             updateRegenerateVisibility();
+            updateContinueVisibility();
             smoothScrollChatToBottom(350);
           }
         };
@@ -4730,6 +5222,8 @@ export function updateChatHistory() {
         if (confirmed) {
           await chatStore.deleteSession(appState.currentCharacter.id, chatId);
           updateChatHistory();
+  updateRegenerateVisibility();
+  updateContinueVisibility();
           if (appState.currentChat?.id === chatId) {
             clearMessages();
             const container = document.getElementById('chat-messages');
@@ -4762,6 +5256,8 @@ export function updateChatHistory() {
             loadChat(session);
           } finally {
             updateChatHistory();
+  updateRegenerateVisibility();
+  updateContinueVisibility();
           }
         }
       }

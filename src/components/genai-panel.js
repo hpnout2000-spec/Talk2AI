@@ -289,7 +289,9 @@ SPEECH & FORMAT RULES:
 1. 1-10 WORD PREEMPTIVE HEADS-UP (EXCEPT THE recall_memories AND save_to_smart_context: YOU MUST EXECUTE THEM BEFORE ANYTHING ELSE): Before you send a JSON action, you may notify the user. This status preamble MUST be extremely brief (strictly 1-4 words maximum), written in the EXACT same language as the user's latest query, and must be informative, reflecting what exactly you are going to search for or do.
    * STRICT PROHIBITION FOR recall_memories AND save_to_smart_context: You are STRICTLY FORBIDDEN from writing ANY words, preamble, status message, introduction, or text before executing {"genai_action":"recall_memories",...} or {"genai_action":"save_to_smart_context"}. For these two commands, you must output the JSON action IMMEDIATELY as the very first text with ZERO preamble or words before it!
    * Good (for other tools): "Got it! let me search it..."
-2. JSON ACTION FORMAT: Emitting a JSON action is your way of calling functions. Emitted JSON must be on its own line. STOP generating immediately after outputting a JSON block — do not write any text after the JSON object.
+2. JSON ACTION FORMAT & MULTI-STEP WORKFLOW: Emitting a JSON action is your way of calling functions. Emitted JSON must be on its own line. STOP generating immediately after outputting a JSON block — do not write any text after the JSON object.
+   * Multi-Step Workflow: The tool execution workflow is multi-turn. When you output a JSON action and stop, the system executes the command and immediately invokes you again in a continuation turn with the tool result so you can write your full response to the user. Never worry about stopping after the JSON object — you will speak again right after!
+   * UI Preamble Collapsing: Any brief status preamble or text written BEFORE the JSON action is an internal status note and will be automatically collapsed and hidden from the user in the UI process timeline once the command result is received. The user will see your actual response that you write in the continuation turn after the tool result.
 3. Since you're an adaptive AI, embrace the character, if you think user wants you to. At the end of your response, decide for yourself whether a follow-up or conclusion is actually needed; if you decide to include one, make it subtle, playful, and implicit rather than an explicit or forced question.
 4. Do NOT write or mention about ID to user.
 5. Do not adress to the user with his RP name. Use the user's real name if he asked you to remember it, or just say "you" instead.
@@ -378,7 +380,9 @@ SPEECH & FORMAT RULES:
 1. 1-10 WORD PREEMPTIVE HEADS-UP (EXCEPT THE recall_memories AND save_to_smart_context: YOU MUST EXECUTE THEM BEFORE ANYTHING ELSE): Before you send a JSON action, you may notify the user. This status preamble MUST be extremely brief (strictly 1-4 words maximum), written in the EXACT same language as the user's latest query, and must be informative, reflecting what exactly you are going to search for or do.
    * STRICT PROHIBITION FOR recall_memories AND save_to_smart_context: You are STRICTLY FORBIDDEN from writing ANY words, preamble, status message, introduction, or text before executing {"genai_action":"recall_memories",...} or {"genai_action":"save_to_smart_context"}. For these two commands, you must output the JSON action IMMEDIATELY as the very first text with ZERO preamble or words before it!
    * Good (for other tools): "Got it! Let me search it..."
-2. JSON ACTION FORMAT: Emitting a JSON action is your way of calling functions. Emitted JSON must be on its own line. STOP generating immediately after outputting a JSON block — do not write any text after the JSON object.
+2. JSON ACTION FORMAT & MULTI-STEP WORKFLOW: Emitting a JSON action is your way of calling functions. Emitted JSON must be on its own line. STOP generating immediately after outputting a JSON block — do not write any text after the JSON object.
+   * Multi-Step Workflow: The tool execution workflow is multi-turn. When you output a JSON action and stop, the system executes the command and immediately invokes you again in a continuation turn with the tool result so you can write your full response to the user. Never worry about stopping after the JSON object — you will speak again right after!
+   * UI Preamble Collapsing: Any brief status preamble or text written BEFORE the JSON action is an internal status note and will be automatically collapsed and hidden from the user in the UI process timeline once the command result is received. The user will see your actual response that you write in the continuation turn after the tool result.
 3. STRUCTURAL SCAFFOLDING & CLOSINGS:
    * Use bold text inline to highlight key terms, names, or punchlines.
    * When breaking down multiple characters, mechanics, or arguments, use bullet points starting with a bold lead-in: "* Key Point: sharp explanation..."
@@ -997,7 +1001,7 @@ function stripSuggestions(text) {
   return text.replace(jsonBlockRegex, '').trim();
 }
 
-async function buildApiMessages(extraUserInstruction = null, skipSmartContextOverride = false) {
+async function buildApiMessages(extraUserInstruction = null, skipSmartContextOverride = false, options = {}) {
   const settings = settingsStore.get();
   const maxContext = await api.getMaxContextLength();
   const tokenLimit = Math.max(maxContext || settings.prompt_token_limit || 4096, 2048);
@@ -1103,6 +1107,13 @@ async function buildApiMessages(extraUserInstruction = null, skipSmartContextOve
         staticBase += `- Tag: <lora:${l.name}:${l.strength}> | Description/Effect: ${l.comment}\n`;
       });
     }
+  }
+
+  if (settings.genai_faster_actions === true) {
+    staticBase += `\n\n⚡ FASTER ACTIONS MODE IS ENABLED:
+The "Faster Actions" feature is active. For the following specific commands: "generate_image", "add_memory", "add_char_fact", "set_char_final_text", "remove_char_fact", and "save_character", the system will NOT invoke you for a second continuation turn after the action is executed!
+- CRITICAL FORMAT FOR THESE COMMANDS: Do NOT write a brief 1-4 word status preamble. Instead, write your FULL, complete response/reply intended for the user first, and place the JSON command on its own line at the very END of your message!
+- (For all other actions not in this list, continue to use the standard multi-step workflow with a brief preamble followed by the JSON command).`;
   }
 
   staticBase += '\n\n';
@@ -1297,6 +1308,25 @@ ${skill.content}
   const openTag = (settings.genai_reasoning_tag_open || settings.reasoning_tag_open || '<think>').trim();
   const closeTag = (settings.genai_reasoning_tag_close || settings.reasoning_tag_close || '</think>').trim();
   for (const e of genaiHistory) {
+    if (options.isContinuation && e === options.targetAssistantEntry) {
+      let rawContent = (e.content || '');
+      let cleanContent = rawContent
+        .replace(/\[\[GENAI_TOOL_\d+\]\]/g, '')
+        .replace(/\[\[THINKING_BLOCK(_\d+)?\]\]/g, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+      cleanContent = stripSuggestions(cleanContent);
+      const overallThinking = (e.thinking || (Array.isArray(e.thinking_blocks) ? e.thinking_blocks.filter(Boolean).join('\n\n') : '')).trim();
+      const assistantMsg = {
+        role: 'assistant',
+        content: cleanContent
+      };
+      if (overallThinking) {
+        assistantMsg.reasoning_content = overallThinking;
+      }
+      historyMsgs.push(assistantMsg);
+      break;
+    }
     if (e.role === 'tool') {
       if (settings.gemma4_support) {
         historyMsgs.push({ role: 'tool', content: e.content });
@@ -1509,7 +1539,7 @@ ${skill.content}
     }
   }
 
-  if (extraUserInstruction) {
+  if (extraUserInstruction && !options.isContinuation) {
     if (settings.gemma4_support && extraUserInstruction.includes('[TOOL RESULT]')) {
       // In gemma4 mode, the tool result has already been processed inside the history loop as a structured tool message.
     } else {
@@ -1742,7 +1772,8 @@ ${ANIMA_BETTER_PROMPT_TEXT}`;
     while (totalTokens > targetLimit) {
       let maxIdx = -1;
       let maxLen = 0;
-      for (let i = 0; i < historyMsgs.length; i++) {
+      const pruningLimitIdx = options.isContinuation ? historyMsgs.length - 1 : historyMsgs.length;
+      for (let i = 0; i < pruningLimitIdx; i++) {
         if (typeof historyMsgs[i].content === 'string' && historyMsgs[i].content.length > maxLen) {
           maxLen = historyMsgs[i].content.length;
           maxIdx = i;
@@ -1775,16 +1806,18 @@ Before answering, you must use your internal monologue channel.
   const finalMessages = [{ role: 'system', content: systemContent }, ...historyMsgs];
 
   // FORCE REASONING PREFILL
-  if (settings.genai_force_reasoning && settings.genai_reasoning_tag_open) {
-    finalMessages.push({ role: 'assistant', content: unescapeString(settings.genai_reasoning_tag_open) });
-  } else if (settings.gemma4_support && (!settings.genai_reasoning_effort || settings.genai_reasoning_effort === 'none')) {
-    let openTag = settings.genai_reasoning_tag_open || '<|think|>';
-    let closeTag = settings.genai_reasoning_tag_close || '</|think|>';
-    if (settings.change_gemma4_thinking_style) {
-      openTag = '<|channel>thought';
-      closeTag = '<channel|>';
+  if (!options.isContinuation) {
+    if (settings.genai_force_reasoning && settings.genai_reasoning_tag_open) {
+      finalMessages.push({ role: 'assistant', content: unescapeString(settings.genai_reasoning_tag_open) });
+    } else if (settings.gemma4_support && (!settings.genai_reasoning_effort || settings.genai_reasoning_effort === 'none')) {
+      let openTag = settings.genai_reasoning_tag_open || '<|think|>';
+      let closeTag = settings.genai_reasoning_tag_close || '</|think|>';
+      if (settings.change_gemma4_thinking_style) {
+        openTag = '<|channel>thought';
+        closeTag = '<channel|>';
+      }
+      finalMessages.push({ role: 'assistant', content: `${openTag}\n${closeTag}` });
     }
-    finalMessages.push({ role: 'assistant', content: `${openTag}\n${closeTag}` });
   }
 
   return finalMessages;
@@ -3748,9 +3781,9 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
 
   let html = '';
   const hasAnyTools = entry.tools && entry.tools.length > 0;
-  if (!isGeneratingOrWorking && lastMarkerEnd !== -1 && (hasAnyTools || (entry.thinking_blocks && entry.thinking_blocks.length > 1))) {
+  const finalText = lastMarkerEnd !== -1 ? processedText.substring(lastMarkerEnd).trim() : '';
+  if (!isGeneratingOrWorking && lastMarkerEnd !== -1 && finalText && (hasAnyTools || (entry.thinking_blocks && entry.thinking_blocks.length > 1))) {
     const processText = processedText.substring(0, lastMarkerEnd);
-    const finalText = processedText.substring(lastMarkerEnd).trim();
 
     const processHtml = renderSectionHtml(processText, true);
     let finalHtml = renderMarkdown(finalText);
@@ -4278,6 +4311,127 @@ function updateBranchLinksTitles() {
   });
 }
 
+function showGenAiLengthLimitNotice(entry, msgElement) {
+  if (msgElement.querySelector('.length-limit-notice')) return;
+
+  const notice = document.createElement('div');
+  notice.className = 'length-limit-notice genai-length-limit-notice';
+  notice.innerHTML = `
+    <span class="length-limit-icon">⚠️</span>
+    <span class="length-limit-text">Generation was stopped by length limit.</span>
+    <button class="btn-continue-generation" type="button">Continue?</button>
+  `;
+
+  const btn = notice.querySelector('.btn-continue-generation');
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    notice.remove();
+    continueGenAIMessage(entry, msgElement);
+  });
+
+  const bodyEl = msgElement.querySelector('.genai-msg-body');
+  const footerEl = msgElement.querySelector('.genai-msg-footer');
+  if (bodyEl && footerEl) {
+    bodyEl.insertBefore(notice, footerEl);
+  } else if (bodyEl) {
+    bodyEl.appendChild(notice);
+  }
+}
+
+async function continueGenAIMessage(entry, el) {
+  if (isGenerating) {
+    if (!abortController) {
+      console.warn('[GenAI] Recovered from stale isGenerating state');
+      isGenerating = false;
+    } else {
+      return;
+    }
+  }
+
+  if (!entry || entry.role !== 'assistant') return;
+
+  el.querySelectorAll('.length-limit-notice').forEach(n => n.remove());
+
+  const bubbleEl = el.querySelector('.genai-msg-bubble');
+  const settings = settingsStore.get();
+
+  if (entry.content) {
+    const cleaned = entry.content.replace(/\n\n\*\*(?:Continuation error|Error):[\s\S]*$/i, '').trim();
+    if (cleaned !== entry.content) {
+      entry.content = cleaned;
+      renderAssistantBubble(entry, bubbleEl);
+    }
+  }
+
+  isGenerating = true;
+  abortController = new AbortController();
+  setGenAIActionState('stop');
+
+  el.classList.add('generating');
+
+  const apiMessages = await buildApiMessages(null, false, {
+    isContinuation: true,
+    targetAssistantEntry: entry
+  });
+
+  const isGlm53 = settings.selected_model_type === 'glm53' || !!settings.glm53_thinking_support;
+  const promptTokens = await api.countMessagesTokens(apiMessages);
+  const maxContext = Math.max(await api.getMaxContextLength(), settings.context_size || settings.prompt_token_limit || 20480);
+  const availableTokens = Math.max(256, maxContext - promptTokens - 32);
+  const desiredMaxTokens = Math.max(6000, Math.min(16384, (settings.genai_max_tokens || 4000) + 4000));
+  const continueMaxTokens = Math.min(desiredMaxTokens, availableTokens);
+
+  const apiOptions = {
+    isContinuation: true,
+    isGenAI: true,
+    max_tokens: continueMaxTokens,
+    model: isGlm53 ? 'glm-5.3-flash-uncensored' : (settings.model_name || undefined)
+  };
+
+  try {
+    await new Promise((resolve) => {
+      api.streamChat(
+        apiMessages,
+        abortController.signal,
+        (chunk) => {
+          entry.content = (entry.content || '') + chunk;
+          renderAssistantBubble(entry, bubbleEl, { cursor: true, streaming: true });
+          scrollToBottom();
+        },
+        (doneInfo) => {
+          if (doneInfo?.finish_reason) {
+            entry.finish_reason = doneInfo.finish_reason;
+          } else {
+            delete entry.finish_reason;
+          }
+          resolve();
+        },
+        (err) => {
+          if (err.name !== 'AbortError') {
+            console.error('[GenAI Continuation] Stream error:', err);
+            showToast(`Continuation error: ${err.message}`, 'error');
+          }
+          resolve();
+        },
+        apiOptions
+      );
+    });
+  } catch (e) {
+    console.error('[GenAI Continuation] Execution error:', e);
+  } finally {
+    isGenerating = false;
+    abortController = null;
+    el.classList.remove('generating');
+    renderAssistantBubble(entry, bubbleEl, { cursor: false, streaming: false });
+    setGenAIActionState('send');
+    saveHistory();
+
+    if (entry.finish_reason === 'length') {
+      showGenAiLengthLimitNotice(entry, el);
+    }
+  }
+}
+
 function appendMsgEl(entry) {
   if (entry.role === 'system') return;
   if (entry.isHidden) return;
@@ -4341,6 +4495,10 @@ function appendMsgEl(entry) {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="genai-action-icon"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
             <span class="genai-btn-label">Branch</span>
           </button>
+          ${!isUser ? `
+          <button class="genai-action-btn genai-btn-continue" title="Continue generation" type="button">
+            <span class="genai-btn-label">Continue</span>
+          </button>` : ''}
         </div>
       </div>
     </div>`;
@@ -4396,6 +4554,12 @@ function appendMsgEl(entry) {
   branchBtn?.addEventListener('click', (e) => {
     e.stopPropagation();
     branchGenAIChat(entry);
+  });
+
+  const continueBtn = el.querySelector('.genai-btn-continue');
+  continueBtn?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    continueGenAIMessage(entry, el);
   });
 
   if (isGenerating && !isUser) {
@@ -4484,6 +4648,13 @@ function appendMsgEl(entry) {
     for (const b of entry.branches) {
       const marker = createBranchMarkerEl('to', b.sessionId);
       if (marker) messagesEl.appendChild(marker);
+    }
+  }
+
+  if (!isUser && entry.finish_reason === 'length') {
+    const isLast = genaiHistory[genaiHistory.length - 1] === entry;
+    if (isLast) {
+      showGenAiLengthLimitNotice(entry, el);
     }
   }
 
@@ -5786,7 +5957,12 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
           });
           scrollToBottom();
         },
-        async () => {
+        async (doneInfo) => {
+          if (doneInfo?.finish_reason) {
+            assistantEntry.finish_reason = doneInfo.finish_reason;
+          } else {
+            delete assistantEntry.finish_reason;
+          }
           if (actionDetected) {
             resolvePhase({ status: 'action' });
           } else if (thinkExtendedDetected) {
@@ -5977,7 +6153,7 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
              return;
           }
           console.error('GenAI stream error:', err);
-          assistantEntry.content += `\n\n**Error:** ${err.message}`;
+          showToast(`Generation error: ${err.message}`, 'error');
           resolvePhase({ status: 'done' });
         },
         {
@@ -6111,6 +6287,12 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
           } finally {
             finishGeneration();
             setGenAIActionState('send');
+            if (assistantEntry.finish_reason === 'length') {
+              const msgEl = bubbleEl?.closest('.genai-msg');
+              if (msgEl) {
+                showGenAiLengthLimitNotice(assistantEntry, msgEl);
+              }
+            }
           }
         };
 

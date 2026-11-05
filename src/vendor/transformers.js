@@ -12448,7 +12448,9 @@ if (ONNX_ENV) {
       // @ts-ignore Cannot find name 'ServiceWorkerGlobalScope'.ts(2304)
       !(typeof ServiceWorkerGlobalScope !== "undefined" && self instanceof ServiceWorkerGlobalScope) && ONNX_ENV.versions?.web && !ONNX_ENV.wasm.wasmPaths
     ) {
-      const wasmPathPrefix = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ONNX_ENV.versions.web}/dist/`;
+      const wasmPathPrefix = (typeof window !== "undefined" && window.location?.origin)
+        ? `${window.location.origin}/vendor/`
+        : "vendor/";
       ONNX_ENV.wasm.wasmPaths = apis.IS_SAFARI ? {
         mjs: `${wasmPathPrefix}ort-wasm-simd-threaded.mjs`,
         wasm: `${wasmPathPrefix}ort-wasm-simd-threaded.wasm`

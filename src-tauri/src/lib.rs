@@ -1594,6 +1594,90 @@ fn open_skills_folder() -> Result<(), String> {
 }
 
 #[tauri::command]
+fn open_models_folder() -> Result<String, String> {
+    let dir = get_app_dir().join("models").join("Xenova").join("opus-mt-en-ru");
+    let onnx_dir = dir.join("onnx");
+    ensure_dir(&onnx_dir);
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(&dir)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&dir)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&dir)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(dir.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn check_local_model_exists(lang_pair: String) -> Result<bool, String> {
+    let folder_name = if lang_pair == "ru-en" { "opus-mt-ru-en" } else { "opus-mt-en-ru" };
+    let app_dir = get_app_dir();
+    let dir = app_dir.join("models").join("Xenova").join(folder_name);
+    let config = dir.join("config.json");
+    let enc = dir.join("onnx").join("encoder_model_quantized.onnx");
+    let dec = dir.join("onnx").join("decoder_model_merged_quantized.onnx");
+
+    if config.exists() && enc.exists() && dec.exists() {
+        return Ok(true);
+    }
+
+    let cwd_dir = std::env::current_dir().unwrap_or_default().join("models").join("Xenova").join(folder_name);
+    let cwd_config = cwd_dir.join("config.json");
+    let cwd_enc = cwd_dir.join("onnx").join("encoder_model_quantized.onnx");
+    let cwd_dec = cwd_dir.join("onnx").join("decoder_model_merged_quantized.onnx");
+    if cwd_config.exists() && cwd_enc.exists() && cwd_dec.exists() {
+        return Ok(true);
+    }
+
+    let src_dir = std::env::current_dir().unwrap_or_default().join("src").join("models").join("Xenova").join(folder_name);
+    let src_config = src_dir.join("config.json");
+    let src_enc = src_dir.join("onnx").join("encoder_model_quantized.onnx");
+    let src_dec = src_dir.join("onnx").join("decoder_model_merged_quantized.onnx");
+    if src_config.exists() && src_enc.exists() && src_dec.exists() {
+        return Ok(true);
+    }
+
+    Ok(false)
+}
+
+#[tauri::command]
+fn read_model_file(lang_pair: String, filename: String) -> Result<Vec<u8>, String> {
+    let folder_name = if lang_pair == "ru-en" { "opus-mt-ru-en" } else { "opus-mt-en-ru" };
+    let app_path = get_app_dir().join("models").join("Xenova").join(folder_name).join(&filename);
+    if app_path.exists() {
+        return fs::read(&app_path).map_err(|e| e.to_string());
+    }
+
+    let cwd_path = std::env::current_dir().unwrap_or_default().join("models").join("Xenova").join(folder_name).join(&filename);
+    if cwd_path.exists() {
+        return fs::read(&cwd_path).map_err(|e| e.to_string());
+    }
+
+    let src_path = std::env::current_dir().unwrap_or_default().join("src").join("models").join("Xenova").join(folder_name).join(&filename);
+    if src_path.exists() {
+        return fs::read(&src_path).map_err(|e| e.to_string());
+    }
+
+    Err(format!("File not found: {}", filename))
+}
+
+#[tauri::command]
 fn save_credential(provider: String, key: String) -> Result<(), String> {
     let dir = get_app_dir().join("credentials");
     ensure_dir(&dir);
@@ -2498,7 +2582,10 @@ pub fn run() {
             get_allowed_devices,
             set_device_auth_status,
             remove_allowed_device,
-            show_chat_context_menu
+            show_chat_context_menu,
+            open_models_folder,
+            check_local_model_exists,
+            read_model_file
         ])
         .setup(|app| {
             let app_handle = app.handle().clone();

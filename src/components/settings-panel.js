@@ -7,6 +7,7 @@ import { showToast, checkConnection, applyGlobalSettingsStyles, openWindow, clos
 import { api } from '../services/api.js';
 import { checkComfyUIConnection } from '../services/comfyui-service.js';
 import { localSyncService } from '../services/local-sync-service.js';
+import { translationService } from '../services/translation-service.js';
 import { escapeHtml } from '../utils/helpers.js';
 
 let currentSettings = {};
@@ -31,11 +32,124 @@ export function initSettingsPanel() {
     { id: 'card-storage', modalId: 'modal-settings-storage' }
   ];
 
+  const btnTranslationInstall = document.getElementById('btn-translation-model-install');
+  const labelTranslationStatus = document.getElementById('label-translation-model-status');
+  const btnTranslationManual = document.getElementById('btn-translation-model-manual');
+
+  async function updateTranslationModelUI() {
+    if (!btnTranslationInstall || !labelTranslationStatus) return;
+
+    let isInstalled = translationService.isModelInstalledSync('en-ru');
+    if (!isInstalled) {
+      isInstalled = await translationService.checkInstalled('en-ru');
+    }
+    const isLoaded = translationService.isModelLoaded('en-ru');
+    const isInitializing = translationService.isModelInitializing();
+
+    if (isLoaded || isInstalled) {
+      labelTranslationStatus.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5" style="width: 12px; height: 12px; display: inline-block; vertical-align: middle; margin-right: 2px;">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        ${isLoaded ? 'Ready' : 'Installed'}
+      `;
+      btnTranslationInstall.disabled = true;
+      btnTranslationInstall.style.opacity = '0.7';
+      btnTranslationInstall.style.cursor = 'default';
+
+      if (!isLoaded && !isInitializing) {
+        translationService.init(false, 'en-ru').then(() => {
+          updateTranslationModelUI();
+        });
+      }
+    } else if (isInitializing) {
+      labelTranslationStatus.textContent = 'Installing...';
+      btnTranslationInstall.disabled = true;
+      btnTranslationInstall.style.opacity = '0.7';
+      btnTranslationInstall.style.cursor = 'default';
+    } else {
+      labelTranslationStatus.textContent = 'Install';
+      btnTranslationInstall.disabled = false;
+      btnTranslationInstall.style.opacity = '1';
+      btnTranslationInstall.style.cursor = 'pointer';
+    }
+  }
+
+  if (btnTranslationInstall) {
+    btnTranslationInstall.addEventListener('click', async () => {
+      if (translationService.isModelLoaded('en-ru') || translationService.isModelInitializing()) return;
+      labelTranslationStatus.textContent = 'Installing...';
+      btnTranslationInstall.disabled = true;
+      btnTranslationInstall.style.opacity = '0.7';
+
+      try {
+        await translationService.init(true, 'en-ru');
+      } catch (err) {
+        console.error('Translation install error:', err);
+      } finally {
+        updateTranslationModelUI();
+      }
+    });
+  }
+
+  if (btnTranslationManual) {
+    btnTranslationManual.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const modelRepoUrl = 'https://huggingface.co/Xenova/opus-mt-en-ru/tree/main';
+      try {
+        if (window.__TAURI__?.opener?.openUrl) {
+          await window.__TAURI__.opener.openUrl(modelRepoUrl);
+        } else if (window.__TAURI__?.shell?.open) {
+          await window.__TAURI__.shell.open(modelRepoUrl);
+        } else {
+          window.open(modelRepoUrl, '_blank');
+        }
+      } catch (err) {
+        window.open(modelRepoUrl, '_blank');
+      }
+      if (window.showToast) {
+        window.showToast('Opening Xenova/opus-mt-en-ru page on Hugging Face...', 'info');
+      }
+    });
+  }
+
+  const btnOpenTranslationFolder = document.getElementById('btn-open-translation-folder');
+  if (btnOpenTranslationFolder) {
+    btnOpenTranslationFolder.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try {
+        if (window.__TAURI_INTERNALS__?.invoke) {
+          const folderPath = await window.__TAURI_INTERNALS__.invoke('open_models_folder');
+          if (window.showToast) {
+            window.showToast('Opened models directory in Explorer', 'success');
+          }
+        } else {
+          if (window.showToast) {
+            window.showToast('Folder: src/models/Xenova/opus-mt-en-ru/', 'info');
+          }
+        }
+      } catch (err) {
+        console.error('Failed to open models folder:', err);
+        if (window.showToast) {
+          window.showToast('Could not open folder automatically', 'error');
+        }
+      }
+    });
+  }
+
+  // Initial check on load
+  updateTranslationModelUI();
+
+  window.addEventListener('translation-model-status-changed', updateTranslationModelUI);
+
   categories.forEach(cat => {
     const card = document.getElementById(cat.id);
     if (card) {
       card.addEventListener('click', () => {
         loadSettingsToUI();
+        if (cat.id === 'card-language') {
+          updateTranslationModelUI();
+        }
         openWindow(cat.modalId);
       });
     }
@@ -539,6 +653,17 @@ function initConnectionModelSelector() {
     });
   });
 
+  const clearThinkingEl = document.getElementById('setting-glm53-clear-thinking');
+  if (clearThinkingEl) {
+    clearThinkingEl.addEventListener('change', async () => {
+      const cur = settingsStore.get();
+      await settingsStore.save({
+        ...cur,
+        glm53_clear_thinking: clearThinkingEl.checked
+      });
+    });
+  }
+
   if (btnSetRecommended) {
     btnSetRecommended.addEventListener('click', async () => {
       const cur = settingsStore.get();
@@ -589,7 +714,8 @@ function initConnectionModelSelector() {
         genai_rep_penalty: 1.0,
         genai_presence_penalty: 0.0,
         genai_smoothing_factor: 0,
-        genai_reasoning_effort: glmEffort
+        genai_reasoning_effort: glmEffort,
+        glm53_clear_thinking: true
       };
 
       if (Array.isArray(updated.generation_presets)) {
@@ -725,6 +851,7 @@ function loadSettingsToUI() {
   checkField('setting-gemma4-google-thinking-preset', settings.gemma4_google_thinking_preset !== false);
   applyModelSelection(settings.selected_model_type || 'glm53');
   checkField('setting-glm53-thinking-support', true);
+  checkField('setting-glm53-clear-thinking', settings.glm53_clear_thinking !== false);
   const glmEffortLevel = ['low', 'high', 'max'].includes(settings.global_tools_reasoning_effort) ? settings.global_tools_reasoning_effort : 'max';
   document.querySelectorAll('.glm-effort-pill').forEach(pill => {
     pill.classList.toggle('active', pill.dataset.level === glmEffortLevel);
@@ -860,6 +987,7 @@ async function saveSettings() {
     gemma4_google_thinking_preset: getChecked('setting-gemma4-google-thinking-preset'),
     selected_model_type: currentSelectedModelType,
     glm53_thinking_support: true,
+    glm53_clear_thinking: getChecked('setting-glm53-clear-thinking'),
     global_tools_reasoning_effort: document.querySelector('.glm-effort-pill.active')?.dataset.level || current.global_tools_reasoning_effort || 'max',
     legacy_jinja_support: getChecked('setting-legacy-jinja-support'),
     jinja_adaptive_thinking: getChecked('setting-jinja-adaptive-thinking'),

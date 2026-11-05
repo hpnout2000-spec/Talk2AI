@@ -382,6 +382,7 @@ const DEFAULTS = {
   selected_model_type: 'glm53',
   glm53_thinking_support: true,
   global_tools_reasoning_effort: 'max',
+  glm53_clear_thinking: true,
 
   legacy_jinja_support: false,
   jinja_adaptive_thinking: true,

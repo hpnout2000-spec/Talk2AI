@@ -1211,7 +1211,8 @@ body.genai-fullscreen .genai-empty-state {
 }
 
 /* Branch button morphing */
-.genai-btn-branch {
+.genai-btn-branch,
+.genai-btn-continue {
   max-width: 0;
   opacity: 0;
   padding: 0;
@@ -1273,7 +1274,10 @@ body.genai-fullscreen .genai-empty-state {
 
 .genai-msg-footer:hover .genai-btn-branch,
 .genai-msg-actions-cloud:hover .genai-btn-branch,
-.genai-msg-actions-cloud.is-open .genai-btn-branch {
+.genai-msg-actions-cloud.is-open .genai-btn-branch,
+.genai-msg-footer:hover .genai-btn-continue,
+.genai-msg-actions-cloud:hover .genai-btn-continue,
+.genai-msg-actions-cloud.is-open .genai-btn-continue {
   max-width: 100px !important;
   opacity: 1 !important;
   padding: 3px 6px !important;
@@ -1306,6 +1310,11 @@ body.genai-fullscreen .genai-empty-state {
 
 .genai-btn-branch:hover .genai-action-icon {
   color: #38bdf8;
+}
+
+.genai-btn-continue:hover {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c084fc;
 }
 
 .genai-rewrite-wrapper.is-open .genai-chevron-icon {
