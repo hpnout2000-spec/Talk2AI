@@ -15,6 +15,8 @@ VibeChatting is a modern AI chat application focused on aesthetics, performance,
 - **Web Search & Browsing:** GenAI has full internet access (Web Search function), enabling it to search the web in real time and browse websites to retrieve up-to-date information. Supports multiple search providers (including local SearXNG instances or Tavily API) with smart layout boilerplate removal and auto-approval capabilities.
 - **Smart Image Generation with Anima:** Advanced integration with Anima for smart, context-aware image generation. Dynamically generates high-quality characters, locations, and scene illustrations directly aligned with the current chat context.
 - **Character Creation:** Highly flexible system for defining personalities, scenarios, and greetings (including Alternate Greetings support and basically all cards compatible with SillyTavern format).
+
+  ![Character Creation](src/assets/character-creation.jpg)
 - **Message Translation:** Seamless bidirectional real-time translation:
   - **Input:** Automatic translation of your messages before sending.
   - **Output:** AI response translation to your native language while preserving original context.
