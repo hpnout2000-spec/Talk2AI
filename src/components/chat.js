@@ -2392,10 +2392,18 @@ async function sendMessage() {
 
   const { isCustomPersona: curIsCustomPersona, activePersona: curActivePersona, userName: curUserName } = resolveChatPersona(session);
 
+  let currentPromptProgress = null;
   // Dynamic options override
   const apiOptions = {
     userName: curUserName,
-    persona: (curIsCustomPersona && curActivePersona?.description) ? curActivePersona.description : ''
+    persona: (curIsCustomPersona && curActivePersona?.description) ? curActivePersona.description : '',
+    onPromptProgress: (data) => {
+      currentPromptProgress = data;
+      const snippet = contentEl?.querySelector('thinking-snippets');
+      if (snippet && snippet.setPromptProgress) {
+        snippet.setPromptProgress(data);
+      }
+    }
   };
 
   // Show Processing... immediately in sleek capsule while waiting for API response
@@ -2417,6 +2425,9 @@ async function sendMessage() {
         }
         if (to.hasAttribute('max-tokens')) {
           from.setAttribute('max-tokens', to.getAttribute('max-tokens'));
+        }
+        if (to.hasAttribute('prompt-progress')) {
+          from.setAttribute('prompt-progress', to.getAttribute('prompt-progress'));
         }
         return false;
       }
@@ -2492,10 +2503,10 @@ async function sendMessage() {
           const isThinkingOnly = !hasText && (isInThinking || !hasReceivedFirstChunk);
 
           if (isThinkingOnly) {
-            html += createThinkingBlockHTML(thinking || '', true, useGLM, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort, settings.max_tokens);
+            html += createThinkingBlockHTML(thinking || '', true, useGLM, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort, settings.max_tokens, '', currentPromptProgress);
           } else {
             if (isInThinking || thinking) {
-              html += createThinkingBlockHTML(thinking, isInThinking, useGLM, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort, settings.max_tokens);
+              html += createThinkingBlockHTML(thinking, isInThinking, useGLM, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort, settings.max_tokens, '', currentPromptProgress);
             }
             let formatted = renderMarkdown(cleaned);
             formatted = processCharacterMentions(formatted);
@@ -4328,7 +4339,13 @@ export async function continueAssistantMessage(msg, msgElement) {
     persona: (isCustomPersona && activePersona?.description) ? activePersona.description : '',
     isContinuation: true,
     max_tokens: continueMaxTokens,
-    model: isGlm53 ? 'glm-5.3-flash-uncensored' : (settings.model_name || undefined)
+    model: isGlm53 ? 'glm-5.3-flash-uncensored' : (settings.model_name || undefined),
+    onPromptProgress: (data) => {
+      const snippet = contentEl?.querySelector('thinking-snippets');
+      if (snippet && snippet.setPromptProgress) {
+        snippet.setPromptProgress(data);
+      }
+    }
   };
 
   const morphOptions = {
@@ -4339,6 +4356,7 @@ export async function continueAssistantMessage(msg, msgElement) {
         if (to.hasAttribute('thoughts')) from.setAttribute('thoughts', to.getAttribute('thoughts'));
         if (to.hasAttribute('effort')) from.setAttribute('effort', to.getAttribute('effort'));
         if (to.hasAttribute('max-tokens')) from.setAttribute('max-tokens', to.getAttribute('max-tokens'));
+        if (to.hasAttribute('prompt-progress')) from.setAttribute('prompt-progress', to.getAttribute('prompt-progress'));
         return false;
       }
       if (from.style && from.style.display === 'none' && to.style.display !== 'none') {
@@ -4739,9 +4757,17 @@ async function triggerAssistantGeneration() {
   let thinkingTime = 0;
   let thinkingActiveInline2 = false;
   const { isCustomPersona: curIsCustomPersona2, activePersona: curActivePersona2, userName: curUserName2 } = resolveChatPersona(session);
+  let currentPromptProgress2 = null;
   const apiOptions = {
     userName: curUserName2,
-    persona: (curIsCustomPersona2 && curActivePersona2?.description) ? curActivePersona2.description : ''
+    persona: (curIsCustomPersona2 && curActivePersona2?.description) ? curActivePersona2.description : '',
+    onPromptProgress: (data) => {
+      currentPromptProgress2 = data;
+      const snippet = contentEl?.querySelector('thinking-snippets');
+      if (snippet && snippet.setPromptProgress) {
+        snippet.setPromptProgress(data);
+      }
+    }
   };
 
   // Show Processing... immediately in sleek capsule while waiting for API response
@@ -4755,6 +4781,7 @@ async function triggerAssistantGeneration() {
         if (to.hasAttribute('thoughts')) from.setAttribute('thoughts', to.getAttribute('thoughts'));
         if (to.hasAttribute('effort')) from.setAttribute('effort', to.getAttribute('effort'));
         if (to.hasAttribute('max-tokens')) from.setAttribute('max-tokens', to.getAttribute('max-tokens'));
+        if (to.hasAttribute('prompt-progress')) from.setAttribute('prompt-progress', to.getAttribute('prompt-progress'));
         return false;
       }
       // Force clearing of display: none style when elements should no longer be hidden
@@ -4823,10 +4850,10 @@ async function triggerAssistantGeneration() {
         const isThinkingOnly = !hasText && (isInThinking || !hasReceivedFirstChunk2);
 
         if (isThinkingOnly) {
-          html += createThinkingBlockHTML(thinking || '', true, useGLM, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort, settings.max_tokens);
+          html += createThinkingBlockHTML(thinking || '', true, useGLM, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort, settings.max_tokens, '', currentPromptProgress2);
         } else {
           if (isInThinking || thinking) {
-            html += createThinkingBlockHTML(thinking, isInThinking, useGLM, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort, settings.max_tokens);
+            html += createThinkingBlockHTML(thinking, isInThinking, useGLM, typeof thinkingTime !== "undefined" ? thinkingTime : 0, settings.reasoning_effort, settings.max_tokens, '', currentPromptProgress2);
           }
           let formatted = renderMarkdown(cleaned2);
           formatted = processCharacterMentions(formatted);

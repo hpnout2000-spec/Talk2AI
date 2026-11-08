@@ -3565,14 +3565,14 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
         const markerLength = match[0].length;
         sHtml += renderMarkdown(normalizedSectionText.substring(0, splitIdx));
         if ((isInThinking || thinking) && !isProcessSection) {
-          sHtml += createThinkingBlockHTML(thinking, isInThinking && streaming, settings.glm47_support, entry.thinking_time || 0, entry.resolved_effort || settings.genai_reasoning_effort, null, (isInThinking && streaming) ? (entry.cognitive_state || '') : '');
+          sHtml += createThinkingBlockHTML(thinking, isInThinking && streaming, settings.glm47_support, entry.thinking_time || 0, entry.resolved_effort || settings.genai_reasoning_effort, null, (isInThinking && streaming) ? (entry.cognitive_state || '') : '', entry.prompt_progress || null);
         } else if (thinking && isProcessSection) {
           sHtml += createThinkingBlockHTML(thinking, false, settings.glm47_support, entry.thinking_time || 0, entry.resolved_effort || settings.genai_reasoning_effort);
         }
         sHtml += renderMarkdown(normalizedSectionText.substring(splitIdx + markerLength));
       } else {
         if ((isInThinking || thinking) && !isProcessSection) {
-          sHtml += createThinkingBlockHTML(thinking, isInThinking && streaming, settings.glm47_support, entry.thinking_time || 0, entry.resolved_effort || settings.genai_reasoning_effort, null, (isInThinking && streaming) ? (entry.cognitive_state || '') : '');
+          sHtml += createThinkingBlockHTML(thinking, isInThinking && streaming, settings.glm47_support, entry.thinking_time || 0, entry.resolved_effort || settings.genai_reasoning_effort, null, (isInThinking && streaming) ? (entry.cognitive_state || '') : '', entry.prompt_progress || null);
         } else if (thinking && isProcessSection) {
           sHtml += createThinkingBlockHTML(thinking, false, settings.glm47_support, entry.thinking_time || 0, entry.resolved_effort || settings.genai_reasoning_effort);
         }
@@ -3963,6 +3963,15 @@ function renderAssistantBubble(entry, bubbleEl, { cursor = false, preemptiveWork
         if (from.nodeName === 'THINKING-SNIPPETS') {
           if (to.hasAttribute('thoughts')) {
             from.setAttribute('thoughts', to.getAttribute('thoughts'));
+          }
+          if (to.hasAttribute('effort')) {
+            from.setAttribute('effort', to.getAttribute('effort'));
+          }
+          if (to.hasAttribute('max-tokens')) {
+            from.setAttribute('max-tokens', to.getAttribute('max-tokens'));
+          }
+          if (to.hasAttribute('prompt-progress')) {
+            from.setAttribute('prompt-progress', to.getAttribute('prompt-progress'));
           }
           if (to.hasAttribute('cognitive-state')) {
             const newCog = to.getAttribute('cognitive-state');
@@ -6158,7 +6167,14 @@ async function streamGenAI(extraUserInstruction = null, _continuationEntry = nul
         },
         {
           reasoning_effort: effortToUse,
-          isGenAI: true
+          isGenAI: true,
+          onPromptProgress: (data) => {
+            assistantEntry.prompt_progress = data;
+            const snippet = bubbleEl?.querySelector('thinking-snippets') || document.getElementById('genai-thinking-snippets');
+            if (snippet && snippet.setPromptProgress) {
+              snippet.setPromptProgress(data);
+            }
+          }
         },
         (thinkChunk) => {
           if (!thinkingActiveGenai) {

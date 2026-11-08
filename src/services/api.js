@@ -562,6 +562,7 @@ export const api = {
           prompt: formatted.prompt,
           stop: formatted.stop,
           stream: true,
+          return_progress: true,
           max_tokens: maxTokens,
           temperature: temp,
           top_p: topP,
@@ -573,6 +574,7 @@ export const api = {
         body = {
           messages: finalMessages,
           stream: true,
+          return_progress: true,
           max_tokens: maxTokens,
           temperature: temp,
           top_p: topP,
@@ -764,6 +766,10 @@ export const api = {
 
                 try {
                   const parsed = JSON.parse(data);
+                  const promptProgress = parsed.prompt_progress || parsed.progress || parsed.choices?.[0]?.prompt_progress;
+                  if (promptProgress && options.onPromptProgress) {
+                    options.onPromptProgress(promptProgress);
+                  }
                   const choice = parsed.choices?.[0];
                   if (choice?.finish_reason) {
                     lastFinishReason = choice.finish_reason;
@@ -884,6 +890,10 @@ export const api = {
 
             try {
               const parsed = JSON.parse(data);
+              const promptProgress = parsed.prompt_progress || parsed.progress || parsed.choices?.[0]?.prompt_progress;
+              if (promptProgress && options.onPromptProgress) {
+                options.onPromptProgress(promptProgress);
+              }
               const choice = parsed.choices?.[0];
               if (choice?.finish_reason) {
                 lastFinishReason = choice.finish_reason;

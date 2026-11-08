@@ -1087,7 +1087,7 @@ export function isBudgetExceededMessage(text) {
 /**
  * Generate thinking block HTML structure
  */
-export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, thinkingTime = 0, reasoningEffortSetting = null, maxTokens = null, cognitiveState = '') {
+export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, thinkingTime = 0, reasoningEffortSetting = null, maxTokens = null, cognitiveState = '', promptProgress = null) {
   const settings = settingsStore.get() || {};
   const effort = reasoningEffortSetting || settings.reasoning_effort || 'high';
 
@@ -1148,7 +1148,8 @@ export function createThinkingBlockHTML(thinkingText, isActive, isGLM = false, t
     const escapedThoughts = escapeHtml(cleanThinking);
     const mTokens = maxTokens || settings.max_tokens || settings.genai_max_tokens || 2048;
     const cogAttr = cognitiveState ? ` cognitive-state="${escapeHtml(cognitiveState)}"` : '';
-    return `<div class="thinking-inline thinking-inline-active system-timeline-item"><div class="thinking-inline-header"><thinking-snippets id="genai-thinking-snippets" thoughts="${escapedThoughts}" effort="${effort}" max-tokens="${mTokens}"${cogAttr}></thinking-snippets></div></div>`;
+    const progressAttr = promptProgress ? ` prompt-progress="${escapeHtml(typeof promptProgress === 'object' ? JSON.stringify(promptProgress) : String(promptProgress))}"` : '';
+    return `<div class="thinking-inline thinking-inline-active system-timeline-item"><div class="thinking-inline-header"><thinking-snippets id="genai-thinking-snippets" thoughts="${escapedThoughts}" effort="${effort}" max-tokens="${mTokens}"${cogAttr}${progressAttr}></thinking-snippets></div></div>`;
   }
   let doneText = '';
   if (thinkingTime >= 5) {
@@ -1172,10 +1173,14 @@ class ThinkingSnippets extends HTMLElement {
     this._scrollRafId = null;
     this._lastScrollTop = 0;
     this._cognitiveState = 'none';
+    this._initTime = Date.now();
+    this._isPrefilling = false;
+    this._latestPromptProgress = null;
+    this._prefillTimer = null;
   }
 
   static get observedAttributes() {
-    return ['thoughts', 'effort', 'max-tokens', 'cognitive-state'];
+    return ['thoughts', 'effort', 'max-tokens', 'cognitive-state', 'prompt-progress'];
   }
 
   connectedCallback() {
@@ -1194,6 +1199,15 @@ class ThinkingSnippets extends HTMLElement {
     if (initialCognitive) {
       this.setCognitiveState(initialCognitive);
     }
+    const initialPromptProgress = this.getAttribute('prompt-progress');
+    if (initialPromptProgress) {
+      try {
+        const parsed = initialPromptProgress.startsWith('{') ? JSON.parse(initialPromptProgress) : initialPromptProgress;
+        this.setPromptProgress(parsed);
+      } catch (e) {
+        this.setPromptProgress(initialPromptProgress);
+      }
+    }
   }
 
   buildDOM() {
@@ -1203,7 +1217,7 @@ class ThinkingSnippets extends HTMLElement {
     this.header = document.createElement('div');
     this.header.className = this.hasThoughts 
       ? 'thinking-preview-header is-thinking' 
-      : 'thinking-preview-header is-processing';
+      : (this._isPrefilling ? 'thinking-preview-header is-prefilling' : 'thinking-preview-header is-processing');
 
     // Fluid text cross-fade container (exits right, enters left)
     this.textContainer = document.createElement('div');
@@ -1213,11 +1227,16 @@ class ThinkingSnippets extends HTMLElement {
     this.processingSpan.className = 'thinking-snippet-layer thinking-label-processing';
     this.processingSpan.textContent = 'Processing...';
 
+    this.prefillSpan = document.createElement('span');
+    this.prefillSpan.className = 'thinking-snippet-layer thinking-label-prefill';
+    this.prefillSpan.textContent = '';
+
     this.thinkingSpan = document.createElement('span');
     this.thinkingSpan.className = 'thinking-snippet-layer thinking-label-thinking';
     this.thinkingSpan.textContent = 'Thinking...';
 
     this.textContainer.appendChild(this.processingSpan);
+    this.textContainer.appendChild(this.prefillSpan);
     this.textContainer.appendChild(this.thinkingSpan);
 
     this.workingSpan = document.createElement('span');
@@ -1352,6 +1371,67 @@ class ThinkingSnippets extends HTMLElement {
     });
   }
 
+  setPromptProgress(data) {
+    if (!data || this.hasThoughts) return;
+
+    let processed = 0;
+    let total = 0;
+
+    if (typeof data === 'object') {
+      processed = data.processed ?? data.current ?? 0;
+      total = data.total ?? data.max ?? 0;
+    } else if (typeof data === 'string') {
+      const parts = data.split('/');
+      if (parts.length === 2) {
+        processed = parseInt(parts[0].replace(/,/g, '').trim(), 10) || 0;
+        total = parseInt(parts[1].replace(/,/g, '').trim(), 10) || 0;
+      }
+    }
+
+    if (!total || total <= 0) return;
+
+    this._latestPromptProgress = { processed, total };
+
+    const elapsed = Date.now() - (this._initTime || 0);
+
+    if (this._isPrefilling || elapsed >= 5000) {
+      this._applyPromptProgress(this._latestPromptProgress);
+    } else if (!this._prefillTimer) {
+      const remainingDelay = Math.max(0, 5000 - elapsed);
+      this._prefillTimer = setTimeout(() => {
+        this._prefillTimer = null;
+        if (!this.hasThoughts && this._latestPromptProgress) {
+          this._applyPromptProgress(this._latestPromptProgress);
+        }
+      }, remainingDelay);
+    }
+  }
+
+  _applyPromptProgress(progress) {
+    if (!progress || this.hasThoughts) return;
+
+    this._isPrefilling = true;
+
+    if (this.header) {
+      this.header.classList.remove('is-processing');
+      this.header.classList.add('is-prefilling');
+    }
+
+    const { processed, total } = progress;
+    const formatted = `${Number(processed).toLocaleString()} / ${Number(total).toLocaleString()}`;
+
+    if (this.prefillSpan) {
+      this.prefillSpan.textContent = formatted;
+    }
+
+    if (this.progressBar && total > 0) {
+      const pct = Math.min(100, Math.max(0, (processed / total) * 100));
+      this.progressBar.style.width = `${pct}%`;
+    }
+
+    this.adjustBubbleWidth();
+  }
+
   setCognitiveState(state) {
     this._cognitiveState = state || 'none';
     if (!this.header) return;
@@ -1368,18 +1448,29 @@ class ThinkingSnippets extends HTMLElement {
       this.transformToThinking();
     } else if (state === 'processing') {
       this.hasThoughts = false;
+      this._isPrefilling = false;
+      if (this._prefillTimer) {
+        clearTimeout(this._prefillTimer);
+        this._prefillTimer = null;
+      }
       this.header.classList.add('is-processing');
-      this.header.classList.remove('is-thinking');
+      this.header.classList.remove('is-thinking', 'is-prefilling');
     }
     this.adjustBubbleWidth();
   }
 
   transformToThinking() {
+    if (this._prefillTimer) {
+      clearTimeout(this._prefillTimer);
+      this._prefillTimer = null;
+    }
+    this._isPrefilling = false;
+
     if (this.hasThoughts) return;
     this.hasThoughts = true;
 
     if (this.header) {
-      this.header.classList.remove('is-processing');
+      this.header.classList.remove('is-processing', 'is-prefilling');
       this.header.classList.add('is-thinking');
     }
     this.adjustBubbleWidth();
@@ -1391,6 +1482,14 @@ class ThinkingSnippets extends HTMLElement {
     }
     if (name === 'cognitive-state' && newValue !== oldValue) {
       this.setCognitiveState(newValue);
+    }
+    if (name === 'prompt-progress' && newValue !== oldValue && newValue) {
+      try {
+        const parsed = typeof newValue === 'string' && newValue.startsWith('{') ? JSON.parse(newValue) : newValue;
+        this.setPromptProgress(parsed);
+      } catch (e) {
+        this.setPromptProgress(newValue);
+      }
     }
   }
 
@@ -1479,6 +1578,10 @@ class ThinkingSnippets extends HTMLElement {
   }
 
   disconnectedCallback() {
+    if (this._prefillTimer) {
+      clearTimeout(this._prefillTimer);
+      this._prefillTimer = null;
+    }
     const bubble = this.getBubble();
     if (bubble && !bubble.classList.contains('thinking-only')) {
       bubble.style.width = '';
@@ -1500,6 +1603,7 @@ class ThinkingSnippets extends HTMLElement {
       if (this.isExpanded) return;
       
       const isCog = this._cognitiveState === 'recalling' || this._cognitiveState === 'remembering' || this._cognitiveState === 'working';
+      const isPrefill = this._isPrefilling && !this.hasThoughts && !isCog;
       const activeLayer = (this._cognitiveState === 'recalling')
         ? (this.recallingSpan || this.querySelector('.thinking-label-recalling'))
         : (this._cognitiveState === 'remembering')
@@ -1508,13 +1612,13 @@ class ThinkingSnippets extends HTMLElement {
         ? (this.workingSpan || this.querySelector('.thinking-label-working'))
         : (this.hasThoughts 
             ? (this.thinkingSpan || this.querySelector('.thinking-label-thinking'))
-            : (this.processingSpan || this.querySelector('.thinking-label-processing')));
-
-
+            : (isPrefill
+                ? (this.prefillSpan || this.querySelector('.thinking-label-prefill'))
+                : (this.processingSpan || this.querySelector('.thinking-label-processing'))));
 
       if (!activeLayer) return;
 
-      const layerWidth = activeLayer.offsetWidth || (isCog ? (this._cognitiveState === 'working' ? 95 : 135) : (this.hasThoughts ? 85 : 80));
+      const layerWidth = activeLayer.offsetWidth || (isCog ? (this._cognitiveState === 'working' ? 95 : 135) : (this.hasThoughts ? 85 : (isPrefill ? 105 : 80)));
       if (layerWidth === 0 && !this.hasThoughts && !isCog) {
         if (retry < 4) requestAnimationFrame(() => run(retry + 1));
         return;
@@ -1527,8 +1631,8 @@ class ThinkingSnippets extends HTMLElement {
       // Ensure there's a min-width to accommodate text cleanly
       const minW = isCog 
         ? (this._cognitiveState === 'recalling' ? 180 : (this._cognitiveState === 'remembering' ? 155 : 140))
-        : (this.hasThoughts ? 140 : 110);
-      const targetWidth = Math.max(layerWidth + padH + borderH + (isCog ? (this._cognitiveState === 'working' ? 20 : 24) : (this.hasThoughts ? 20 : 10)), minW);
+        : (this.hasThoughts ? 140 : (isPrefill ? 120 : 110));
+      const targetWidth = Math.max(layerWidth + padH + borderH + (isCog ? (this._cognitiveState === 'working' ? 20 : 24) : (this.hasThoughts ? 20 : (isPrefill ? 20 : 10))), minW);
       
       bubble.style.width = targetWidth + 'px';
     };

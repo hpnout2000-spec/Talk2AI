@@ -4174,6 +4174,10 @@ glm-thinking-snippets .glm-snippet.active {
   cursor: default;
   min-width: 105px;
 }
+.thinking-preview-header.is-prefilling {
+  cursor: default;
+  min-width: 125px;
+}
 .thinking-preview-header.is-recalling {
   cursor: default;
   min-width: 180px;
@@ -4182,7 +4186,7 @@ glm-thinking-snippets .glm-snippet.active {
   cursor: default;
   min-width: 155px;
 }
-.thinking-preview-header:not(.is-processing):hover {
+.thinking-preview-header:not(.is-processing):not(.is-prefilling):hover {
   background: var(--bg-hover);
 }
 .thinking-preview-header.expanded {
@@ -4200,12 +4204,18 @@ glm-thinking-snippets .glm-snippet.active {
 }
 
 .thinking-label-processing,
+.thinking-label-prefill,
 .thinking-label-thinking {
   grid-area: label;
   white-space: nowrap;
   transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), 
               transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   will-change: opacity, transform;
+}
+
+.thinking-label-prefill {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.2px;
 }
 
 .thinking-label-working,
@@ -4223,6 +4233,7 @@ glm-thinking-snippets .glm-snippet.active {
 /* In processing state: processing is visible, thinking waits on the left */
 /* Default: hidden on left */
 .thinking-label-processing,
+.thinking-label-prefill,
 .thinking-label-thinking,
 .thinking-label-working,
 .thinking-label-recalling,
@@ -4233,14 +4244,27 @@ glm-thinking-snippets .glm-snippet.active {
 }
 
 /* In processing state: processing is visible */
-.thinking-preview-header.is-processing .thinking-label-processing {
+.thinking-preview-header.is-processing:not(.is-prefilling):not(.is-thinking) .thinking-label-processing {
   opacity: 1;
   transform: translateX(0);
   pointer-events: auto;
 }
 
-/* In thinking state (when not in recalling or remembering or working): thinking is visible, processing floats out to the right */
+/* In prefilling state: processing floats out to the right, prefill glides in from the left */
+.thinking-preview-header.is-prefilling:not(.is-thinking):not(.is-recalling):not(.is-remembering):not(.is-working) .thinking-label-processing {
+  opacity: 0;
+  transform: translateX(8px);
+  pointer-events: none;
+}
+.thinking-preview-header.is-prefilling:not(.is-thinking):not(.is-recalling):not(.is-remembering):not(.is-working) .thinking-label-prefill {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+/* In thinking state (when not in recalling or remembering or working): thinking is visible, processing and prefill float out to the right */
 .thinking-preview-header.is-thinking:not(.is-recalling):not(.is-remembering):not(.is-working) .thinking-label-processing,
+.thinking-preview-header.is-thinking:not(.is-recalling):not(.is-remembering):not(.is-working) .thinking-label-prefill,
 .thinking-preview-header.is-thinking:not(.is-recalling):not(.is-remembering):not(.is-working) .thinking-label-working,
 .thinking-preview-header.is-thinking:not(.is-recalling):not(.is-remembering):not(.is-working) .thinking-label-recalling,
 .thinking-preview-header.is-thinking:not(.is-recalling):not(.is-remembering):not(.is-working) .thinking-label-remembering {
@@ -4254,8 +4278,9 @@ glm-thinking-snippets .glm-snippet.active {
   pointer-events: auto;
 }
 
-/* In working state: processing and thinking float out to the right, working glides in from the left */
+/* In working state: processing, prefill, and thinking float out to the right, working glides in from the left */
 .thinking-preview-header.is-working .thinking-label-processing,
+.thinking-preview-header.is-working .thinking-label-prefill,
 .thinking-preview-header.is-working .thinking-label-thinking,
 .thinking-preview-header.is-working .thinking-label-recalling,
 .thinking-preview-header.is-working .thinking-label-remembering {
@@ -4269,8 +4294,9 @@ glm-thinking-snippets .glm-snippet.active {
   pointer-events: auto;
 }
 
-/* In recalling state: processing, thinking, and working float out to the right, recalling glides in from the left */
+/* In recalling state: processing, prefill, thinking, and working float out to the right, recalling glides in from the left */
 .thinking-preview-header.is-recalling .thinking-label-processing,
+.thinking-preview-header.is-recalling .thinking-label-prefill,
 .thinking-preview-header.is-recalling .thinking-label-thinking,
 .thinking-preview-header.is-recalling .thinking-label-working,
 .thinking-preview-header.is-recalling .thinking-label-remembering {
@@ -4284,8 +4310,9 @@ glm-thinking-snippets .glm-snippet.active {
   pointer-events: auto;
 }
 
-/* In remembering state: processing, thinking, working, and recalling float out to the right, remembering glides in from the left */
+/* In remembering state: processing, prefill, thinking, working, and recalling float out to the right, remembering glides in from the left */
 .thinking-preview-header.is-remembering .thinking-label-processing,
+.thinking-preview-header.is-remembering .thinking-label-prefill,
 .thinking-preview-header.is-remembering .thinking-label-thinking,
 .thinking-preview-header.is-remembering .thinking-label-working,
 .thinking-preview-header.is-remembering .thinking-label-recalling {
@@ -4349,12 +4376,18 @@ glm-thinking-snippets .glm-snippet.active {
               opacity 0.4s ease, 
               margin-top 0.45s cubic-bezier(0.16, 1, 0.3, 1);
 }
-.thinking-preview-header.is-processing .thinking-progress-container {
+.thinking-preview-header.is-processing:not(.is-prefilling) .thinking-progress-container {
   max-height: 0;
   height: 0;
   opacity: 0;
   margin-top: 0;
   pointer-events: none;
+}
+.thinking-preview-header.is-prefilling .thinking-progress-container {
+  max-height: 2px;
+  height: 2px;
+  opacity: 1;
+  margin-top: 4px;
 }
 .thinking-preview-header.expanded .thinking-progress-container {
   opacity: 0;
