@@ -210,70 +210,6 @@ export function initCharacterPanel() {
   // Close modal on backdrop click
   charModal?.querySelector('.modal-backdrop')?.addEventListener('click', closeCharacterEditor);
 
-  // AI Character Generation
-  document.getElementById('btn-ai-generate').addEventListener('click', async () => {
-    const promptInput = document.getElementById('ai-help-prompt').value.trim();
-    if (!promptInput) {
-      showToast('Please describe the character you want to create', 'error');
-      return;
-    }
-
-    const btn = document.getElementById('btn-ai-generate');
-    const originalText = btn.innerHTML;
-    btn.innerHTML = 'Generating...';
-    btn.disabled = true;
-
-    try {
-      const messages = [
-        {
-          role: 'system',
-          content: `You are a master character designer and world-builder. Your task is to create an exceptionally deep, multi-dimensional character persona based on the user's input.
-The description should be vivid and detailed, covering physical appearance, clothing, and presence. The personality must be comprehensive, including nuances, core motivations, secret fears, and behavioral quirks. The scenario should set a rich, atmospheric stage. The system prompt should be an extensive set of instructions that perfectly captures the character's unique voice, vocabulary, and mannerisms.
-Each field must be as expansive, descriptive, and rich as possible to provide a high-quality roleplaying experience.
-Return ONLY a valid JSON object with the following structure:
-{
-  "name": "Full name and titles",
-  "description": "Extensive physical description, attire, and general role",
-  "personality": "Comprehensive breakdown of traits, inner motivations, fears, and quirks",
-  "scenario": "Richly detailed current situation and environment",
-  "system_prompt": "A lengthy, precise set of roleplay instructions including speaking style, core beliefs, and how they interact with others.",
-  "first_message": "An atmospheric, immersive, and engaging opening line that reflects the character's personality"
-}
-Do not include any Markdown formatting like \`\`\`json or any other text. Return strictly the raw JSON object.`
-        },
-        { role: 'user', content: promptInput }
-      ];
-
-      const response = await api.chatCompletion(messages, { max_tokens: 4000, temperature: 0.7, isTool: true });
-      
-      // Strip any thinking blocks
-      const cleanResponse = response.replace(/(?:<\|?think\|?>|<reasoning>|<\|?channel\|?>?thought)([\s\S]*?)(?:<\|?\/think\|?>|<\/reasoning>|<channel\|>)/gi, '');
-      
-      const jsonMatch = cleanResponse.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const charData = JSON.parse(jsonMatch[0]);
-        document.getElementById('char-name').value = charData.name || '';
-        document.getElementById('char-description').value = charData.description || '';
-        document.getElementById('char-personality').value = charData.personality || '';
-        document.getElementById('char-image-tags').value = charData.image_tags || '';
-        document.getElementById('char-scenario').value = charData.scenario || '';
-        document.getElementById('char-system-prompt').value = charData.system_prompt || '';
-        document.getElementById('char-creator-notes').value = charData.creator_notes || charData.authors_note || '';
-        document.getElementById('char-first-message').value = charData.first_message || '';
-        document.getElementById('char-message-examples').value = charData.message_examples || charData.mes_example || '';
-        showToast('Character generated successfully!');
-      } else {
-        throw new Error('No valid JSON found in response');
-      }
-    } catch (err) {
-      console.error(err);
-      showToast('Failed to generate character', 'error');
-    } finally {
-      btn.innerHTML = originalText;
-      btn.disabled = false;
-    }
-  });
-
   // Gallery controls
   document.getElementById('btn-show-all-characters').addEventListener('click', openCharacterGallery);
   document.querySelector('.btn-close-gallery').addEventListener('click', closeCharacterGallery);
@@ -442,7 +378,12 @@ export function openCharacterEditor(character = null) {
   const modal = document.getElementById('character-modal');
   const title = document.getElementById('modal-title');
 
-  title.textContent = character ? 'Edit Character' : 'Create Character';
+  const titleText = document.getElementById('modal-title-text');
+  if (titleText) {
+    titleText.textContent = character ? 'Edit Character' : 'Create Character';
+  } else if (title) {
+    title.textContent = character ? 'Edit Character' : 'Create Character';
+  }
 
   // Fill form
   document.getElementById('char-name').value = character?.name || '';

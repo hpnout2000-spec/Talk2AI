@@ -1667,10 +1667,31 @@
         <div class="modal-backdrop"></div>
         <div class="modal-content character-editor">
           <div class="modal-header">
-            <h2 id="modal-title">Create Character</h2>
-            <button class="btn-close-modal btn-icon">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            <h2 id="modal-title">
+              <div class="cloud-progressive-blur" aria-hidden="true">
+                <span class="c-layer c-layer--1"></span>
+                <span class="c-layer c-layer--2"></span>
+                <span class="c-layer c-layer--3"></span>
+                <span class="c-layer c-layer--4"></span>
+                <span class="c-layer c-layer--5"></span>
+              </div>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="char-modal-title-icon">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+              <span id="modal-title-text">Create Character</span>
+            </h2>
+            <button class="btn-close-modal btn-icon" id="btn-close-character-modal" aria-label="Close">
+              <div class="cloud-progressive-blur" aria-hidden="true">
+                <span class="c-layer c-layer--1"></span>
+                <span class="c-layer c-layer--2"></span>
+                <span class="c-layer c-layer--3"></span>
+                <span class="c-layer c-layer--4"></span>
+                <span class="c-layer c-layer--5"></span>
+              </div>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/>
+                <line x1="6" y1="6" x2="18" y2="18"/>
               </svg>
             </button>
           </div>
@@ -1685,16 +1706,6 @@
               <button id="btn-upload-avatar" class="btn-secondary">Upload Avatar</button>
             </div>
             
-            <div class="ai-help-section" style="background: var(--bg-tertiary); padding: 16px; border-radius: var(--radius-md); margin-bottom: 24px; border: 1px solid var(--border-light);">
-              <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
-                <svg viewBox="0 0 24 24" fill="none" stroke="var(--text-accent)" stroke-width="2" style="width: 18px; height: 18px;">
-                  <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-                </svg>
-                <h3 style="font-size: var(--text-sm); font-weight: 600; color: var(--text-accent); text-transform: uppercase; letter-spacing: 0.05em;">AI Character Generator</h3>
-              </div>
-              <textarea id="ai-help-prompt" rows="2" placeholder="Describe the character you want... (e.g. A grumpy old wizard who hates magic)" style="width: 100%; padding: 10px; background: var(--bg-primary); border: 1px solid var(--border-light); border-radius: var(--radius-sm); color: var(--text-primary); margin-bottom: 12px; font-family: var(--font-sans); font-size: var(--text-sm); resize: vertical; outline: none;"></textarea>
-              <button id="btn-ai-generate" class="btn-secondary" style="width: 100%; display: flex; justify-content: center;">Generate with AI</button>
-            </div>
 
             <div class="form-group">
               <label for="char-name">Name</label>
@@ -1771,14 +1782,43 @@
             </div>
           </div>
           <div class="modal-footer">
-            <button id="btn-export-character-png" type="button" class="btn-secondary" style="margin-right: auto;" title="Export as SillyTavern PNG Card">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px; margin-right: 4px; vertical-align: middle;">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+            <button id="btn-export-character-png" type="button" class="chat-pod char-footer-btn btn-export" title="Export as SillyTavern PNG Card">
+              <div class="cloud-progressive-blur" aria-hidden="true">
+                <span class="c-layer c-layer--1"></span>
+                <span class="c-layer c-layer--2"></span>
+                <span class="c-layer c-layer--3"></span>
+                <span class="c-layer c-layer--4"></span>
+                <span class="c-layer c-layer--5"></span>
+              </div>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px; margin-right: 8px; color: var(--text-accent);">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
               </svg>
-              Export Card (PNG)
+              <span>Export Card</span>
             </button>
-            <button id="btn-cancel-character" class="btn-secondary">Cancel</button>
-            <button id="btn-save-character" class="btn-primary">Save Character</button>
+            <div class="char-footer-right-group">
+              <button id="btn-cancel-character" type="button" class="chat-pod char-footer-btn btn-cancel">
+                <div class="cloud-progressive-blur" aria-hidden="true">
+                  <span class="c-layer c-layer--1"></span>
+                  <span class="c-layer c-layer--2"></span>
+                  <span class="c-layer c-layer--3"></span>
+                  <span class="c-layer c-layer--4"></span>
+                  <span class="c-layer c-layer--5"></span>
+                </div>
+                <span>Cancel</span>
+              </button>
+              <button id="btn-save-character" type="button" class="chat-pod char-footer-btn btn-save">
+                <div class="cloud-progressive-blur" aria-hidden="true">
+                  <span class="c-layer c-layer--1"></span>
+                  <span class="c-layer c-layer--2"></span>
+                  <span class="c-layer c-layer--3"></span>
+                  <span class="c-layer c-layer--4"></span>
+                  <span class="c-layer c-layer--5"></span>
+                </div>
+                <span>Save Character</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

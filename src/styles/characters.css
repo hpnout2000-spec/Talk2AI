@@ -955,3 +955,244 @@ body.sidebar-collapsed .sidebar,
   background: rgba(14, 165, 233, 0.08) !important;
   transition: all var(--transition-fast) ease !important;
 }
+
+
+/* ════════════════════════════════════════════════════════════════════
+   Character Modal — Modern Liquid Glass Design (matching Settings/Connections)
+   ════════════════════════════════════════════════════════════════════ */
+
+#character-modal .modal-content.character-editor {
+  position: relative;
+  overflow: hidden;
+  border-radius: 28px;
+  width: 90%;
+  max-width: 620px;
+  max-height: 85vh;
+  background: rgba(20, 20, 20, 0.9) !important;
+  backdrop-filter: blur(28px) !important;
+  -webkit-backdrop-filter: blur(28px) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.14) !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+}
+
+/* Gradient fades top & bottom (neutral dark shading) */
+#character-modal .modal-content.character-editor::before {
+  content: '' !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: auto !important;
+  height: 80px !important;
+  background: linear-gradient(to bottom, rgba(20, 20, 20, 0.96) 0%, rgba(20, 20, 20, 0) 100%) !important;
+  pointer-events: none !important;
+  z-index: 10 !important;
+}
+
+#character-modal .modal-content.character-editor::after {
+  content: '' !important;
+  position: absolute !important;
+  bottom: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: auto !important;
+  height: 75px !important;
+  background: linear-gradient(to top, rgba(20, 20, 20, 0.96) 0%, rgba(20, 20, 20, 0) 100%) !important;
+  pointer-events: none !important;
+  z-index: 10 !important;
+}
+
+/* Floating header without solid background or borders */
+#character-modal .modal-header {
+  background: transparent !important;
+  border: none !important;
+  border-bottom: none !important;
+  box-shadow: none !important;
+  position: absolute;
+  top: 18px;
+  left: 20px;
+  right: 20px;
+  z-index: 20;
+  padding: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+/* Header title bubble & close button */
+#character-modal .modal-header h2#modal-title,
+#character-modal #btn-close-character-modal {
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.18) !important;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.3), inset 0 0 0 1px rgba(255, 255, 255, 0.06) !important;
+  color: var(--text-primary);
+}
+
+#character-modal .modal-header h2#modal-title > *:not(.cloud-progressive-blur),
+#character-modal #btn-close-character-modal > *:not(.cloud-progressive-blur) {
+  position: relative;
+  z-index: 1;
+}
+
+/* Title capsule bubble */
+#character-modal .modal-header h2#modal-title {
+  pointer-events: auto;
+  margin: 0;
+  height: 44px;
+  padding: 0 18px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+#character-modal .char-modal-title-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--text-accent);
+  stroke-width: 2.2;
+  flex-shrink: 0;
+}
+
+/* Close button bubble (×) */
+#character-modal #btn-close-character-modal {
+  pointer-events: auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+#character-modal #btn-close-character-modal:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.32) !important;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
+  transform: translateY(-1px) scale(1.05);
+}
+
+#character-modal #btn-close-character-modal:active {
+  transform: translateY(0) scale(0.96);
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+
+/* Modal body padding to account for floating header and footer */
+#character-modal .modal-body {
+  background: transparent !important;
+  padding: 78px 24px 84px 24px !important;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+/* Floating footer without top border */
+#character-modal .modal-footer {
+  position: absolute;
+  bottom: 18px;
+  left: 20px;
+  right: 20px;
+  z-index: 25;
+  pointer-events: none;
+  background: transparent !important;
+  border: none !important;
+  border-top: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+#character-modal .char-footer-right-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+/* Liquid glass pill buttons (same style as Save Changes in connections) */
+#character-modal .char-footer-btn {
+  pointer-events: auto;
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+  width: auto !important;
+  height: 44px;
+  border-radius: 22px;
+  padding: 0 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text-primary) !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1.5px solid rgba(255, 255, 255, 0.18) !important;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.3),
+              inset 0 1px 0 rgba(255, 255, 255, 0.3),
+              inset 0 0 0 1px rgba(255, 255, 255, 0.06) !important;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.2s ease,
+              box-shadow 0.2s ease,
+              background-color 0.2s ease;
+}
+
+#character-modal .char-footer-btn:hover {
+  border-color: rgba(255, 255, 255, 0.32) !important;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.35),
+              inset 0 1px 0 rgba(255, 255, 255, 0.4),
+              inset 0 0 0 1px rgba(255, 255, 255, 0.1) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  transform: translateY(-1px);
+}
+
+#character-modal .char-footer-btn:active {
+  transform: translateY(0) scale(0.97);
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+
+#character-modal .char-footer-btn > *:not(.cloud-progressive-blur) {
+  position: relative;
+  z-index: 1;
+}
+
+#character-modal .char-footer-btn.btn-save {
+  min-width: 150px;
+}
+
+#character-modal .char-footer-btn.btn-cancel {
+  min-width: 85px;
+}
+
+#character-modal .char-footer-btn.btn-export {
+  min-width: 140px;
+}
+
+@media (max-width: 520px) {
+  #character-modal .modal-footer {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    bottom: 12px;
+  }
+  #character-modal .modal-body {
+    padding-bottom: 120px !important;
+  }
+}

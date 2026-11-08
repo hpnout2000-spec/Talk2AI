@@ -372,9 +372,6 @@ function setupSettingsMorphing(panel) {
             <span class="c-layer c-layer--4"></span>
             <span class="c-layer c-layer--5"></span>
           </div>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="width: 16px; height: 16px; position: relative; z-index: 1; margin-right: 8px; color: var(--text-accent);">
-            <polyline points="20 6 9 17 4 12"/>
-          </svg>
           <span style="position: relative; z-index: 1;">Save Changes</span>
         `;
       }
